@@ -25,7 +25,7 @@ import type { BlockingModalCoordinator, BlockingModalScope } from '../../../kit/
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
 import { connectCore } from './connectCore.js';
-import { ownCoreConnection, type CoreProvider } from './ownCoreConnection.js';
+import { ownCoreConnection } from './ownCoreConnection.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from '../../signing/index.js';
 import { getAskedProductId } from '../../../kit/getAskedProductId.js';
 
@@ -89,11 +89,7 @@ export type CoreLease = {
    * the core refuses the connection, which takes the core down.
    */
   connect(params?: ConnectParams): Promise<CoreConnection>;
-  /**
-   * Takes over `connection` as a provider that shows every frame to the debug panel, and whose dispose closes the
-   * connection. Never throws.
-   */
-  own(connection: CoreConnection): CoreProvider;
+  own: typeof ownCoreConnection;
   /**
    * Hears once that this core went down, was refused or turned stale, when its replacement is already the one a
    * request gets. Called at once for a core that is already down. Returns the unsubscribe. Never throws.

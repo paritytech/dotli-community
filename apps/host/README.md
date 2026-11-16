@@ -42,18 +42,22 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
 The source is grouped by what it is for:
 
 - **Pages:** the three Astro pages. They compose features.
-- **Shell:** the entries and boot, the routes and the service worker. It also holds the chrome that composes several
-  features.
-- **Kit:** helpers several features use. It imports no feature.
+- **Shell:** the entries and their boot. It also holds the routes and the service worker. Chrome that composes several
+  features sits there too.
+- **Kit:** helpers several features use. It imports no feature at runtime.
 - **Features:** one user flow each, behind one index. A feature holds its own views, islands and stores, with their
   logic and tests.
 
 The features:
 
-- **Opening a product:** landing, product load, product identity, topbar and page.
-- **Signing in:** account, sign-in window and site sign-in.
-- **Around a product:** signing, permissions, network, settings, chat, notifications and debug.
-- **Product runtime:** the TrUAPI side whole. It holds the core connection, the host callbacks and the runtime bridge.
+| Group             | Features                                                            |
+| ----------------- | ------------------------------------------------------------------- |
+| Opening a product | landing, product load, product identity, topbar, page               |
+| Signing in        | account, sign-in window, site sign-in                               |
+| Around a product  | signing, permissions, network, settings, chat, notifications, debug |
+
+- **Product runtime:** the TrUAPI side whole. It holds the core connection and the host callbacks. The runtime bridge
+  sits there too.
 - **Chains:** the page's chain pool and the reads every flow shares, below product runtime.
 - **Debug panel:** the panel's view of the page, above product runtime, loaded only in debug mode.
 

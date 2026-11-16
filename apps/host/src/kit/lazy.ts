@@ -1,3 +1,8 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Lazy entry points for packages, each its own chunk, so the page boot leaves them out.
+
 import type * as HostWebNamespace from '@parity/truapi-host/web';
 import type * as HostWorkerNamespace from '@parity/truapi-host/worker-runtime?worker';
 import type * as PolkadotApiNamespace from 'polkadot-api';

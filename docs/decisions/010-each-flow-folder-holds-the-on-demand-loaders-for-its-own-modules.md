@@ -23,7 +23,10 @@
   - a loader for a module outside any flow, such as a package, stays in the app-wide loader module in the shared helpers
     folder
   - no module is exempted from the flow boundary to hold loaders
-- Not when: no case yet.
+- Not when:
+  - the placement rule built on this decision says a flow's index never re-exports a module a loader loads. That rule
+    does not hold when every importer that uses the export sits in a lazily loaded chunk and needs the module
+    synchronously: the index may re-export it, and an eager caller still uses the loader (D-014).
 - Source: the change that regroups the host, sandbox and protocol apps by flow, design
   `docs/_plans/app-flow-folders-design.md`.
 - Status: active

@@ -24,7 +24,7 @@ import {
   type LoginOutcome,
 } from './createAuthCommands.js';
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
-import type { CoreConnection, CoreLease, PageCore } from '../../productRuntime/index.js';
+import type { CoreLease, CoreProvider, PageCore } from '../../productRuntime/index.js';
 import { LoginRequestError } from './loginRequestError.js';
 import { readSignInOutcome } from './readSignInOutcome.js';
 import { requestCoreLogin } from './requestCoreLogin.js';
@@ -92,7 +92,7 @@ type CoreLoginEvent =
   | ({ kind: 'loginAsked' } & CoreLoginParams & Pick<CoreLogin, 'caller'>)
   | { kind: 'leased'; id: symbol; lease: CoreLease }
   | { kind: 'bootFailed'; id: symbol; error: unknown }
-  | { kind: 'connected'; connection: CoreConnection }
+  | { kind: 'connected'; provider: CoreProvider }
   | { kind: 'connectFailed'; error: unknown }
   | { kind: 'requestAnswered'; answered: DotliAuthState }
   | { kind: 'requestFailed'; error: unknown }
@@ -103,7 +103,7 @@ type CoreLoginEvent =
   | { kind: 'roundEnded' };
 
 type CoreLoginEffect =
-  | { kind: 'close'; lease: CoreLease; connection: CoreConnection }
+  | { kind: 'close'; lease: CoreLease; provider: CoreProvider }
   | { kind: 'release'; lease: CoreLease }
   | { kind: 'answer'; login: CoreLogin; outcome: LoginOutcome }
   | { kind: 'reject'; login: CoreLogin; error: unknown }
@@ -114,7 +114,7 @@ type CoreLoginEffect =
 
 type CoreLoginMachine = MachineTypes<CoreLoginState, CoreLoginEvent, CoreLoginEffect>;
 
-type RequestLoginParams = Pick<CoreLogin, 'reason'> & { lease: CoreLease; connection: CoreConnection };
+type RequestLoginParams = Pick<CoreLogin, 'reason'> & { lease: CoreLease; provider: CoreProvider };
 
 /** A lease that arrives after its login ended is held by nobody, so it goes at once. */
 const releaseStaleLease: HandlerOf<CoreLoginMachine, CoreLoginState['kind'], 'leased'> = (
@@ -212,7 +212,7 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
           transition.emitState({ kind: 'connecting', login: state.login, lease: event.lease });
           transition.update(
             event.lease.connect().then(
-              connection => ({ kind: 'connected', connection }),
+              connection => ({ kind: 'connected', provider: event.lease.own(connection) }),
               (error: unknown) => ({ kind: 'connectFailed', error }),
             ),
           );
@@ -233,16 +233,16 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
       connecting: {
         leased: releaseStaleLease,
         bootFailed: reportStaleBootFailure,
-        connected({ login, lease }, { connection }, transition) {
+        connected({ login, lease }, { provider }, transition) {
           if (login.ended) {
-            transition.emitSideEffect({ kind: 'close', lease, connection });
+            transition.emitSideEffect({ kind: 'close', lease, provider });
             transition.emitSideEffect({ kind: 'loginCancelledEarly' });
             answerLogin(login, CANCELLED, transition);
             return;
           }
           transition.emitState({ kind: 'requesting', login });
           transition.update(
-            requestLogin({ reason: login.reason, lease, connection }).then(
+            requestLogin({ reason: login.reason, lease, provider }).then(
               answered => ({ kind: 'requestAnswered', answered }),
               (error: unknown) => ({ kind: 'requestFailed', error }),
             ),
@@ -313,7 +313,7 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
       switch (effect.kind) {
         case 'close':
           closeStep(() => {
-            effect.connection.close();
+            effect.provider.dispose();
           }, effect.lease);
           return;
         case 'release':
@@ -391,12 +391,11 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
   }
 
   /**
-   * Asks the core to log in over `connection`, and answers the auth state as the core answered, so a state reported
+   * Asks the core to log in over `provider`, and answers the auth state as the core answered, so a state reported
    * since is the core's word on this login. Closes the connection and lets the core go either way. Rejects with what
    * the request or the close threw.
    */
-  async function requestLogin({ reason, lease, connection }: RequestLoginParams): Promise<DotliAuthState> {
-    const provider = lease.own(connection);
+  async function requestLogin({ reason, lease, provider }: RequestLoginParams): Promise<DotliAuthState> {
     try {
       await requestCoreLogin(provider, { reason });
       return auth.get();

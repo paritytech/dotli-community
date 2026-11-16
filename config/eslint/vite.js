@@ -8,6 +8,10 @@ import turboPlugin from 'eslint-plugin-turbo';
 import tseslint from 'typescript-eslint';
 import { defineConfig } from 'eslint/config';
 
+import { featureTestFiles, storyFiles, testOnlyFiles } from './testFiles.js';
+
+export { featureBoundaries } from './featureBoundaries.js';
+
 // eslint-plugin-solid types its rules against the ESLint 8 rule API, which
 // ESLint 10's `Plugin` type rejects. The rules themselves run under ESLint 10.
 const solidPlugin = /** @type {import("eslint").ESLint.Plugin} */ (/** @type {unknown} */ (solid));
@@ -30,22 +34,8 @@ const testOnlyModuleImport = {
 // What shipped code may not import.
 const shippedImportPatterns = [tsExtensionImport, testingEntryImport, testOnlyModuleImport];
 
-// Unit specs, the fake of one module beside it, and shared fixtures. Globs match from each package's own config.
-const testOnlyFiles = [
-  '**/src/**/*.spec.ts',
-  '**/src/**/*.spec.tsx',
-  '**/src/**/*.fake.ts',
-  '**/src/testing/**/*.ts',
-  '**/src/testing/**/*.tsx',
-];
-
 // Shared fixtures that drive a page, which functional tests run under happy-dom and story plays in a real browser.
-// An app feature's functional and end-to-end tests, which run in happy-dom or Playwright.
-const featureTestFiles = ['**/src/**/__tests__/**/*.ts', '**/src/**/__tests__/**/*.tsx'];
-
 const domTestingFiles = ['**/src/testing/**/*.dom.ts', '**/src/testing/**/*.dom.tsx'];
-
-const storyFiles = ['**/src/**/*.stories.tsx'];
 
 // Story fixtures and frames. Only stories import them, and they run in the browser with them.
 const storyFixtureFiles = ['**/src/testing/stories/**/*.ts', '**/src/testing/stories/**/*.tsx'];
@@ -220,8 +210,9 @@ export const config = defineConfig([
   },
   {
     // Shipped code never reaches test-only modules. The recorder replaces the bound Sentry, so shipped code that
-    // reached it would drop every metric.
+    // reached it would drop every metric. An app's functional and end-to-end tests in `__tests__` never ship.
     files: ['**/src/**/*.ts', '**/src/**/*.tsx'],
+    ignores: featureTestFiles,
     rules: {
       'no-restricted-imports': [
         'error',
@@ -273,6 +264,8 @@ export const config = defineConfig([
   {
     // Test-only files in src get the test relaxations, may import `./testing` entries, and refuse DOM tooling.
     files: testOnlyFiles,
+    // A functional or end-to-end spec in `__tests__` is no unit spec, though it ends in `.spec.ts`.
+    ignores: featureTestFiles,
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-empty-function': 'off',
@@ -290,16 +283,6 @@ export const config = defineConfig([
     // No unit spec runs these, so they may read the DOM. A spec that called one would fail under Node.
     files: [...domTestingFiles, ...storyFixtureFiles],
     rules: {
-      'no-restricted-globals': 'off',
-      'no-restricted-properties': 'off',
-    },
-  },
-  {
-    // A feature's functional and end-to-end tests run in happy-dom or a browser and never ship, so they read the DOM
-    // and reach fakes, fixtures and `./testing` entries.
-    files: featureTestFiles,
-    rules: {
-      'no-restricted-imports': ['error', { patterns: [tsExtensionImport] }],
       'no-restricted-globals': 'off',
       'no-restricted-properties': 'off',
     },
@@ -323,8 +306,6 @@ export const config = defineConfig([
  * worker, which serves every tab. They import `@dotli/config/fixed`, never the bare entry, whose overridable readers
  * would miss the overrides.
  */
-export { featureBoundaries } from './featureBoundaries.js';
-
 export const fixedConfigOnly = {
   regex: '^@dotli/config$',
   message:

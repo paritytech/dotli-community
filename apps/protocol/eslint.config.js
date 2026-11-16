@@ -38,7 +38,6 @@ export default defineConfig([
       'src/sharedWorker/startProtocolWorker.ts',
       'src/sharedWorker/createWorkerLifecycle.ts',
       'src/sharedWorker/withRequestSpan.ts',
-      'src/logWorkerEvent.ts',
       'src/lightClient/startLightClientService.ts',
       'src/sharedWorker/parseWorkerNetwork.ts',
     ],

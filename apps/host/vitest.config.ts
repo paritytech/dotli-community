@@ -20,6 +20,7 @@ export default defineConfig({
         test: {
           name: 'host:unit',
           include: ['src/**/*.spec.{ts,tsx}'],
+          // The Playwright suites in __tests__ also end in .spec.ts.
           exclude: ['src/**/__tests__/**'],
           environment: 'node',
           // Specs read metrics through a recorder nobody else binds.

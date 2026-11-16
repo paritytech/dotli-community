@@ -8,7 +8,6 @@ import type { ChatStore } from './createChatStore.js';
 
 export type ChatPanelModule = typeof ChatPanelNamespace;
 
-// The host's own views, each its own chunk, for panels and pages a visit may never open.
 /** The chat panel. Rejects when its chunk fails to load. */
 export function loadChatPanel(): Promise<ChatPanelModule> {
   return import('./ChatPanel.js');

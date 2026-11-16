@@ -28,19 +28,19 @@ restore, and logout are core-owned and do not cross the JS host callback boundar
 
 dotli still supplies platform primitives that are host policy or browser UI:
 
-| Area                      | Files                                                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| navigation                | `apps/host/src/features/productRuntime/callbacks/createNavigateTo.ts`                                               |
-| notifications             | `apps/host/src/features/productRuntime/callbacks/createNotificationAdapters.ts`                                     |
-| device/remote permissions | `apps/host/src/features/productRuntime/callbacks/createPromptPermission.ts`, `apps/host/src/runtime/permissions.ts` |
-| feature support           | `apps/host/src/features/productRuntime/callbacks/getFeatureSupport.ts`                                              |
-| product storage           | `apps/host/src/features/productRuntime/callbacks/createLocalStorageCallbacks.ts`                                    |
-| session persistence       | `apps/host/src/features/account/session/createCoreStorage.ts`, `createSessionState.ts`                              |
-| pairing presentation      | `apps/host/src/features/account/session/createAuthStateChanged.ts`                                                  |
-| user confirmations        | `apps/host/src/features/productRuntime/callbacks/createUserConfirmationAdapters.ts`                                 |
-| preimage lookup UI        | `apps/host/src/features/productRuntime/callbacks/createPreimageAdapters.ts`                                         |
-| theme subscription        | `apps/host/src/features/productRuntime/callbacks/createThemeSubscribe.ts`                                           |
-| chain backend connection  | `apps/host/src/features/productRuntime/callbacks/createChainConnect.ts`                                             |
+| Area                      | Files                                                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| navigation                | `apps/host/src/features/productRuntime/callbacks/createNavigateTo.ts`                                                                        |
+| notifications             | `apps/host/src/features/productRuntime/callbacks/createNotificationAdapters.ts`                                                              |
+| device/remote permissions | `apps/host/src/features/productRuntime/callbacks/createPromptPermission.ts`, `apps/host/src/features/permissions/policy/permissionPolicy.ts` |
+| feature support           | `apps/host/src/features/productRuntime/callbacks/getFeatureSupport.ts`                                                                       |
+| product storage           | `apps/host/src/features/productRuntime/callbacks/createLocalStorageCallbacks.ts`                                                             |
+| session persistence       | `apps/host/src/features/account/session/createCoreStorage.ts`, `createSessionState.ts`                                                       |
+| pairing presentation      | `apps/host/src/features/account/session/createAuthStateChanged.ts`                                                                           |
+| user confirmations        | `apps/host/src/features/productRuntime/callbacks/createUserConfirmationAdapters.ts`                                                          |
+| preimage lookup UI        | `apps/host/src/features/productRuntime/callbacks/createPreimageAdapters.ts`                                                                  |
+| theme subscription        | `apps/host/src/features/productRuntime/callbacks/createThemeSubscribe.ts`                                                                    |
+| chain backend connection  | `apps/host/src/features/productRuntime/callbacks/createChainConnect.ts`                                                                      |
 
 These callbacks must remain generic host primitives. They should not re-add Nova package imports, wallet-specific JS
 channels, or statement-store request routing that belongs inside the Rust core.

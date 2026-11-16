@@ -5,7 +5,7 @@
 // stopped before it dials, or its sockets are refused, so nothing here waits on a chain.
 
 import { expect } from '@playwright/test';
-import { ERROR_TITLES, HOST_ERRORS } from '../../../features/productLoad/index.js';
+import { ERROR_TITLES, HOST_ERRORS } from '../../../features/productLoad/failure/errorCopy.js';
 import { PORT } from '../../../../tests/env.js';
 import { seedBackend, type Backend } from '../../../../tests/functional/fixtures/settings.js';
 import { isProtocolFrameUrl } from '../../../../tests/functional/helpers/frames.js';

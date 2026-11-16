@@ -9,7 +9,7 @@ import { isExpectedReadError, loadResolve, type DotnsResolver } from '@dotli/res
 import { nameList, type NameList } from '@dotli/storage';
 import { atom, type ReadableAtom } from 'nanostores';
 import { createNameListTrace, type NameListTrace } from './createNameListTrace.js';
-import { loadHostBridge } from '../productRuntime/index.js';
+import { loadHostChainProviders } from '../chains/index.js';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
 import { settingsState, type SettingsState } from '../settings/index.js';
 import { syncNameList, type NameListReads } from './syncNameList.js';
@@ -154,11 +154,11 @@ export const landingNameList = createLandingNameList({
   settings: settingsState.store,
 });
 
-/** Builds the resolver on the host chain pool's Asset Hub lease. Rejects when its chunk or the bridge fails to load. */
+/** Builds the resolver on the host chain pool's Asset Hub lease. Rejects when its chunk or the chain providers' chunk fails to load. */
 async function openPageReads(settings: SettingsState): Promise<DotnsResolver> {
-  const [resolveModule, bridge] = await Promise.all([loadResolve(), loadHostBridge()]);
+  const [resolveModule, providers] = await Promise.all([loadResolve(), loadHostChainProviders()]);
   return resolveModule.createDotnsResolver({
-    assetHub: bridge.getHostAssetHubProvider,
+    assetHub: providers.getHostAssetHubProvider,
     dotns: NETWORK_NAME_TO_SERVICES_CONFIG[settings.network].dotns,
     source: hasLightClient(settings.backend) ? 'light-client' : 'rpc-gateway',
   });

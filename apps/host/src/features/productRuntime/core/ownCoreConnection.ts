@@ -29,6 +29,7 @@ export function ownCoreConnection(connection: CoreConnection): CoreProvider {
   });
   let disposed = false;
   const unsubscribeCore = provider.subscribe(message => {
+    // The provider's contract does not rule out a frame delivered after the unsubscribe.
     if (disposed) {
       return;
     }

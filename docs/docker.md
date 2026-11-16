@@ -122,9 +122,8 @@ and `/s/sign`. The container serves them as `localhost`, `*.app.localhost` and
 `*.localhost`.
 
 This needs no code changes and no DNS setup: the flat `*.localhost` shape is
-already special-cased in `getProtocolOrigin` (`packages/protocol/src/client.ts`),
-`dotUrl` (`apps/host/src/features/landing/dotUrl.ts`) and `appOrigin`
-(`apps/host/src/runtime/productFrame.ts`), browsers resolve every `*.localhost` name to
+already special-cased in `getProtocolOrigin` (`packages/protocol/src/client.ts`)
+and `dotUrl` (`apps/host/src/features/landing/dotUrl.ts`). Browsers resolve every `*.localhost` name to
 loopback, and `http://*.localhost` is a secure context so `crypto.subtle`,
 service workers and SharedWorker all work.
 

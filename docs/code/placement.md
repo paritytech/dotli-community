@@ -125,24 +125,26 @@ flowchart TD
 ## Inside an app
 
 An app's `src/` is grouped by what the code is for, never by its kind. No folder is named for a kind of file, such as
-components, runtime, state or islands.
+`components/` or `state/`.
 
 The host has user flows:
 
 - `src/features/<feature>/` holds one user flow whole. Its views, islands and stores sit there with their logic and
   tests.
 - `src/pages/` holds the Astro pages. They compose features.
-- `src/shell/` holds the entries and boot, the routes and the service worker. Chrome that composes several features
-  sits there too.
-- `src/kit/` holds helpers several features use. It imports no feature.
+- `src/shell/` holds the entries and their boot. It also holds the routes and the service worker. Chrome that composes
+  several features sits there too.
+- `src/kit/` holds helpers several features use. It imports no feature at runtime.
 - A feature's `index.ts` is its public surface. Other features, `shell/` and `pages/` import only that file. A type-only
-  import, an Astro component and a test may reach past it.
+  import and a test may reach past it. Astro markup imports an Astro component or an island by its own module, since
+  Astro hydrates the module the markup imports, so an index never lists a page's islands.
 - An island is named with an `Island` suffix, so it never shares a name with the view it renders.
 - The `page` feature holds the state every flow that places chrome reads, such as the shown product and the topbar's
   slots.
-- The TrUAPI side lives whole in the `productRuntime` feature. It holds the core connection, the host callback adapters
-  and the runtime composition root. It reaches the other features through their `index.ts`, and they reach it only
-  through the runtime facade, a parameter such as the core lease, or a type-only import.
+- The TrUAPI side lives whole in the `productRuntime` feature. It holds the core connection and the host callback
+  adapters. The runtime composition root sits there too. It reaches the other features through their `index.ts`. They
+  never import it at runtime. They take what they need from it as a parameter, such as the core lease, or import only its
+  types.
 - Infrastructure that `productRuntime` and the flows both read, such as the page's chain pool, is its own low feature.
 - Features import each other in one direction only. Two features that need each other move the shared part down or
   take it as a parameter.
@@ -160,7 +162,8 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
 - Each package exposes only `src/index.ts`. Never import another package's internal modules.
 - On-demand modules go through a loader in `src/lazy.ts` to stay a separate chunk. In an app with features, a feature
   keeps the loaders of its own modules in its `lazy.ts` and exports them through its `index.ts`, which never re-exports
-  a module a loader loads. `src/kit/lazy.ts` keeps the loaders of packages.
+  a module a loader loads. The one exception is a module that only code already in a lazy chunk imports from the index.
+  An eager caller then takes the loader. `src/kit/lazy.ts` keeps the loaders of packages.
 - Styles go in a CSS module beside the component.
 - A unit test sits beside its module: `src/foo.ts` gets `src/foo.spec.ts`.
 - Functional tests live in `<pkg>/tests/` as `*.test.ts`. In an app with features, a feature's functional tests live in
@@ -192,7 +195,7 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
   bus.
 - Shared Vite plugins live in `config/vite/src/` as `@config/vite`.
 - Import a component where it is used and let the bundler split chunks. What a visit may never open (a panel's content,
-  the debug panel) loads through `lazy()` or a loader in `src/lazy.ts`. The startup size budgets in CI guard what a page
+  the debug panel) loads through `lazy()` or a loader in a `lazy.ts`. The startup size budgets in CI guard what a page
   loads first, not import rules.
 
 ## No home found

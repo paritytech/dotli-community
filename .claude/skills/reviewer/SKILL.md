@@ -52,7 +52,7 @@ fails, and name that failure in the report.
 
 3. **Load the checklists, the primary citation source.**
    - `docs/claude/architecture-checklist.md` when the diff touches placement or layering, adds or moves files, or
-     touches a package `src/index.ts` or `package.json` `exports`, a `src/lazy.ts`, or an `eslint.config.js`.
+     touches a package `src/index.ts` or `package.json` `exports`, a `lazy.ts`, or an `eslint.config.js`.
    - `docs/claude/code-checklist.md` when the diff touches a component and its CSS module and story, a spec or
      functional test, or any other rule-bearing source file.
    - Load **both** when unsure. The checklists are severity-tagged and ready to quote. The owner docs behind them

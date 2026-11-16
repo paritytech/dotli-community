@@ -27,6 +27,10 @@
   `docs/_plans/app-flow-folders-design.md`.
 - Status: enforced by the ESLint rule `app/feature-boundary`, defined by the helper `featureBoundaries()` in
   `config/eslint/featureBoundaries.js` and turned on in the host app's ESLint config. The rule decides. It reports a
-  value import into another feature that is not that feature's `index.ts`. It allows type-only imports, Astro components
-  imported by path, and test code (specs, stories, fakes, `__tests__`, `src/testing`). It also reports kit or a feature
-  importing the shell or the pages, and kit importing a feature by value.
+  value import into another feature that is not that feature's `index.ts`. It allows these past a feature's index:
+  - a type-only import
+  - Astro markup importing an Astro component or an island by its own module. Astro hydrates the module the markup
+    imports, so an index never lists a page's islands. An island is told by its `Island` suffix (D-012).
+  - test code: specs, stories, fakes, `__tests__` and `src/testing`
+
+  It still reports kit or a feature importing the shell or the pages, and kit importing a feature at runtime.
