@@ -16,7 +16,7 @@ export function PhoneWaiting(props: { ask: PhoneAsk }): JSX.Element {
       <p class={s['lead']} data-testid="phone-waiting-lead">
         {ASK_COPY[props.ask].lead}
       </p>
-      <PhoneIllustration ask={props.ask} />
+      <PhoneIllustration />
       <div class={s['status']} data-testid="phone-waiting-status">
         <Spinner class={s['spinner']} />
         Waiting for Polkadot App…

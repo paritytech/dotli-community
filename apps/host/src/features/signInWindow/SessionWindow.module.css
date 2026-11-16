@@ -39,7 +39,7 @@
 .actions {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-2);
   align-self: stretch;
 }
 
@@ -84,9 +84,12 @@
 
 /* A phone has the whole page to itself: the content in the middle, the actions and the note within the thumb's reach. */
 @media (max-width: 560px) {
+  /* The card's surface spreads over the page it gives way to, so a well inside still sinks into it as it does in the
+     card. On the near-black page a well would not show. */
   .window {
     align-items: stretch;
     gap: var(--sp-5);
+    background: var(--surface);
     padding: var(--sp-8) calc(var(--sp-5) + var(--safe-right)) calc(var(--sp-8) + var(--safe-bottom))
       calc(var(--sp-5) + var(--safe-left));
   }

@@ -86,12 +86,12 @@ describe('the ghost bar before a chain first bar', () => {
     ]);
   });
 
-  it('As a user waiting for a chain first bar after its first block, the ghost bar grows and counts down to it', () => {
+  it('As a user waiting for the next block of a chain, the ghost bar grows and counts down to it', () => {
     // When
     const bar = pendingBar(RELAY, 1500);
 
     // Then
-    expect(bar).toEqual({ phase: 'counting', heightPercent: 59, text: 'First block in about 5s' });
+    expect(bar).toEqual({ phase: 'counting', heightPercent: 59, text: 'Next block in about 5s' });
   });
 
   it('As a user of a chain at or past its block time, the ghost bar stands full and says due any moment, never zero', () => {

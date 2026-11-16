@@ -8,7 +8,7 @@ import { CloseIcon } from '../icons/CloseIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { IconTile } from '../primitives/IconTile.js';
 import { IconButton } from '../primitives/IconButton.js';
-import { InSheet } from './inSheet.js';
+import { InSheet, type Sheet } from './inSheet.js';
 import { dragSheet } from './dragSheet.js';
 import s from './SheetFrame.module.css';
 
@@ -48,6 +48,10 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
   let head: HTMLDivElement | undefined;
   const drags = createDrags();
   onCleanup(drags.stopAll);
+  // The head's slot for a Surface's aside, made before the body so the Surface finds it while it builds. Empty, it
+  // takes no room.
+  const aside = (<div class={s['aside']} />) as HTMLDivElement;
+  const place: Sheet = { aside };
 
   function handlePointerDown(down: PointerEvent): void {
     if (head === undefined || sheet === undefined || down.button !== 0) {
@@ -82,6 +86,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
       >
         <div class={s['grabber']} aria-hidden="true" />
         <Heading title={props.title} icon={props.icon} testId={props.testId} />
+        {aside}
         <Show when={props.closable !== false}>
           <IconButton
             size="sm"
@@ -104,7 +109,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         data-testid={props.body?.testId}
         onKeyDown={event => props.body?.onKeyDown?.(event)}
       >
-        <InSheet value={() => true}>{props.children}</InSheet>
+        <InSheet value={() => place}>{props.children}</InSheet>
       </div>
     </div>
   );

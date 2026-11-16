@@ -118,6 +118,7 @@ export function ArchiveView(props: {
               </Callout>
               <Button
                 testId="td-archive-retry"
+                class={s['retry']}
                 onClick={() => {
                   const cid = getCid();
                   if (cid !== undefined) {

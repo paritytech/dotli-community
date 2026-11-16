@@ -98,6 +98,7 @@
 
 .views {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 26px 1fr;
   overflow: hidden;
   min-height: 0;

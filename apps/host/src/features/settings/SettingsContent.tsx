@@ -97,6 +97,10 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   }
 
   const networks = saved.enabledNetworks;
+  const severalNetworks = networks.length > 1;
+  // General only picks the theme, which applies at once, so its foot shows only for a draft from another category or
+  // a save that runs. A save keeps the foot, hint row included, in place until the page reloads.
+  const showFoot = (): boolean => category() !== 'general' || dirty() || props.reset() === 'applying';
 
   return (
     <Surface width="lg" padded>
@@ -126,14 +130,23 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
           </Stack>
         </Show>
         <Show when={category() === 'network'}>
-          <Show when={networks.length > 1}>
-            <NetworkChoices networks={networks} value={network()} onChoose={setNetwork} />
+          <Show when={severalNetworks}>
+            <Stack>
+              <SectionLabel text="Network" />
+              <NetworkChoices networks={networks} value={network()} onChoose={setNetwork} />
+            </Stack>
           </Show>
-          <TransportChoices
-            value={backend()}
-            sharedWorkerAvailable={saved.sharedWorkerAvailable}
-            onChoose={setBackend}
-          />
+          <Stack>
+            {/* Alone in the category, the transport list needs no label that repeats its name. */}
+            <Show when={severalNetworks}>
+              <SectionLabel text="Network transport" />
+            </Show>
+            <TransportChoices
+              value={backend()}
+              sharedWorkerAvailable={saved.sharedWorkerAvailable}
+              onChoose={setBackend}
+            />
+          </Stack>
         </Show>
         <Show when={category() === 'advanced'}>
           <Stack>
@@ -168,7 +181,10 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                 Clear all caches
               </Button>
             </div>
-            <Show when={!props.debugMode()}>
+          </Stack>
+          <Show when={!props.debugMode()}>
+            <Stack>
+              <SectionLabel text="Debug" />
               <div data-testid="mode-debug-row">
                 <Button
                   block
@@ -179,33 +195,32 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                   Open in debug mode
                 </Button>
               </div>
-            </Show>
-          </Stack>
+            </Stack>
+          </Show>
         </Show>
       </div>
-      <SurfaceFoot
-        hint={
-          // The theme on General applies at once, so the reload notice shows only where a change reloads.
-          <Show when={category() !== 'general' || dirty()}>
+      <Show when={showFoot()}>
+        <SurfaceFoot
+          hint={
             <Hint icon={ReloadIcon} testId="mode-apply-warning">
               Transport and cache changes reload the page
             </Hint>
-          </Show>
-        }
-      >
-        <div class={s['apply']} data-testid="mode-apply-row">
-          <Button
-            variant="primary"
-            block={popover.sheet()}
-            onClick={apply}
-            disabled={!dirty() || isResetRunning(props.reset())}
-            loading={props.reset() === 'applying'}
-            aria-label={props.reset() === 'applying' ? 'Applying…' : undefined}
-          >
-            Save and apply
-          </Button>
-        </div>
-      </SurfaceFoot>
+          }
+        >
+          <div class={s['apply']} data-testid="mode-apply-row">
+            <Button
+              variant="primary"
+              block={popover.sheet()}
+              onClick={apply}
+              disabled={!dirty() || isResetRunning(props.reset())}
+              loading={props.reset() === 'applying'}
+              aria-label={props.reset() === 'applying' ? 'Applying…' : undefined}
+            >
+              Save and apply
+            </Button>
+          </div>
+        </SurfaceFoot>
+      </Show>
     </Surface>
   );
 }
@@ -217,7 +232,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
 export function SettingsContent(props: SettingsContentProps): JSX.Element {
   const popover = usePopover();
   return (
-    <div class={s['content']} id="mode-popover-content" data-sheet={popover.sheet() ? '' : undefined}>
+    <div id="mode-popover-content" data-sheet={popover.sheet() ? '' : undefined}>
       {/* Not keyed, so later writes of the saved settings do not remount the panel mid-edit. */}
       <Show
         when={props.settings()}

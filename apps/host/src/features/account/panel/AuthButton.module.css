@@ -20,21 +20,9 @@
   width: 14px;
   height: 14px;
 }
-/* The account icon with a dot at its top-right corner, in the tone of a sign-in that needs attention. */
-.alert-mark {
-  position: relative;
-  display: inline-flex;
-}
-.alert-mark::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--chrome-warn);
-  box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
+/* In the tone of a sign-in that needs attention. */
+.alert-icon {
+  color: var(--chrome-warn);
 }
 /* The avatar sits as far from the chip's left edge as from its top and bottom. */
 .chip {
@@ -83,10 +71,6 @@
     width: 20px;
     height: 20px;
     stroke-width: 1.75;
-  }
-  .alert-mark::after {
-    width: var(--sp-2);
-    height: var(--sp-2);
   }
   .chip {
     background: transparent;

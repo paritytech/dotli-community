@@ -164,7 +164,7 @@ describe('permission request', () => {
 
     // Then
     expect(view.fields[0]).toEqual({ label: 'App', value: withActiveTld('myapp') });
-    expect(view.notice).toBe('Granting this permission will reload the application.');
+    expect(view.notice).toBe('Granting this permission reloads the app.');
   });
 
   it('As a dotli user, I get a prompt for an app permission and it says nothing of a reload', () => {

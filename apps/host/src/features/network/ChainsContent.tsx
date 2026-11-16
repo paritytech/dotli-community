@@ -88,7 +88,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   const unreachable = (): boolean => props.network().verdict.tone === 'unreachable';
   const transfer = createMemo(() => describeTransfer(props.network().transfer, !props.productLoaded()));
   return (
-    <Surface width="md" padded testId="chains-content">
+    <Surface width="md" padded class={s['content']} testId="chains-content">
       <SurfaceHead title="Network" testId="chains-head" />
       <Well class={s['status']} testId="chains-status">
         <StatusDot tone={NETWORK_HEALTH[status().tone].dot} class={s['statusDot']} testId="chains-status-dot" />

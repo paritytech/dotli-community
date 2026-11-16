@@ -1,13 +1,20 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A short grip at rest, so the edge reads as one to drag. */
-.handle {
-  grid-area: handle;
-  background: linear-gradient(var(--td-line-hover), var(--td-line-hover)) center / 24px 2px no-repeat;
+/* A short grip at rest, so the edge and the split read as ones to drag. Drawn on the hit area, which lies over the
+   split's line and shares its centre, and gone while the line itself lights up. */
+.grip::after {
+  background: linear-gradient(var(--td-fg-faint), var(--td-fg-faint)) center / 24px 2px no-repeat;
 }
-.handle[data-orientation='vertical'] {
+.grip[data-orientation='vertical']::after {
   background-size: 2px 24px;
+}
+.grip:is(:hover, :focus-visible, [data-dragging])::after {
+  background: none;
+}
+.handle {
+  composes: grip;
+  grid-area: handle;
 }
 /* On the right dock it lies over the content's start, the full height of the panel. */
 :global([data-dock='right']) > .handle {

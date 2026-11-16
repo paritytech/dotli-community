@@ -32,12 +32,12 @@
   border-color: var(--td-danger);
   background: color-mix(in srgb, var(--td-danger) 15%, var(--td-bg));
 }
-/* Flat and quiet, so a busy or unavailable action reads as one at a glance. */
+/* Flat, with no fill, a faint edge and dimmed text, so a busy or unavailable action reads as one at a glance. The
+   text keeps an icon's contrast, as a busy button may still show a glyph. */
 .button:disabled {
   border-color: var(--td-line);
   background: transparent;
-  color: var(--td-fg-dim);
-  font-style: italic;
+  color: color-mix(in srgb, var(--td-fg-dim) 72%, var(--td-bg));
   cursor: default;
 }
 .button:focus-visible {

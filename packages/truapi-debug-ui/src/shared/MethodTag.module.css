@@ -16,3 +16,7 @@
 .tag[data-kind='system'] {
   color: var(--td-sky);
 }
+/* Last, so a failed response never reads as the success green. */
+.tag[data-failed] {
+  color: var(--td-pink);
+}

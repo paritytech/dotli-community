@@ -40,28 +40,6 @@
 .name[data-address] {
   font-family: var(--font-mono);
 }
-/* A row, as wide as the callout and the button around it. */
-.sites {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: var(--h-row-sm);
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-sm);
-  color: var(--chrome-text);
-  font-size: var(--fs-small);
-  text-decoration: none;
-}
-.sites:hover {
-  background: var(--chrome-fill);
-}
-.sites:focus-visible {
-  outline: var(--chrome-focus-ring);
-  outline-offset: 0;
-}
-.sites-label {
-  flex: 1;
-}
 .divider {
   height: 1px;
   margin: 0;
@@ -80,11 +58,6 @@
   /* Below the sheet's title, so it never matches it. */
   .name {
     font-size: var(--fs-body);
-  }
-  .sites {
-    min-height: var(--h-control);
-    padding: 0 var(--sp-4);
-    border-radius: var(--r-md);
   }
   .icon {
     width: 16px;

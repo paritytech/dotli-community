@@ -1,11 +1,18 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A strip that scrolls rests on a tab start, so it never opens on the cut end of a tab. */
 .tabs {
   display: flex;
   gap: 2px;
+}
+/* One line that scrolls. It rests on a tab start, so it never opens on the cut end of a tab, and the padding keeps a
+   tab it rests on or brings into view clear of the edge fades. */
+.scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   scroll-snap-type: x mandatory;
+  scroll-padding-inline: 24px;
 }
 .tabs[hidden] {
   display: none;
@@ -31,10 +38,12 @@
   border-bottom-color: var(--td-accent);
   color: var(--td-fg-bright);
 }
-/* Inset, since the strip clips anything drawn outside it, and clear of the selected underline. */
+/* Inset, since the strip clips anything drawn outside it, and as wide as the selected underline it sits on. The
+   transparent outline still shows in forced colours, which drop the shadow. */
 .tab:focus-visible {
-  outline: 2px solid var(--td-focus);
-  outline-offset: -4px;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px var(--td-focus);
 }
 
 .primary {
@@ -46,4 +55,14 @@
   padding: 3px 10px;
   font-size: 11px;
   transform: translateY(1px);
+}
+
+/* A narrow panel tightens its tabs, so the right dock shows every section tab and a phone more of them. */
+@container td-panel (max-width: 560px) {
+  .primary {
+    padding: 0 4px;
+  }
+  .secondary {
+    padding: 3px 8px;
+  }
 }

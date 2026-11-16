@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { CheckIcon } from '../icons/CheckIcon.js';
 import { DrawIcon } from '../icons/DrawIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
+import { createOverflow } from '../createOverflow.js';
 import { Spinner } from './Spinner.js';
 import s from './Listbox.module.css';
 
@@ -24,11 +25,14 @@ function ListboxRoot(props: {
   testId?: string | undefined;
   children: JSX.Element;
 }): JSX.Element {
+  const overflow = createOverflow();
   return (
     <div class={s['surface']} data-align={props.align ?? 'start'}>
       <ul
+        ref={overflow.ref}
         id={props.id}
         class={s['list']}
+        data-overflows={overflow.overflows() ? '' : undefined}
         role="listbox"
         aria-label={props.label}
         aria-busy={props.loading === undefined ? undefined : 'true'}

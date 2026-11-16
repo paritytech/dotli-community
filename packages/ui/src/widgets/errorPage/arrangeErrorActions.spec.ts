@@ -36,12 +36,12 @@ describe('error page actions', () => {
     // When
     const buttons = arrangeLabelled([
       { label: 'Reload', primary: true, onClick: ignoreClick },
-      { label: 'Open Settings', onClick: ignoreClick },
+      { label: 'Open settings', onClick: ignoreClick },
     ]);
 
     // Then
     expect(buttons).toEqual([
-      { label: 'Open Settings', id: 'error-retry-btn-1', primary: false },
+      { label: 'Open settings', id: 'error-retry-btn-1', primary: false },
       { label: 'Reload', id: 'error-retry-btn', primary: true },
     ]);
   });

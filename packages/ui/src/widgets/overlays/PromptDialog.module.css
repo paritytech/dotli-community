@@ -11,7 +11,7 @@
 /* The instruction reads as the body's own text, as it is what the prompt asks. */
 .caption {
   margin: 0;
-  text-wrap: pretty;
+  text-wrap: balance;
 }
 .error {
   margin: 0;

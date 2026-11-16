@@ -5,6 +5,7 @@ import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { CloudOffIcon, ShieldAlertIcon } from '../../icons.js';
 import type { ErrorPageContent, ErrorText } from './arrangeErrorActions.js';
+import { Well } from '../../components/primitives/Well.js';
 import { ErrorActions, ErrorDetail, ErrorFrame } from './ErrorFrame.js';
 import s from './ErrorPage.module.css';
 
@@ -35,9 +36,9 @@ export function ErrorPage(props: { page: ErrorPageContent; standalone: boolean }
         )}
       </Show>
       <Show when={tips().length > 0}>
-        {/* One tip is a plain line. Two or more are a list in a well. */}
-        <div class={s['tips']} data-testid="error-page-tips" data-layout={tips().length === 1 ? 'line' : 'list'}>
+        <Well class={s['tips']} testId="error-page-tips">
           <p class={s['tipsLabel']}>Try</p>
+          {/* One tip is a plain line in the well. Two or more are a list. */}
           <Show
             when={tips().length > 1}
             fallback={
@@ -50,7 +51,7 @@ export function ErrorPage(props: { page: ErrorPageContent; standalone: boolean }
               <For each={tips()}>{tip => <li>{tip}</li>}</For>
             </ul>
           </Show>
-        </div>
+        </Well>
       </Show>
       <ErrorActions actions={props.page.actions ?? []} />
     </ErrorFrame>

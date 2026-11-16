@@ -7,12 +7,12 @@ import { getGrantButtons, permissionRequestDialog, type PermissionRequest } from
 const CAMERA: PermissionRequest = { app: 'myapp.dot', permission: 'Camera', allowOnce: false, reloads: true };
 
 describe('permission request dialog', () => {
-  it('As a dotli user, a device prompt says that granting reloads the application', () => {
+  it('As a dotli user, a device prompt says that granting reloads the app', () => {
     // When
     const view = permissionRequestDialog(CAMERA);
 
     // Then
-    expect(view.notice).toBe('Granting this permission will reload the application.');
+    expect(view.notice).toBe('Granting this permission reloads the app.');
   });
 
   it('As a dotli user, a prompt names the app, and a dismissal is no denial', () => {

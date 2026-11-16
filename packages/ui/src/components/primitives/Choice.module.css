@@ -37,7 +37,7 @@ label.choice:hover {
   color: var(--text-faint);
 }
 .choice[data-disabled] .radio {
-  box-shadow: inset 0 0 0 2px var(--chrome-ring);
+  box-shadow: inset 0 0 0 2px var(--text-faint);
 }
 /* Outranks the hover ring, so a selected card keeps its ring under the pointer. */
 .choice[data-selected],
@@ -103,7 +103,7 @@ label.choice:hover {
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
-  text-wrap: pretty;
+  text-wrap: balance;
 }
 @media (max-width: 560px) {
   :where(.choice) {

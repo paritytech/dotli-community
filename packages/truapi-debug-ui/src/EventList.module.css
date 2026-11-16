@@ -30,6 +30,11 @@
   border-color: var(--td-focus);
   background: var(--td-focus);
 }
+/* While the cue shows, the list can scroll its last rows, and an arrow-key selection, clear of it. */
+.frame[data-jump] > .list {
+  padding-bottom: 36px;
+  scroll-padding-bottom: 36px;
+}
 
 /* Its rows fit their columns to the list's own width, whichever dock or split it sits in. */
 .list {
@@ -51,10 +56,11 @@
   text-overflow: ellipsis;
 }
 /* A narrow list gives the method the room: the product and a system row's layer go, since the tag names the layer,
-   and the pending badge drops its word. */
+   and the pending badge drops its word. The id takes only its own width, which leaves the method's start ragged by a
+   few characters but never reserves the room of an id the row does not have. */
 @container td-list (max-width: 520px) {
   .row {
-    grid-template-columns: max-content 12px 10ch minmax(10ch, 1fr) max-content;
+    grid-template-columns: max-content 12px minmax(0, max-content) minmax(10ch, 1fr) max-content;
   }
   .product,
   .layer,
@@ -72,6 +78,15 @@
 .row[data-system][data-selection='selected'] {
   box-shadow:
     inset 2px 0 0 var(--td-system-edge),
+    inset 0 0 0 1px var(--td-accent);
+}
+/* An inset edge in the danger colour, so a failed call stands out of a run of answered ones. */
+.row[data-failed] {
+  box-shadow: inset 2px 0 0 var(--td-danger);
+}
+.row[data-failed][data-selection='selected'] {
+  box-shadow:
+    inset 2px 0 0 var(--td-danger),
     inset 0 0 0 1px var(--td-accent);
 }
 /* A system row's layer badge takes the direction and product columns. */

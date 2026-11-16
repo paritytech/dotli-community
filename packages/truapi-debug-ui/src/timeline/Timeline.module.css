@@ -7,13 +7,13 @@
   min-width: 100%;
 }
 
-/* Never narrower than its boxes, so the timeline scrolls as one rather than lane by lane. */
+/* Never narrower than its boxes or its header, so the timeline scrolls as one rather than lane by lane, and no wider
+   unless the row has room to spare, so a narrow panel shows as much of the next lane as it can. */
 .col {
   display: flex;
   flex-direction: column;
   flex: 1 0 auto;
   box-sizing: border-box;
-  min-width: 160px;
   border-right: 1px solid var(--td-bg-chip);
 }
 .col:last-child {

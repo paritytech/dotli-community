@@ -42,7 +42,7 @@ export function getRoute(pathname: string): SessionRoute | null {
 }
 
 /** The URL of `route` on the session windows' `origin`, with no request. */
-export function getRouteUrl(origin: string, route: SessionRoute): string {
+function getRouteUrl(origin: string, route: SessionRoute): string {
   return `${origin}${ROUTE_PATHS[route]}`;
 }
 

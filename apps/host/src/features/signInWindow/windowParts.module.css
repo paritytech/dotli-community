@@ -1,7 +1,13 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A site's full origin, then what the view says of it, each on a line of its own. */
+/* A site's full origin under its label, as one group, then what the view says of it apart from the group. */
+.origin-label {
+  display: block;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
 .origin {
   display: block;
   color: var(--chrome-text);
@@ -11,9 +17,13 @@
   display: block;
 }
 .origin + .lead {
+  margin-top: var(--sp-3);
+}
+/* The domain a group covers goes on with the origin it widens, split evenly over two lines rather than leave its last
+   word alone. */
+.origin + .group {
   margin-top: var(--sp-1);
 }
-/* The domain a group covers, split evenly over two lines rather than leave its last word alone. */
 .group {
   text-wrap: balance;
 }
@@ -114,14 +124,17 @@
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
-/* The dates on one line, set a step further from the origins than the origins are from each other. */
+/* The dates on a line each, set a step further from the origins than the origins are from each other. Two dates never
+   fit one line of the card, and a separator between them would end the first line. */
 .site-uses {
+  display: flex;
+  flex-direction: column;
   margin-top: var(--sp-1);
   color: var(--chrome-text-muted);
   font-size: var(--fs-small);
   line-height: var(--lh-body);
 }
-/* A date breaks only between the two, never inside one. */
+/* A date never breaks inside itself. */
 .site-use {
   white-space: nowrap;
 }

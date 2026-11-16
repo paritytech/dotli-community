@@ -103,7 +103,7 @@ test('As a developer, I share a diagnostic and get a GitHub issue prefilled with
 
   // Then
   const url = new URL(issue.url());
-  expect(`${url.origin}${url.pathname}`).toBe('https://github.com/paritytech/dotli/issues/new');
+  expect(`${url.origin}${url.pathname}`).toBe('https://github.com/paritytech/dotli-community/issues/new');
   const body = url.searchParams.get('body') ?? '';
   expect(body).toContain('## Diagnostics');
   expect(body).toContain(`Site: host-playground.localhost:${PORT}`);

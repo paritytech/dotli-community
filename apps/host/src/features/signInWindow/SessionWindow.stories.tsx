@@ -284,7 +284,7 @@ export const ContinuePhoneNotTold: Story = {
       await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Not signed out of Polkadot App');
       await expect(byTestId('session-window-phone-failed')).toHaveAttribute('data-tone', 'warn');
       await expect(canvas.getByRole('alert')).toHaveTextContent(
-        'Polkadot App could not be told. It still lists this browser.',
+        'Polkadot App could not be reached, so it still lists this browser as signed in.',
       );
       await expect(byTestId('session-window-failure')).toBe(canvas.getByRole('alert'));
       await expect(canvas.queryByText('alice.01')).toBeNull();

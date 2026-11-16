@@ -7,17 +7,10 @@
   gap: 4px;
   min-width: 0;
 }
-/* Takes spare width. Too narrow for the label and the field side by side, it drops the label, as the field's
-   placeholder and accessible name still say what it filters. */
+/* Takes spare width, and keeps its label at every width, as the label is what tells two fields apart. */
 .field {
-  container-type: inline-size;
   flex: 1 1 200px;
   max-width: 260px;
-}
-@container (max-width: 199px) {
-  .field > .label {
-    display: none;
-  }
 }
 .label {
   flex: none;
@@ -31,10 +24,14 @@
 .check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--td-fg-muted);
   font-size: 11px;
   cursor: pointer;
+}
+/* Each box sits closer to its own label than to the label before it. */
+.check + .check {
+  margin-left: 8px;
 }
 /* No text, but it would hold the UA's 13.333 px font size. */
 .checkbox {
@@ -52,16 +49,15 @@
   flex-wrap: wrap;
   gap: 4px;
 }
-/* One line that scrolls, fading at its end so a cut chip reads as more to scroll to. The padding gives the focus ring
-   room inside the clip, and lets the last chip clear the fade. */
+/* One line that scrolls. The padding gives the focus ring room inside the clip. */
 .scroll {
+  --fade-size: 16px;
   flex-wrap: nowrap;
   min-width: 0;
   margin: -4px 0;
-  padding: 4px 16px 4px 4px;
+  padding: 4px;
   overflow-x: auto;
   scrollbar-width: none;
-  mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
 }
 .scroll > .chip {
   flex: none;
@@ -114,8 +110,15 @@
   outline: none;
   border-color: var(--td-focus);
 }
+/* Ringed two pixels deep, as a one-pixel edge in the danger colour reads as brown on the panel. */
 .input[aria-invalid='true'] {
   border-color: var(--td-danger);
+  box-shadow: 0 0 0 1px var(--td-danger);
+}
+/* Not in the danger colour, which is too dark to read as text on the panel. */
+.hint {
+  color: var(--td-fg-strong);
+  font-size: 11px;
 }
 /* The browser's clear button, quieter and smaller than its default. */
 .input::-webkit-search-cancel-button {

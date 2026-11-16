@@ -4,6 +4,7 @@
 import { createMemo, createSignal, lazy, onSettled, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ActionItem, Button, Popover } from '@dotli/ui';
+import { RotateCwIcon } from '@dotli/ui/icons';
 import { TOPBAR_PRIORITY } from '../../page/index.js';
 import { AccountAvatar } from './AccountAvatar.js';
 import { sessionDisplayName, sessionInitials } from './accountNames.js';
@@ -29,8 +30,6 @@ export type AuthButtonProps = {
   idPrefix?: string | undefined;
   /** Shows the name beside the initials, as the landing page does. */
   showName?: boolean | undefined;
-  /** The signed-in sites page, which the account popover links to in a new tab. */
-  sitesUrl?: string | undefined;
   /** Gets the button once it is on the page. */
   buttonRef?: ((button: HTMLButtonElement) => void) | undefined;
 };
@@ -183,10 +182,8 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
       case 'alert':
         return (
           <>
-            {/* The account icon keeps the control recognisable on a phone, where the label hides. */}
-            <span class={s['alertMark']} data-testid="auth-button-alert">
-              <UserIcon class={s['signInIcon']} />
-            </span>
+            {/* A retry glyph, so a phone, where the label hides, never reads it as a signed-in account. */}
+            <RotateCwIcon class={[s['signInIcon'], s['alertIcon']].join(' ')} testId="auth-button-alert" />
             <span class={s['label']}>{label()}</span>
           </>
         );
@@ -231,10 +228,10 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         trigger={opensPopover() ? button() : undefined}
         class={s['popover']}
         preload={AccountPanel.preload}
-        // Sign out never takes focus as the popover opens: the sites link does, or else the popover itself.
-        initialFocus={root => root.querySelector<HTMLElement>('[data-initial-focus]') ?? undefined}
+        // Sign out never takes focus as the popover opens, so the popover itself does.
+        initialFocus={() => undefined}
       >
-        <AccountPanel account={props.account} onLogout={props.onLogout} sitesUrl={props.sitesUrl} />
+        <AccountPanel account={props.account} onLogout={props.onLogout} />
       </Popover>
     </>
   );

@@ -47,7 +47,7 @@ function popupAria(): (string | null)[] {
 }
 
 /** The button as the page binds it, to the story's account and sign-in. */
-function StoryButton(props: { idPrefix?: string; showName?: boolean; sitesUrl?: string }): JSX.Element {
+function StoryButton(props: { idPrefix?: string; showName?: boolean }): JSX.Element {
   return (
     <AuthButton
       account={storyAccount}
@@ -57,7 +57,6 @@ function StoryButton(props: { idPrefix?: string; showName?: boolean; sitesUrl?: 
       handOver={storyCallbacks.handOver}
       idPrefix={props.idPrefix}
       showName={props.showName}
-      sitesUrl={props.sitesUrl}
     />
   );
 }
@@ -134,38 +133,13 @@ export const Open: Story = {
       await expect(popover).toHaveAttribute('aria-label', 'Account');
       await expect(popover).toHaveAttribute('tabindex', '-1');
       await expectAccount('Alice Smith', false);
-      await expect(popover.querySelector('[data-testid="account-content"]')).toHaveTextContent(/^ASWelcome back/);
+      await expect(popover.querySelector('[data-testid="account-content"]')).toHaveTextContent(/^ASSigned in as/);
       await expect(byId('user-popover-disconnect')).toHaveTextContent('Sign out');
       await expect(document.querySelector('[data-testid="account-local"]')).toBeNull();
     });
     await ctx.step('Then focus rests on the popover itself, never on Sign out', async () => {
       await waitFor(() => expect(byId('user-popover')).toHaveFocus());
       await expect(byId('user-popover-disconnect')).not.toHaveFocus();
-    });
-  },
-};
-
-/** As a signed-in user, the popover links to my signed-in sites, opens them in a new tab and starts focus there. */
-export const SitesLink: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    connect(ALICE);
-  },
-  render: () => (
-    <TopbarFrame>
-      <StoryButton sitesUrl="https://dot.li/s/manage" />
-    </TopbarFrame>
-  ),
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then the menu links to the signed-in sites in a new tab', async () => {
-      const link = byTestId('account-sites', byId('user-popover'));
-      await expect(link).toHaveTextContent('Signed-in sites');
-      await expect(link).toHaveAttribute('href', 'https://dot.li/s/manage');
-      await expect(link).toHaveAttribute('target', '_blank');
-    });
-    await ctx.step('Then focus starts on the sites link, not on Sign out', async () => {
-      await waitFor(() => expect(byTestId('account-sites', byId('user-popover'))).toHaveFocus());
     });
   },
 };
@@ -601,7 +575,7 @@ export const Unreachable: Story = {
       await expect(button()).not.toHaveAttribute('aria-busy', 'true');
       await expect(button()).toHaveAttribute('aria-label', 'Retry sign-in');
       await expect(button()).toHaveAttribute('title', "Can't reach your sign-in. Retry");
-      await expect(byTestId('auth-button-alert', button()).querySelector('svg')).not.toBeNull();
+      await expect(button().querySelector('[data-testid="auth-button-alert"]')).toBeVisible();
       await expect(button().textContent.trim()).toBe('Retry sign-in');
       await expect(calls.signIns).toBe(1);
     });

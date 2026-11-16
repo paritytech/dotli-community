@@ -56,6 +56,10 @@
 
 /* A phone shows the page as one surface: no rule under the header, and the room under the content goes to the actions. */
 @media (max-width: 560px) {
+  /* The window has no card on a phone, so the page takes the card's colour and the header shares it. */
+  .page {
+    background: var(--surface);
+  }
   /* A plain row under the status bar's inset, as tall as the lockup. */
   .header {
     height: auto;

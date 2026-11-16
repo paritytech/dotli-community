@@ -76,7 +76,7 @@ export const Medium: Story = {
 export const Large: Story = { args: { width: 'lg' } };
 /** As a dotli user, I see the extra large popover surface. */
 export const ExtraLarge: Story = { args: { width: 'xl' } };
-/** As a phone user, I hear the title once, since the surface in a sheet leaves it to the sheet, and still read its aside. */
+/** As a phone user, I hear the title once, since the surface in a sheet leaves it to the sheet, and read its aside beside it. */
 export const InSheet: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],
@@ -85,8 +85,10 @@ export const InSheet: Story = {
     await step('Then the surface leaves the title to the sheet, so I hear it once', async () => {
       await waitFor(() => expect(body.getAllByRole('heading', { name: 'Settings' })).toHaveLength(1));
       await expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('Settings');
-      await expect(body.getByText('Paseo')).toBeInTheDocument();
       await expect(body.getByRole('button', { name: 'Save and apply' })).toBeInTheDocument();
+    });
+    await step("Then I read the aside in the sheet's head, beside the title", async () => {
+      await expect(within(body.getByTestId('popover-sheet-head')).getByText('Paseo')).toBeInTheDocument();
     });
   },
 };

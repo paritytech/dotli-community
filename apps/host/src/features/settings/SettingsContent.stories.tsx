@@ -27,6 +27,9 @@ function isOpen(): boolean {
 function applyButton(): HTMLButtonElement {
   return query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
 }
+function applyRow(): Element | null {
+  return document.querySelector('[data-testid="mode-apply-row"]');
+}
 function toggle(label: string): HTMLButtonElement {
   return query(document, `[role="switch"][aria-label="${label}"]`, HTMLButtonElement);
 }
@@ -56,7 +59,7 @@ type Shown = {
   debugOn: boolean;
 };
 
-/** Only the selected category's sections show, each with the saved choice, and nothing to save yet. */
+/** Only the selected category's sections show, each with the saved choice, and nothing to save yet, nor a Save on General. */
 async function expectSections(shown: Shown, category: Category): Promise<void> {
   await expect(selectedCategory()).toBe(`settings-category-${category}`);
   const sections = query(document, '[data-testid="mode-popover-sections"]');
@@ -82,7 +85,11 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
     }
     await expect(document.querySelector('[data-testid="mode-debug-row"]') === null).toBe(shown.debugOn);
   }
-  await expect(applyButton()).toBeDisabled();
+  if (category === 'general') {
+    await expect(applyRow()).toBeNull();
+  } else {
+    await expect(applyButton()).toBeDisabled();
+  }
 }
 
 /** The settings button and panel as the host composes them, given the story's settings. */
@@ -116,23 +123,25 @@ const DEFAULTS: Shown = {
   debugOn: false,
 };
 
-/** As a phone user, the settings sheet leaves its title to the sheet header and Save and apply sits in its foot. */
+/** As a phone user, the settings sheet leaves its title to the sheet header and Save and apply spans its foot on Network. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ctx => {
     await expectPhone(ctx.step);
     await open(ctx);
-    await ctx.step(
-      'Then the sheet header says Settings, the body has no heading, and Save spans the foot',
-      async () => {
-        const sheet = byId('mode-popover');
-        await expect(sheet).toHaveAttribute('aria-modal', 'true');
-        await expect(within(sheet).getByTestId('popover-sheet-title')).toHaveTextContent('Settings');
-        await expect(byId('mode-popover-content').querySelector('h2')).toBeNull();
-        await expect(applyButton()).toHaveAttribute('data-block');
-      },
-    );
+    await ctx.step('Then the sheet header says Settings and the body has no heading', async () => {
+      const sheet = byId('mode-popover');
+      await expect(sheet).toHaveAttribute('aria-modal', 'true');
+      await expect(within(sheet).getByTestId('popover-sheet-title')).toHaveTextContent('Settings');
+      await expect(byId('mode-popover-content').querySelector('h2')).toBeNull();
+    });
+    await ctx.step('When I open Network', async () => {
+      await showCategory(ctx.userEvent.click, 'network');
+    });
+    await ctx.step('Then Save spans the foot', async () => {
+      await expect(applyButton()).toHaveAttribute('data-block');
+    });
   },
 };
 
@@ -185,7 +194,7 @@ export const UnseededPhoneClosesEveryWay: Story = {
   },
 };
 
-/** As a dotli user, I open the settings and they start on General, with the Appearance tiles, every time I open them. */
+/** As a dotli user, I open the settings and they start on General, with the Appearance tiles and no Save, every time I open them. */
 export const StartsOnGeneral: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
@@ -195,6 +204,8 @@ export const StartsOnGeneral: Story = {
       await expect(query(document, '[data-testid="theme-option-system"]')).toHaveAttribute('aria-pressed', 'true');
       await expect(document.querySelector('[data-testid="mode-cache"]')).toBeNull();
       await expect(document.querySelector('input[name="dotli-backend"]')).toBeNull();
+      await expect(applyRow()).toBeNull();
+      await expect(document.querySelector('[data-testid="mode-apply-warning"]')).toBeNull();
     });
     await ctx.step('When I switch to Advanced, close and open again', async () => {
       await showCategory(ctx.userEvent.click, 'advanced');
@@ -245,22 +256,34 @@ export const OneNetworkDebugTrusted: Story = {
   },
 };
 
-/** As a dotli user, a change enables Save and apply, undoing it disables it again, and Save and apply applies the draft. */
+/**
+ * As a dotli user, a change enables Save and apply, General offers it while the draft waits, undoing it disables it
+ * again, and Save and apply applies the draft.
+ */
 export const DraftEnablesSave: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
     const click = ctx.userEvent.click;
     await open(ctx);
-    await ctx.step('When I turn the dotNS cache off', async () => {
-      await expect(applyButton()).toBeDisabled();
+    await ctx.step('Given Advanced shown, with nothing to save', async () => {
       await showCategory(click, 'advanced');
+      await expect(applyButton()).toBeDisabled();
+    });
+    await ctx.step('When I turn the dotNS cache off', async () => {
       await click(toggle('dotNS cache'));
     });
     await ctx.step('Then Save and apply is enabled', async () => {
       await expect(toggle('dotNS cache')).toHaveAttribute('aria-checked', 'false');
       await waitFor(() => expect(applyButton()).not.toBeDisabled());
     });
-    await ctx.step('When I turn it back on', async () => {
+    await ctx.step('When I switch to General', async () => {
+      await showCategory(click, 'general');
+    });
+    await ctx.step('Then the draft keeps Save and apply offered there', async () => {
+      await expect(applyButton()).not.toBeDisabled();
+    });
+    await ctx.step('When I go back to Advanced and turn it back on', async () => {
+      await showCategory(click, 'advanced');
       await click(toggle('dotNS cache'));
     });
     await ctx.step('Then Save and apply is disabled again', async () => {
@@ -286,7 +309,7 @@ export const DraftEnablesSave: Story = {
   },
 };
 
-/** As a dotli user, I pick a theme tile in General and it is picked at once without enabling Save and apply. */
+/** As a dotli user, I pick a theme tile in General and it is picked at once, with no Save and apply to press. */
 export const ThemePickedWithoutSave: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
@@ -294,12 +317,12 @@ export const ThemePickedWithoutSave: Story = {
     await ctx.step('When I pick Light', async () => {
       await ctx.userEvent.click(query(document, '[data-testid="theme-option-light"]'));
     });
-    await ctx.step('Then it was picked at once, with Save still disabled and the popover open', async () => {
+    await ctx.step('Then it was picked at once, with no Save offered and the popover open', async () => {
       await expect(settingsAsked.themes).toEqual(['light']);
       await waitFor(() =>
         expect(query(document, '[data-testid="theme-option-light"]')).toHaveAttribute('aria-pressed', 'true'),
       );
-      await expect(applyButton()).toBeDisabled();
+      await expect(applyRow()).toBeNull();
       await expect(isOpen()).toBe(true);
     });
   },

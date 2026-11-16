@@ -42,6 +42,7 @@
 }
 /* The options scroll on their own, so the status row stays in view below them. */
 .list {
+  --fade-size: 24px;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -61,12 +62,21 @@
     mask-image: linear-gradient(to bottom, #000 calc(100% - var(--list-fade)), transparent);
     animation: list-end linear both;
     animation-timeline: scroll(self);
-    animation-range: calc(100% - 24px) 100%;
+    animation-range: calc(100% - var(--fade-size)) 100%;
+  }
+}
+/* Without scroll timelines the fade stays while the options overflow, and room after the last one lets it scroll
+   clear of the fade, by the arrow keys too. */
+@supports not (animation-timeline: scroll()) {
+  .list[data-overflows] {
+    padding-bottom: var(--fade-size);
+    scroll-padding-bottom: var(--fade-size);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade-size)), transparent);
   }
 }
 @keyframes list-end {
   from {
-    --list-fade: 24px;
+    --list-fade: var(--fade-size);
   }
   to {
     --list-fade: 0px;
@@ -134,7 +144,7 @@
   flex: none;
   width: 16px;
   height: 16px;
-  color: var(--chrome-info);
+  color: var(--chrome-text);
 }
 /* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its control's width
    and the text ellipsizes. */

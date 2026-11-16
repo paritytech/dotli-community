@@ -4,7 +4,7 @@
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getKeys } from '@dotli/shared';
-import { ReloadIcon } from '@dotli/ui/icons';
+import { CircleAlertIcon, ReloadIcon } from '@dotli/ui/icons';
 import {
   Accordion,
   Button,
@@ -36,10 +36,21 @@ const MENU_GROUPS: readonly { id: PermissionGroup; label: string }[] = getKeys(P
   label: PERMISSION_GROUPS[id].label,
 }));
 
-const NOTICES: Record<PermissionsNotice, { title: string; detail: string }> = {
+type Notice = {
+  title: string;
+  detail: string;
+  /** A failure rather than a wait, so its title carries an error mark. */
+  failed?: true;
+};
+
+const NOTICES: Record<PermissionsNotice, Notice> = {
   loading: { title: 'App still loading', detail: 'Wait for it to finish loading to change its permissions.' },
   'no-app': { title: 'No app loaded', detail: 'Permissions show here once an app loads on this domain.' },
-  unavailable: { title: 'Permissions unavailable', detail: "dot.li couldn't read this app's permissions." },
+  unavailable: {
+    title: 'Permissions unavailable',
+    detail: "dot.li couldn't read this app's permissions.",
+    failed: true,
+  },
 };
 
 export type PermissionsContentProps = {
@@ -84,7 +95,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
     })),
   );
 
-  const notice = (): { title: string; detail: string } | undefined => {
+  const notice = (): Notice | undefined => {
     const current = props.notice();
     return current === undefined ? undefined : NOTICES[current];
   };
@@ -141,6 +152,9 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
           {text => (
             <Well class={s['notice']} testId="permissions-popover-hint">
               <p class={s['noticeTitle']} data-testid="permissions-popover-hint-title">
+                <Show when={text().failed}>
+                  <CircleAlertIcon class={s['noticeIcon']} testId="permissions-popover-hint-failed" />
+                </Show>
                 {text().title}
               </p>
               <p class={s['noticeDetail']} data-testid="permissions-popover-hint-detail">
@@ -176,7 +190,12 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                         aria-labelledby={`permissions-popover-group-${group.id}`}
                         testId="permissions-popover-group"
                       >
-                        <SectionLabel as="h3" text={group.label} id={`permissions-popover-group-${group.id}`} />
+                        <SectionLabel
+                          as="h3"
+                          text={group.label}
+                          id={`permissions-popover-group-${group.id}`}
+                          class={s['groupLabel']}
+                        />
                         <Well layout="controls">
                           <For each={group.permissions}>
                             {perm => (

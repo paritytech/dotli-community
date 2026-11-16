@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { createOverflow } from '../createOverflow.js';
 import { AlertTriangleIcon } from '../icons/AlertTriangleIcon.js';
 import s from './Field.module.css';
 
@@ -19,27 +19,9 @@ export function Field(props: {
   labelTestId?: string;
   valueTestId?: string;
 }): JSX.Element {
-  let value: HTMLSpanElement | undefined;
-  const [overflows, setOverflows] = createSignal(false);
+  const overflow = createOverflow();
   // Safari never makes a scroller focusable, so an overflowing value takes the tab stop itself.
-  const measure = (): void => {
-    setOverflows(value !== undefined && value.scrollHeight > value.clientHeight);
-  };
-  onSettled(() => {
-    if (props.mono !== true) {
-      return;
-    }
-    measure();
-    if (value === undefined || typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(value);
-    return () => {
-      observer.disconnect();
-    };
-  });
-  const scrolls = (): boolean => props.mono === true && overflows();
+  const scrolls = (): boolean => props.mono === true && overflow.overflows();
   return (
     <div
       class={[s['field'], props.class]}
@@ -51,9 +33,7 @@ export function Field(props: {
         {props.label}
       </span>
       <span
-        ref={el => {
-          value = el;
-        }}
+        ref={overflow.ref}
         class={s['value']}
         data-testid={props.valueTestId}
         data-scrolls={scrolls() ? '' : undefined}

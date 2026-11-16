@@ -72,7 +72,7 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** What a review title, such as "Sign Transaction", signs, as it heads "Transaction signed". */
+/** What a review title, such as "Sign Transaction", signs, as it heads "Transaction signed in Polkadot App". */
 function getSignedWhat(title: string): string {
   return capitalize(title.replace(/^sign\s+/i, ''));
 }
@@ -80,9 +80,8 @@ function getSignedWhat(title: string): string {
 function buildOkNotice({ outcome, title, app }: BuildOkNoticeParams): NotificationParams {
   if (PHONE_METHODS[outcome.method].ask === 'sign') {
     return buildToast({
-      outcome: `${getSignedWhat(title)} signed`,
+      outcome: `${getSignedWhat(title)} signed in Polkadot App`,
       app,
-      about: 'in Polkadot App',
       tone: 'ok',
       icon: CircleCheckIcon,
     });

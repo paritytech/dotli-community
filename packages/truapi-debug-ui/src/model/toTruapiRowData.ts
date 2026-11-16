@@ -9,12 +9,15 @@ import { formatChainOutcome } from './formatChainOutcome.js';
 import { formatChainValue } from './formatChainValue.js';
 import { formatPayloadSummary } from './formatPayloadSummary.js';
 import { getTagKind, type TagKind } from './getTagKind.js';
+import { peelVersion, toRecord } from './shape.js';
 import type { StoredTruapiEvent } from './storedEvent.js';
 
 export type TruapiRowData = {
   tagKind: TagKind;
   displayTag: string;
   summary: string;
+  /** The message reports a failed call, so its row must not read as a success. */
+  failed: boolean;
 };
 
 /** What a TrUAPI message's row shows, a chain message by its decoded label and keys. */
@@ -26,7 +29,13 @@ export function toTruapiRowData(event: StoredTruapiEvent): TruapiRowData {
     tagKind: getTagKind(event.tag),
     displayTag,
     summary,
+    failed: chain === null ? isFailedResult(event.payload) : chain.outcome === 'error',
   };
+}
+
+/** Whether `payload` is a call's result, in its version envelope, that reports a failure. */
+function isFailedResult(payload: unknown): boolean {
+  return toRecord(peelVersion(payload))?.['success'] === false;
 }
 
 function formatChainSummary(annotations: ChainAnnotations): string {
