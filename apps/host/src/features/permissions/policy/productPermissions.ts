@@ -24,6 +24,7 @@ import type { PermissionAuthorizations } from './createPermissionAuthorizations.
 import {
   ALL_PERMISSIONS,
   hasFrameDirective,
+  isFrameDirectiveOn,
   type EnforceablePermissionName,
   type PermissionStatus,
   type PermissionTargets,
@@ -664,13 +665,13 @@ function getLandedChange(
   return {
     label: job.label,
     permissions: changed,
-    // A status that was never read may have held a grant, so its change asks for a rebuild.
+    // A status that was never read may have put its directive in, so its change asks for a rebuild.
     allowChanged: changed.some(name => {
       const statusBefore = getStatusBefore(name);
-      return (
-        hasFrameDirective(name) &&
-        (statusBefore === undefined || statusBefore === 'granted' || targets[name] === 'granted')
-      );
+      if (statusBefore === undefined) {
+        return hasFrameDirective(name);
+      }
+      return isFrameDirectiveOn(name, statusBefore) !== isFrameDirectiveOn(name, targets[name] ?? 'ask');
     }),
     fromPrompt: job.kind === 'decision',
   };

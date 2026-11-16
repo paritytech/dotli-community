@@ -48,6 +48,11 @@ type PermissionFacts = {
   description: string;
   /** The iframe `allow` directive a grant adds, null where the core alone gates it. */
   frameDirective: string | null;
+  /**
+   * The browser's own prompt is the consent, as on any website, so dot.li offers only to block it. Its status is `ask`
+   * or `denied`, never `granted`.
+   */
+  browserConsent: boolean;
   /** Its status under the Trusted preset. */
   trusted: PermissionStatus;
   /** The browser permission that reports its status, null where the browser reports none. */
@@ -62,6 +67,7 @@ export const PERMISSION_CATALOG = {
     description: 'Show in-app and system notifications',
     // Notifications has no directive, and its own prompt gates it with no iframe reload.
     frameDirective: null,
+    browserConsent: false,
     trusted: 'granted',
     browserCheck: 'notifications',
   },
@@ -70,7 +76,8 @@ export const PERMISSION_CATALOG = {
     group: 'device',
     description: 'Access your camera for photo and video capture',
     frameDirective: 'camera',
-    trusted: 'granted',
+    browserConsent: true,
+    trusted: 'ask',
     browserCheck: 'camera',
   },
   Microphone: {
@@ -78,7 +85,8 @@ export const PERMISSION_CATALOG = {
     group: 'device',
     description: 'Access your microphone for audio input',
     frameDirective: 'microphone',
-    trusted: 'granted',
+    browserConsent: true,
+    trusted: 'ask',
     browserCheck: 'microphone',
   },
   Location: {
@@ -86,6 +94,7 @@ export const PERMISSION_CATALOG = {
     group: 'device',
     description: 'Access your location for geolocation services',
     frameDirective: 'geolocation',
+    browserConsent: true,
     trusted: 'ask',
     browserCheck: 'geolocation',
   },
@@ -95,6 +104,7 @@ export const PERMISSION_CATALOG = {
     description: "Read your device's motion and orientation sensors",
     // Device motion and orientation events need both sensors.
     frameDirective: 'accelerometer; gyroscope',
+    browserConsent: true,
     trusted: 'ask',
     browserCheck: null,
   },
@@ -103,6 +113,7 @@ export const PERMISSION_CATALOG = {
     group: 'device',
     description: 'Connect to nearby Bluetooth devices',
     frameDirective: 'bluetooth',
+    browserConsent: true,
     trusted: 'ask',
     browserCheck: null,
   },
@@ -112,6 +123,7 @@ export const PERMISSION_CATALOG = {
     description: 'Read and write nearby NFC tags',
     // Chromium-only, ignored elsewhere.
     frameDirective: 'nfc',
+    browserConsent: false,
     trusted: 'ask',
     browserCheck: null,
   },
@@ -121,7 +133,8 @@ export const PERMISSION_CATALOG = {
     description: 'Read text and data from your clipboard',
     // Write is always allowed, read needs consent.
     frameDirective: 'clipboard-read',
-    trusted: 'granted',
+    browserConsent: true,
+    trusted: 'ask',
     browserCheck: null,
   },
   Biometrics: {
@@ -129,6 +142,7 @@ export const PERMISSION_CATALOG = {
     group: 'device',
     description: 'Authenticate with a platform passkey or biometric prompt',
     frameDirective: 'publickey-credentials-get',
+    browserConsent: true,
     trusted: 'ask',
     browserCheck: null,
   },
@@ -137,6 +151,7 @@ export const PERMISSION_CATALOG = {
     group: 'app',
     description: 'Share your primary DotNS identity with this app',
     frameDirective: null,
+    browserConsent: false,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -145,6 +160,7 @@ export const PERMISSION_CATALOG = {
     group: 'app',
     description: 'Sign and submit network transactions on your behalf',
     frameDirective: null,
+    browserConsent: false,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -153,6 +169,7 @@ export const PERMISSION_CATALOG = {
     group: 'app',
     description: 'Store preimage data on the Bulletin network',
     frameDirective: null,
+    browserConsent: false,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -161,6 +178,7 @@ export const PERMISSION_CATALOG = {
     group: 'app',
     description: 'Submit signed statements to the statement store',
     frameDirective: null,
+    browserConsent: false,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -206,9 +224,25 @@ export function getBrowserCheck(name: EnforceablePermissionName): BrowserCheck |
   return PERMISSION_CATALOG[name].browserCheck;
 }
 
-/** True when granting `name` adds an iframe `allow` directive, so the frame reloads. Never throws. */
+/** True when `name` has an iframe `allow` directive, so a change to it may rebuild the frame. Never throws. */
 export function hasFrameDirective(name: EnforceablePermissionName): boolean {
   return getFrameDirective(name) !== null;
+}
+
+/** True when the browser's own prompt is the consent to `name`, and dot.li only blocks it. Never throws. */
+export function isBrowserConsented(name: EnforceablePermissionName): boolean {
+  return PERMISSION_CATALOG[name].browserConsent;
+}
+
+/**
+ * True when `name` at `status` puts its directive in the frame's `allow` attribute: a browser-consented one unless
+ * blocked, any other only once granted. Never throws.
+ */
+export function isFrameDirectiveOn(name: EnforceablePermissionName, status: PermissionStatus): boolean {
+  if (!hasFrameDirective(name)) {
+    return false;
+  }
+  return isBrowserConsented(name) ? status !== 'denied' : isPermissionGranted(status);
 }
 
 /** The core's request for `name`. Never throws. */

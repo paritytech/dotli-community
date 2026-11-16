@@ -23,24 +23,16 @@ describe('permission presets', () => {
   });
 
   it.each<[string, Preset, Partial<Record<EnforceablePermissionName, PermissionStatus>>, Preset]>([
-    ['Secure with Location denied', SECURE, { Location: 'denied' }, SECURE],
-    ['Secure with Camera allowed', SECURE, { Camera: 'granted' }, SECURE],
+    ['Secure with Location blocked', SECURE, { Location: 'denied' }, SECURE],
     [
-      'Secure with Notifications, Clipboard, Camera and Microphone allowed',
+      'Secure with Notifications and identity allowed',
       SECURE,
-      { Notifications: 'granted', Clipboard: 'granted', Camera: 'granted', Microphone: 'granted' },
+      { Notifications: 'granted', IdentityDisclosure: 'granted' },
       SECURE,
     ],
-    ['Trusted with Location allowed', TRUSTED, { Location: 'granted' }, TRUSTED],
-    ['Trusted with Location and Bluetooth allowed', TRUSTED, { Location: 'granted', Bluetooth: 'granted' }, TRUSTED],
-    [
-      'Trusted with Location, Bluetooth and NFC allowed',
-      TRUSTED,
-      { Location: 'granted', Bluetooth: 'granted', NFC: 'granted' },
-      UNLIMITED,
-    ],
-    ['Unlimited with Camera denied', UNLIMITED, { Camera: 'denied' }, UNLIMITED],
-    ['Restricted with Camera at Ask', RESTRICTED, { Camera: 'ask' }, RESTRICTED],
+    ['Trusted with Sign transactions at Ask', TRUSTED, { ChainSubmit: 'ask' }, TRUSTED],
+    ['Unlimited with Camera blocked', UNLIMITED, { Camera: 'denied' }, UNLIMITED],
+    ['Restricted with Camera left to the browser', RESTRICTED, { Camera: 'ask' }, RESTRICTED],
     [
       'Secure with seven device permissions denied',
       SECURE,

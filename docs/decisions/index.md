@@ -33,6 +33,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
   callbacks each serve a different feature.
+- [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
+  value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
 

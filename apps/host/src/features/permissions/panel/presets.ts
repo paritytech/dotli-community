@@ -6,6 +6,7 @@
 
 import {
   ALL_PERMISSIONS,
+  isBrowserConsented,
   PERMISSION_CATALOG,
   type EnforceablePermissionName,
   type PermissionStatus,
@@ -46,7 +47,8 @@ export const UNLIMITED: Preset = {
   id: 'unlimited',
   label: 'Unlimited',
   line: 'For apps you fully trust.',
-  statuses: mapStatuses(() => 'granted'),
+  // The browser asks for its own devices, so even full trust leaves them to it.
+  statuses: mapStatuses(name => (isBrowserConsented(name) ? 'ask' : 'granted')),
 };
 
 /** Safest first, as the slider lays them out. */
