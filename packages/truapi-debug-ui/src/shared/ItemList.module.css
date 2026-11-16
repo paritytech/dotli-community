@@ -8,6 +8,7 @@
   overflow: auto;
   list-style: none;
   scrollbar-width: thin;
+  font-size: 12px;
 }
 
 /* Before `.item`, so the row's divider and backgrounds win over the reset. */
@@ -33,8 +34,16 @@
 .item:hover {
   background: var(--td-bg-raised);
 }
+/* Ringed as well as filled, so it stands out from the rows paired with it. */
 .item[data-selection='selected'] {
   background: var(--td-selected);
+  box-shadow: inset 0 0 0 1px var(--td-accent);
+  color: var(--td-fg-strong);
+}
+/* Inset, since the list clips anything drawn outside a row. */
+.item:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: -2px;
 }
 /* The event list's rows that belong with the selected one. */
 .item[data-selection='paired'] {

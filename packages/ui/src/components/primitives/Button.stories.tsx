@@ -89,24 +89,38 @@ export const Disabled: Story = {
   },
 };
 
-/** Toggle `loading` off to watch the circle grow to the label. */
-/** As a dotli user, I see a loading button busy with no label, and pressing it does nothing. */
+/** As a dotli user, I see a loading button keep its place with a spinner over its label, and pressing it does nothing. */
 export const Loading: Story = {
-  args: { loading: true, 'aria-label': 'Continue' },
+  args: { loading: true },
   play: async ({ args, canvas, mount, userEvent, step }) => {
     await step('When a loading button renders', async () => {
       await mount();
     });
     const button = canvas.getByRole('button', { name: 'Continue' });
-    await step('Then the button is busy and shows no label', async () => {
+    await step('Then the button is busy, still named by its label, and hides the label', async () => {
       await expect(button).toHaveAttribute('aria-busy', 'true');
-      await expect(button).not.toHaveTextContent('Continue');
+      await expect(canvas.getByText('Continue')).not.toBeVisible();
     });
     await step('When I press it', async () => {
       await userEvent.click(button);
     });
     await step('Then nothing happens', async () => {
       await expect(args.onClick).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a dotli user, I see a full-width action that is running keep its width and fill, with a spinner in its centre. */
+export const LoadingBlock: Story = {
+  args: { loading: true, block: true, variant: 'primary' },
+  play: async ({ canvas, mount, step }) => {
+    await step('When a loading block button renders', async () => {
+      await mount();
+    });
+    await step('Then the button is busy and hides its label', async () => {
+      const button = canvas.getByRole('button', { name: 'Continue' });
+      await expect(button).toHaveAttribute('aria-busy', 'true');
+      await expect(canvas.getByText('Continue')).not.toBeVisible();
     });
   },
 };

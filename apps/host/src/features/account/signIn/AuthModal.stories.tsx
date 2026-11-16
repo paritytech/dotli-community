@@ -27,7 +27,7 @@ import {
 import { AuthButton } from '../panel/AuthButton.js';
 import type { AuthModalState, AuthModalView } from './authModalState.js';
 import { AuthModal } from './AuthModal.js';
-import type { DrawQr } from './qrCode.js';
+import { drawQrCode, type DrawQr } from './qrCode.js';
 import type { PhraseScreenModule } from './phraseFormLoad.js';
 
 function loadPhraseScreen(): Promise<PhraseScreenModule> {
@@ -48,8 +48,8 @@ function appHint(host: string): string {
   return `Approve in the app to continue to ${host}. One sign-in works across every app.`;
 }
 
-/** The QR renderer the modal is given, which draws nothing and records what it was asked. */
-const drawQr = fn<DrawQr>(() => Promise.resolve());
+/** The QR renderer the modal is given, which draws the real code and records what it was asked. */
+const drawQr = fn<DrawQr>(drawQrCode);
 /** Whether the modal takes this device for a phone, apart from the viewport's width. */
 const device = { mobile: false };
 
@@ -164,9 +164,8 @@ async function expectHead(want: { reason?: string; hint: string; getApp: string 
   await expect(backdrop).toHaveAttribute('aria-modal', 'true');
   await expect(backdrop).toHaveAttribute('aria-labelledby', 'auth-modal-title');
   await expect(modalTitle().textContent).toBe(TITLE);
-  const reason = byId('auth-modal-reason');
-  await expect(reason.hidden).toBe(want.reason === undefined);
-  await expect(reason.textContent).toBe(want.reason ?? '');
+  await expect(byTestId('auth-modal-reason').hidden).toBe(want.reason === undefined);
+  await expect(byId('auth-modal-reason').textContent).toBe(want.reason ?? '');
   await expect(byId('auth-modal-hint')).toHaveTextContent(want.hint);
   const getApp = byId('auth-modal-get-app');
   await expect(getApp).toHaveAttribute('href', 'https://docs.polkadot.com/apps/');
@@ -252,7 +251,7 @@ const meta = {
   // Boot found no saved session, until a story says otherwise.
   beforeEach: () => {
     drawQr.mockClear();
-    drawQr.mockImplementation(() => Promise.resolve());
+    drawQr.mockImplementation(drawQrCode);
     loadPhrase.mockReset();
     loadPhrase.mockImplementation(loadPhraseScreen);
     device.mobile = false;
@@ -465,7 +464,12 @@ export const ErrorViewRetry: Story = {
 export const ErrorViewFailedTone: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    failed({ title: 'Sign-in was declined', subtitle: 'The request was declined.' });
+    failed({
+      title: 'Sign-in was declined',
+      subtitle: 'The request was declined in Polkadot App. Start again and approve it on your phone.',
+      message: 'Rejected',
+      detail: 'Rejected',
+    });
   },
 };
 
@@ -473,7 +477,13 @@ export const ErrorViewFailedTone: Story = {
 export const ErrorViewPendingTone: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    failed({ pending: true, title: 'Your account is still being set up', subtitle: 'Please try again later' });
+    failed({
+      pending: true,
+      title: 'Your account is still being set up',
+      subtitle: 'Polkadot App is still setting up your account. Try again in a few minutes.',
+      message: 'OriginPersonProviderError',
+      detail: undefined,
+    });
   },
 };
 
@@ -835,6 +845,9 @@ export const HoldsFocusOverPopover: Story = {
       await opened();
       await waitFor(() => expect(byId('bar-popover')).not.toHaveAttribute('data-open'));
       await waitFor(() => expect(backdrop().contains(document.activeElement)).toBe(true));
+    });
+    await step('Then the popover has played its way out, so nothing of it stays over the modal', async () => {
+      await waitFor(() => expect(document.body).not.toHaveTextContent('Granted to this app'), { timeout: 2000 });
     });
     await step('When I Tab from Cancel', async () => {
       byId('auth-modal-close').focus();

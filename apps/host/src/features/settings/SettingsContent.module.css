@@ -9,6 +9,12 @@
   gap: var(--sp-4);
   min-width: 0;
 }
+/* Before the page has read the settings, so the panel never opens empty. */
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-6) 0;
+}
 .icon {
   width: 14px;
   height: 14px;

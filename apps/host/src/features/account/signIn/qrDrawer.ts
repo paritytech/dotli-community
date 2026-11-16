@@ -14,6 +14,9 @@ const report = createReporter({ flow: 'wallet' });
  */
 const authQrRenderMetric = defineCount<'error' | 'ok'>('auth.qr_render');
 
+/** The white the code is drawn with around it, in modules. With the tile's padding it comes to the four readers expect. */
+export const QR_MARGIN = 3;
+
 export type QrShowing<Canvas> = {
   /** Draws `payload` onto `canvas`. Once `signal` aborts the code is off show. */
   drawQr: (params: { canvas: Canvas; payload: string; options: QrDrawOptions; signal: AbortSignal }) => Promise<void>;
@@ -38,7 +41,7 @@ export function presentQr<Canvas>(payload: string, deps: QrShowing<Canvas>): () 
       payload,
       options: {
         width: deps.size(),
-        margin: 2,
+        margin: QR_MARGIN,
         // The badge hides the code's centre: Q recovers a quarter of it.
         errorCorrectionLevel: 'Q',
         color: { dark: '#000000', light: '#ffffff' },

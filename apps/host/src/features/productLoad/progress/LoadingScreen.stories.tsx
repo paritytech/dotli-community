@@ -12,7 +12,6 @@ const START: LoadingState = {
   progress: 0,
   step: ['Reaching out'],
   explanation: '',
-  explanationOpacity: 1,
   srText: '',
   warning: null,
   phase: 'active',
@@ -46,7 +45,6 @@ const before = {
   progress: 37.4,
   step: ['Downloading the app'],
   explanation: 'The files come from',
-  explanationOpacity: 0.8,
   srText: 'The files come from many computers at once',
   warning: 'Still looking for peers',
 };
@@ -67,7 +65,6 @@ export const FollowsStore: Story = {
         progress: 62.6,
         step: ['Looking up ', { host: 'my<b>app</b>', tld: '.dot' }],
         explanation: 'Catching up',
-        explanationOpacity: 0.9,
         srText: 'Catching up on the newest blocks',
         warning: 'Slow <b>peers</b>',
       });

@@ -6,6 +6,7 @@ import { expect, fn, waitFor } from 'storybook/test';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { fakeDebugPanelHost } from '@dotli/truapi-debug-ui/testing';
 import type { WalletSwitch } from './host.js';
+import { formatHexHeadAndTail } from './model/formatHexHeadAndTail.js';
 import { WalletView } from './WalletView.js';
 import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
@@ -55,7 +56,7 @@ export const PhraseOpensSignIn: Story = {
 /** As a developer using the debug panel, I am told what a local wallet is and warned that it is not secure. */
 export const ExplainsAndWarns: Story = {};
 
-/** As a developer using the debug panel, I see my local account and use Polkadot App, and the page signs me out. */
+/** As a developer using the debug panel, I see my local account, sign out to use Polkadot App, and the page signs me out. */
 export const UsePolkadotAppSignsOut: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -66,12 +67,13 @@ export const UsePolkadotAppSignsOut: Story = {
     });
   },
   play: async ({ canvas, userEvent, step }) => {
-    await step('Given I see my account and username', async () => {
-      await expect(canvas.getByTestId('td-wallet-account')).toHaveTextContent(IDENTITY_ACCOUNT);
+    await step('Given I see that a local wallet is active, with my account cut short and my username', async () => {
+      await expect(canvas.getByTestId('td-wallet-active')).toBeVisible();
+      await expect(canvas.getByTestId('td-wallet-account')).toHaveTextContent(formatHexHeadAndTail(IDENTITY_ACCOUNT));
       await expect(canvas.getByTestId('td-wallet-username')).toHaveTextContent('alice.42');
     });
-    await step('When I use Polkadot App', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Use Polkadot App' }));
+    await step('When I sign out to use Polkadot App', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Sign out and use Polkadot App' }));
     });
     await step('Then the page signs out once', async () => {
       await expect(intents.usePolkadotApp).toHaveBeenCalledTimes(1);
@@ -84,8 +86,8 @@ export const ReplaceOpensSignIn: Story = {
   tags: ['!autodocs'],
   beforeEach: setLocalWallet,
   play: async ({ canvas, userEvent, step }) => {
-    await step('When I replace my wallet', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Replace' }));
+    await step('When I use another phrase', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Use another phrase' }));
     });
     await step("Then the page's sign-in is asked for once and Polkadot App is not", async () => {
       await expect(intents.importPhrase).toHaveBeenCalledTimes(1);
@@ -97,13 +99,13 @@ export const ReplaceOpensSignIn: Story = {
 /** As a developer using the debug panel, I open the Wallet tab after my local wallet failed and I see why it could not start. */
 export const LocalWalletFailed: Story = {
   beforeEach: () => {
-    page.walletMode.set({ mode: 'app', failure: 'Local wallet could not be decrypted and was forgotten' });
+    page.walletMode.set({ mode: 'app', failure: 'Local wallet could not be decrypted and was forgotten.' });
   },
   play: async ({ canvas, step }) => {
     await step('Then I see why my local wallet could not start', async () => {
       await waitFor(() =>
         expect(canvas.getByTestId('td-wallet-failure')).toHaveTextContent(
-          'Local wallet could not be decrypted and was forgotten',
+          'Local wallet could not be decrypted and was forgotten.',
         ),
       );
     });

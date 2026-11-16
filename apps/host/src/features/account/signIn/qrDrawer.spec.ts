@@ -95,7 +95,7 @@ describe('the sign-in QR drawer', () => {
 
     // Then
     expect(qr.draws.map(draw => draw.options)).toEqual([
-      { width: 218, margin: 2, errorCorrectionLevel: 'Q', color: { dark: '#000000', light: '#ffffff' } },
+      { width: 218, margin: 3, errorCorrectionLevel: 'Q', color: { dark: '#000000', light: '#ffffff' } },
     ]);
     expect(qr.drawn).toEqual(['polkadotapp://pair']);
     expect(metrics.counted('auth.qr_render')).toEqual([{ outcome: 'ok' }]);

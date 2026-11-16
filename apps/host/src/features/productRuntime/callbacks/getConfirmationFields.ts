@@ -109,9 +109,9 @@ function createPayloadFields({
 }): ModalField[] {
   return [
     { label: 'App', value: app },
-    { label: 'Signer', value: signer },
-    { label: 'Genesis Hash', value: payload.genesisHash, mono: true },
-    { label: 'Call Data', value: truncateHex(payload.method), mono: true },
+    { label: 'Signer', value: signer, mono: true },
+    { label: 'Genesis hash', value: payload.genesisHash, mono: true },
+    { label: 'Call data', value: truncateHex(payload.method), mono: true },
     { label: 'Version', value: String(payload.version) },
   ];
 }
@@ -183,7 +183,7 @@ function createMessageFields({
 }): ModalField[] {
   return [
     { label: 'App', value: app },
-    { label: 'Signer', value: signer },
+    { label: 'Signer', value: signer, mono: true },
     {
       label: 'Message',
       value: formatRawPayload(payload),
@@ -224,10 +224,10 @@ function createTransactionPayloadFields({
 }): ModalField[] {
   return [
     { label: 'App', value: app },
-    { label: 'Signer', value: signer },
-    { label: 'Genesis Hash', value: payload.genesisHash, mono: true },
-    { label: 'Call Data', value: truncateHex(payload.callData), mono: true },
-    { label: 'Tx Ext Version', value: String(payload.txExtVersion) },
+    { label: 'Signer', value: signer, mono: true },
+    { label: 'Genesis hash', value: payload.genesisHash, mono: true },
+    { label: 'Call data', value: truncateHex(payload.callData), mono: true },
+    { label: 'Tx ext version', value: String(payload.txExtVersion) },
   ];
 }
 
@@ -260,7 +260,7 @@ function createStatementSignFields(label: string, review: StatementStoreProductS
   return prependCallingProduct({
     fields: [
       { label: 'App', value: label },
-      { label: 'Signer', value: formatProductAccount(review.account) },
+      { label: 'Signer', value: formatProductAccount(review.account), mono: true },
       {
         label: 'Statement',
         value: truncateHex(toHex(review.payload.subarray(0, 41))),
@@ -275,7 +275,7 @@ function createStatementSignFields(label: string, review: StatementStoreProductS
 function createSignVrfFields(review: SignVrfReview): ModalField[] {
   return [
     { label: 'Requesting product', value: review.callingProductId },
-    { label: 'Signer', value: formatProductAccount(review.request.account) },
+    { label: 'Signer', value: formatProductAccount(review.request.account), mono: true },
     {
       label: 'Transcript label',
       value: review.request.transcriptLabel,

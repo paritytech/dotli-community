@@ -21,13 +21,13 @@
 :where(.row) {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   box-sizing: border-box;
-  min-height: 36px;
+  min-height: 40px;
   margin: 0;
-  padding: 0 var(--sp-2);
+  padding: 0 var(--sp-3);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--chrome-text);
   font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
@@ -55,9 +55,7 @@
     padding: var(--sp-2);
   }
   :where(.row) {
-    gap: var(--sp-3);
     min-height: var(--h-control);
-    padding: 0 var(--sp-3);
-    border-radius: var(--r-sm);
+    font-size: var(--fs-title);
   }
 }

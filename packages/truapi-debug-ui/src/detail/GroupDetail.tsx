@@ -3,7 +3,7 @@
 
 // Clicking a timeline box asks for the whole handshake, so every member shows together and there are no pills.
 
-import { For, Show, untrack } from 'solid-js';
+import { createMemo, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getChainDetail } from '../model/getChainDetail.js';
 import { formatEventCount } from '../model/formatEventCount.js';
@@ -15,7 +15,7 @@ import { summariseSystemEvent } from '../model/summariseSystemEvent.js';
 import { getTagKind } from '../model/getTagKind.js';
 import { Explanation } from './Explanation.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
-import { IdValue } from '../shared/IdBadge.js';
+import { IdBadge } from '../shared/IdBadge.js';
 import { DirectionArrow } from '../shared/DirectionArrow.js';
 import { Inline } from '../shared/Inline.js';
 import { Latency } from '../shared/Latency.js';
@@ -28,19 +28,21 @@ import s from './GroupDetail.module.css';
 
 export function GroupDetail(props: {
   event: StoredEvent;
+  /** Follows traffic, the only prop that changes. */
   group: StoredEvent[];
   first: StoredEvent | undefined;
 }): JSX.Element {
   const event = untrack(() => props.event);
-  const duration = untrack(() => formatGroupDuration(props.first, props.group));
+  const first = untrack(() => props.first);
+  const duration = createMemo(() => formatGroupDuration(first, props.group));
   return (
     <>
       <KeyValueList testId="td-detail-head">
         {renderHeadFields(event)}
         <KeyValue name="group">{formatEventCount(props.group.length)}</KeyValue>
-        <Show when={duration}>{d => <KeyValue name="duration">{d()}</KeyValue>}</Show>
+        <Show when={duration()}>{d => <KeyValue name="duration">{d()}</KeyValue>}</Show>
       </KeyValueList>
-      <For each={props.group}>{member => renderMember(member, formatMemberDelta(member, props.first))}</For>
+      <For each={props.group}>{member => renderMember(member, formatMemberDelta(member, first))}</For>
     </>
   );
 }
@@ -51,7 +53,7 @@ function renderHeadFields(event: StoredEvent): JSX.Element {
       return (
         <>
           <KeyValue name="requestId">
-            <IdValue id={event.requestId} />
+            <IdBadge id={event.requestId} testId="td-id-badge" />
           </KeyValue>
           <KeyValue name="product">{formatProductId(event.productId)}</KeyValue>
         </>
@@ -60,7 +62,7 @@ function renderHeadFields(event: StoredEvent): JSX.Element {
       return (
         <>
           <KeyValue name="flowId">
-            <IdValue id={event.flowId} />
+            <IdBadge id={event.flowId} testId="td-id-badge" />
           </KeyValue>
           <KeyValue name="source">{event.source}</KeyValue>
           <KeyValue name="layer">{event.layer}</KeyValue>

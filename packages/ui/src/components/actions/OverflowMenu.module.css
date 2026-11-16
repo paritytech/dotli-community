@@ -12,10 +12,12 @@
   height: 16px;
   stroke-width: 1.75;
 }
+/* The row sets no line height, so the label keeps one tall enough that its clip spares descenders. */
 .label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  line-height: var(--lh-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -58,11 +60,21 @@
   box-shadow: var(--chrome-shadow-inset);
 }
 .menu[data-sheet] .row {
+  position: relative;
   height: var(--h-row-lg);
   padding: 0 var(--sp-4);
   border-radius: 0;
   font-size: var(--fs-title);
 }
-.menu[data-sheet] .row + .row {
-  border-top: 1px solid var(--chrome-line);
+/* Inset to the rows' padding, so the separator runs under the text and stops short of the well's sides. */
+.menu[data-sheet] .row + .row::before {
+  content: '';
+  position: absolute;
+  inset: 0 var(--sp-4) auto;
+  height: 1px;
+  background: var(--chrome-line);
+}
+/* The ring takes the well's corners on every row, so an end row's ring is neither clipped nor half square. */
+.menu[data-sheet] .row:focus-visible {
+  border-radius: var(--r-md);
 }

@@ -9,7 +9,3 @@
   margin-left: auto;
   white-space: nowrap;
 }
-.counts {
-  color: var(--td-fg-dim);
-  font-size: 11px;
-}

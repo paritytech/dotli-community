@@ -6,9 +6,9 @@
 
 import { createSignal, For, Show, untrack, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ArrowRightIcon, CheckIcon, PhoneCheckIcon, QrCodeIcon, type IconProps } from '@dotli/ui/icons';
+import { ArrowRightIcon, CheckIcon, CircleAlertIcon, PhoneCheckIcon, type IconProps } from '@dotli/ui/icons';
 import { LogoSymbol } from '@dotli/ui/brand';
-import { Button, ButtonLink, Chip, SectionLabel, Spinner, Well } from '@dotli/ui';
+import { Button, ButtonLink, Callout, Chip, SectionLabel, Spinner, Well } from '@dotli/ui';
 import type { ContinueOffer } from '../../signInWindow/index.js';
 import { AccountAvatar } from '../panel/AccountAvatar.js';
 import { offeredAccountName } from '../panel/accountNames.js';
@@ -34,10 +34,13 @@ export type SignInParts = {
 };
 
 /** The colour a status icon is drawn in. */
-export type SignInTone = 'ok' | 'err' | 'warn' | 'idle';
+export type SignInTone = 'ok' | 'err' | 'warn';
 
-/** What heads a status: a bare thin-line icon in its tone, or a spinner while something is under way. */
-export type StatusMark = { icon: Component<IconProps>; tone: SignInTone } | 'spinner';
+/**
+ * What heads a status: a bare thin-line icon, in its tone or else in the one neutral grey, or a spinner while something is
+ * under way.
+ */
+export type StatusMark = { icon: Component<IconProps>; tone?: SignInTone | undefined } | 'spinner';
 
 /** A button in a screen's stack. */
 export type SignInAction = {
@@ -53,6 +56,8 @@ export type SignInAction = {
   trailingIcon?: Component<IconProps> | undefined;
   /** Read as the button renders, so a getter keeps it current. */
   disabled?: boolean | undefined;
+  /** A spinner in place of the label while the press is under way. Read as the button renders, like `disabled`. */
+  loading?: boolean | undefined;
   id?: string | undefined;
   testId?: string | undefined;
 };
@@ -77,6 +82,21 @@ function idProps(id: string | undefined, testId: string | undefined): { id?: str
   return { ...(id === undefined ? {} : { id }), ...(testId === undefined ? {} : { testId }) };
 }
 
+/** The longest run kept on one line. A longer one, such as a long origin, still wraps inside the card. */
+const KEPT_WORD_MAX = 30;
+
+/**
+ * Keeps each short hyphenated word, such as "sign-in" or a host name, on one line, since a break at its hyphen reads as
+ * two words. The app's name stays whole too.
+ */
+function keepWhole(text: string): JSX.Element {
+  return text
+    .split(/(\S*-\S*|Polkadot App)/)
+    .map((part, index) =>
+      index % 2 === 1 && part.length <= KEPT_WORD_MAX ? <span class={s['kept']}>{part}</span> : part,
+    );
+}
+
 /** A title of the screen's own, heading the page as its `h1`. */
 export function Title(props: {
   id?: string | undefined;
@@ -90,30 +110,52 @@ export function Title(props: {
   );
 }
 
+/** A failure of the screen's own, not of a field: an alert in an error well, led by its mark. */
+export function ErrorWell(props: { testId: string; children: JSX.Element }): JSX.Element {
+  return (
+    <Callout icon={ErrorIcon} class={s['errorWell']}>
+      <span role="alert" data-testid={props.testId}>
+        {props.children}
+      </span>
+    </Callout>
+  );
+}
+
+/** The error well's mark, in the danger tone. */
+function ErrorIcon(props: IconProps): JSX.Element {
+  return <CircleAlertIcon class={[props.class, s['errorIcon']]} size={props.size} testId={props.testId} />;
+}
+
 /**
- * The title over its body, or the body alone when the layout heads the view. The body may carry its own markup, such
- * as an alert, so it sits in a block.
+ * The title over its body, or the body alone when the layout heads the view. A status's mark sits between them, so it
+ * follows the title wherever the title is placed. The body may carry its own markup, such as an alert, so it sits in a
+ * block.
  */
 function Heading(props: {
   level: HeadingLevel;
   title: string;
   titleId?: string | undefined;
   titleTestId?: string | undefined;
+  mark?: JSX.Element;
   body: JSX.Element;
   bodyId?: string | undefined;
   bodyTestId?: string | undefined;
+  bodyClass?: string | undefined;
   children?: JSX.Element;
 }): JSX.Element {
   return (
     <div class={s['heading']}>
       <Show when={props.level !== 'layout'}>
         <Title id={props.titleId} testId={props.titleTestId}>
-          {props.title}
+          {keepWhole(props.title)}
         </Title>
       </Show>
-      <div class={s['body']} id={props.bodyId} data-testid={props.bodyTestId}>
-        {props.body}
-      </div>
+      {props.mark}
+      <Show when={props.body !== null && props.body !== undefined}>
+        <div class={[s['body'], props.bodyClass]} id={props.bodyId} data-testid={props.bodyTestId}>
+          {typeof props.body === 'string' ? keepWhole(props.body) : props.body}
+        </div>
+      </Show>
       {props.children}
     </div>
   );
@@ -132,6 +174,9 @@ function ActionButtons(props: { actions: readonly SignInAction[] }): JSX.Element
             variant={action.primary === true ? 'primary' : 'secondary'}
             block
             disabled={action.disabled === true}
+            loading={action.loading === true}
+            // The spinner replaces the label, so the name stays on the button.
+            aria-label={action.loading === true ? action.label : undefined}
             onClick={() => {
               action.onPress();
             }}
@@ -200,13 +245,18 @@ export function PairingScreen(props: PairingScreenProps): SignInParts {
   const [revealed, setRevealed] = createSignal(false);
   const scanning = (): boolean => !phone || revealed();
 
-  const body = (): string => {
+  const body = (): JSX.Element => {
     if (props.payload === null) {
       return 'Getting a sign-in code ready.';
     }
     const ask = scanning() ? 'Scan the code' : 'Approve in the app';
     const to = props.host === null ? 'sign in' : `continue to ${props.host}`;
-    return `${ask} to ${to}. One sign-in works across every app.`;
+    return (
+      <>
+        {keepWhole(`${ask} to ${to}.`)}{' '}
+        <span class={s['sentence']}>{keepWhole('One sign-in works across every app.')}</span>
+      </>
+    );
   };
 
   const reveal = (): void => {
@@ -217,7 +267,8 @@ export function PairingScreen(props: PairingScreenProps): SignInParts {
 
   /**
    * A phone answers by opening the app, and can still show the code to scan from another phone. The label stands
-   * alone, so it fits an answer half as wide as a prompt.
+   * alone, so it fits an answer half as wide as a prompt. Showing the code is a text link, so only the answers are
+   * pills.
    */
   function phoneParts(): Pick<SignInParts, 'actions' | 'reveal'> {
     return {
@@ -225,7 +276,8 @@ export function PairingScreen(props: PairingScreenProps): SignInParts {
         <Show
           when={props.payload}
           fallback={
-            <Button variant="primary" block disabled>
+            // Loading rather than disabled, so the main answer never looks weaker than the one beside it.
+            <Button variant="primary" block loading aria-label="Open Polkadot App">
               Open Polkadot App
             </Button>
           }
@@ -239,10 +291,15 @@ export function PairingScreen(props: PairingScreenProps): SignInParts {
       ),
       reveal: (
         <Show when={!revealed()}>
-          <Button block testId="auth-modal-qr-toggle" onClick={reveal}>
-            <QrCodeIcon class={s['buttonIcon']} />
+          <button
+            type="button"
+            class={[s['link'], s['reveal']]}
+            data-level={props.level ?? 1}
+            data-testid="auth-modal-qr-toggle"
+            onClick={reveal}
+          >
             Scan from another phone
-          </Button>
+          </button>
         </Show>
       ),
     };
@@ -251,31 +308,37 @@ export function PairingScreen(props: PairingScreenProps): SignInParts {
   return {
     title: SIGN_IN_TITLE,
     content: (
-      <div class={s['screen']} data-layout={scanning() ? 'scan' : 'app'}>
-        <Show when={!scanning()}>
-          <LogoSymbol class={s['symbol']} height={44} />
-        </Show>
+      <div class={s['screen']} data-level={props.level ?? 1}>
         <Heading
           level={props.level ?? 1}
           title={SIGN_IN_TITLE}
           titleId="auth-modal-title"
+          // Where a status's mark stands, so every sign-in view heads with its title.
+          mark={
+            <Show when={!scanning()}>
+              <LogoSymbol class={s['symbol']} height={44} />
+            </Show>
+          }
           body={body()}
           bodyId="auth-modal-hint"
           bodyTestId="auth-modal-hint"
+          bodyClass={s['hint']}
         >
-          <p class={s['reason']} id="auth-modal-reason" data-testid="auth-modal-reason" hidden={props.reason === null}>
-            {props.reason ?? ''}
+          <p class={s['reason']} data-testid="auth-modal-reason" hidden={props.reason === null}>
+            <span class={s['reasonLabel']}>Reason given: </span>
+            <q id="auth-modal-reason">{props.reason ?? ''}</q>
           </p>
         </Heading>
         <PairingQr payload={props.payload} shown={scanning()} link={phone} drawQr={props.drawQr} />
-        <Show when={scanning() && props.payload !== null}>
+        {/* Shown with the placeholder too, so the code comes in without moving what is under it. */}
+        <Show when={scanning()}>
           <Steps />
         </Show>
       </div>
     ),
     ...(phone ? phoneParts() : {}),
     note: (
-      <p class={s['note']}>
+      <p class={s['note']} data-level={props.level ?? 1}>
         No Polkadot App yet?{' '}
         <a class={s['link']} id="auth-modal-get-app" href={GET_APP_URL} target="_blank" rel="noopener noreferrer">
           {phone ? 'Get it' : 'Get it for iPhone or Android'}
@@ -297,12 +360,12 @@ export function ApprovingScreen(props: ApprovingScreenProps): SignInParts {
   return {
     title: APPROVE_TITLE,
     content: (
-      <div class={s['screen']}>
-        <PhoneCheckIcon class={s['markIcon']} />
+      <div class={s['screen']} data-level={props.level ?? 1}>
         <Heading
           level={props.level ?? 1}
           title={APPROVE_TITLE}
           titleId="auth-modal-title"
+          mark={<PhoneCheckIcon class={s['markIcon']} />}
           body={`Check your phone and approve the sign-in. ${props.closesCopy}`}
         />
         <div class={s['progress']} role="status">
@@ -330,8 +393,10 @@ export type StatusScreenProps = {
   mark?: StatusMark | undefined;
   title: string;
   body: JSX.Element;
-  /** The raw reason, kept for bug reports. */
+  /** The raw reason, kept for bug reports behind a disclosure. */
   detail?: string | undefined;
+  /** What is under way, beside a small spinner under the body, while the mark says what to do. */
+  progress?: string | undefined;
   actions?: readonly SignInAction[] | undefined;
   level?: HeadingLevel | undefined;
   testId?: string | undefined;
@@ -349,24 +414,40 @@ export function StatusScreen(props: StatusScreenProps): SignInParts {
   return {
     title: untrack(() => props.title),
     content: (
-      <div class={s['screen']} data-tone={icon()?.tone} data-testid={props.testId}>
-        <Show when={props.mark === 'spinner'}>
-          <Spinner class={s['markSpinner']} {...idProps(undefined, props.spinnerTestId)} />
-        </Show>
-        <Show when={icon()} keyed>
-          {mark => <mark.icon class={s['markIcon']} />}
-        </Show>
+      <div class={s['screen']} data-tone={icon()?.tone} data-level={props.level ?? 1} data-testid={props.testId}>
         <Heading
           level={props.level ?? 1}
           title={props.title}
           titleId={props.titleId}
           titleTestId={props.titleTestId}
+          mark={
+            <>
+              <Show when={props.mark === 'spinner'}>
+                <Spinner class={s['markSpinner']} {...idProps(undefined, props.spinnerTestId)} />
+              </Show>
+              <Show when={icon()} keyed>
+                {mark => <mark.icon class={s['markIcon']} />}
+              </Show>
+            </>
+          }
           body={props.body}
         />
+        <Show when={props.progress}>
+          {progress => (
+            <div class={s['progress']} role="status">
+              <Spinner class={s['progressSpinner']} {...idProps(undefined, props.spinnerTestId)} />
+              {progress()}
+            </div>
+          )}
+        </Show>
+        {/* Folded away, so the friendly copy leads and the raw reason is there for a bug report. */}
         <Show when={props.detail !== undefined && props.detail.length > 0}>
-          <Well class={s['detail']} {...idProps(undefined, props.detailTestId)}>
-            {props.detail}
-          </Well>
+          <details class={s['detail']}>
+            <summary class={s['detailSummary']}>Details</summary>
+            <Well class={s['detailText']} {...idProps(undefined, props.detailTestId)}>
+              {props.detail}
+            </Well>
+          </details>
         </Show>
       </div>
     ),
@@ -384,6 +465,14 @@ export type ContinueScreenProps = {
   onContinue: () => void;
   onUseAnotherAccount: () => void;
 };
+
+/** What the page may ask of the account. A local account's keys are in this browser, so no phone is asked. */
+function grantCopy(host: string | null, local: boolean): string {
+  const asker = `${host ?? 'Apps'} can ask this account to sign.`;
+  return local
+    ? `${asker} Its keys are in this browser, not in Polkadot App.`
+    : `${asker} Polkadot App asks you before each one.`;
+}
 
 /** An account is already signed in: go on with it, or sign in with another one. */
 export function ContinueScreen(props: ContinueScreenProps): SignInParts {
@@ -410,14 +499,10 @@ export function ContinueScreen(props: ContinueScreenProps): SignInParts {
         </div>
         <Well class={s['grant']} testId="session-window-note">
           <CheckIcon class={s['grantIcon']} />
-          <span>{`${props.host ?? 'Apps'} can ask this account to sign. Polkadot App asks you before each one.`}</span>
+          <span>{keepWhole(grantCopy(props.host, local()))}</span>
         </Well>
         <Show when={props.failure}>
-          {failure => (
-            <p class={s['failure']} role="alert" data-testid="session-window-failure">
-              {failure()}
-            </p>
-          )}
+          {failure => <ErrorWell testId="session-window-failure">{failure()}</ErrorWell>}
         </Show>
       </div>
     ),

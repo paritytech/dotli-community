@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { StatusDot } from '@dotli/ui';
+import { Spinner } from '@dotli/ui';
 import type { PhoneAsk } from './phoneMethods.js';
 import { PhoneIllustration } from './PhoneIllustration.js';
 import { ASK_COPY } from './phoneAskCopy.js';
@@ -18,8 +18,8 @@ export function PhoneWaiting(props: { ask: PhoneAsk }): JSX.Element {
       </p>
       <PhoneIllustration ask={props.ask} />
       <div class={s['status']} data-testid="phone-waiting-status">
-        <StatusDot tone="info" size="sm" pulse />
-        Waiting for your phone
+        <Spinner class={s['spinner']} />
+        Waiting for Polkadot App…
       </div>
     </div>
   );

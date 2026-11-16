@@ -14,18 +14,18 @@ const meta = { title: 'Primitives/IconTile', component: IconTile, parameters: { 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a dotli user, I see an icon in its tile, which assistive technology skips. */
+/** As a dotli user, I see a bare icon leading the view, which assistive technology skips. */
 export const Icon: Story = {
   args: { icon: GlobeIcon, testId: 'tile' },
   play: async ({ canvas, step }) => {
-    await step('Then I see the icon in its tile, which assistive technology skips', async () => {
+    await step('Then I see the icon, which assistive technology skips', async () => {
       const tile = canvas.getByTestId('tile');
       await expect(tile).toHaveAttribute('aria-hidden', 'true');
       await expect(tile.querySelector('svg')).not.toBeNull();
     });
   },
 };
-/** As a dotli user, I see a drawn icon in the same tile, which assistive technology skips. */
+/** As a dotli user, I see a drawn icon at the same size, which assistive technology skips. */
 export const Children: Story = {
   render: args => (
     <IconTile {...args}>

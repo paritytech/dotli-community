@@ -6,7 +6,7 @@ import { dynamic, type JSX } from '@solidjs/web';
 import type { IconProps } from '../icons/iconProps.js';
 import s from './IconTile.module.css';
 
-/** The decorative tile that leads a modal or the sign-in's pending view. It draws `icon`, or else its children. */
+/** A decorative glyph that leads a title, bare on the surface. It draws `icon`, or else its children. */
 export function IconTile(props: {
   icon?: Component<IconProps> | undefined;
   class?: string | undefined;

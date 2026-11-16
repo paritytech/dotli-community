@@ -4,7 +4,8 @@
 .layer {
   position: fixed;
   inset: 0;
-  z-index: 3000;
+  /* The stack sets the depth, so a layer opened later paints over one mounted later in the page. */
+  z-index: calc(3000 + var(--layer-depth, 0));
   box-sizing: border-box;
   /* Not `hidden`, which is still a scroll container: iOS Safari scrolls it to reveal focus in a sheet still below
      the frame, and the sheet then rests that far up. */
@@ -35,9 +36,11 @@
   display: block;
 }
 
+/* Under the layer's content, which then needs no position of its own to paint above it. */
 .scrim {
   position: fixed;
   inset: 0;
+  z-index: -1;
   background: var(--chrome-scrim);
   opacity: 0;
   transition: opacity var(--dur) var(--ease-out);

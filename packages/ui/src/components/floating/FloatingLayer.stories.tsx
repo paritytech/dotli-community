@@ -133,7 +133,7 @@ export const ClosesOnWindowBlur: Story = {
   },
 };
 
-/** As a keyboard user, I press Escape with focus on the body and the popover closes with focus back on its trigger. */
+/** As a keyboard user, I press Escape with focus on the body and the popover closes with focus and its ring back on its trigger. */
 export const EscapeReturnsFocusToTrigger: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open and focus is on the body (as Safari leaves it)', async () => {
@@ -145,9 +145,10 @@ export const EscapeReturnsFocusToTrigger: Story = {
     await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
-    await step('Then it closed and the trigger has focus', async () => {
+    await step('Then it closed and the trigger has focus with its ring', async () => {
       await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await expect(body.getByTestId('trigger')).toHaveFocus();
+      await expect(body.getByTestId('trigger').matches(':focus-visible')).toBe(true);
     });
   },
 };

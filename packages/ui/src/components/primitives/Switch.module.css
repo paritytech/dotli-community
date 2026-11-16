@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 :where(.switch) {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   flex: none;
@@ -17,6 +18,12 @@
   font: inherit;
   cursor: pointer;
   transition: background var(--dur-fast);
+}
+/* A press target larger than the track, without growing the layout. */
+.switch::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 .switch::after {
   content: '';
@@ -45,6 +52,10 @@
   :where(.switch) {
     width: 44px;
     height: 26px;
+  }
+  /* 44 px tall, a phone's minimum target. */
+  .switch::before {
+    inset: -9px -4px;
   }
   .switch::after {
     width: 20px;

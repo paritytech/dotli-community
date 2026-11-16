@@ -1,13 +1,17 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The outline edges a product's image too, which an inset shadow would paint under. */
 .icon {
   flex-shrink: 0;
   box-sizing: border-box;
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--fill);
+  background: var(--chrome-avatar);
+  box-shadow: var(--chrome-shadow-raised);
+  outline: 1px solid var(--chrome-ring-subtle);
+  outline-offset: -1px;
   object-fit: cover;
 }
 
@@ -15,7 +19,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 600;
+  color: var(--chrome-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+}
+
+@media (max-width: 560px) {
+  .icon {
+    width: 32px;
+    height: 32px;
+  }
+  .icon[data-fallback] {
+    font-size: var(--fs-body);
+  }
 }

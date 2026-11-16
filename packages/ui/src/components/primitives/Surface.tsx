@@ -13,7 +13,7 @@ export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';
 /**
  * The body of a popover. With `padded` it takes a panel's padding, which grows on a phone and changes in a bottom
  * sheet. Without it the consumer pads it through `class`. The frame draws the glass.
- * In a bottom sheet the sheet's head carries the title, so SurfaceHead renders nothing.
+ * In a bottom sheet the sheet's head carries the title, so SurfaceHead renders only its aside.
  */
 export function Surface(props: {
   width?: SurfaceWidth;
@@ -44,10 +44,13 @@ export function SurfaceHead(props: {
   testId?: string;
 }): JSX.Element {
   const inSheet = useContext(InSheet);
+  // `in`, not a read, which would build the aside a second time.
   return (
-    <Show when={!inSheet()}>
+    <Show when={!inSheet() || 'aside' in props}>
       <div class={s['head']} data-testid={props.testId}>
-        <h2 class={s['title']}>{props.title}</h2>
+        <Show when={!inSheet()}>
+          <h2 class={s['title']}>{props.title}</h2>
+        </Show>
         {props.aside}
       </div>
     </Show>

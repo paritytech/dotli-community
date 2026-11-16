@@ -21,8 +21,8 @@
   height: 6px;
   transform: translateY(-50%);
   border-radius: var(--r-full);
-  background: var(--chrome-well);
-  box-shadow: var(--chrome-shadow-inset);
+  background: var(--chrome-ring);
+  box-shadow: inset 0 0 0 1px var(--chrome-line);
 }
 /* Its inset is the thumb radius, so the end stops land on the rail's rounded ends. */
 .layer {
@@ -47,13 +47,13 @@
   height: 4px;
   margin: -2px 0 0 -2px;
   border-radius: 50%;
-  background: var(--chrome-action-dim);
+  background: var(--chrome-text-muted);
 }
+/* The fill already shows how far the value goes, and a dark dot on it would read as a hole. */
 .tick[data-filled] {
-  background: color-mix(in srgb, var(--chrome-on-primary) 40%, transparent);
+  visibility: hidden;
 }
 .thumb {
-  --thumb-inset: inset 0 0 0 0 transparent;
   --thumb-halo: 0 0 0 0 transparent;
   position: absolute;
   top: 50%;
@@ -62,7 +62,7 @@
   margin: -8px 0 0 -8px;
   border-radius: 50%;
   background: var(--chrome-text);
-  box-shadow: var(--thumb-inset), var(--chrome-shadow-knob), var(--thumb-halo);
+  box-shadow: var(--chrome-shadow-knob), var(--thumb-halo);
   transition: left var(--dur) var(--ease-spring);
 }
 .track:hover > .layer > .thumb {
@@ -71,10 +71,6 @@
 .track[data-dragging] > .layer > .thumb {
   --thumb-halo: 0 0 0 7px var(--chrome-fill-strong);
   transform: scale(1.12);
-}
-.track[data-marked] > .layer > .thumb {
-  --thumb-inset: inset 0 0 0 4px var(--chrome-text);
-  background: var(--chrome-solid);
 }
 .track:focus-visible > .layer > .thumb {
   outline: var(--chrome-focus-ring);
@@ -101,7 +97,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--chrome-text-muted);
   font: var(--fw-medium) var(--fs-caption) / 16px var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
@@ -118,6 +114,9 @@
 .stop:hover,
 .stop[data-current] {
   color: var(--chrome-text);
+}
+.stop[data-current] {
+  font-weight: var(--fw-semibold);
 }
 @media (max-width: 560px) {
   .track {
@@ -140,12 +139,9 @@
     height: 20px;
     margin: -10px 0 0 -10px;
   }
-  .track[data-marked] > .layer > .thumb {
-    --thumb-inset: inset 0 0 0 5px var(--chrome-text);
-  }
   .stops {
     height: 44px;
-    margin: -6px 10px;
+    margin: -12px 10px -6px;
   }
   .stop {
     font-size: var(--fs-small);

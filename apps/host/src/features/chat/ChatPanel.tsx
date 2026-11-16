@@ -22,6 +22,7 @@ import { MessageRow } from './MessageRow.js';
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
+import { endsRun } from './messageRuns.js';
 import s from './ChatPanel.module.css';
 
 // Relative bubble timestamps go stale while the panel sits open.
@@ -162,19 +163,37 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
 
   const title = (): string => activeContact()?.name ?? chat.productName() ?? 'Chat';
 
-  const hint = (): string | null => {
-    const v = view();
-    if (feed.contactsFailed() || (v === 'conversation' && feed.messagesFailed())) {
-      return 'Chat could not be loaded.';
-    }
-    if (v === 'empty') {
-      return chat.loggedIn() ? 'Waiting for the app to start a chat.' : 'Log in to chat with this app.';
-    }
-    return v === 'conversation' ? chat.composerError() : null;
-  };
-
   // The product chose what its room shows below the messages.
   const composing = (): boolean => view() === 'conversation' && activeContact()?.footer !== 'Empty';
+
+  const hint = createMemo((): { text: string; error: boolean } | null => {
+    const v = view();
+    if (feed.contactsFailed() || (v === 'conversation' && feed.messagesFailed())) {
+      return { text: 'Chat could not be loaded.', error: true };
+    }
+    if (v === 'empty') {
+      const text = chat.loggedIn() ? 'Waiting for the app to start a chat.' : 'Log in to chat with this app.';
+      return { text, error: false };
+    }
+    if (v !== 'conversation') {
+      return null;
+    }
+    const composerError = chat.composerError();
+    if (composerError !== null) {
+      return { text: composerError, error: true };
+    }
+    if (!composing()) {
+      return { text: 'This chat is read only.', error: false };
+    }
+    return feed.messages()?.length === 0 ? { text: 'No messages yet.', error: false } : null;
+  });
+
+  // Mirrors the input, so Send is off while there is nothing to send.
+  const [draft, setDraft] = createSignal('');
+  const writeDraft = (input: HTMLInputElement, text: string): void => {
+    input.value = text;
+    setDraft(text);
+  };
 
   const submit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
@@ -187,7 +206,7 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
     if (text === '') {
       return;
     }
-    input.value = '';
+    writeDraft(input, '');
     // Sending shows the sent message, even to a reader scrolled up.
     stuck = true;
     try {
@@ -200,7 +219,7 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
       }
       // Nothing was kept, so the text goes back unless the user has typed anew.
       if (input.value === '') {
-        input.value = text;
+        writeDraft(input, text);
       }
       chat.setComposerError('Message not sent. Try again.');
     }
@@ -291,11 +310,12 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
         >
           <Show when={view() === 'conversation'}>
             <For each={feed.messages() ?? []} keyed={r => r.seq}>
-              {record => (
+              {(record, index) => (
                 <MessageRow
                   chat={chat.actions}
                   record={record()}
                   now={now()}
+                  endsRun={endsRun(record(), feed.messages()?.[index() + 1])}
                   onActionError={() => {
                     chat.setComposerError('The app could not be reached.');
                   }}
@@ -305,8 +325,13 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
           </Show>
         </div>
       </div>
-      <p class={s['hint']} id="chat-panel-hint" hidden={hint() === null}>
-        {hint() ?? ''}
+      <p
+        class={s['hint']}
+        id="chat-panel-hint"
+        data-error={hint()?.error === true ? '' : undefined}
+        hidden={hint() === null}
+      >
+        {hint()?.text ?? ''}
       </p>
       <form
         class={s['composer']}
@@ -327,8 +352,18 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
           ref={el => {
             inputEl = el;
           }}
+          onInput={event => {
+            setDraft(event.currentTarget.value);
+          }}
         />
-        <button type="submit" class={s['send']} id="chat-panel-send" title="Send" aria-label="Send">
+        <button
+          type="submit"
+          class={s['send']}
+          id="chat-panel-send"
+          title="Send"
+          aria-label="Send"
+          disabled={draft().trim() === ''}
+        >
           <SendIcon />
         </button>
       </form>

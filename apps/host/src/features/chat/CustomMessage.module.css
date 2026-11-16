@@ -4,14 +4,30 @@
 .root {
   display: flex;
   flex-direction: column;
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   margin: 0;
   padding: 0;
   color: var(--chat-fg-primary);
 }
 
+/* As tall as a button, so a small tree does not jump in. */
 .placeholder {
-  color: var(--chat-fg-tertiary);
-  font-size: 0.72rem;
-  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--h-control-sm);
+  color: var(--chat-fg-secondary);
+  font-size: var(--fs-caption);
+}
+.placeholder > .spinner {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.error {
+  color: var(--chat-fg-error);
+  font-size: var(--fs-caption);
 }

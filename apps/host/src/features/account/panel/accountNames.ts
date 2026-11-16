@@ -37,7 +37,7 @@ export function shortenAccount(account: string | undefined): string | undefined 
   if (account === undefined || account.length < 12) {
     return undefined;
   }
-  return `${account.slice(0, 8)}...${account.slice(-4)}`;
+  return `${account.slice(0, 8)}…${account.slice(-4)}`;
 }
 
 export function sessionDisplayName(state: AccountSession): string | undefined {

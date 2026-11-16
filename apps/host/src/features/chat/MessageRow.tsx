@@ -16,6 +16,8 @@ export function MessageRow(props: {
   chat: ChatMessageActions;
   record: ChatMessageRecord;
   now: number;
+  /** The message ends its run, so its bubble shows the time. */
+  endsRun: boolean;
   onActionError: () => void;
 }): JSX.Element {
   // Records are immutable and rows are keyed by seq, so an untracked one-time read is intentional.
@@ -26,6 +28,7 @@ export function MessageRow(props: {
     <MessageBubble
       record={record}
       now={props.now}
+      endsRun={props.endsRun}
       onAction={actionId => {
         void chat
           .triggerAction({

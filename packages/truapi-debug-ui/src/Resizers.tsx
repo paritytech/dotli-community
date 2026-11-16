@@ -120,7 +120,7 @@ export function BodySplitter(props: {
   return (
     <Resizer
       testId="td-body-splitter"
-      class={s['splitter']}
+      divider
       orientation={props.stacked ? 'horizontal' : 'vertical'}
       hidden={props.hidden}
       label="Resize the panes"

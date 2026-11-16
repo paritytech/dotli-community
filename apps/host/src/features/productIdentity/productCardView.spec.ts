@@ -65,7 +65,7 @@ describe('product card view', () => {
   it.each([
     ['no root manifest', undefined],
     ['an empty description', ''],
-  ])('As a visitor of a product with %s, I see it named by its label with no description', (_name, description) => {
+  ])('As a visitor of a product with %s, I see it named by its domain with no description', (_name, description) => {
     // Given a loaded product that has no usable description
     const product: ProductState = {
       status: 'loaded',
@@ -79,7 +79,7 @@ describe('product card view', () => {
     // When the card's view is taken
     const view = getProductCardView({ product, pill: PRODUCT_PILL, card: CARD });
 
-    // Then the label names it and there is no description
-    expect(view).toMatchObject({ name: 'swap', description: null });
+    // Then the domain names it and there is no description
+    expect(view).toMatchObject({ name: view?.domain, description: null });
   });
 });

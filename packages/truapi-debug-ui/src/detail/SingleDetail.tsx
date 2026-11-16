@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For, Show, untrack } from 'solid-js';
+import { createMemo, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getChainDetail } from '../model/getChainDetail.js';
 import { formatEventCount } from '../model/formatEventCount.js';
@@ -12,14 +12,15 @@ import { summariseSystemEvent } from '../model/summariseSystemEvent.js';
 import type { EventSeq, StoredEvent, StoredSystemEvent, StoredTruapiEvent } from '../model/storedEvent.js';
 import { Explanation } from './Explanation.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
-import { IdValue } from '../shared/IdBadge.js';
+import { IdBadge } from '../shared/IdBadge.js';
 import { LinkButton } from '../shared/LinkButton.js';
 import { SectionTitle } from '../shared/SectionTitle.js';
 import { ChainFields, ChainSummary, Payload, Summary } from './Sections.js';
+import s from './Sections.module.css';
 
 type SingleDetailProps = {
   event: StoredEvent;
-  /** Includes the event itself. */
+  /** Includes the event itself. Follows traffic, the only prop that changes. */
   group: StoredEvent[];
   first: StoredEvent | undefined;
   onSelectPair: (seq: EventSeq) => void;
@@ -44,13 +45,13 @@ function TruapiDetail(props: SingleDetailProps & { event: StoredTruapiEvent }): 
   const chain = getChainDetail(event.tag, event.payload);
   return (
     <>
-      <KeyValueList testId="td-detail-head">
+      <KeyValueList testId="td-detail-head" class={s['fields']}>
         <KeyValue name="time">{formatTime(event.receivedAt)}</KeyValue>
         <KeyValue name="direction">{event.direction}</KeyValue>
         <KeyValue name="product">{formatProductId(event.productId)}</KeyValue>
         <KeyValue name="tag">{event.tag}</KeyValue>
         <KeyValue name="requestId">
-          <IdValue id={event.requestId} />
+          <IdBadge id={event.requestId} testId="td-id-badge" />
         </KeyValue>
         <GroupField {...props} />
       </KeyValueList>
@@ -65,13 +66,13 @@ function SystemDetail(props: SingleDetailProps & { event: StoredSystemEvent }): 
   const event = untrack(() => props.event);
   return (
     <>
-      <KeyValueList testId="td-detail-head">
+      <KeyValueList testId="td-detail-head" class={s['fields']}>
         <KeyValue name="time">{formatTime(event.receivedAt)}</KeyValue>
         <KeyValue name="source">{event.source}</KeyValue>
         <KeyValue name="layer">{event.layer}</KeyValue>
         <KeyValue name="event">{event.event}</KeyValue>
         <KeyValue name="flowId">
-          <IdValue id={event.flowId} />
+          <IdBadge id={event.flowId} testId="td-id-badge" />
         </KeyValue>
         <GroupField {...props} />
       </KeyValueList>
@@ -84,31 +85,29 @@ function SystemDetail(props: SingleDetailProps & { event: StoredSystemEvent }): 
 }
 
 function GroupField(props: SingleDetailProps): JSX.Element {
-  const pills = untrack(() =>
-    listSiblingPills({
-      event: props.event,
-      first: props.first,
-      siblings: props.group.filter(sibling => sibling.seq !== props.event.seq),
-    }),
+  const event = untrack(() => props.event);
+  const first = untrack(() => props.first);
+  const pills = createMemo(() =>
+    listSiblingPills({ event, first, siblings: props.group.filter(sibling => sibling.seq !== event.seq) }),
   );
   return (
     <KeyValue name="group">
       {formatEventCount(props.group.length)}
-      <Show when={pills.length > 0}>
+      <Show when={pills().length > 0}>
         {': '}
-        <For each={pills}>
+        <For each={pills()} keyed={pill => pill.seq}>
           {(pill, index) => (
             <>
               {index() > 0 ? ' · ' : ''}
               <LinkButton
                 testId="td-detail-pair"
-                value={String(pill.seq)}
-                title={pill.title}
+                value={String(pill().seq)}
+                title={pill().title}
                 onClick={() => {
-                  props.onSelectPair(pill.seq);
+                  props.onSelectPair(pill().seq);
                 }}
               >
-                {pill.label}
+                {pill().label}
               </LinkButton>
             </>
           )}

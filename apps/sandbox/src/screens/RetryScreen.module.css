@@ -56,7 +56,7 @@
   font-size: var(--fs-title);
   line-height: var(--lh-body);
   text-wrap: balance;
-  color: var(--text-secondary);
+  color: var(--chrome-text-muted);
 }
 
 @media (max-width: 560px) {

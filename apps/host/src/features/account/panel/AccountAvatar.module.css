@@ -11,10 +11,11 @@
   color: var(--chrome-text);
   font-weight: var(--fw-semibold);
 }
+.avatar[data-size='bar'],
 .avatar[data-size='sm'] {
-  width: 26px;
-  height: 26px;
-  font-size: 11px;
+  width: 28px;
+  height: 28px;
+  font-size: var(--fs-caption);
 }
 .avatar[data-size='lg'] {
   width: 40px;
@@ -22,6 +23,7 @@
   font-size: 16px;
 }
 /* The person glyph shown until a name is known. */
+.avatar[data-size='bar'] .glyph,
 .avatar[data-size='sm'] .glyph {
   width: 14px;
   height: 14px;
@@ -38,14 +40,30 @@
 }
 
 @media (max-width: 560px) {
-  .avatar[data-size='sm'] {
+  .avatar[data-size='bar'] {
     width: var(--h-control);
     height: var(--h-control);
     font-size: var(--fs-title);
   }
+  .avatar[data-size='sm'] {
+    width: 32px;
+    height: 32px;
+  }
   .avatar[data-size='lg'] {
-    width: var(--h-row);
-    height: var(--h-row);
+    width: var(--h-row-lg);
+    height: var(--h-row-lg);
     font-size: var(--fs-h2);
+  }
+  .avatar[data-size='bar'] .glyph {
+    width: 20px;
+    height: 20px;
+  }
+  .avatar[data-size='sm'] .glyph {
+    width: 16px;
+    height: 16px;
+  }
+  .avatar[data-size='lg'] .glyph {
+    width: 24px;
+    height: 24px;
   }
 }

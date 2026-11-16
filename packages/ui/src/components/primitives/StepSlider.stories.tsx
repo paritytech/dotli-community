@@ -72,7 +72,7 @@ export const Keyboard: Story = {
   },
 };
 
-/** As a user, pressing a stop's label commits it, the stop the slider is on included. */
+/** As a user, pressing a stop's label commits it, the stop the slider is on included, and the slider takes the focus. */
 export const LabelPress: Story = {
   render: renderOwned,
   play: async ({ args, canvas, userEvent, mount, step }) => {
@@ -90,6 +90,9 @@ export const LabelPress: Story = {
       await expect(args.onCommit).toHaveBeenNthCalledWith(1, 1);
       await expect(args.onCommit).toHaveBeenNthCalledWith(2, 0);
       await expect(canvas.getByTestId('stop-low')).toHaveAttribute('data-current');
+    });
+    await step('Then the slider has the focus, not the label', async () => {
+      await expect(getSlider(canvas)).toHaveFocus();
     });
   },
 };
@@ -223,11 +226,6 @@ export const DragFollowsPointer: Story = {
       await expect(args.onCommit).toHaveBeenCalledWith(1);
     });
   },
-};
-
-/** As a screen reader or sighted user, a marked slider says its value is a stop only approximately. */
-export const Marked: Story = {
-  args: { marked: true },
 };
 
 // The owner takes each commit.

@@ -14,12 +14,50 @@
 .whole {
   grid-column: 1 / -1;
 }
+/* Where an empty state's text sits, so every message of the tab shows in one place. */
+.message {
+  align-self: start;
+  justify-self: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 64ch;
+  padding: 24px 16px;
+}
+/* As wide as the tab's other callouts, whatever the length of the reason. */
+.failure {
+  align-self: stretch;
+}
 
 .sidebar {
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
   border-right: 1px solid var(--td-line);
+}
+
+/* Too narrow for two columns, so the file list sits above the file and shows whole paths. */
+@media (max-width: 560px) {
+  .archive {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  /* About five files, so the file itself keeps most of a phone's short panel. */
+  .sidebar {
+    max-height: 144px;
+    border-right: none;
+    border-bottom: 1px solid var(--td-line);
+  }
+  /* The preview starts where the file names above it start. Two classes, so it wins over the pane's own padding. */
+  .archive .content {
+    padding-inline: 10px;
+  }
+}
+.caption {
+  overflow: hidden;
+  color: var(--td-fg-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .image {
   display: block;

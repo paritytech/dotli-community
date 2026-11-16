@@ -21,6 +21,8 @@ export type CustomBody = {
 export function MessageBubble(props: {
   record: ChatMessageRecord;
   now: number;
+  /** The bubble ends its run of messages, so it shows the time. */
+  endsRun: boolean;
   /** A tap on one of an actions message's buttons. */
   onAction: (actionId: string) => void;
   /** Renders a custom message's body, before the timestamp. */
@@ -31,14 +33,16 @@ export function MessageBubble(props: {
   const content = record.content as ChatMessageContent;
 
   const time = (
-    <time
-      class={s['time']}
-      data-testid="chat-msg-time"
-      data-timestamp={String(record.timestamp)}
-      title={new Date(record.timestamp).toLocaleString()}
-    >
-      {relativeTime(record.timestamp, props.now)}
-    </time>
+    <Show when={props.endsRun}>
+      <time
+        class={s['time']}
+        data-testid="chat-msg-time"
+        data-timestamp={String(record.timestamp)}
+        title={new Date(record.timestamp).toLocaleString()}
+      >
+        {relativeTime(record.timestamp, props.now)}
+      </time>
+    </Show>
   );
 
   const wrap = (look: 'message' | 'event' | 'custom', body: JSX.Element): JSX.Element => (
@@ -61,7 +65,7 @@ export function MessageBubble(props: {
             {content.value.text ?? ''}
             <Show when={count > 0}>
               <span class={s['meta']} data-testid="chat-msg-meta">
-                {` [${String(count)} attachment${count === 1 ? '' : 's'}]`}
+                {`${String(count)} attachment${count === 1 ? '' : 's'}`}
               </span>
             </Show>
           </>,
@@ -72,7 +76,15 @@ export function MessageBubble(props: {
       case 'ReactionRemoved':
         return wrap('event', `removed reaction ${content.value.emoji}`);
       case 'File':
-        return wrap('message', `[file] ${content.value.fileName}`);
+        return wrap(
+          'message',
+          <>
+            {content.value.fileName}
+            <span class={s['meta']} data-testid="chat-msg-meta">
+              File
+            </span>
+          </>,
+        );
       case 'Actions':
         return wrap(
           'message',
@@ -104,12 +116,17 @@ export function MessageBubble(props: {
       case 'Custom':
         return wrap('custom', props.custom({ messageType: content.value.messageType, payload: content.value.payload }));
       default:
-        return wrap('event', '[unsupported message]');
+        return wrap('event', 'Unsupported message');
     }
   };
 
   return (
-    <div class={s['row']} data-testid="chat-msg" data-author={record.author}>
+    <div
+      class={s['row']}
+      data-testid="chat-msg"
+      data-author={record.author}
+      data-run-end={props.endsRun ? '' : undefined}
+    >
       {bubble()}
     </div>
   );

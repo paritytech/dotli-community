@@ -3,14 +3,15 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import { CircleCheckIcon, CircleXIcon } from '@dotli/ui/icons';
+import { CircleCheckIcon } from '@dotli/ui/icons';
 import { byTestId } from '@dotli/ui/testing';
 import { expectBefore } from '@config/storybook/play';
 import { expectPhone } from '../../../testing/stories/topbarFrame.js';
-import type { DrawQr } from './qrCode.js';
+import { drawQrCode, type DrawQr } from './qrCode.js';
 import { PhraseScreen } from './PhraseScreen.js';
 import { WindowShell } from '../../signInWindow/index.js';
 import { ApprovingScreen, ContinueScreen, PairingScreen, StatusScreen } from './SignInViews.js';
+import { signInParts } from './signInParts.js';
 
 const HOST = 'host-playground.dot';
 const DEEPLINK = 'polkadotapp://pair?handshake=test';
@@ -18,8 +19,8 @@ const PHRASE = 'legal winner thank year wave sausage worth useful legal winner t
 const GET_APP_URL = 'https://docs.polkadot.com/apps/';
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
-/** The QR renderer the screen is given, which draws nothing and records what it was asked. */
-const drawQr = fn<DrawQr>(() => Promise.resolve());
+/** The QR renderer the screen is given, which draws the real code and records what it was asked. */
+const drawQr = fn<DrawQr>(drawQrCode);
 const onCancel = fn<() => void>();
 const onRetry = fn<() => void>();
 const onClose = fn<() => void>();
@@ -37,7 +38,7 @@ const meta = {
       mock.mockClear();
     }
     drawQr.mockClear();
-    drawQr.mockImplementation(() => Promise.resolve());
+    drawQr.mockImplementation(drawQrCode);
     isValid.mockReset();
     isValid.mockImplementation(phrase => phrase === PHRASE);
     onImport.mockReset();
@@ -76,7 +77,7 @@ export const Pairing: Story = {
   },
 };
 
-/** As a desktop user, I see the code being made in its place, with no steps until it is ready. */
+/** As a desktop user, I see the code being made in its place, with the two steps already under it. */
 export const PairingPreparing: Story = {
   tags: ['!autodocs'],
   render: () => {
@@ -123,18 +124,23 @@ export const PairingPhone: Story = {
   play: async ({ canvas, userEvent, step }) => {
     await expectPhone(step);
     const openApp = (): HTMLElement => canvas.getByRole('link', { name: 'Open Polkadot App' });
-    await step('Then the app link leads, with Scan from another phone after it and no code on show', async () => {
-      await expect(byTestId('auth-modal-hint')).toHaveTextContent(
-        'Approve in the app to continue to host-playground.dot. One sign-in works across every app.',
-      );
-      await expect(openApp()).toHaveAttribute('href', DEEPLINK);
-      await expect(openApp()).toHaveAttribute('data-testid', 'auth-modal-open-app');
-      const scan = canvas.getByRole('button', { name: 'Scan from another phone' });
-      await expect(scan).toHaveAttribute('data-testid', 'auth-modal-qr-toggle');
-      await expectBefore(openApp(), scan);
-      await expect(canvas.queryByRole('img', { name: 'Sign-in QR code' })).toBeNull();
-      await expectGetApp('Get it');
-    });
+    await step(
+      'Then the app link leads, with a Scan from another phone text link after it and no code on show',
+      async () => {
+        await expect(byTestId('auth-modal-hint')).toHaveTextContent(
+          'Approve in the app to continue to host-playground.dot. One sign-in works across every app.',
+        );
+        await expect(openApp()).toHaveAttribute('href', DEEPLINK);
+        await expect(openApp()).toHaveAttribute('data-testid', 'auth-modal-open-app');
+        const scan = canvas.getByRole('button', { name: 'Scan from another phone' });
+        await expect(scan).toHaveAttribute('data-testid', 'auth-modal-qr-toggle');
+        // A text link, so the app link is the only pill on the screen.
+        await expect(scan).not.toHaveAttribute('data-variant');
+        await expectBefore(openApp(), scan);
+        await expect(canvas.queryByRole('img', { name: 'Sign-in QR code' })).toBeNull();
+        await expectGetApp('Get it');
+      },
+    );
     await step('When I press Scan from another phone', async () => {
       await userEvent.click(canvas.getByRole('button', { name: 'Scan from another phone' }));
     });
@@ -208,19 +214,33 @@ export const ApprovingPhone: Story = {
   },
 };
 
-function declined(): ReturnType<typeof StatusScreen> {
-  return StatusScreen({
-    mark: { icon: CircleXIcon, tone: 'err' },
-    title: 'Sign-in was declined',
-    body: 'The request was declined in Polkadot App. Start again and approve it on your phone.',
-    detail: 'Rejected',
-    actions: [{ label: 'Try again', primary: true, onPress: onRetry, testId: 'status-retry' }],
-    testId: 'status',
-    titleId: 'status-title',
-  });
+function declined(): ReturnType<typeof signInParts> {
+  return signInParts(
+    {
+      kind: 'error',
+      message: 'Rejected',
+      retry: true,
+      pending: false,
+      title: 'Sign-in was declined',
+      subtitle: 'The request was declined in Polkadot App. Start again and approve it on your phone.',
+      detail: 'Rejected',
+    },
+    {
+      host: HOST,
+      reason: null,
+      payload: null,
+      mobile: false,
+      closesCopy: "This window closes when you're done.",
+      onClose: onCancel,
+      onRetry,
+    },
+  );
 }
 
-/** As a user whose sign-in was declined, I see why in the failure's tone, with the raw reason, and try again. */
+/**
+ * As a user whose sign-in was declined, I see why in the failure's tone, with the raw reason, and try again or
+ * cancel.
+ */
 export const StatusDeclined: Story = {
   tags: ['!autodocs'],
   render: () => {
@@ -228,28 +248,34 @@ export const StatusDeclined: Story = {
     return <WindowShell view="pairing" parts={parts} />;
   },
   play: async ({ canvas, userEvent, step }) => {
-    await step('Then the failure says why, keeps the reason and offers Try again alone', async () => {
-      const status = canvas.getByTestId('status');
+    await step('Then the failure says why, keeps the reason and offers Try again and Cancel', async () => {
+      const status = canvas.getByTestId('auth-modal-failure');
       const title = canvas.getByRole('heading', { level: 1 });
       await expect(status).toHaveAttribute('data-tone', 'err');
       await expect(title).toHaveTextContent('Sign-in was declined');
-      await expect(title).toHaveAttribute('id', 'status-title');
+      await expect(title).toHaveAttribute('id', 'auth-modal-title');
       await expect(status).toHaveTextContent(
         'The request was declined in Polkadot App. Start again and approve it on your phone.',
       );
       await expect(status).toHaveTextContent('Rejected');
-      await expect(buttonNames()).toEqual(['Try again']);
+      await expect(buttonNames()).toEqual(['Try again', 'Cancel']);
     });
     await step('When I press Try again', async () => {
-      await userEvent.click(canvas.getByTestId('status-retry'));
+      await userEvent.click(canvas.getByTestId('auth-modal-retry'));
     });
     await step('Then one new try was asked for', async () => {
       await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
     });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the sign-in was cancelled once', async () => {
+      await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
+    });
   },
 };
 
-/** As a phone user whose sign-in was declined, I see the same failure and can try again. */
+/** As a phone user whose sign-in was declined, I see the same failure and can try again or cancel. */
 export const StatusDeclinedPhone: Story = {
   tags: ['!autodocs'],
   globals: PHONE,
@@ -273,7 +299,7 @@ export const StatusWaiting: Story = {
   },
 };
 
-/** As a phone user signed in from a window no page opened, I am told so with nothing to press. */
+/** As a phone user signed in from a window no page opened, I am told so and can close the window. */
 export const StatusDonePhone: Story = {
   tags: ['!autodocs'],
   globals: PHONE,
@@ -282,6 +308,7 @@ export const StatusDonePhone: Story = {
       mark: { icon: CircleCheckIcon, tone: 'ok' },
       title: "You're signed in",
       body: 'Return to the app.',
+      actions: [{ label: 'Close', onPress: onClose, dismisses: true }],
     });
     return <WindowShell view="done-no-opener" parts={parts} />;
   },
@@ -352,7 +379,7 @@ export const ContinueLocalNoHost: Story = {
       await expect(canvas.getByTestId('session-window-title')).toHaveTextContent('Recovery phrase wallet');
       await expect(canvas.getByTestId('session-window-local')).toHaveTextContent('Local account');
       await expect(canvas.getByTestId('session-window-note')).toHaveTextContent(
-        'Apps can ask this account to sign. Polkadot App asks you before each one.',
+        'Apps can ask this account to sign. Its keys are in this browser, not in Polkadot App.',
       );
       await expect(buttonNames()).toEqual(['Continue', 'Use another account']);
     });
@@ -366,7 +393,7 @@ export const ContinueFailure: Story = {
     const parts = ContinueScreen({
       offer: PAIRED,
       host: HOST,
-      failure: 'This account could not be signed out. Try again.',
+      failure: 'Could not sign out of this account.',
       onContinue,
       onUseAnotherAccount,
     });
@@ -374,7 +401,7 @@ export const ContinueFailure: Story = {
   },
   play: async ({ canvas, step }) => {
     await step('Then the failure is an alert and both choices stay', async () => {
-      await expect(canvas.getByRole('alert')).toHaveTextContent('This account could not be signed out. Try again.');
+      await expect(canvas.getByRole('alert')).toHaveTextContent('Could not sign out of this account.');
       await expect(canvas.getByRole('alert')).toHaveAttribute('data-testid', 'session-window-failure');
       await expect(buttonNames()).toEqual(['Continue to host-playground.dot', 'Use another account']);
     });

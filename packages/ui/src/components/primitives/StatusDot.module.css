@@ -16,6 +16,12 @@
 .dot[data-size='md'] {
   --dot-halo: 3px;
 }
+/* Smaller than md in both dot and halo, so it sits beside a caption. */
+.dot[data-size='sm'] {
+  --dot-halo: var(--sp-hair);
+  width: 6px;
+  height: 6px;
+}
 @media (max-width: 560px) {
   .dot[data-size='md'] {
     --dot-halo: var(--sp-1);

@@ -36,8 +36,17 @@ function text(value: string): RendererNode {
   return { tag: 'Text', value: { modifiers: [], props: {}, children: [{ tag: 'String', value: { text: value } }] } };
 }
 
+/** The space a product puts between stacked nodes, as the tree has no gap of its own. */
+function gap(): RendererNode {
+  return { tag: 'Box', value: { modifiers: [{ tag: 'Height', value: 12 }], props: {}, children: [] } };
+}
+
+function spaced(children: RendererNode[]): RendererNode[] {
+  return children.flatMap((child, i) => (i === 0 ? [child] : [gap(), child]));
+}
+
 function column(...children: RendererNode[]): RendererNode {
-  return { tag: 'Column', value: { modifiers: [], props: {}, children } };
+  return { tag: 'Column', value: { modifiers: [], props: {}, children: spaced(children) } };
 }
 
 function form(heading: string, fieldNode: RendererNode): RendererNode {
@@ -46,7 +55,7 @@ function form(heading: string, fieldNode: RendererNode): RendererNode {
     value: {
       modifiers: [{ tag: 'Padding', value: { top: 4, end: 4 } }],
       props: {},
-      children: [text(heading), fieldNode],
+      children: spaced([text(heading), fieldNode]),
     },
   };
 }

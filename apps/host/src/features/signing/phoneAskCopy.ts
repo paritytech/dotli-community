@@ -9,12 +9,12 @@ type AskCopy = {
   lead: string;
 };
 
-function askCopy(primary: string, { tap }: { tap: boolean }): AskCopy {
-  return { primary, lead: `Open Polkadot App on your phone, then ${tap ? 'tap ' : ''}${primary} or Reject` };
+function askCopy(primary: string): AskCopy {
+  return { primary, lead: `Open Polkadot App on your phone, then tap ${primary} or Reject.` };
 }
 
 /** The words of the waiting step for each ask. */
 export const ASK_COPY: Record<PhoneAsk, AskCopy> = {
-  sign: askCopy('Sign', { tap: true }),
-  approve: askCopy('Approve', { tap: false }),
+  sign: askCopy('Sign'),
+  approve: askCopy('Approve'),
 };

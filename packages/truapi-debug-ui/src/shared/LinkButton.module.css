@@ -11,3 +11,7 @@
   text-decoration: underline dotted;
   cursor: pointer;
 }
+.link:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: 1px;
+}

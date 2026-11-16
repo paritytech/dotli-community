@@ -76,8 +76,8 @@ const ICON =
   );
 
 /**
- * As a visitor of a product with an icon, I see the icon in the shield's place, marked with a warning shield once the
- * product is only trusted.
+ * As a visitor of a product with an icon, I see the icon in the shield's place, marked with the verified shield, or
+ * with a warning shield once the product is only trusted.
  */
 export const ProductIcon: Story = {
   render: () => (
@@ -86,15 +86,16 @@ export const ProductIcon: Story = {
     </TopbarFrame>
   ),
   play: async ({ step }) => {
-    await step('As a visitor, a verified product shows its icon with no warning', async () => {
+    await step('As a visitor, a verified product marks its icon with the verified shield', async () => {
       // Given a product verified by the light client, with an icon
 
       // When the shield shows
       const shield = within(document.body).getByRole('img', { name: 'Secure connection' });
 
-      // Then the icon takes the glyph's place and the warning badge is hidden
+      // Then the icon takes the glyph's place, with the verified badge and not the warning one
       await expect(within(shield).getByTestId('url-pill-icon')).toBeVisible();
       await expect(within(shield).queryByTestId('verification-shield-icon')).toBeNull();
+      await expect(within(shield).getByTestId('url-pill-verified-badge')).toBeVisible();
       await expect(within(shield).getByTestId('url-pill-trusted-badge')).not.toBeVisible();
     });
     await step('As a visitor, a trusted product marks its icon with the warning shield', async () => {
@@ -103,9 +104,10 @@ export const ProductIcon: Story = {
       // When the host falls back to an external RPC provider
       setShield('trusted');
 
-      // Then the warning badge shows on the icon
+      // Then the warning badge shows on the icon in place of the verified one
       const shield = await waitFor(() => within(document.body).getByRole('img', { name: 'Trusted connection' }));
       await expect(within(shield).getByTestId('url-pill-trusted-badge')).toBeVisible();
+      await expect(within(shield).getByTestId('url-pill-verified-badge')).not.toBeVisible();
     });
   },
 };

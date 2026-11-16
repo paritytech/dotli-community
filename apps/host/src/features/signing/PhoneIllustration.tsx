@@ -8,14 +8,16 @@ import type { PhoneAsk } from './phoneMethods.js';
 import { ASK_COPY } from './phoneAskCopy.js';
 import s from './PhoneIllustration.module.css';
 
-const SYMBOL_HEIGHT = 46;
+const SYMBOL_HEIGHT = 30;
 
-/** A phone showing Polkadot App with its Reject and primary buttons, the primary pressed on a slow loop. */
+/**
+ * A phone showing Polkadot App with its Reject and primary buttons, drawn alike so neither reads as a real button, the
+ * primary pressed on a slow loop. Its foot fades out rather than end on a flat edge.
+ */
 export function PhoneIllustration(props: { ask: PhoneAsk }): JSX.Element {
   // Gradients are referenced by id across the whole document, so each phone names its own.
   const id = createUniqueId();
   const body = `phone-body-${id}`;
-  const fade = `phone-fade-${id}`;
   return (
     <div class={s['phone']} aria-hidden="true">
       <svg class={s['art']} width="234" height="309" viewBox="0 0 234 309" fill="none">
@@ -23,10 +25,6 @@ export function PhoneIllustration(props: { ask: PhoneAsk }): JSX.Element {
           <linearGradient id={body} x1="117" y1="0" x2="117" y2="309" gradientUnits="userSpaceOnUse">
             <stop offset="0" class={s['bodyTop']} />
             <stop offset="1" class={s['bodyBottom']} />
-          </linearGradient>
-          <linearGradient id={fade} x1="117" y1="188" x2="117" y2="309" gradientUnits="userSpaceOnUse">
-            <stop offset="0" class={s['fadeTop']} />
-            <stop offset="1" class={s['fadeBottom']} />
           </linearGradient>
         </defs>
         <path
@@ -44,7 +42,6 @@ export function PhoneIllustration(props: { ask: PhoneAsk }): JSX.Element {
             {ASK_COPY[props.ask].primary}
           </text>
         </g>
-        <rect class={s['fade']} fill={`url(#${fade})`} y="188" width="234" height="121" />
       </svg>
       <div class={s['symbol']}>
         <LogoSymbol height={SYMBOL_HEIGHT} />

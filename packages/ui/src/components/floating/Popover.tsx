@@ -37,6 +37,11 @@ export type PopoverProps = {
   placement?: Placement | undefined;
   /** The content's chunk, loaded when the browser is idle. */
   preload?: (() => Promise<unknown>) | undefined;
+  /**
+   * Picks what takes focus as the popover opens and as its content loads, or nothing to focus the surface itself.
+   * Without one, the first control that is not a link.
+   */
+  initialFocus?: ((root: HTMLElement) => HTMLElement | undefined) | undefined;
   testId?: string | undefined;
   children: JSX.Element;
 };
@@ -74,7 +79,13 @@ export function Popover(props: PopoverProps): JSX.Element {
   return (
     <PopoverContext value={state}>
       <SurfaceSlot state={state}>
-        <PopoverSurface state={state} class={props.class} placement={props.placement} testId={props.testId}>
+        <PopoverSurface
+          state={state}
+          class={props.class}
+          placement={props.placement}
+          testId={props.testId}
+          initialFocus={props.initialFocus}
+        >
           {props.children}
         </PopoverSurface>
       </SurfaceSlot>

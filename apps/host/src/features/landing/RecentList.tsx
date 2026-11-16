@@ -96,7 +96,7 @@ export function RecentList(props: RecentListProps): JSX.Element {
                         }
                       }}
                     >
-                      <span class={s['label']} data-testid="landing-recent-label">
+                      <span data-testid="landing-recent-label">
                         {label}
                         <span class={s['tld']} data-testid="landing-tld">
                           {suffix()}

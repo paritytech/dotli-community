@@ -1,11 +1,14 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* A dotted underline at rest says the value can be copied. */
 .code {
   font-family: inherit;
   font-size: 11px;
   color: var(--td-fg);
   overflow-wrap: anywhere;
+  text-decoration: underline dotted var(--td-fg-faint);
+  text-underline-offset: 3px;
 }
 
 .copy {
@@ -17,13 +20,18 @@
   text-align: left;
   cursor: copy;
 }
+.copy:hover {
+  border-radius: 2px;
+  background: var(--td-bg-chip);
+}
 .copy:hover .code {
   color: var(--td-fg-bright);
-  text-decoration: underline dotted var(--td-fg-dim);
+  text-decoration-color: var(--td-fg-dim);
 }
 .copy:focus-visible {
-  outline: 1px solid var(--td-focus);
+  outline: 2px solid var(--td-focus);
   outline-offset: 2px;
+  border-radius: 2px;
 }
 .copy[data-copied] .code {
   color: var(--td-green);

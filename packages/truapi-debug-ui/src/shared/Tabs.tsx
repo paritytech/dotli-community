@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, For } from 'solid-js';
+import { createEffect, createSignal, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getRovingTarget } from './getRovingTarget.js';
 import s from './Tabs.module.css';
@@ -24,6 +24,8 @@ export function Tabs<T extends string>(props: {
   tabs: readonly TabOption<T>[];
   /** None while the strip's panel is folded away, so no tab claims to show it. */
   selected: T | null;
+  /** Drawn as the current tab while none is selected, such as the one a folded panel opens on. */
+  current?: T | undefined;
   onSelect: (value: T) => void;
   /** `primary` for the panel's top-level tabs, `secondary` for tabs inside one. */
   variant: 'primary' | 'secondary';
@@ -38,6 +40,18 @@ export function Tabs<T extends string>(props: {
   hidden?: boolean;
   class?: string | undefined;
 }): JSX.Element {
+  let strip: HTMLDivElement | undefined;
+  // A strip that scrolls brings the shown tab into view, so the tab a panel opens on is never cut off.
+  createEffect(
+    () => props.selected ?? props.current ?? null,
+    value => {
+      if (value !== null) {
+        strip
+          ?.querySelector(`:scope > [data-value="${value}"]`)
+          ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    },
+  );
   // Without it, Tab from an arrow-focused tab stops on the selected one before leaving.
   const [focused, setFocused] = createSignal<number | null>(null);
   const tabStop = (): number =>
@@ -99,6 +113,9 @@ export function Tabs<T extends string>(props: {
       role="tablist"
       aria-label={props.label}
       hidden={props.hidden}
+      ref={element => {
+        strip = element;
+      }}
       onKeyDown={handleKeyDown}
       onFocusIn={handleFocusIn}
       onFocusOut={handleFocusOut}
@@ -112,6 +129,7 @@ export function Tabs<T extends string>(props: {
             data-value={tab.value}
             role="tab"
             aria-selected={props.selected === tab.value ? 'true' : 'false'}
+            data-current={props.selected === null && props.current === tab.value ? '' : undefined}
             aria-controls={props.panelId}
             tabindex={index() === tabStop() ? 0 : -1}
             type="button"

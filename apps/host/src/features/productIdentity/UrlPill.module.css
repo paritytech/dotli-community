@@ -25,7 +25,10 @@
   border-radius: var(--r-full);
   appearance: none;
   background: var(--chrome-well);
-  box-shadow: var(--chrome-shadow-inset);
+  /* A visible edge, as the well alone sinks into the bar. */
+  box-shadow:
+    inset 0 0 0 1px var(--chrome-ring),
+    var(--chrome-shadow-inset);
   color: var(--chrome-text);
   font: var(--fw-regular) 13px / 1 var(--font-sans);
   user-select: none;

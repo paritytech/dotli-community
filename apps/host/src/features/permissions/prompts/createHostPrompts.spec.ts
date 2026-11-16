@@ -23,7 +23,7 @@ describe('host prompts', () => {
     // When
     const answer = prompts.confirmReview({
       dialog: {
-        title: 'Sign Transaction',
+        title: 'Sign transaction',
         icon: SignIcon,
         fields: [],
         buttons: [
@@ -49,7 +49,7 @@ describe('host prompts', () => {
     const closed: string[] = [];
     const answer = prompts.confirmReview({
       dialog: {
-        title: 'Sign Transaction',
+        title: 'Sign transaction',
         fields: [],
         buttons: [
           { label: 'Cancel', variant: 'danger', result: 'rejected' },
@@ -90,7 +90,7 @@ describe('host prompts', () => {
     // When
     const answer = prompts.confirmReview({
       dialog: {
-        title: 'Resource Allocation',
+        title: 'Resource allocation',
         fields: [],
         buttons: [{ label: 'Allow', variant: 'primary', result: 'accepted' }],
         dismissOnBackdrop: false,
@@ -163,7 +163,7 @@ describe('permission request', () => {
     const { view } = shownModal();
 
     // Then
-    expect(view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });
+    expect(view.fields[0]).toEqual({ label: 'App', value: withActiveTld('myapp') });
     expect(view.notice).toBe('Granting this permission will reload the application.');
   });
 
@@ -298,7 +298,7 @@ describe('browser block', () => {
     });
 
     // Then
-    expect(shownModal().view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });
+    expect(shownModal().view.fields[0]).toEqual({ label: 'App', value: withActiveTld('myapp') });
   });
 });
 

@@ -32,6 +32,8 @@ function PanelFrame(props: { children: JSX.Element }): JSX.Element {
         right: '0',
         bottom: '0',
         width: `${String(stage.panel.width())}px`,
+        // A phone's dock is never wider than the screen, whatever width a drag asked for.
+        'max-width': '100%',
         display: 'flex',
         'flex-direction': 'column',
         'box-sizing': 'border-box',
@@ -320,7 +322,7 @@ export const SendingBringsMeToMine: Story = {
   },
 };
 
-/** As a reader of a room whose app chose an empty footer, I see no message box. */
+/** As a reader of a room whose app chose an empty footer, I see no message box and am told it is read only. */
 export const EmptyFooterHasNoComposer: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -331,8 +333,9 @@ export const EmptyFooterHasNoComposer: Story = {
     await step('Given a room whose app chose an empty footer', async () => {
       await openRoom(canvasElement, 'Room 0', 1);
     });
-    await step('Then its conversation shows no message box', async () => {
+    await step('Then its conversation shows no message box and says it is read only', async () => {
       await expect(within(canvasElement).getByPlaceholderText('Message')).not.toBeVisible();
+      await expect(query(canvasElement, '#chat-panel-hint')).toHaveTextContent('This chat is read only.');
     });
   },
 };

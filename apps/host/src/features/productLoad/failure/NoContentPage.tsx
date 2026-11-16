@@ -17,10 +17,10 @@ export function NoContentPage(props: {
   onSearchAgain: () => void;
 }): JSX.Element {
   return (
-    <ErrorFrame standalone={props.standalone} class={s['unreached']} icon={GlobeIcon} title="This app can't be reached">
+    <ErrorFrame standalone={props.standalone} class={s['unreached']} icon={GlobeIcon} title="No app with this name">
       {/* The chip stays inside the sentence, so a screen reader hears it as one. */}
       <ErrorDetail class={s['line']}>
-        Check if there is a typo in{' '}
+        Check the name for a typo:{' '}
         <span class={s['domain']} data-testid="error-page-domain">
           <span class={s['domainHost']}>{props.label}</span>
           <span class={s['domainTld']}>{props.tld}</span>

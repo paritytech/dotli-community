@@ -11,7 +11,6 @@ function createLoading(phase: LoadingScreenPhase) {
     progress: 0,
     step: [],
     explanation: '',
-    explanationOpacity: 1,
     srText: '',
     warning: null,
     phase,

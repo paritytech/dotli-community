@@ -20,6 +20,8 @@ export function Resizer(props: {
   /** Hidden from view and from the pointer, but still holding its place in the layout. */
   disabled?: boolean;
   hidden?: boolean;
+  /** Draws its line at rest too, for a divider between two panes. Otherwise the line shows only while in use. */
+  divider?: boolean;
   title?: string;
   class?: string | undefined;
   /** Before the first move, for anything the moves need measured once. */
@@ -54,6 +56,7 @@ export function Resizer(props: {
       data-testid={props.testId}
       data-orientation={props.orientation}
       data-disabled={props.disabled === true ? '' : undefined}
+      data-divider={props.divider === true ? '' : undefined}
       hidden={props.hidden}
       role="separator"
       aria-orientation={props.orientation}

@@ -11,17 +11,17 @@ afterEach(() => {
 });
 
 describe('loading store', () => {
-  it('As a user watching the loading screen, I get the same explanation frame again and it redraws only once it stops dimming', () => {
+  it('As a user watching the loading screen, I get the same explanation frame again and it redraws only once it types on', () => {
     // Given
-    loadingState.update({ explanation: 'Reaching out', explanationOpacity: 0.5 });
+    loadingState.update({ explanation: 'Reach' });
     const notified = recordNotified(loadingState.store);
 
-    // When: the typing loop writes the same frame again, twice, then dims no more.
-    loadingState.update({ explanation: 'Reaching out', explanationOpacity: 0.5 });
+    // When: the typing loop writes the same frame again, twice, then types on.
+    loadingState.update({ explanation: 'Reach' });
     loadingState.update({ ...loadingState.get() });
-    loadingState.update({ explanationOpacity: 1 });
+    loadingState.update({ explanation: 'Reaching out' });
 
     // Then
-    expect(notified).toEqual([{ ...loadingState.store.init, explanation: 'Reaching out', explanationOpacity: 1 }]);
+    expect(notified).toEqual([{ ...loadingState.store.init, explanation: 'Reaching out' }]);
   });
 });

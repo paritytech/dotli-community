@@ -7,7 +7,7 @@ import type { Backend } from '@dotli/config';
 import { InfoIcon } from '@dotli/ui/icons';
 import { Accordion, Callout, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainGroup } from './ChainGroup.js';
-import { isNetworkOffline } from './networkVerdict.js';
+import { isNetworkOffline, NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
 import {
@@ -60,7 +60,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
     describeNetworkStatus({
       verdict: props.network().verdict,
       offline: isNetworkOffline(props.health()),
-      chainCount: props.network().chains.filter(chain => chain.state === 'live').length,
+      chains: props.network().chains,
       backend: props.backend(),
     }),
   );
@@ -84,12 +84,14 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   });
   const sinceLast = (chain: ChainView): number | null =>
     chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, now() - props.network().readAt);
+  const isBehind = (chain: ChainView): boolean => props.network().verdict.slow?.includes(chain.label) === true;
+  const unreachable = (): boolean => props.network().verdict.tone === 'unreachable';
   const transfer = createMemo(() => describeTransfer(props.network().transfer, !props.productLoaded()));
   return (
     <Surface width="md" padded testId="chains-content">
       <SurfaceHead title="Network" testId="chains-head" />
       <Well class={s['status']} testId="chains-status">
-        <StatusDot tone={status().tone} testId="chains-status-dot" />
+        <StatusDot tone={NETWORK_HEALTH[status().tone].dot} class={s['statusDot']} testId="chains-status-dot" />
         <div class={s['statusText']}>
           <p class={s['statusTitle']} data-testid="chains-status-title">
             {status().title}
@@ -100,7 +102,14 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
         </div>
       </Well>
       <For each={knownChains()} keyed={chain => chain.key}>
-        {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
+        {chain => (
+          <ChainGroup
+            chain={chain()}
+            sinceLast={sinceLast(chain())}
+            behind={isBehind(chain())}
+            unreachable={unreachable()}
+          />
+        )}
       </For>
       <Show when={otherChains().length > 0}>
         <Accordion
@@ -110,7 +119,14 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
         >
           <div class={s['other']}>
             <For each={otherChains()} keyed={chain => chain.key}>
-              {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
+              {chain => (
+                <ChainGroup
+                  chain={chain()}
+                  sinceLast={sinceLast(chain())}
+                  behind={isBehind(chain())}
+                  unreachable={unreachable()}
+                />
+              )}
             </For>
           </div>
         </Accordion>
@@ -123,9 +139,9 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
         <TransferLine row={transfer().speed} />
         <TransferLine row={transfer().size} />
       </div>
-      {/* Trusted providers have no peers to steady. */}
-      <Show when={isLightClientOrUnread(props.backend())}>
-        <Callout icon={InfoIcon} testId="chains-tips">
+      {/* Trusted providers have no peers to steady, and a good, quiet or offline network gains nothing from it. */}
+      <Show when={isLightClientOrUnread(props.backend()) && (status().tone === 'idle' || status().tone === 'warn')}>
+        <Callout icon={InfoIcon} class={s['tips']} testId="chains-tips">
           {TIP}
         </Callout>
       </Show>

@@ -9,7 +9,7 @@ const meta = {
   title: 'Primitives/Field',
   parameters: { chrome: true },
   component: Field,
-  args: { label: 'Application', value: 'playground.dot' },
+  args: { label: 'App', value: 'playground.dot' },
 } satisfies Meta<typeof Field>;
 
 export default meta;

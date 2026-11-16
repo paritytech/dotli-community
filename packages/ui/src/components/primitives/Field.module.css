@@ -24,18 +24,33 @@
 }
 .field[data-mono] .value {
   /* Scrolls in its own box so the fields and notice after it stay in view. */
-  max-height: 120px;
+  max-height: 7lh;
   overflow-y: auto;
   font-family: var(--font-mono);
-  font-size: var(--fs-caption);
+  /* A break between any two characters, which balancing needs to even out the lines of a hash. */
+  word-break: break-all;
+  text-wrap: balance;
+  scrollbar-width: thin;
+  scrollbar-color: var(--chrome-ring) transparent;
 }
 .field[data-mono] .value:focus-visible {
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-.field[data-warning] .label,
+/* The last line fades, and a blank line after the value lets the end scroll clear of the fade. */
+.field[data-mono] .value[data-scrolls] {
+  padding-bottom: 1lh;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1lh), transparent);
+}
 .field[data-warning] .value {
   color: var(--chrome-warn-text);
+}
+/* Sits on the first line's text, so the warning does not rest on its colour alone. */
+.warnIcon {
+  width: 1em;
+  height: 1em;
+  margin-right: var(--sp-1);
+  vertical-align: -0.125em;
 }
 
 @media (max-width: 560px) {

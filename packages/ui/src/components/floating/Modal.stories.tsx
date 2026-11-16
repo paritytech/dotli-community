@@ -7,7 +7,6 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { TrashIcon } from '../icons/TrashIcon.js';
 import { Button } from '../primitives/Button.js';
-import { Callout } from '../primitives/Well.js';
 import { Modal } from './Modal.js';
 import { Popover } from './Popover.js';
 
@@ -28,13 +27,14 @@ function Harness() {
         setOpen(next);
       }}
       title="Clear site data"
+      icon={TrashIcon}
       labelledBy="story-modal-title"
       initialFocus={() => input}
       testId="story-modal"
     >
       <Modal.Head titleId="story-modal-title" title="Clear site data" icon={TrashIcon} />
       <Modal.Body>
-        <Callout>The site forgets its settings and signs you out.</Callout>
+        <p style={{ margin: '0' }}>The site forgets its settings and signs you out.</p>
         <input
           ref={el => {
             input = el;
@@ -96,9 +96,36 @@ export const Desktop: Story = {
   },
 };
 
-/** As a phone user, I see the dialog as a sheet with its title. */
+/** As a dotli user, I see the dialog as a card headed by its icon and title, with its body and answers. */
+export const Card: Story = {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
+    await step('Then the card shows its title, its field and both answers', async () => {
+      const card = within(body.getByTestId('story-modal'));
+      // The card fades in as it opens.
+      await waitFor(() => expect(card.getByRole('heading', { level: 2, name: 'Clear site data' })).toBeVisible());
+      await waitFor(() => expect(body.getByTestId('story-password')).toHaveFocus());
+      await expect(card.getByRole('button', { name: 'Cancel' })).toBeVisible();
+      await expect(card.getByRole('button', { name: 'Clear' })).toBeVisible();
+    });
+  },
+};
+
+/** As a phone user, I see the dialog as a sheet headed by its icon and title. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
+    await step('Then the sheet head leads with the icon and the title', async () => {
+      const head = within(await body.findByTestId('story-modal-sheet-head'));
+      await expect(head.getByTestId('story-modal-sheet-icon').querySelector('svg')).not.toBeNull();
+      await expect(head.getByTestId('story-modal-sheet-title')).toHaveTextContent('Clear site data');
+    });
+  },
 };
 
 /** As a dotli user, I resize the window across the phone breakpoint and the dialog keeps my typed value and focus. */
@@ -155,7 +182,7 @@ function BarHarness(props: { mustAnswer?: boolean }) {
         </header>
       </Portal>
       <Popover id="bar-popover" title="Account" trigger={trigger()}>
-        <p>Signed in as Alice.</p>
+        <p style={{ margin: '0', padding: '0 16px' }}>Signed in as Alice.</p>
       </Popover>
       <Modal
         open={open()}
@@ -166,10 +193,12 @@ function BarHarness(props: { mustAnswer?: boolean }) {
           setOpen(next);
         }}
         title="Clear site data"
+        labelledBy="bar-modal-title"
         testId="bar-modal"
       >
+        <Modal.Head titleId="bar-modal-title" title="Clear site data" />
         <Modal.Body>
-          <p>The site forgets its settings and signs you out.</p>
+          <p style={{ margin: '0' }}>The site forgets its settings and signs you out.</p>
         </Modal.Body>
       </Modal>
     </>

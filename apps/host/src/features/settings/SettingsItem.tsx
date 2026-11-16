@@ -33,13 +33,17 @@ function unverified(settings: SavedSettings | null): boolean {
 export function SettingsItem(props: SettingsItemProps): JSX.Element {
   const content = omit(props, 'open', 'onOpenChange');
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  // The mark is a dot, so the name says what it means.
+  const name = (): string => (unverified(props.settings()) ? 'Settings, unverified connection' : 'Settings');
   return (
     <ActionItem
       name="settings"
       label="Settings"
       icon={SlidersIcon}
       aside={
-        unverified(props.settings()) ? () => <StatusDot tone="warn" size="sm" label="Unverified session" /> : undefined
+        unverified(props.settings())
+          ? () => <StatusDot tone="warn" size="sm" label="Unverified connection" />
+          : undefined
       }
       priority={TOPBAR_PRIORITY.settings}
       activate={() => {
@@ -52,8 +56,9 @@ export function SettingsItem(props: SettingsItemProps): JSX.Element {
         }}
         id="mode-button"
         badge={unverified(props.settings())}
-        title="Settings"
-        aria-label="Settings"
+        badgeTone="warn"
+        title={name()}
+        aria-label={name()}
       >
         <SlidersIcon />
       </IconButton>

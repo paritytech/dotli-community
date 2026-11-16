@@ -98,13 +98,17 @@ export const PhoneBottomDock: Story = {
     await step('When I drag the splitter down', () => {
       drag(getPart('td-body-splitter'), { moves: [{ x: 0, y: body.top + 250 }] });
     });
-    await step('Then the panel docks at the bottom and stacks the list above the detail', async () => {
-      await expect(getPanel()).toHaveAttribute('data-dock', 'bottom');
-      await expect(getPanel()).toHaveAttribute('data-layout', 'stacked');
-      await expect(getPart('td-body-splitter')).toHaveAttribute('aria-orientation', 'horizontal');
-      await expect(getBox(getPart('td-views')).height).toBeCloseTo(220, 0);
-      await expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
-    });
+    await step(
+      'Then the panel docks at the bottom and stacks the list above the detail, which keeps room',
+      async () => {
+        await expect(getPanel()).toHaveAttribute('data-dock', 'bottom');
+        await expect(getPanel()).toHaveAttribute('data-layout', 'stacked');
+        await expect(getPart('td-body-splitter')).toHaveAttribute('aria-orientation', 'horizontal');
+        // The phone's body is too short for both minimums, so the detail keeps a third of it.
+        await expect(getBox(getPart('td-detail')).height).toBeGreaterThanOrEqual(Math.floor((body.height - 6) / 3));
+        await expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
+      },
+    );
   },
 };
 

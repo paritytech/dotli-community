@@ -26,7 +26,7 @@ export function Suggestions(props: SuggestionsProps): JSX.Element {
       <Listbox
         id={SUGGESTIONS_ID}
         label="Suggested names"
-        loading={props.loading() ? 'Loading names' : undefined}
+        loading={props.loading() ? 'Loading names…' : undefined}
         testId="landing-suggestions"
       >
         <For each={props.labels()}>

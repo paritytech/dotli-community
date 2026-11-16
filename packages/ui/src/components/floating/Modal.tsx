@@ -17,6 +17,8 @@ export type ModalProps = {
   onOpenChange: (open: boolean, reason?: 'dismiss' | 'close') => void;
   /** The sheet head's title, and the name when nothing labels the card. */
   title: string;
+  /** Drawn bare before the sheet head's title. The card draws its own in `Modal.Head`. */
+  icon?: Component<IconProps> | undefined;
   labelledBy?: string | undefined;
   /** The id of what describes the card or sheet, which focus on it reads. */
   describedBy?: string | undefined;
@@ -128,6 +130,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
       >
         <SheetFrame
           title={props.title}
+          icon={props.icon}
           onDismiss={() => {
             props.onOpenChange(false, 'close');
           }}
@@ -150,7 +153,7 @@ function Head(props: {
   /** The modal's `labelledBy`. */
   titleId: string;
   title: string;
-  /** Drawn in the IconTile. */
+  /** Drawn in the IconTile, bare over the title. */
   icon?: Component<IconProps> | undefined;
   iconTestId?: string;
 }): JSX.Element {

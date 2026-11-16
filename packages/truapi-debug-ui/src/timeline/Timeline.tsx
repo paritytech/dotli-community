@@ -7,7 +7,7 @@ import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { EventSeq } from '../model/storedEvent.js';
 import type { TimelineLane } from '../model/buildTimeline.js';
-import { MARGIN_WIDTH } from '../model/timelineGeometry.js';
+import { BOX_LABEL_INSET, MARGIN_WIDTH, ROW_HEIGHT } from '../model/timelineGeometry.js';
 import s from './Timeline.module.css';
 
 type TimelineSelect = (seq: EventSeq, element: Element) => void;
@@ -105,11 +105,23 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
                   height={box().height}
                   rx={2}
                   ry={2}
-                  style={{ fill: box().color }}
+                  style={{ '--box-color': box().color }}
                   onClick={e => {
                     props.onSelect(box().seq, e.currentTarget);
                   }}
                 />
+                <Show when={box().label}>
+                  {label => (
+                    <text
+                      class={s['boxLabel']}
+                      data-testid="td-tl-label"
+                      x={box().x + BOX_LABEL_INSET}
+                      y={box().y + (ROW_HEIGHT - 2) / 2}
+                    >
+                      {label()}
+                    </text>
+                  )}
+                </Show>
                 <Show when={box().connector}>
                   {connector => (
                     <line

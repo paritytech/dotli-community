@@ -31,9 +31,18 @@
   border-width: 1.5px;
 }
 .line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
   margin: 0;
   color: var(--chrome-text-muted);
-  font: 12px / 1.4 var(--font-sans);
+  font: var(--fs-caption) / 1.4 var(--font-sans);
+}
+.warn {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--chrome-warn);
 }
 @media (max-width: 560px) {
   .picker {
@@ -44,6 +53,6 @@
     gap: var(--sp-1);
   }
   .line {
-    font-size: 13px;
+    font-size: var(--fs-small);
   }
 }

@@ -12,7 +12,7 @@ describe('browser block dialog', () => {
 
     // Then
     expect(view.fields).toEqual([
-      { label: 'Application', value: 'myapp.dot' },
+      { label: 'App', value: 'myapp.dot' },
       { label: 'Permission', value: PERMISSION_CATALOG.Camera.description },
     ]);
     expect(view.buttons).toEqual([

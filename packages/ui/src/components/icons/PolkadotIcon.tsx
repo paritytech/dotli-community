@@ -16,12 +16,12 @@ export function PolkadotIcon(props: IconProps): JSX.Element {
       fill="currentColor"
       aria-hidden="true"
     >
-      <ellipse cx="12" cy="3.6" rx="3.3" ry="2.1" />
-      <ellipse cx="12" cy="20.4" rx="3.3" ry="2.1" />
-      <ellipse cx="19.3" cy="7.8" rx="3.3" ry="2.1" transform="rotate(60 19.3 7.8)" />
-      <ellipse cx="19.3" cy="16.2" rx="3.3" ry="2.1" transform="rotate(-60 19.3 16.2)" />
-      <ellipse cx="4.7" cy="16.2" rx="3.3" ry="2.1" transform="rotate(60 4.7 16.2)" />
-      <ellipse cx="4.7" cy="7.8" rx="3.3" ry="2.1" transform="rotate(-60 4.7 7.8)" />
+      <ellipse cx="12" cy="3.6" rx="2.8" ry="1.8" />
+      <ellipse cx="12" cy="20.4" rx="2.8" ry="1.8" />
+      <ellipse cx="19.3" cy="7.8" rx="2.8" ry="1.8" transform="rotate(60 19.3 7.8)" />
+      <ellipse cx="19.3" cy="16.2" rx="2.8" ry="1.8" transform="rotate(-60 19.3 16.2)" />
+      <ellipse cx="4.7" cy="16.2" rx="2.8" ry="1.8" transform="rotate(60 4.7 16.2)" />
+      <ellipse cx="4.7" cy="7.8" rx="2.8" ry="1.8" transform="rotate(-60 4.7 7.8)" />
     </svg>
   );
 }

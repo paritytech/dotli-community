@@ -6,7 +6,7 @@
 import { createMemo, createSignal, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ButtonLink, IconButton, Popover } from '@dotli/ui';
-import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
+import { LogoSymbol } from '@dotli/ui/brand';
 import type { ProductCardView } from './productCardView.js';
 import { OpenProductCard, preloadProductCard } from './OpenProductCard.js';
 import s from './ProductButton.module.css';
@@ -28,10 +28,12 @@ export function ProductButton(props: ProductButtonProps): JSX.Element {
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   // Read once in an owned scope, as the accessor may subscribe to a store on each read.
   const card = createMemo(() => props.card());
-  const title = (): string => {
+  const name = (): string => {
     const current = card();
     return current === null ? 'dot.li' : `About ${current.domain}`;
   };
+  // The card under it names the domain, so the sheet's title does not repeat it.
+  const title = (): string => (card() === null ? 'dot.li' : 'About this app');
   return (
     <span class={s['slot']} data-product-button="">
       <IconButton
@@ -39,7 +41,7 @@ export function ProductButton(props: ProductButtonProps): JSX.Element {
           setButton(el);
         }}
         id="product-button"
-        aria-label={title()}
+        aria-label={name()}
       >
         <Show when={card()?.icon} fallback={<LogoSymbol height={24} testId="product-button-mark" />}>
           {icon => (
@@ -54,12 +56,19 @@ export function ProductButton(props: ProductButtonProps): JSX.Element {
         trigger={button()}
         preload={card() === null ? undefined : preloadProductCard}
       >
-        <Show when={card()}>{current => <OpenProductCard card={current()} onShow={props.onCardShow} />}</Show>
+        <Show
+          when={card()}
+          fallback={
+            <p class={s['lead']} data-testid="product-sheet-lead">
+              Opens Polkadot apps by their .dot name.
+            </p>
+          }
+        >
+          {current => <OpenProductCard card={current()} onShow={props.onCardShow} />}
+        </Show>
         <div class={s['footer']}>
           <ButtonLink href={props.homeUrl} block testId="product-sheet-home">
-            Open
-            <LogoSymbol height={20} />
-            <LogoWordmark height={13} />
+            Browse more apps
           </ButtonLink>
         </div>
       </Popover>

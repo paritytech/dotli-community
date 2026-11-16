@@ -4,21 +4,40 @@
 .phrase {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1_5);
-  width: var(--w-pop-md);
-  max-width: 100%;
+  gap: var(--sp-4);
+  /* As wide as the buttons under it, in a dialog and on the window page alike. */
+  width: 100%;
 }
 
-.subtitle,
-.label {
+/* The title and its lead, centred like every other sign-in screen's. */
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  text-align: center;
+  text-wrap: balance;
+}
+.subtitle {
   margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  text-wrap: pretty;
+}
+.warn-icon {
+  color: var(--chrome-warn);
+}
+
+/* The label, the box and its error, kept together. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1_5);
+}
+.label {
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
-}
-
-.label {
-  margin-top: var(--sp-1);
 }
 
 .input {
@@ -33,7 +52,15 @@
   box-shadow: var(--chrome-shadow-inset);
   color: var(--chrome-text);
   font: var(--fw-regular) var(--fs-body) / var(--lh-body) var(--font-mono);
-  resize: vertical;
+  resize: none;
+}
+.input::placeholder {
+  color: var(--chrome-text-muted);
+}
+.input[aria-invalid='true'] {
+  box-shadow:
+    var(--chrome-shadow-inset),
+    inset 0 0 0 1px var(--chrome-err);
 }
 .input:focus-visible {
   outline: var(--chrome-focus-ring);
@@ -46,4 +73,11 @@
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);
   line-height: var(--lh-body);
+}
+
+@media (max-width: 560px) {
+  /* A sheet heads the view from the start of the line, so its lead follows. */
+  .phrase[data-level='layout'] .intro {
+    text-align: start;
+  }
 }

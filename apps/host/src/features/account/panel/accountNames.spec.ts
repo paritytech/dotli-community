@@ -56,7 +56,7 @@ describe('account names', () => {
 
     // Then
     expect(sessionUsername(session)).toBeUndefined();
-    expect(name).toBe('0x000102...1e1f');
+    expect(name).toBe('0x000102…1e1f');
   });
 
   it('As a user whose account answers an empty username, I see my shortened address instead', () => {
@@ -67,7 +67,7 @@ describe('account names', () => {
     const name = sessionDisplayName(session);
 
     // Then
-    expect(name).toBe('0x000102...1e1f');
+    expect(name).toBe('0x000102…1e1f');
   });
 
   it('As a user with a username, my username wins over my address, primary first', () => {
@@ -125,7 +125,7 @@ describe('account names', () => {
     const names = [offeredAccountName(wallet), offeredAccountName(session)];
 
     // Then the username and the shortened key show
-    expect(names).toEqual(['bob.02', '0x000102...1e1f']);
+    expect(names).toEqual(['bob.02', '0x000102…1e1f']);
   });
 
   it('As a user in the sign-in window, I am offered a paired session with no cached names and see that it is Polkadot App', () => {

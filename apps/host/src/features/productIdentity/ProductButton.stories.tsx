@@ -82,11 +82,11 @@ export const WithIcon: Story = {
     });
     await open(ctx);
     await ctx.step(
-      'Then a sheet titled for the product shows its card and a link home, asking for the author once',
+      'Then a sheet about the app shows its card and a link home, asking for the author once',
       async () => {
-        await expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('swap.dot');
+        await expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('About this app');
         await waitFor(() => expect(body.getByTestId('product-card-name')).toHaveTextContent('Swap'));
-        await expect(body.getByRole('link', { name: 'Open Polkadot' })).toHaveAttribute('href', HOME_URL);
+        await expect(body.getByRole('link', { name: 'Browse more apps' })).toHaveAttribute('href', HOME_URL);
         await expect(cardShows).toBe(1);
       },
     );
@@ -110,7 +110,7 @@ export const WithoutIcon: Story = {
 
 /**
  * As a phone visitor with no product card to show, I see the Polkadot mark in the bar, and a tap opens a sheet with
- * only the link home.
+ * a line about dot.li and the link home.
  */
 export const NoProduct: Story = {
   play: async ctx => {
@@ -121,10 +121,11 @@ export const NoProduct: Story = {
       await expect(getButton()).toHaveAttribute('aria-label', 'dot.li');
     });
     await open(ctx);
-    await ctx.step('Then the sheet holds no product card, only the link home', async () => {
+    await ctx.step('Then the sheet holds no product card, only a line about dot.li and the link home', async () => {
       await expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('dot.li');
       await expect(body.queryByTestId('product-card')).toBeNull();
-      await expect(body.getByRole('link', { name: 'Open Polkadot' })).toHaveAttribute('href', HOME_URL);
+      await expect(body.getByTestId('product-sheet-lead')).toBeVisible();
+      await expect(body.getByRole('link', { name: 'Browse more apps' })).toHaveAttribute('href', HOME_URL);
       await expect(cardShows).toBe(0);
     });
   },

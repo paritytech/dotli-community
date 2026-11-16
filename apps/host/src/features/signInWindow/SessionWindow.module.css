@@ -64,20 +64,20 @@
   overflow-wrap: anywhere;
 }
 
-/* A site's review sets the call under its origin, full width and from the start of the line. An argument's value keeps
-   the line breaks of its text and may hold no break at all. */
+/* A site's review sets the call under its origin, full width and from the start of the line. */
 .window[data-view='site-review'] .content {
   align-items: stretch;
   gap: var(--sp-6);
   text-align: start;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 /* The site list sets its sites full width under its heading, each from the start of the line. An origin may hold no
    break at all, and it wraps rather than hides its port. */
-.window[data-view='sites'] .content {
+.window[data-view='sites'] .content,
+.window[data-view='sites-loading'] .content {
   align-items: stretch;
+  gap: var(--sp-6);
   text-align: start;
   overflow-wrap: anywhere;
 }
@@ -94,8 +94,11 @@
     display: contents;
   }
   .content {
-    flex: 1;
     justify-content: center;
     margin-bottom: var(--sp-3);
+  }
+  /* The content takes the room above the buttons, so they sit within the thumb's reach. */
+  .window[data-buttons] .content {
+    flex: 1;
   }
 }

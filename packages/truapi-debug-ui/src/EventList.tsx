@@ -4,8 +4,10 @@
 // Rows are keyed by seq and must never be rebuilt under streaming traffic, because a browser drops a click
 // whose target node is replaced between pointerdown and click.
 
-import { createEffect, createMemo, flush, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, flush, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { findFirstNewIndex } from './model/findFirstNewIndex.js';
+import { formatCount } from './model/formatCount.js';
 import { formatMemberDelta } from './model/formatMemberDelta.js';
 import type { EventStore } from './model/createEventStore.js';
 import { createOpenCallTracker, SLOW_AFTER_MS } from './model/createOpenCallTracker.js';
@@ -17,6 +19,9 @@ import { toSystemRowData } from './model/toSystemRowData.js';
 import { toTruapiRowData } from './model/toTruapiRowData.js';
 
 import type { KeyedSignals } from './createKeyedSignals.js';
+import { isFollowingNewest } from './pinListScroll.js';
+import { Button } from './shared/Button.js';
+import { ChevronDownIcon } from './icons/ChevronDownIcon.js';
 import { DirectionArrow } from './shared/DirectionArrow.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { IdBadge } from './shared/IdBadge.js';
@@ -160,6 +165,32 @@ export function EventList(props: {
 
   const context: RowContext = { selectedSeq, selectedKey, waiting, work };
 
+  // The newest seq shown when the list stopped following, so the events after it are the ones the user has not seen.
+  const [lastSeenSeq, setLastSeenSeq] = createSignal<EventSeq | null>(null);
+  const unseen = createMemo((): number => {
+    const lastSeq = lastSeenSeq();
+    return lastSeq === null ? 0 : props.events.length - findFirstNewIndex({ lastSeq }, props.events);
+  });
+
+  function trackFollowing(): void {
+    if (list === undefined) {
+      return;
+    }
+    const next = isFollowingNewest(list) ? null : (untrack(lastSeenSeq) ?? props.events.at(-1)?.seq ?? -1);
+    if (next !== untrack(lastSeenSeq)) {
+      flush(() => setLastSeenSeq(next));
+    }
+  }
+
+  function jumpToNewest(): void {
+    if (list === undefined) {
+      return;
+    }
+    list.scrollTop = list.scrollHeight;
+    list.focus({ preventScroll: true });
+    trackFollowing();
+  }
+
   // A selection a filter hides, or the ring evicted, has no option to point at.
   const activeRow = createMemo<string | undefined>(() => {
     const selected = props.selection;
@@ -167,61 +198,72 @@ export function EventList(props: {
   });
 
   return (
-    <div
-      class={[ITEM_LIST_CLASS, s['list']]}
-      data-testid="td-list"
-      hidden={!props.active}
-      role="listbox"
-      aria-label="Events"
-      aria-activedescendant={activeRow()}
-      tabindex="0"
-      ref={element => {
-        list = element;
-        props.listRef(element);
-      }}
-      onClick={event => {
-        if (!(event.target instanceof Element)) {
-          return;
-        }
-        const row = event.target.closest<HTMLElement>('[data-seq]');
-        const seqAttribute = row?.dataset['seq'];
-        if (seqAttribute === undefined) {
-          return;
-        }
-        // Otherwise arrow keys after a click scroll the page instead of stepping rows.
-        list?.focus({ preventScroll: true });
-        props.onSelect(Number(seqAttribute));
-      }}
-      onKeyDown={event => {
-        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
-          return;
-        }
-        const events = props.events;
-        if (events.length === 0) {
-          return;
-        }
-        event.preventDefault();
-        const selected = props.selection;
-        const currentIndex = selected === null ? -1 : events.findIndex(e => e.seq === selected.seq);
-        const nextIndex = stepIndex(event.key, currentIndex, events.length);
-        const nextSeq = events[nextIndex]?.seq;
-        if (nextIndex === currentIndex || nextSeq === undefined) {
-          return;
-        }
-        props.onSelect(nextSeq);
-      }}
-    >
-      <For
-        each={props.events}
-        keyed={e => e.seq}
-        fallback={
-          <div role="option" aria-disabled="true" aria-selected="false">
-            <EmptyState testId="td-empty">No events match the current filter.</EmptyState>
-          </div>
-        }
+    <div class={s['frame']} hidden={!props.active}>
+      <div
+        class={[ITEM_LIST_CLASS, s['list']]}
+        data-testid="td-list"
+        hidden={!props.active}
+        role="listbox"
+        aria-label="Events"
+        aria-activedescendant={activeRow()}
+        tabindex="0"
+        ref={element => {
+          list = element;
+          props.listRef(element);
+        }}
+        onScroll={trackFollowing}
+        onClick={event => {
+          if (!(event.target instanceof Element)) {
+            return;
+          }
+          const row = event.target.closest<HTMLElement>('[data-seq]');
+          const seqAttribute = row?.dataset['seq'];
+          if (seqAttribute === undefined) {
+            return;
+          }
+          // Otherwise arrow keys after a click scroll the page instead of stepping rows.
+          list?.focus({ preventScroll: true });
+          props.onSelect(Number(seqAttribute));
+        }}
+        onKeyDown={event => {
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+            return;
+          }
+          const events = props.events;
+          if (events.length === 0) {
+            return;
+          }
+          event.preventDefault();
+          const selected = props.selection;
+          const currentIndex = selected === null ? -1 : events.findIndex(e => e.seq === selected.seq);
+          const nextIndex = stepIndex(event.key, currentIndex, events.length);
+          const nextSeq = events[nextIndex]?.seq;
+          if (nextIndex === currentIndex || nextSeq === undefined) {
+            return;
+          }
+          props.onSelect(nextSeq);
+        }}
       >
-        {event => renderRow({ event: untrack(event), store: props.store, context })}
-      </For>
+        <For
+          each={props.events}
+          keyed={e => e.seq}
+          fallback={
+            <div role="option" aria-disabled="true" aria-selected="false">
+              <EmptyState testId="td-empty">
+                {props.allEvents.length === 0 ? 'No events yet.' : 'No events match the current filter.'}
+              </EmptyState>
+            </div>
+          }
+        >
+          {event => renderRow({ event: untrack(event), store: props.store, context })}
+        </For>
+      </div>
+      <Show when={unseen() > 0}>
+        <Button testId="td-jump-newest" class={s['jump']} title="Jump to the newest event" onClick={jumpToNewest}>
+          <ChevronDownIcon size={10} />
+          {formatCount(unseen(), 'new event')}
+        </Button>
+      </Show>
     </div>
   );
 }
@@ -309,9 +351,16 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
       >
         {formatProductId(event.productId)}
       </span>
-      <IdBadge id={event.requestId} testId="td-rid" title={`requestId: ${event.requestId}`} />
+      <IdBadge id={event.requestId} testId="td-rid" title={`requestId: ${event.requestId}`} class={s['id']} />
       <span class={s['tagAndSummary']}>
         <MethodTag kind={data.tagKind}>{data.displayTag}</MethodTag>
+        {data.summary !== '' ? (
+          <span class={s['summary']} data-testid="td-summary">
+            {data.summary}
+          </span>
+        ) : null}
+      </span>
+      <span class={s['end']}>
         <Latency text={untrack(() => props.latency)} />
         <Show when={waiting() !== undefined}>
           <span
@@ -321,14 +370,12 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
             data-pending-key={pendingKey ?? ''}
           >
             <PendingIcon size={10} />
-            {`${context.work.formatPending(waiting() ?? 0)} pending`}
+            <span>
+              {context.work.formatPending(waiting() ?? 0)}
+              <span class={s['pendingWord']}> pending</span>
+            </span>
           </span>
         </Show>
-        {data.summary !== '' ? (
-          <span class={s['summary']} data-testid="td-summary">
-            {data.summary}
-          </span>
-        ) : null}
       </span>
     </>
   );
@@ -338,14 +385,18 @@ function SystemCells(props: { event: StoredSystemEvent; latency: string | null }
   const data = toSystemRowData(untrack(() => props.event));
   return (
     <>
-      <LayerBadge layer={data.layer} title={`source: ${data.source}`} />
-      <IdBadge id={data.flowId} testId="td-rid" title={`flowId: ${data.flowId}`} />
+      <span class={s['layer']}>
+        <LayerBadge layer={data.layer} title={`source: ${data.source}`} />
+      </span>
+      <IdBadge id={data.flowId} testId="td-rid" title={`flowId: ${data.flowId}`} class={s['id']} />
       <span class={s['tagAndSummary']}>
         <MethodTag kind="system">{data.eventText}</MethodTag>
-        <Latency text={untrack(() => props.latency)} />
         <span class={s['summary']} data-testid="td-summary">
           {data.summary}
         </span>
+      </span>
+      <span class={s['end']}>
+        <Latency text={untrack(() => props.latency)} />
       </span>
     </>
   );

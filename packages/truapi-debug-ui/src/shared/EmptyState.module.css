@@ -3,8 +3,10 @@
 
 .empty {
   padding: 32px 16px;
-  color: var(--td-fg-faint);
+  color: var(--td-fg-dim);
+  font-family: var(--td-font);
   font-size: 11px;
   line-height: 1.5;
   text-align: center;
+  text-wrap: balance;
 }

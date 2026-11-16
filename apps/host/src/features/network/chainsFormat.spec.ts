@@ -4,6 +4,9 @@
 import { describe, expect, it } from 'vitest';
 import { describeNetworkStatus, describeTransfer, needsCountdown } from './chainsFormat.js';
 import type { LiveVerdict } from './networkVerdict.js';
+import type { ChainView } from './chains.js';
+
+type StatusChain = Pick<ChainView, 'label' | 'state' | 'reachable' | 'peers'>;
 
 describe('describeNetworkStatus under a light client', () => {
   it('As a user with a good connection, the caption counts the chains in sync', () => {
@@ -11,13 +14,13 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains: live(4), backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({
       tone: 'ok',
       title: 'Your connection is good',
-      detail: 'Light client is in sync on all four chains',
+      detail: 'Light client is in sync on all four chains.',
     });
   });
 
@@ -26,21 +29,44 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 10, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({
+      verdict: health,
+      offline: false,
+      chains: live(10),
+      backend: 'smoldot-direct',
+    });
 
     // Then
-    expect(line.detail).toBe('Light client is in sync on all 10 chains');
+    expect(line.detail).toBe('Light client is in sync on all 10 chains.');
   });
 
-  it('As a user while the chains connect, the caption says peers are being found', () => {
+  it('As a user while the chains connect with no peer yet, the caption says peers are being found', () => {
     // Given
     const health: LiveVerdict = { tone: 'idle' };
+    const chains = [chain({ label: 'Relay', state: 'pending' }), chain({ label: 'Hub', state: 'pending', peers: 0 })];
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 3, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains, backend: 'smoldot-direct' });
 
     // Then
-    expect(line).toEqual({ tone: 'idle', title: 'Syncing', detail: 'Finding peers. This takes a few seconds.' });
+    expect(line).toEqual({ tone: 'idle', title: 'Syncing', detail: 'Connecting to peers. This takes a few seconds.' });
+  });
+
+  it('As a user whose chains found peers, the caption names the chains it waits for', () => {
+    // Given
+    const health: LiveVerdict = { tone: 'idle' };
+    const chains = [
+      chain({ label: 'Relay', state: 'pending' }),
+      chain({ label: 'Hub', peers: 4 }),
+      chain({ label: 'People', state: 'pending' }),
+      chain({ label: 'Identity', state: 'unused', reachable: false }),
+    ];
+
+    // When
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains, backend: 'smoldot-direct' });
+
+    // Then
+    expect(line.detail).toBe('Waiting for Relay and People. This takes a few seconds.');
   });
 
   it('As a user with two stalled chains, the caption names them', () => {
@@ -48,13 +74,13 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'warn', slow: ['Hub', 'Identity'] };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains: live(4), backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({
       tone: 'warn',
       title: 'Connection is unstable',
-      detail: 'Hub and Identity are behind',
+      detail: 'Hub and Identity are behind.',
     });
   });
 
@@ -63,10 +89,10 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'warn', slow: ['Hub'] };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains: live(4), backend: 'smoldot-direct' });
 
     // Then
-    expect(line.detail).toBe('Hub is behind');
+    expect(line.detail).toBe('Hub is behind.');
   });
 
   it('As a user who went offline, the menu says so whatever the chains last reported', () => {
@@ -74,7 +100,7 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: true, chainCount: 4, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({ verdict: health, offline: true, chains: live(4), backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({ tone: 'err', title: 'You are offline', detail: 'No peers on any chain. Retrying.' });
@@ -85,10 +111,10 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 2, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains: live(2), backend: 'smoldot-direct' });
 
     // Then
-    expect(line.detail).toBe('Light client is in sync on both chains');
+    expect(line.detail).toBe('Light client is in sync on both chains.');
   });
 
   it("As a user whose settings are not read yet, I open the network menu and see the light client's captions", () => {
@@ -96,10 +122,10 @@ describe('describeNetworkStatus under a light client', () => {
     const verdict: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: verdict, offline: false, chainCount: 4, backend: undefined });
+    const line = describeNetworkStatus({ verdict: verdict, offline: false, chains: live(4), backend: undefined });
 
     // Then
-    expect(line.detail).toBe('Light client is in sync on all four chains');
+    expect(line.detail).toBe('Light client is in sync on all four chains.');
   });
 });
 
@@ -109,10 +135,10 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'rpc-gateway' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains: live(4), backend: 'rpc-gateway' });
 
     // Then
-    expect(line).toEqual({ tone: 'ok', title: 'Your connection is good', detail: 'Served by trusted providers' });
+    expect(line).toEqual({ tone: 'ok', title: 'Your connection is good', detail: 'Served by trusted providers.' });
   });
 
   it('As a user on trusted providers while the chains connect, the caption speaks of providers, not peers', () => {
@@ -120,7 +146,7 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'idle' };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 3, backend: 'rpc-gateway' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains: live(3), backend: 'rpc-gateway' });
 
     // Then
     expect(line).toEqual({
@@ -135,10 +161,10 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'warn', slow: ['Hub', 'Identity'] };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'rpc-gateway' });
+    const line = describeNetworkStatus({ verdict: health, offline: false, chains: live(4), backend: 'rpc-gateway' });
 
     // Then
-    expect(line).toEqual({ tone: 'warn', title: 'Connection is unstable', detail: 'Hub and Identity are behind' });
+    expect(line).toEqual({ tone: 'warn', title: 'Connection is unstable', detail: 'Hub and Identity are behind.' });
   });
 
   it('As a user on trusted providers who went offline, the caption speaks of providers, not peers', () => {
@@ -146,7 +172,7 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: health, offline: true, chainCount: 4, backend: 'rpc-gateway' });
+    const line = describeNetworkStatus({ verdict: health, offline: true, chains: live(4), backend: 'rpc-gateway' });
 
     // Then
     expect(line).toEqual({
@@ -158,12 +184,36 @@ describe('describeNetworkStatus under trusted providers', () => {
 });
 
 describe('describeNetworkStatus with nothing in use', () => {
+  it('As a user on a network with no endpoint for any chain, the menu says the network is out of reach', () => {
+    // Given
+    const verdict: LiveVerdict = { tone: 'unreachable' };
+    const chains = [
+      chain({ state: 'unused', reachable: false }),
+      chain({ label: 'Hub', state: 'unused', reachable: false }),
+    ];
+
+    // When
+    const line = describeNetworkStatus({ verdict, offline: false, chains, backend: 'smoldot-direct' });
+
+    // Then
+    expect(line).toEqual({
+      tone: 'unreachable',
+      title: "Can't reach this network",
+      detail: 'It offers no endpoint for these chains.',
+    });
+  });
+
   it('As a user whose app holds no chain, the menu says none is in use', () => {
     // Given
     const verdict: LiveVerdict = { tone: 'quiet' };
 
     // When
-    const line = describeNetworkStatus({ verdict: verdict, offline: false, chainCount: 0, backend: 'smoldot-direct' });
+    const line = describeNetworkStatus({
+      verdict: verdict,
+      offline: false,
+      chains: live(0),
+      backend: 'smoldot-direct',
+    });
 
     // Then
     expect(line).toEqual({
@@ -173,6 +223,16 @@ describe('describeNetworkStatus with nothing in use', () => {
     });
   });
 });
+
+/** A live chain the network can reach, unless told otherwise. */
+function chain(overrides: Partial<StatusChain> = {}): StatusChain {
+  return { label: 'Relay', state: 'live', reachable: true, peers: null, ...overrides };
+}
+
+/** `count` live chains. */
+function live(count: number): StatusChain[] {
+  return Array.from({ length: count }, (_, i) => chain({ label: `Chain ${String(i)}` }));
+}
 
 /** A chain in use, between its blocks unless told otherwise. */
 const waiting = {

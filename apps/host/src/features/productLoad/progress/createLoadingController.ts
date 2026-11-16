@@ -196,9 +196,8 @@ export function createLoadingController({
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'gone' });
-    // Queued before the stops, so one that throws still takes the screen down. An interrupted fade would otherwise
-    // leave the line stranded dim.
-    emitSideEffect({ kind: 'drawn', view: { phase: 'gone', explanationOpacity: 1 } });
+    // Queued before the stops, so one that throws still takes the screen down.
+    emitSideEffect({ kind: 'drawn', view: { phase: 'gone' } });
     stopPhase(state);
     // A screen that is gone has nothing left to hide.
     state.stopFollowing();
@@ -282,7 +281,7 @@ export function createLoadingController({
           });
           stopRotation(state.rotation);
           stopTyping(state.typing);
-          emitSideEffect({ kind: 'drawn', view: { step, explanation: '', explanationOpacity: 1, srText } });
+          emitSideEffect({ kind: 'drawn', view: { step, explanation: '', srText } });
         },
         phaseEntered(state, { stage }, transition) {
           const { phases, band } = state;
@@ -351,7 +350,7 @@ export function createLoadingController({
             explanation,
           });
           stopPhase(state);
-          emitSideEffect({ kind: 'drawn', view: { explanation, explanationOpacity: 1 } });
+          emitSideEffect({ kind: 'drawn', view: { explanation } });
         },
         crawled(state, _event, transition) {
           const { band, bar } = state;
@@ -399,7 +398,7 @@ export function createLoadingController({
           if (explanation === previous || prefersReducedMotion()) {
             emitState({ ...turned, typing: { kind: 'still' }, explanation });
             stopTyping(typing);
-            emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanation, explanationOpacity: 1 } });
+            emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanation } });
             return;
           }
           emitState({
@@ -414,8 +413,7 @@ export function createLoadingController({
             },
           });
           stopTyping(typing);
-          // An interrupted fade would otherwise leave the line stranded dim.
-          emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanationOpacity: 1 } });
+          emitSideEffect({ kind: 'drawn', view: { srText: explanation } });
         },
         frameDrawn(state, { now }, { emitState, emitSideEffect, update }) {
           const { typing } = state;
@@ -425,12 +423,12 @@ export function createLoadingController({
           const elapsedMs = now - typing.startedAt;
           if (elapsedMs >= typing.eraseMs + TYPE_MS) {
             emitState({ ...state, typing: { kind: 'still' }, explanation: typing.to });
-            emitSideEffect({ kind: 'drawn', view: { explanation: typing.to, explanationOpacity: 1 } });
+            emitSideEffect({ kind: 'drawn', view: { explanation: typing.to } });
             return;
           }
-          const { explanation, opacity } = getTypingFrame(typing, elapsedMs);
+          const explanation = getTypingFrame(typing, elapsedMs);
           emitState({ ...state, typing: { ...typing, frame: requestTypingFrame(update) }, explanation });
-          emitSideEffect({ kind: 'drawn', view: { explanation, explanationOpacity: opacity } });
+          emitSideEffect({ kind: 'drawn', view: { explanation } });
         },
         hidden: hide,
         dismissed(state, _event, { emitState, emitSideEffect, update }) {
@@ -439,7 +437,7 @@ export function createLoadingController({
             update({ kind: 'hidden' });
           }, FADE_MS);
           emitState({ kind: 'dismissing', stopFollowing: state.stopFollowing, fadeTimer });
-          emitSideEffect({ kind: 'drawn', view: { progress: 100, explanationOpacity: 1, phase: 'dismissing' } });
+          emitSideEffect({ kind: 'drawn', view: { progress: 100, phase: 'dismissing' } });
           stopPhase(state);
         },
         disposed: stop,
@@ -632,19 +630,15 @@ function getLentCeiling(next: LoadingPhase | undefined): number {
   return next.reportsProgress === true ? next.base : next.target;
 }
 
-/** The part-typed explanation `elapsedMs` into `typing`, and its opacity. */
-function getTypingFrame(
-  { from, to, eraseMs }: Extract<Typing, { kind: 'typing' }>,
-  elapsedMs: number,
-): { explanation: string; opacity: number } {
+/** The part-typed explanation `elapsedMs` into `typing`. */
+function getTypingFrame({ from, to, eraseMs }: Extract<Typing, { kind: 'typing' }>, elapsedMs: number): string {
   // The frame clock can start a little before `startedAt`, so a zero-length erase is skipped, not divided by.
   if (eraseMs > 0 && elapsedMs < eraseMs) {
     const gone = applyEaseInOut(elapsedMs / eraseMs);
-    // Only a shallow dip, since deeper opacity once sank this block's contrast below AA.
-    return { explanation: from.slice(0, Math.ceil(from.length * (1 - gone))), opacity: 1 - 0.25 * gone };
+    return from.slice(0, Math.ceil(from.length * (1 - gone)));
   }
   const shown = applyEaseInOut((elapsedMs - eraseMs) / TYPE_MS);
-  return { explanation: to.slice(0, Math.ceil(to.length * shown)), opacity: 0.75 + 0.25 * shown };
+  return to.slice(0, Math.ceil(to.length * shown));
 }
 
 function applyEaseInOut(progress: number): number {

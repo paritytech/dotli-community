@@ -103,7 +103,7 @@ export function ResolutionView(props: {
       }}
     >
       <div class={s['actions']}>
-        <Button testId="td-res-clear" onClick={props.onClear}>
+        <Button testId="td-res-clear" disabled={(model()?.flowId ?? null) === null} onClick={props.onClear}>
           Clear
         </Button>
       </div>

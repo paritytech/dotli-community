@@ -33,13 +33,16 @@ function networkRadio(value: string): HTMLInputElement {
 function transportRadio(value: string): HTMLInputElement {
   return query(document, `input[name="dotli-backend"][value="${value}"]`, HTMLInputElement);
 }
+function reloadHint(): string | null | undefined {
+  return document.querySelector('[data-testid="landing-settings-apply-warning"]')?.textContent;
+}
 function selectedCategory(): string | null | undefined {
   return document
     .querySelector('[data-testid="landing-settings-categories"] [aria-pressed="true"]')
     ?.getAttribute('data-testid');
 }
 
-type Category = 'network' | 'provider' | 'advanced';
+type Category = 'network' | 'transport' | 'advanced';
 
 async function showCategory(click: (el: Element) => Promise<void>, category: Category): Promise<void> {
   await click(query(document, `[data-testid="landing-settings-category-${category}"]`));
@@ -103,14 +106,14 @@ export const SavesANetwork: Story = {
   },
 };
 
-/** As a visitor on the landing page, I pick another transport in Provider and Save and apply asks the page to save it. */
+/** As a visitor on the landing page, I pick another transport in Transport and Save and apply asks the page to save it. */
 export const SavesATransport: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
     const click = ctx.userEvent.click;
     await open(ctx);
-    await ctx.step('When I open Provider', async () => {
-      await showCategory(click, 'provider');
+    await ctx.step('When I open Transport', async () => {
+      await showCategory(click, 'transport');
     });
     await ctx.step('Then the saved transport is checked and nothing is to save', async () => {
       await expect(transportRadio('smoldot-direct').checked).toBe(true);
@@ -152,7 +155,10 @@ export const ClearsTheCache: Story = {
   },
 };
 
-/** As a visitor on the landing page whose settings are being applied, I cannot press Clear cache. */
+/**
+ * As a visitor on the landing page whose settings are being applied, I cannot press Clear cache, and Advanced with no
+ * draft shows no reload notice.
+ */
 export const ResetDisablesClear: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -163,14 +169,15 @@ export const ResetDisablesClear: Story = {
     await ctx.step('When I switch to Advanced', async () => {
       await showCategory(ctx.userEvent.click, 'advanced');
     });
-    await ctx.step('Then Clear cache and Save and apply are both disabled', async () => {
+    await ctx.step('Then Clear cache and Save and apply are both disabled, with no reload notice', async () => {
       await expect(clearButton()).toBeDisabled();
       await expect(applyButton()).toBeDisabled();
+      await expect(reloadHint()).toBeUndefined();
     });
   },
 };
 
-/** As a visitor on a deployment with one network, I open the landing settings on Provider, with no Network category. */
+/** As a visitor on a deployment with one network, I open the landing settings on Transport, with no Network category. */
 export const HidesASingleNetwork: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -178,10 +185,11 @@ export const HidesASingleNetwork: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Then it is on Provider, and neither the Network category nor a network is offered', async () => {
-      await expect(selectedCategory()).toBe('landing-settings-category-provider');
+    await ctx.step('Then it is on Transport, and neither the Network category nor a network is offered', async () => {
+      await expect(selectedCategory()).toBe('landing-settings-category-transport');
       await expect(document.querySelector('[data-testid="landing-settings-category-network"]')).toBeNull();
       await expect(document.querySelector('input[name="dotli-network"]')).toBeNull();
+      await expect(reloadHint()).toBe('Transport changes reload the page');
     });
   },
 };

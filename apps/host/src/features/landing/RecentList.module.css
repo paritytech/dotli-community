@@ -43,11 +43,12 @@
   user-select: none;
 }
 
-/* The whole row opens the site, the remove button sits above this. */
+/* The whole row opens the site, the remove button sits above this. It reaches into the well's side paddings, which
+   differ, to stop 4px short of either well edge, so its focus ring clears the name and sits evenly in the well. */
 .link::after {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: 0 calc(var(--sp-1) - var(--sp-1_5)) 0 calc(var(--sp-1) - var(--sp-3));
 }
 
 .link:focus-visible {
@@ -60,17 +61,17 @@
   outline-offset: -2px;
 }
 
-.label {
-  font-weight: var(--fw-medium);
-}
-
 .tld {
   font-weight: var(--fw-regular);
   color: var(--chrome-text-muted);
 }
 
+/* While hidden it lies over the row's end, out of the flow, so a long name takes the room before it shows. */
 .remove {
-  position: relative;
+  position: absolute;
+  top: 50%;
+  right: 0;
+  translate: 0 -50%;
   display: grid;
   flex: none;
   place-items: center;
@@ -105,6 +106,9 @@
 .item:hover .remove,
 .item:focus-within .remove,
 .remove[data-revealed] {
+  position: relative;
+  top: auto;
+  translate: none;
   opacity: 1;
   pointer-events: auto;
 }
@@ -115,6 +119,10 @@
 }
 
 @media (max-width: 560px) {
+  .link::after {
+    inset: 0 calc(var(--sp-1) - var(--sp-2)) 0 calc(var(--sp-1) - var(--sp-4));
+  }
+
   .remove {
     width: var(--h-control-sm);
     height: var(--h-control-sm);

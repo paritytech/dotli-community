@@ -15,7 +15,7 @@ import { ModalOutlet } from './ModalOutlet.js';
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
 
 const passwordView: ModalView<'cancel' | 'unlock'> = {
-  title: 'Encrypted Content',
+  title: 'Encrypted content',
   fields: [],
   input: { kind: 'password', placeholder: 'Password', hint: 'Enter the password to decrypt.' },
   buttons: [
@@ -86,7 +86,7 @@ export const ScrimAndEscapeDismiss: Story = {
     await step('Given two prompts are queued', askNow);
     await step('When I click inside the card', () => press(body.getByTestId('prompt-dialog-notice')));
     await step('Then nothing is answered', async () => {
-      await expect(readTitle()).toBe('Permission Request');
+      await expect(readTitle()).toBe('Permission request');
     });
     await step('When I press the scrim', pressScrim);
     await step('Then the first is dismissed and the second shows', async () => {
@@ -246,15 +246,15 @@ export const PasswordCancelDropsText: Story = {
   },
 };
 
-/** As a keyboard user, I answer the first of two prompts and the second shows with focus on it. */
+/** As a keyboard user, I answer the first of two prompts and the second shows with focus on its safe answer. */
 export const QueuedDialogGetsFocus: Story = {
   beforeEach: ask(buildPermissionView(), buildPermissionView({ title: 'Second' })),
   play: async ({ step }) => {
     await step('Given two prompts are queued', askNow);
     await step('When I answer the first', () => press(body.getByRole('button', { name: 'Deny' })));
-    await step('Then the second shows with focus on it', async () => {
+    await step('Then the second shows with focus on its safe answer', async () => {
       await waitFor(() => expect(readTitle()).toBe('Second'));
-      await waitFor(() => expect(body.getByTestId('prompt-dialog')).toHaveFocus());
+      await waitFor(() => expect(body.getByRole('button', { name: 'Deny' })).toHaveFocus());
     });
   },
 };
@@ -514,8 +514,8 @@ function Page(props: { frames?: number }) {
 
 function buildPermissionView(overrides: Partial<ModalView<Choice>> = {}): ModalView<Choice> {
   return {
-    title: 'Permission Request',
-    fields: [{ label: 'Application', value: 'playground.dot' }],
+    title: 'Permission request',
+    fields: [{ label: 'App', value: 'playground.dot' }],
     notice: 'Granting this permission will reload the application.',
     buttons: [
       { label: 'Deny', variant: 'danger', result: 'deny' },

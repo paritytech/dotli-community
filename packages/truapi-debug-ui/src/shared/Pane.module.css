@@ -13,6 +13,11 @@
   color: var(--td-fg-strong);
   font-size: 11px;
 }
+/* Inset, since the panel clips anything drawn outside the pane. */
+.pane:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: -2px;
+}
 /* Beats global.css's :focus-visible whatever the sheet order (dev loads it last). */
 .own-focus:focus-visible {
   outline: none;

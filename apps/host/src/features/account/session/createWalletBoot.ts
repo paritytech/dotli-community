@@ -51,7 +51,7 @@ type NoteKeptParams = Pick<Reconciled, 'presence'> & {
   wallet: AnsweredWallet;
 };
 
-const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
+const UNREADABLE = 'Local wallet could not be decrypted and was forgotten.';
 
 /** Builds the restore on load. */
 export function createWalletBoot({ reconcile, report, flag, role }: Params) {

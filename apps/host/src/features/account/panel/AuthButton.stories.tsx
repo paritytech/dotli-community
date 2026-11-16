@@ -138,10 +138,14 @@ export const Open: Story = {
       await expect(byId('user-popover-disconnect')).toHaveTextContent('Sign out');
       await expect(document.querySelector('[data-testid="account-local"]')).toBeNull();
     });
+    await ctx.step('Then focus rests on the popover itself, never on Sign out', async () => {
+      await waitFor(() => expect(byId('user-popover')).toHaveFocus());
+      await expect(byId('user-popover-disconnect')).not.toHaveFocus();
+    });
   },
 };
 
-/** As a signed-in user, the popover links to my signed-in sites and opens them in a new tab. */
+/** As a signed-in user, the popover links to my signed-in sites, opens them in a new tab and starts focus there. */
 export const SitesLink: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -159,6 +163,9 @@ export const SitesLink: Story = {
       await expect(link).toHaveTextContent('Signed-in sites');
       await expect(link).toHaveAttribute('href', 'https://dot.li/s/manage');
       await expect(link).toHaveAttribute('target', '_blank');
+    });
+    await ctx.step('Then focus starts on the sites link, not on Sign out', async () => {
+      await waitFor(() => expect(byTestId('account-sites', byId('user-popover'))).toHaveFocus());
     });
   },
 };
@@ -291,7 +298,6 @@ export const Checking: Story = {
     await step('Then the button is busy, disabled and named for the check', async () => {
       await expect(button()).toBeDisabled();
       await expect(button()).toHaveAttribute('aria-busy', 'true');
-      await expect(button().textContent.trim()).toBe('');
       await expect(button()).toHaveAttribute('aria-label', 'Checking sign-in');
       await expect(button()).toHaveAttribute('title', 'Checking sign-in');
     });
@@ -345,7 +351,7 @@ export const Anonymous: Story = {
     });
     await open(ctx);
     await ctx.step('And the account shows the shortened address with the hint', async () => {
-      await expectAccount('0x000102...1e1f', true);
+      await expectAccount('0x000102…1e1f', true);
     });
     await ctx.step('When I reconnect with a username', () => {
       connect(PG);
@@ -384,13 +390,16 @@ export const BareSession: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Then it says Connected with Polkadot App, with the hint', async () => {
-      await expectAccount('Connected with Polkadot App', true);
+    await ctx.step('Then it says connected with Polkadot App, with the hint', async () => {
+      await expectAccount('Polkadot App', true);
+      await expect(document.querySelector('[data-testid="account-content"]')).toHaveTextContent(
+        /Connected withPolkadot App/,
+      );
     });
   },
 };
 
-/** As a local wallet user restored from a bare session, my account says I am connected, not through Polkadot App. */
+/** As a local wallet user restored from a bare session, my account says I am connected with a local account. */
 export const LocalBareSession: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -399,8 +408,12 @@ export const LocalBareSession: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Then it says Connected', async () => {
-      await expect(byId('user-popover-username').textContent).toBe('Connected');
+    await ctx.step('Then it says connected with a local account, named once', async () => {
+      await expect(byId('user-popover-username').textContent).toBe('Local account');
+      await expect(document.querySelector('[data-testid="account-content"]')).toHaveTextContent(
+        /Connected withLocal account/,
+      );
+      await expect(document.querySelector('[data-testid="account-local"]')).toBeNull();
     });
   },
 };
@@ -573,7 +586,7 @@ export const SigningOut: Story = {
   },
 };
 
-/** As a user whose saved sign-in cannot be reached, I see an alert icon button that reads my sign-in again. */
+/** As a user whose saved sign-in cannot be reached, I see an alert button that reads my sign-in again. */
 export const Unreachable: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -583,13 +596,13 @@ export const Unreachable: Story = {
     await step('When I click it', () => {
       button().click();
     });
-    await step('Then it is an enabled alert icon that read my sign-in again', async () => {
+    await step('Then it is an enabled alert that read my sign-in again', async () => {
       await expect(button()).not.toBeDisabled();
       await expect(button()).not.toHaveAttribute('aria-busy', 'true');
-      await expect(button()).toHaveAttribute('aria-label', "Can't reach your sign-in");
-      await expect(button()).toHaveAttribute('title', "Can't reach your sign-in");
-      await expect(button().querySelector('svg')).not.toBeNull();
-      await expect(button().textContent.trim()).toBe('');
+      await expect(button()).toHaveAttribute('aria-label', 'Retry sign-in');
+      await expect(button()).toHaveAttribute('title', "Can't reach your sign-in. Retry");
+      await expect(byTestId('auth-button-alert', button()).querySelector('svg')).not.toBeNull();
+      await expect(button().textContent.trim()).toBe('Retry sign-in');
       await expect(calls.signIns).toBe(1);
     });
   },

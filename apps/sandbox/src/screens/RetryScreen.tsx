@@ -16,7 +16,7 @@ export function RetryScreen(props: { standalone: boolean }): JSX.Element {
         <p id="status" class={s['step']}>
           Retrying…
         </p>
-        <p class={s['line']}>The app's connection dropped, so it is starting again</p>
+        <p class={s['line']}>The app's connection dropped, so it is starting again.</p>
       </div>
     </div>
   );

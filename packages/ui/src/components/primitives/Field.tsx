@@ -3,6 +3,7 @@
 
 import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { AlertTriangleIcon } from '../icons/AlertTriangleIcon.js';
 import s from './Field.module.css';
 
 /** A label over its value, for the review fields of a signing or permission prompt. */
@@ -11,7 +12,7 @@ export function Field(props: {
   value: string;
   /** Hashes and call data, in a box that scrolls once the value outgrows it. */
   mono?: boolean;
-  /** A value the user must not miss, such as an unprotected signature. */
+  /** A value the user must not miss, such as an unprotected signature. A warning glyph leads it. */
   warning?: boolean;
   class?: string | undefined;
   testId?: string;
@@ -55,10 +56,12 @@ export function Field(props: {
         }}
         class={s['value']}
         data-testid={props.valueTestId}
+        data-scrolls={scrolls() ? '' : undefined}
         tabindex={scrolls() ? 0 : undefined}
         role={scrolls() ? 'region' : undefined}
         aria-label={scrolls() ? props.label : undefined}
       >
+        {props.warning === true ? <AlertTriangleIcon class={s['warnIcon']} /> : null}
         {props.value}
       </span>
     </div>

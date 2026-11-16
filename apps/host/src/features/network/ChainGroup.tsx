@@ -1,11 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, For, Match, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { Chip, prefersReducedMotion, Stack } from '@dotli/ui';
+import { prefersReducedMotion, Stack } from '@dotli/ui';
 import type { ChainSummary } from './chain.js';
 import {
+  describeBehind,
   describeBlockDelay,
   describePeers,
   HISTORY_SLOTS,
@@ -13,8 +14,11 @@ import {
   pendingBar,
   sameBars,
   slotOpacity,
+  type PendingBarView,
 } from './chainStrip.js';
 import s from './ChainGroup.module.css';
+
+const STRIP_LABEL = `Last ${String(HISTORY_SLOTS)} blocks, newest on the right`;
 
 /** Replay the instant shift that appended bars cause as a glide left, so a block arriving reads as an arrival. */
 function slideStrip(strip: HTMLElement, landed: number): void {
@@ -48,28 +52,19 @@ function slideStrip(strip: HTMLElement, landed: number): void {
   strip.style.transform = 'translateX(0)';
 }
 
-/** The ghost bar and estimate before a chain's first bar. */
-function PendingBar(props: { chain: ChainSummary; sinceLast: number | null }): JSX.Element {
-  // Read four times per render: computed once per tick.
-  const pending = createMemo(() => pendingBar(props.chain, props.sinceLast));
-  const height = (): JSX.CSSProperties | undefined => {
-    const view = pending();
-    return view.phase === 'searching' ? undefined : { height: `${String(view.heightPercent)}%` };
-  };
+/** The ghost bar before a chain's first bar, in the newest slot. */
+function PendingBar(props: { pending: PendingBarView }): JSX.Element {
+  const height = (): JSX.CSSProperties | undefined =>
+    props.pending.phase === 'searching' ? undefined : { height: `${String(props.pending.heightPercent)}%` };
   return (
     <>
-      <span class={s['waiting']} data-testid="chains-bars-waiting">
-        {pending().text}
-      </span>
-      <span class={s['trail']} style={{ '--slots': String(HISTORY_SLOTS) }}>
-        <Stubs count={HISTORY_SLOTS - 1} />
-        <span
-          class={[s['bar'], s['pending']]}
-          data-testid="chains-bar-pending"
-          data-pending={pending().phase}
-          style={height()}
-        />
-      </span>
+      <Stubs count={HISTORY_SLOTS - 1} />
+      <span
+        class={[s['bar'], s['pending']]}
+        data-testid="chains-bar-pending"
+        data-pending={props.pending.phase}
+        style={height()}
+      />
     </>
   );
 }
@@ -78,13 +73,13 @@ function Stubs(props: { count: number }): JSX.Element {
   const slots = createMemo(() => Array.from({ length: props.count }, (_, i) => i));
   return (
     <For each={slots()}>
-      {slot => <span class={s['stub']} data-testid="chains-bar-stub" style={{ opacity: slotOpacity(slot) }} />}
+      {slot => <span class={s['stub']} data-testid="chains-bar-stub" style={{ '--slot-opacity': slotOpacity(slot) }} />}
     </For>
   );
 }
 
 /** Bars keep their element while on screen, so new ones slide in instead of the strip being rebuilt. */
-function BarStrip(props: { chain: ChainSummary; sinceLast: number | null }): JSX.Element {
+function BarStrip(props: { chain: ChainSummary; pending: PendingBarView | null }): JSX.Element {
   let strip: HTMLDivElement | undefined;
   // Updates that land no block keep the same bar objects, so the same bars mean no block landed.
   const visible = createMemo(
@@ -111,14 +106,14 @@ function BarStrip(props: { chain: ChainSummary; sinceLast: number | null }): JSX
       class={s['bars']}
       data-testid="chains-bars"
       role="group"
-      aria-label={`${props.chain.label} recent blocks`}
+      title={STRIP_LABEL}
+      aria-label={`${props.chain.label}: ${STRIP_LABEL.toLowerCase()}`}
     >
       <Show
         when={props.chain.bars.length > 0}
         fallback={
-          // Nothing is connecting an unused chain, so it gets no ghost bar or countdown.
-          <Show when={props.chain.state !== 'unused'} fallback={<Stubs count={HISTORY_SLOTS} />}>
-            <PendingBar chain={props.chain} sinceLast={props.sinceLast} />
+          <Show when={props.pending} fallback={<Stubs count={HISTORY_SLOTS} />}>
+            {view => <PendingBar pending={view()} />}
           </Show>
         }
       >
@@ -136,7 +131,7 @@ function BarStrip(props: { chain: ChainSummary; sinceLast: number | null }): JSX
                 data-block={block}
                 class={s['bar']}
                 data-health={bar.health}
-                style={{ opacity: slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
+                style={{ '--slot-opacity': slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
                 title={delay}
                 role="img"
                 aria-label={`Block ${block}, ${delay}`}
@@ -150,35 +145,80 @@ function BarStrip(props: { chain: ChainSummary; sinceLast: number | null }): JSX
 }
 
 /**
- * One chain: its name with its peers, or Not in use, over its recent blocks. Before a first block it shows a ghost bar
- * and an estimate, `sinceLast` ms after the chain's last block (null before any).
+ * One chain: its name with its state in words and its peers, over its recent blocks. Before a first block it shows a
+ * ghost bar and an estimate, `sinceLast` ms after the chain's last block (null before any). `behind` marks a chain the
+ * network verdict names as lagging. `unreachable` marks a network the verdict finds out of reach, so a chain with no
+ * endpoint reads as the error the status names.
  */
-export function ChainGroup(props: { chain: ChainSummary; sinceLast: number | null }): JSX.Element {
-  // No chip rather than "0 peers" until a sample lands: zero is a different claim.
+export function ChainGroup(props: {
+  chain: ChainSummary;
+  sinceLast: number | null;
+  behind?: boolean;
+  unreachable?: boolean;
+}): JSX.Element {
+  // No caption rather than "0 peers" until a sample lands: zero is a different claim.
   const peers = createMemo(() =>
-    props.chain.reachable && props.chain.peers !== null ? describePeers(props.chain.label, props.chain.peers) : null,
+    props.chain.reachable && props.chain.state !== 'unused' && props.chain.peers !== null
+      ? describePeers(props.chain.label, props.chain.peers)
+      : null,
+  );
+  // Nothing is connecting a chain that is unused or has no endpoint, so it gets no ghost bar or countdown. Computed
+  // once per tick, as both the caption and the bar read it.
+  const pending = createMemo(() =>
+    props.chain.reachable && props.chain.state !== 'unused' && props.chain.bars.length === 0
+      ? pendingBar(props.chain, props.sinceLast)
+      : null,
   );
   return (
     <Stack class={s['group']} testId="chains-group">
-      <p class={s['groupLabel']} data-testid="chains-group-label" data-state={props.chain.state}>
+      <p
+        class={s['groupLabel']}
+        data-testid="chains-group-label"
+        data-state={props.chain.state}
+        data-unavailable={props.chain.reachable ? undefined : ''}
+      >
         <span class={s['name']} data-testid="chains-group-name">
           {props.chain.label}
         </span>
-        <Show
-          when={props.chain.state !== 'unused' || !props.chain.reachable}
-          fallback={
-            <Chip tone="mono" testId="chains-group-unused">
+        <Switch>
+          <Match when={!props.chain.reachable}>
+            <span
+              class={s['caption']}
+              data-tone={props.unreachable === true ? 'err' : 'warn'}
+              data-testid="chains-group-no-endpoint"
+            >
+              No endpoint
+            </span>
+          </Match>
+          <Match when={props.chain.state === 'unused'}>
+            <span class={s['caption']} data-testid="chains-group-unused">
               Not in use
-            </Chip>
-          }
-        >
-          <Show when={peers()}>
-            {chip => (
-              <Chip tone={chip().tone} testId="chains-group-peers" label={chip().label}>
-                {chip().text}
-              </Chip>
+            </span>
+          </Match>
+          <Match when={props.behind === true}>
+            <span class={s['caption']} data-tone="warn" data-testid="chains-group-behind">
+              {describeBehind(props.chain.bars, props.chain.blockTimeMs)}
+            </span>
+          </Match>
+          <Match when={pending()}>
+            {view => (
+              <span class={s['caption']} data-testid="chains-bars-waiting">
+                {view().text}
+              </span>
             )}
-          </Show>
+          </Match>
+        </Switch>
+        <Show when={peers()}>
+          {count => (
+            <span
+              class={s['caption']}
+              data-tone={count().tone === 'warn' ? 'warn' : undefined}
+              data-testid="chains-group-peers"
+              title={count().label}
+            >
+              {count().text}
+            </span>
+          )}
         </Show>
       </p>
       <div
@@ -187,8 +227,15 @@ export function ChainGroup(props: { chain: ChainSummary; sinceLast: number | nul
         data-state={props.chain.state}
         data-unavailable={props.chain.reachable ? undefined : ''}
       >
-        <Show when={props.chain.reachable} fallback="no endpoint on this network">
-          <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
+        <Show
+          when={props.chain.reachable}
+          fallback={
+            <div class={s['bars']} data-testid="chains-bars">
+              <Stubs count={HISTORY_SLOTS} />
+            </div>
+          }
+        >
+          <BarStrip chain={props.chain} pending={pending()} />
         </Show>
       </div>
     </Stack>

@@ -1,13 +1,16 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* Takes the header's spare width and scrolls within it, so the controls after it never leave the screen. Its end
+   fades, so a cut tab reads as more to scroll to, and the end padding lets the last tab clear the fade. */
 .sections {
-  flex: none;
+  flex: 1 1 auto;
   align-self: stretch;
-}
-/* A line of their own under the controls, so the selected tab still sits on the header's bottom edge. */
-:global([data-dock='right']) .sections {
-  flex-basis: 100%;
-  order: 1;
-  height: 31px;
+  min-width: 0;
+  padding-right: 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-padding-inline-end: 24px;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }

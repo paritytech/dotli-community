@@ -10,6 +10,7 @@ import type { ProductCardView } from './productCardView.js';
 import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { noProductPill, productPill, setShield, storyShield } from '../../testing/stories/shieldFixtures.js';
 import { UrlPillShield } from './UrlPillShield.js';
+import pill from './UrlPill.module.css';
 
 // The card's tooltip is a top layer outside the story's canvas.
 const body = within(document.body);
@@ -49,12 +50,15 @@ const meta = {
     setCard(null);
     cardShows = 0;
   },
-  // The page's pill, a native button as on the page, so a keyboard reaches it and presses it.
+  // The page's pill with its own look, a native button as on the page, so a keyboard reaches it and presses it.
   render: () => (
     <TopbarFrame center>
-      <button type="button" id="url-pill" style={{ display: 'flex', 'align-items': 'center', gap: 'var(--sp-1_5)' }}>
+      <button type="button" class={pill['pill']} id="url-pill">
         <UrlPillShield shield={storyShield} card={card} onCardShow={countCardShow} />
-        <span>swap.dot</span>
+        <span class={pill['text']}>
+          <span class={pill['domain']}>swap</span>
+          <span class={pill['tld']}>.dot</span>
+        </span>
       </button>
     </TopbarFrame>
   ),

@@ -13,12 +13,12 @@ import { answerHostDialogs, runWebSignedTest, type HostDialog } from '../../../.
 // Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.
 
 // The host dialogs these tests expect, by the title the host draws. A once answer leaves no grant behind the test.
-const PERMISSION_ONCE: HostDialog = { title: 'Permission Request', answer: 'Allow once' };
-const PERMISSION_ALLOW: HostDialog = { title: 'Permission Request', answer: 'Allow' };
-const IDENTITY_ONCE: HostDialog = { title: 'Identity Disclosure', answer: 'Allow once' };
-const ALLOCATION: HostDialog = { title: 'Resource Allocation', answer: 'Allow' };
-const SIGN_MESSAGE: HostDialog = { title: 'Sign Message', answer: 'Sign' };
-const SIGN_TRANSACTION: HostDialog = { title: 'Sign Transaction', answer: 'Sign' };
+const PERMISSION_ONCE: HostDialog = { title: 'Permission request', answer: 'Allow once' };
+const PERMISSION_ALLOW: HostDialog = { title: 'Permission request', answer: 'Allow' };
+const IDENTITY_ONCE: HostDialog = { title: 'Identity disclosure', answer: 'Allow once' };
+const ALLOCATION: HostDialog = { title: 'Approve an allowance', answer: 'Allow' };
+const SIGN_MESSAGE: HostDialog = { title: 'Sign message', answer: 'Sign' };
+const SIGN_TRANSACTION: HostDialog = { title: 'Sign transaction', answer: 'Sign' };
 
 test.describe('dot.li > host-playground.dot', () => {
   test.describe('Accounts', () => {
@@ -280,7 +280,7 @@ test.describe('dot.li > host-playground.dot', () => {
           pairedPage,
           productFrame,
           'contract-store-value',
-          // Unchecked while blocked: a Resource Allocation dialog may come first while the account holds no PGAS.
+          // Unchecked while blocked: an allowance dialog may come first while the account holds no PGAS.
           [PERMISSION_ONCE, SIGN_TRANSACTION],
           { timeoutMs: 120_000 },
         );
@@ -304,7 +304,7 @@ test.describe('dot.li > host-playground.dot', () => {
       async ({ pairedPage, productFrame }) => {
         // Given
         test.setTimeout(300_000);
-        // Unchecked while blocked: a Resource Allocation dialog may come first while the account holds no PGAS.
+        // Unchecked while blocked: an allowance dialog may come first while the account holds no PGAS.
         const dialogs = [PERMISSION_ONCE, SIGN_TRANSACTION];
 
         // When: withdraw only becomes deterministic after this run's own deposit

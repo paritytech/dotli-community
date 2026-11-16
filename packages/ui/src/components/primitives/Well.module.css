@@ -57,6 +57,7 @@
 }
 .calloutText {
   margin: 0;
+  text-wrap: pretty;
 }
 
 @media (max-width: 560px) {

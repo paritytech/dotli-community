@@ -49,12 +49,27 @@ export const NoEndpoint: Story = {
   args: { chain: { ...RELAY, reachable: false } },
 };
 
-/** As a user waiting for a chain's first block, a ghost bar counts down to the next one. */
+/** As a user waiting for a chain's first bar, a ghost bar counts down to it. */
 export const WaitingForFirstBlock: Story = {
   args: { chain: { ...RELAY, bars: [] }, sinceLast: 1500 },
 };
 
-/** As a user, a chain with no peers yet raises its peers chip. */
+/** As a user, a chain still connecting with no peers yet raises its peers caption. */
 export const NoPeers: Story = {
-  args: { chain: { ...RELAY, peers: 0 } },
+  args: { chain: { ...RELAY, state: 'pending', bars: [], peers: 0 }, sinceLast: null },
+};
+
+/** As a user, a chain the network verdict names as lagging says it is behind and how late its last block came. */
+export const Behind: Story = {
+  args: {
+    chain: {
+      ...RELAY,
+      bars: [
+        ...onTime(100, 2),
+        { number: 102, health: 'late', gapMs: 12_000 },
+        { number: 103, health: 'veryLate', gapMs: 30_000 },
+      ],
+    },
+    behind: true,
+  },
 };

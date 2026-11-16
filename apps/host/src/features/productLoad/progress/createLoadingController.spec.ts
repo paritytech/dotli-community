@@ -171,7 +171,6 @@ describe('The loading controller drives the loading store', () => {
     // Then it typed in a piece at a time from empty
     expect(seen).toContain('Look');
     expect(readExplanation()).toBe('Looking for other computers to talk to');
-    expect(loadingState.get().explanationOpacity).toBe(1);
 
     // When the next turn has erased the line and typed the next one
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS + ERASE_MS);
@@ -196,7 +195,6 @@ describe('The loading controller drives the loading store', () => {
     expect(halfTyped).not.toBe('');
     expect(readStep()).toEqual(['Found it']);
     expect(readExplanation()).toBe('');
-    expect(loadingState.get().explanationOpacity).toBe(1);
     expect(loadingState.get().srText).toBe('Found it');
 
     // When time passes short of the next turn
@@ -425,7 +423,6 @@ describe('The loading controller drives the loading store', () => {
 
     // Then the line no longer changes
     expect(readExplanation()).toBe(settled);
-    expect(loadingState.get().explanationOpacity).toBe(1);
   });
 
   it('As a visitor whose status tick stops mid-type, I see the explanation finished rather than frozen half typed', () => {
@@ -443,7 +440,6 @@ describe('The loading controller drives the loading store', () => {
     // Then
     expect(halfTyped).not.toBe('');
     expect(readExplanation()).toBe('Looking for other computers to talk to');
-    expect(loadingState.get().explanationOpacity).toBe(1);
   });
 
   it('As a visitor whose app loaded, I get a late step while the screen fades and the bar stays full with no crawl started', () => {

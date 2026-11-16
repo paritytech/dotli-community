@@ -28,6 +28,7 @@ const ALL_PRODUCTS = '__all';
 const NO_PRODUCT_ID = '__anon';
 
 const QUERY_TITLE = 'substring or /regex/';
+const INVALID_QUERY_HINT = 'Invalid regex, so this filter is off';
 
 export function EventFilters(props: {
   filters: FilterState;
@@ -49,71 +50,82 @@ export function EventFilters(props: {
 
   return (
     <FilterBar testId="td-filters" hidden={props.hidden} class={s['filters']}>
-      <FilterGroup label="show">
-        <FilterCheck
-          testId="td-kind"
-          value="truapi"
-          label="TrUAPI"
-          checked={props.filters.showTruapi}
-          onChange={checked => {
-            updateFilters({ showTruapi: checked });
-          }}
-        />
-        <FilterCheck
-          testId="td-kind"
-          value="system"
-          label="System"
-          checked={props.filters.showSystem}
-          onChange={checked => {
-            updateFilters({ showSystem: checked });
-          }}
-        />
-      </FilterGroup>
-      <FilterGroup label="dir">
-        <FilterChips
-          testId="td-dir"
-          chips={DIRECTIONS}
-          selected={props.filters.direction}
-          onSelect={direction => {
-            updateFilters({ direction });
-          }}
-        />
-      </FilterGroup>
-      <FilterGroup label="product">
-        <FilterChips
-          testId="td-product-chip"
-          chips={productChips()}
-          selected={toProductChipValue(props.filters.product)}
-          onSelect={value => {
-            updateFilters({ product: toProductFilter(value) });
-          }}
-        />
-      </FilterGroup>
-      <FilterGroup label="include">
-        <FilterInput
-          testId="td-tag-input"
-          label="Include methods"
-          placeholder="filter by method…"
-          title={QUERY_TITLE}
-          invalid={compileQuery(props.filters.tagQuery).invalid}
-          onInput={tagQuery => {
-            updateFilters({ tagQuery });
-          }}
-        />
-      </FilterGroup>
-      <FilterGroup label="exclude">
-        <FilterInput
-          testId="td-exclude-input"
-          label="Exclude methods"
-          placeholder="hide by method…"
-          title={QUERY_TITLE}
-          invalid={compileQuery(props.filters.excludeQuery).invalid}
-          onInput={excludeQuery => {
-            updateFilters({ excludeQuery });
-          }}
-        />
-      </FilterGroup>
-      {props.controls}
+      <div class={s['layout']}>
+        <div class={s['line']}>
+          <FilterGroup label="show" class={s['show']}>
+            <FilterCheck
+              testId="td-kind"
+              value="truapi"
+              label="TrUAPI"
+              checked={props.filters.showTruapi}
+              onChange={checked => {
+                updateFilters({ showTruapi: checked });
+              }}
+            />
+            <FilterCheck
+              testId="td-kind"
+              value="system"
+              label="System"
+              checked={props.filters.showSystem}
+              onChange={checked => {
+                updateFilters({ showSystem: checked });
+              }}
+            />
+          </FilterGroup>
+          <FilterGroup label="dir" class={s['dir']}>
+            <FilterChips
+              testId="td-dir"
+              chips={DIRECTIONS}
+              selected={props.filters.direction}
+              onSelect={direction => {
+                updateFilters({ direction });
+              }}
+            />
+          </FilterGroup>
+        </div>
+        <div class={s['line']}>
+          <FilterGroup label="product" class={s['product']}>
+            <FilterChips
+              testId="td-product-chip"
+              scroll
+              chips={productChips()}
+              selected={toProductChipValue(props.filters.product)}
+              onSelect={value => {
+                updateFilters({ product: toProductFilter(value) });
+              }}
+            />
+          </FilterGroup>
+          <div class={s['controls']}>{props.controls}</div>
+        </div>
+        <div class={s['line']}>
+          <FilterGroup label="include" field class={s['include']}>
+            <FilterInput
+              testId="td-tag-input"
+              label="Include methods"
+              placeholder="filter by method…"
+              title={QUERY_TITLE}
+              invalidHint={INVALID_QUERY_HINT}
+              invalid={compileQuery(props.filters.tagQuery).invalid}
+              onInput={tagQuery => {
+                updateFilters({ tagQuery });
+              }}
+            />
+          </FilterGroup>
+          <FilterGroup label="exclude" field class={s['exclude']}>
+            <FilterInput
+              testId="td-exclude-input"
+              label="Exclude methods"
+              placeholder="hide by method…"
+              title={QUERY_TITLE}
+              invalidHint={INVALID_QUERY_HINT}
+              invalid={compileQuery(props.filters.excludeQuery).invalid}
+              onInput={excludeQuery => {
+                updateFilters({ excludeQuery });
+              }}
+            />
+          </FilterGroup>
+        </div>
+      </div>
     </FilterBar>
   );
 }

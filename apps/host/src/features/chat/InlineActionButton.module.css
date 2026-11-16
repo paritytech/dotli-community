@@ -1,61 +1,94 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A product's layout modifiers arrive as inline styles and override padding and margin. */
+/* A product's layout modifiers arrive as inline styles and override padding and margin, so the target size is a
+   minimum height. */
 
 .button {
+  position: relative;
   box-sizing: border-box;
+  min-height: var(--h-control-sm);
   margin: 0;
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-full);
   font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 500;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
   cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.button:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.button:disabled {
+  cursor: default;
 }
 
 .button[data-variant='primary'] {
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
+  background: var(--chrome-primary);
+  box-shadow: var(--chrome-shadow-primary);
+  color: var(--chrome-on-primary);
+  font-weight: var(--fw-semibold);
 }
-.button[data-variant='primary']:hover:not(:disabled) {
-  background: var(--inverse-bg-hover);
+.button[data-variant='primary']:enabled:hover {
+  background: var(--chrome-primary-hover);
 }
 
 .button[data-variant='secondary'] {
   background: var(--chat-bg-surface-nested);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring-subtle);
   color: var(--chat-fg-primary);
 }
-.button[data-variant='secondary']:hover:not(:disabled) {
+.button[data-variant='secondary']:enabled:hover {
   background: var(--chat-bg-surface-container);
 }
 
 .button[data-variant='text'] {
   background: transparent;
   color: var(--chat-fg-primary);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.button[data-variant='text']:hover:not(:disabled) {
+.button[data-variant='text']:enabled:hover {
   background: var(--chat-bg-surface-container);
 }
 
-.button[data-loading] {
-  animation: pulse 1.2s ease-in-out infinite;
+/* After the variants. A loading button is disabled too, but keeps its variant's look. */
+.button[data-disabled] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+  color: var(--text-faint);
 }
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
+
+/* The hidden label keeps the button's width and accessible name under the spinner. */
+.button[data-loading] {
+  cursor: progress;
+}
+.button[data-loading] > .label {
+  opacity: 0;
+}
+.button > .spinner {
+  position: absolute;
+  inset: 0;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+}
+
+@media (max-width: 560px) {
+  .button {
+    min-height: var(--h-control);
+    font-size: var(--fs-body);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .button[data-loading] {
-    animation: none;
-    opacity: 0.6;
+  .button {
+    transition: none;
   }
-}
-
-/* Last on purpose: a loading button is also disabled and must rest at 0.5 under reduced motion. */
-.button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }

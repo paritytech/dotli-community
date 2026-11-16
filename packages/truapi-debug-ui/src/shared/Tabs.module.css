@@ -1,15 +1,19 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* A strip that scrolls rests on a tab start, so it never opens on the cut end of a tab. */
 .tabs {
   display: flex;
   gap: 2px;
+  scroll-snap-type: x mandatory;
 }
 .tabs[hidden] {
   display: none;
 }
 
 .tab {
+  flex: none;
+  scroll-snap-align: start;
   margin: 0;
   border: none;
   border-bottom: 2px solid transparent;
@@ -19,18 +23,23 @@
   cursor: pointer;
 }
 .tab:hover {
-  color: var(--td-fg-muted);
+  color: var(--td-fg-bright);
 }
-.tab[aria-selected='true'] {
+/* A folded panel selects no tab, but the one it opens on keeps the selected look. */
+.tab[aria-selected='true'],
+.tab[data-current] {
   border-bottom-color: var(--td-accent);
-  color: var(--td-fg-strong);
+  color: var(--td-fg-bright);
+}
+/* Inset, since the strip clips anything drawn outside it, and clear of the selected underline. */
+.tab:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: -4px;
 }
 
 .primary {
   padding: 0 8px;
-  font-family: system-ui, sans-serif;
   font-weight: 500;
-  letter-spacing: 0.02em;
 }
 /* Nudged onto the strip's bottom border, so the selected underline replaces it. */
 .secondary {

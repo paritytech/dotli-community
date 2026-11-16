@@ -3,35 +3,25 @@
 
 /* :where() so a consumer's class wins whatever order the stylesheets load in. */
 
+/* Bare on the surface, sized to lead a title. */
 :where(.tile) {
   display: grid;
   flex: none;
   place-items: center;
-  box-sizing: border-box;
-  width: var(--sp-10);
-  height: var(--sp-10);
   margin: 0;
   padding: 0;
-  border-radius: var(--r-sm);
-  background: var(--chrome-fill-strong);
-  box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
 }
 /* Overrides the size and stroke the markup was drawn at. */
 .tile > svg {
-  width: var(--sp-4);
-  height: var(--sp-4);
+  width: 28px;
+  height: 28px;
   stroke-width: 1.75;
 }
 
 @media (max-width: 560px) {
-  :where(.tile) {
-    width: var(--h-row);
-    height: var(--h-row);
-    border-radius: var(--r-md);
-  }
   .tile > svg {
-    width: var(--sp-5);
-    height: var(--sp-5);
+    width: 32px;
+    height: 32px;
   }
 }

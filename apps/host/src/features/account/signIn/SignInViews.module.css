@@ -12,10 +12,6 @@
   margin: 0;
   text-align: center;
 }
-/* The phone layout keeps its symbol close to the heading. */
-.screen[data-layout='app'] {
-  gap: var(--sp-5);
-}
 
 .heading {
   display: flex;
@@ -30,6 +26,7 @@
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-tight);
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 .body {
   margin: 0;
@@ -37,15 +34,31 @@
   font-size: var(--fs-body);
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
+  text-wrap: pretty;
 }
-/* The product's own words, set apart from the host's copy. */
+/* The pairing hint holds two lines, so the code coming in with a longer hint does not grow the view. */
+.hint {
+  min-height: calc(2 * 1lh);
+}
+/* A closing sentence goes to the next line whole rather than leave its first words behind. */
+.sentence {
+  display: inline-block;
+}
+/* A short hyphenated word, or the app's name, stays whole on its line. */
+.kept {
+  white-space: nowrap;
+}
+/* The product's own words, quoted under a label that says whose they are, in the host copy's secondary tone. */
 .reason {
   margin: 0;
-  color: var(--chrome-text);
+  color: var(--chrome-text-muted);
   font-size: var(--fs-small);
-  font-style: italic;
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.reason-label {
+  font-weight: var(--fw-medium);
 }
 
 .symbol {
@@ -57,7 +70,7 @@
   flex: none;
   width: 56px;
   height: 56px;
-  color: var(--chrome-text);
+  color: var(--chrome-idle);
   /* Thin at every size, whatever line the icon draws at by default. */
   stroke-width: 1.25;
 }
@@ -70,11 +83,23 @@
 .screen[data-tone='warn'] .mark-icon {
   color: var(--chrome-warn);
 }
-.screen[data-tone='idle'] .mark-icon {
-  color: var(--chrome-idle);
+/* A status's mark, between its title and its body, kept as far from each as the screen's own parts. */
+.heading > .mark-icon,
+.heading > .mark-spinner,
+.heading > .symbol {
+  align-self: center;
+  margin: var(--sp-4) 0;
 }
-.screen > .mark-spinner {
-  margin: 0;
+.heading > .mark-icon:first-child,
+.heading > .mark-spinner:first-child,
+.heading > .symbol:first-child {
+  margin-top: 0;
+}
+/* As large as the icon a status leads with in its place. */
+.heading > .mark-spinner {
+  width: 48px;
+  height: 48px;
+  border-width: 3px;
 }
 
 .steps {
@@ -126,6 +151,23 @@
 /* The raw reason, kept for bug reports. */
 .detail {
   align-self: stretch;
+}
+.detail-summary {
+  border-radius: var(--r-hair);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  cursor: pointer;
+}
+.detail-summary:hover {
+  color: var(--chrome-text);
+}
+.detail-summary:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.detail-text {
+  margin-top: var(--sp-2);
   color: var(--chrome-text-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
@@ -140,31 +182,33 @@
   align-items: center;
   gap: var(--sp-3);
 }
-/* What the page may ask of the account, as one row. */
+/* What the page may ask of the account, as one row, its mark on the first line of a text that wraps. */
 .grant {
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--sp-2);
   align-self: stretch;
-  min-height: 40px;
   color: var(--chrome-text-muted);
   font-size: var(--fs-small);
   line-height: var(--lh-body);
   text-align: left;
+  text-wrap: pretty;
 }
 .grant-icon {
   flex: none;
   width: 16px;
   height: 16px;
+  margin-top: calc((var(--fs-small) * var(--lh-body) - 16px) / 2);
   color: var(--chrome-ok);
   stroke-width: 2;
 }
-.failure {
-  margin: 0;
-  color: var(--chrome-err-text);
-  font-size: var(--fs-small);
-  font-weight: var(--fw-medium);
-  line-height: var(--lh-body);
+/* A failure of the screen's own, as wide as the screen and read from the start of the line. */
+.error-well {
+  align-self: stretch;
+  text-align: start;
+}
+.error-icon {
+  color: var(--chrome-err);
 }
 
 .button-icon {
@@ -194,10 +238,41 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
+/* The link that shows the code, a button in the look of the link beside the note, on a line of its own. */
+.reveal {
+  align-self: center;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  cursor: pointer;
+}
 
 @media (max-width: 560px) {
   .mark-icon {
     width: 64px;
     height: 64px;
+  }
+  /* A sheet heads the view from the start of the line, so its text follows, and only the hero stays centred. */
+  .screen[data-level='layout'] {
+    text-align: start;
+  }
+  .screen[data-level='layout'] > .heading {
+    align-self: stretch;
+  }
+  .screen[data-level='layout'] .steps,
+  .screen[data-level='layout'] .progress {
+    align-self: flex-start;
+    justify-content: flex-start;
+  }
+  .reveal[data-level='layout'] {
+    align-self: flex-start;
+    margin: 0;
+  }
+  .note[data-level='layout'] {
+    text-align: start;
   }
 }

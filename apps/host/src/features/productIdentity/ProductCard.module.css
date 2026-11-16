@@ -57,12 +57,19 @@
   line-height: var(--lh-tight);
   overflow-wrap: anywhere;
 }
+/* A card, not a page: a long description stops at four lines, and its hover text holds the rest. */
 .description {
+  display: -webkit-box;
+  overflow: hidden;
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text);
   font-size: var(--fs-small);
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
+  text-wrap: pretty;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
 }
 .author {
   display: flex;
@@ -70,10 +77,9 @@
   gap: var(--sp-1_5);
   min-width: 0;
 }
+/* Flush with the author row, not inset as over a well. */
 .label {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--fs-label);
+  padding: 0;
   line-height: var(--lh-tight);
 }
 .row {

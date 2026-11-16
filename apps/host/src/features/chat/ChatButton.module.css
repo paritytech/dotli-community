@@ -1,20 +1,21 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* On the 36 px button's icon corner, as the badge dot sits. */
+/* Across the button's top-right rim, clear of the glyph. */
 .unread {
   position: absolute;
-  top: 4px;
-  right: 5px;
+  top: -2px;
+  right: -2px;
   box-sizing: border-box;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 var(--sp-hair);
-  border-radius: 7px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-full);
   background: var(--inverse-bg);
+  box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
   color: var(--inverse-fg);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 14px;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: 16px;
   text-align: center;
 }

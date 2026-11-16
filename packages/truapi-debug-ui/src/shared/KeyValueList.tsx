@@ -6,9 +6,13 @@
 import type { JSX } from '@solidjs/web';
 import s from './KeyValueList.module.css';
 
-export function KeyValueList(props: { testId?: string | undefined; children: JSX.Element }): JSX.Element {
+export function KeyValueList(props: {
+  testId?: string | undefined;
+  class?: string | undefined;
+  children: JSX.Element;
+}): JSX.Element {
   return (
-    <dl class={s['list']} data-testid={props.testId}>
+    <dl class={[s['list'], props.class]} data-testid={props.testId}>
       {props.children}
     </dl>
   );
@@ -26,4 +30,22 @@ export function KeyValue(props: { name: string; testId?: string | undefined; chi
 /** A title over a group of lists. */
 export function ListHeading(props: { children: JSX.Element }): JSX.Element {
   return <h3 class={s['heading']}>{props.children}</h3>;
+}
+
+/** Headed lists that share one label column, so their values line up. */
+export function KeyValueGroup(props: {
+  testId?: string | undefined;
+  /** The label column's least width, in characters, for labels that run long, so the values hold their place. */
+  keyWidth?: number | undefined;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <div
+      class={s['group']}
+      data-testid={props.testId}
+      style={props.keyWidth === undefined ? undefined : { '--td-key-width': `${String(props.keyWidth)}ch` }}
+    >
+      {props.children}
+    </div>
+  );
 }

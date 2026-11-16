@@ -174,8 +174,8 @@
     top: auto;
     bottom: 0;
     left: 0;
-    /* Over the modal layers (3000), so a sheet slides out behind it. */
-    z-index: 3001;
+    /* Over the modal layers (3000 plus their stack depth), so a sheet slides out behind it. */
+    z-index: 3100;
     width: 100%;
     max-width: none;
     height: var(--topbar-height);

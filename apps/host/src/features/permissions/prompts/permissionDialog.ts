@@ -29,9 +29,9 @@ type GetGrantButtonsParams = {
 export function permissionRequestDialog(request: PermissionRequest): ModalView<GrantAnswer> {
   return {
     icon: permissionIcon(request.permission),
-    title: 'Permission Request',
+    title: 'Permission request',
     fields: [
-      { label: 'Application', value: request.app },
+      { label: 'App', value: request.app },
       { label: 'Permission', value: PERMISSION_CATALOG[request.permission].description },
     ],
     ...(request.reloads ? { notice: 'Granting this permission will reload the application.' } : {}),

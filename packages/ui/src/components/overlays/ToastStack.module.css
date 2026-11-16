@@ -41,41 +41,45 @@
   overflow-y: auto;
 }
 
-/* Its centre sits 4 px inside the card's corner. */
+/* Above the expanded list, clear of the first card's own close button, a labelled pill with no ring. */
 .close-all {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: calc(-1 * var(--sp-8));
+  right: 0;
   z-index: 20;
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  width: var(--sp-5);
-  height: var(--sp-5);
+  height: var(--sp-6);
   margin: 0;
-  padding: 0;
+  padding: 0 var(--sp-3);
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--r-full);
   background: var(--chrome-glass);
-  /* No text: only so it does not hold the UA's fractional 13.333 px. */
+  /* The chrome's type, not the UA's fractional 13.333 px. */
   font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
   box-shadow: var(--chrome-shadow-pop);
-  color: var(--chrome-text-muted);
+  color: var(--chrome-text);
   cursor: pointer;
-  transition: color var(--dur-fast);
+  transition: background var(--dur-fast);
 }
-/* The shared 16 px close icon drawn smaller, its stroke thickened so it reads. */
-.close-all-icon {
-  width: 10px;
-  height: 10px;
-  stroke-width: 2.5;
+/* A larger hit area than the pill it draws. */
+.close-all::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--sp-1_5));
+  border-radius: var(--r-full);
+}
+.close-all:hover {
+  background: var(--chrome-fill-strong);
 }
 /* Its own `display` would beat the browser's rule for `hidden`. */
 .close-all[hidden] {
   display: none;
-}
-.close-all:hover {
-  color: var(--chrome-text);
 }
 .close-all:focus-visible {
   outline: var(--chrome-focus-ring);
@@ -86,15 +90,47 @@
     gap: var(--sp-2);
   }
   .close-all {
+    top: calc(-1 * var(--sp-10));
+    height: var(--sp-8);
+    padding: 0 var(--sp-4);
+    font-size: var(--fs-small);
+  }
+  .close-all::before {
+    inset: calc(-1 * var(--sp-2));
+  }
+  .count {
     top: calc(-1 * var(--sp-2));
-    right: calc(-1 * var(--sp-2));
-    width: var(--sp-6);
+    left: calc(-1 * var(--sp-2));
+    min-width: var(--sp-6);
     height: var(--sp-6);
   }
-  .close-all-icon {
-    width: 12px;
-    height: 12px;
-  }
+}
+/* How many toasts the collapsed pile holds, on its top-left corner. Presses fall through to the pile. */
+.count {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-width: var(--sp-5);
+  height: var(--sp-5);
+  margin: 0;
+  padding: 0 var(--sp-1_5);
+  border-radius: var(--r-full);
+  background: var(--chrome-glass);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
+}
+/* Its own `display` would beat the browser's rule for `hidden`. */
+.count[hidden] {
+  display: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .close-all {

@@ -7,8 +7,9 @@
 :root {
   --text-strong: #f4f4f5;
   --text: #dadbe0;
-  --text-secondary: #a9abb3;
-  --text-muted: #9ea1aa;
+  /* Secondary and muted text keep Lc 75 on the popover surface, so hierarchy comes from size and weight. */
+  --text-secondary: #d4d5db;
+  --text-muted: #d4d5db;
   --text-faint: #80838a;
   --bg-page: #0b0c0f;
   --surface: #1a1b20;
@@ -22,15 +23,17 @@
   --inverse-bg-hover: #ffffff;
   --inverse-fg: #0b0c0f;
   --danger: var(--chrome-err-text);
-  --neutral-solid: #8c8f98;
+  --neutral-solid: #a9abb3; /* icons, Lc 45 or more */
 
   /* Global because an app writes them into a product's custom chat message inline styles. */
   --chat-fg-primary: #f4f4f5;
-  --chat-fg-secondary: #a9abb3;
+  --chat-fg-secondary: #d4d5db;
   --chat-fg-tertiary: #83868e;
   --chat-bg-surface-main: #1a1b20;
   --chat-bg-surface-container: rgba(255, 255, 255, 0.07);
   --chat-bg-surface-nested: rgba(255, 255, 255, 0.13);
+  /* The user's own messages. Muted text keeps Lc 75 on it over the chat surface. */
+  --chat-bg-own: rgba(120, 169, 255, 0.18);
   --chat-fg-success: var(--chrome-ok-text);
   --chat-fg-error: var(--chrome-err-text);
   --chat-fg-warning: var(--chrome-warn-text);

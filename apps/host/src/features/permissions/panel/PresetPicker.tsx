@@ -3,9 +3,10 @@
 
 import { createMemo, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { AlertTriangleIcon } from '@dotli/ui/icons';
 import { Chip, Spinner, StepSlider } from '@dotli/ui';
 import type { PermissionStatus } from '../policy/permissionPolicy.js';
-import { PRESETS, presetOf, type Preset } from './presets.js';
+import { PRESETS, presetOf, UNLIMITED, type Preset } from './presets.js';
 import s from './PresetPicker.module.css';
 
 const STOPS = PRESETS.map(preset => ({ label: preset.label, testId: `permissions-preset-stop-${preset.id}` }));
@@ -33,6 +34,8 @@ export function PresetPicker(props: PresetPickerProps): JSX.Element {
       data-testid="permissions-presets"
       data-preset={shown().preset.id}
       data-modified={shown().modified ? '' : undefined}
+      // The spinner is hidden from assistive tech, so the picker says it is busy while a change is pending.
+      aria-busy={props.pending ? 'true' : undefined}
     >
       <div class={s['readout']}>
         <div class={s['name']}>
@@ -47,6 +50,10 @@ export function PresetPicker(props: PresetPickerProps): JSX.Element {
           </Show>
         </div>
         <p class={s['line']} data-testid="permissions-preset-line">
+          {/* Unlimited grants everything without asking, so its line carries a warning. */}
+          <Show when={shown().preset === UNLIMITED}>
+            <AlertTriangleIcon class={s['warn']} testId="permissions-preset-warn" />
+          </Show>
           {shown().preset.line}
         </p>
       </div>

@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  describeBehind,
   describeBlockDelay,
   describePeers,
   HISTORY_SLOTS,
@@ -35,6 +36,24 @@ describe('describeBlockDelay', () => {
   });
 });
 
+describe('describeBehind', () => {
+  it.each([
+    { gaps: [6000, 12_000], said: 'Behind, last block 6.0s late' },
+    { gaps: [12_000, 36_000], said: 'Behind, last block 30s late' },
+    { gaps: [12_000, 6000], said: 'Behind' },
+    { gaps: [], said: 'Behind' },
+  ])('As a user of a chain that lags, after blocks $gaps of a 6s block time it reads "$said"', ({ gaps, said }) => {
+    // When
+    const caption = describeBehind(
+      gaps.map(gapMs => ({ gapMs })),
+      6000,
+    );
+
+    // Then
+    expect(caption).toBe(said);
+  });
+});
+
 describe('the bar strip motion', () => {
   const bars = (...numbers: number[]): { number: number }[] => numbers.map(number => ({ number }));
 
@@ -62,17 +81,17 @@ describe('the ghost bar before a chain first bar', () => {
 
     // Then
     expect(bars).toEqual([
-      { phase: 'searching', text: 'connecting' },
-      { phase: 'searching', text: 'syncing' },
+      { phase: 'searching', text: 'Connecting' },
+      { phase: 'searching', text: 'Syncing' },
     ]);
   });
 
-  it('As a user watching a chain between blocks, the ghost bar grows and counts down to the next block', () => {
+  it('As a user waiting for a chain first bar after its first block, the ghost bar grows and counts down to it', () => {
     // When
     const bar = pendingBar(RELAY, 1500);
 
     // Then
-    expect(bar).toEqual({ phase: 'counting', heightPercent: 40, text: 'next block in about 5s' });
+    expect(bar).toEqual({ phase: 'counting', heightPercent: 59, text: 'First block in about 5s' });
   });
 
   it('As a user of a chain at or past its block time, the ghost bar stands full and says due any moment, never zero', () => {
@@ -81,8 +100,8 @@ describe('the ghost bar before a chain first bar', () => {
 
     // Then
     expect(bars).toEqual([
-      { phase: 'due', heightPercent: 100, text: 'due any moment' },
-      { phase: 'due', heightPercent: 100, text: 'due any moment' },
+      { phase: 'due', heightPercent: 100, text: 'Due any moment' },
+      { phase: 'due', heightPercent: 100, text: 'Due any moment' },
     ]);
   });
 });
@@ -90,8 +109,8 @@ describe('the ghost bar before a chain first bar', () => {
 describe('describePeers', () => {
   it.each([
     { peers: 0, chip: { text: '0 peers', tone: 'warn', label: 'Polkadot: 0 peers connected' } },
-    { peers: 1, chip: { text: '1 peer', tone: 'mono', label: 'Polkadot: 1 peer connected' } },
-    { peers: 4, chip: { text: '4 peers', tone: 'mono', label: 'Polkadot: 4 peers connected' } },
+    { peers: 1, chip: { text: '1 peer', tone: 'default', label: 'Polkadot: 1 peer connected' } },
+    { peers: 4, chip: { text: '4 peers', tone: 'default', label: 'Polkadot: 4 peers connected' } },
   ])('As a user of a chain with $peers peers, its chip says $chip.text in the $chip.tone tone', ({ peers, chip }) => {
     // When
     const shown = describePeers('Polkadot', peers);

@@ -35,7 +35,7 @@ export const List: Story = {
   args: { layout: 'list' },
   render: args => (
     <Well {...args}>
-      <Field label="Application" value="playground.dot" />
+      <Field label="App" value="playground.dot" />
       <Field label="Permission" value="Use your camera" />
     </Well>
   ),

@@ -7,8 +7,8 @@
 import type { StatusTone } from '@dotli/ui';
 import type { ChainClock } from './networkMonitorState.js';
 
-/** The page's network health, a status tone the dot, the badge and More's row show. */
-export type NetworkHealth = Extract<StatusTone, 'ok' | 'idle' | 'warn' | 'err' | 'quiet'>;
+/** The page's network health, which the dot, the badge and More's row show through its facts. */
+export type NetworkHealth = Extract<StatusTone, 'ok' | 'idle' | 'warn' | 'err' | 'quiet'> | 'unreachable';
 
 type HealthFacts = {
   /** The health as the badge's More row says it. */
@@ -19,6 +19,8 @@ type HealthFacts = {
   alerts: boolean;
   /** Whether the status dot pulses. */
   pulses: boolean;
+  /** The tone of its dot and badge. Nothing in use judges no connection, so it reads as idle, not as a verdict. */
+  dot: StatusTone;
 };
 
 export type LiveVerdict = {
@@ -28,24 +30,29 @@ export type LiveVerdict = {
 };
 
 export const NETWORK_HEALTH = {
-  ok: { word: 'Connected', title: 'Your connection is good', alerts: false, pulses: false },
-  idle: { word: 'Syncing', title: 'Syncing', alerts: true, pulses: true },
-  warn: { word: 'Unstable', title: 'Connection is unstable', alerts: true, pulses: false },
-  err: { word: 'Offline', title: 'You are offline', alerts: true, pulses: false },
-  quiet: { word: 'Not in use', title: 'No chains in use', alerts: false, pulses: false },
+  ok: { word: 'Connected', title: 'Your connection is good', alerts: false, pulses: false, dot: 'ok' },
+  idle: { word: 'Syncing', title: 'Syncing', alerts: true, pulses: true, dot: 'idle' },
+  warn: { word: 'Unstable', title: 'Connection is unstable', alerts: true, pulses: false, dot: 'warn' },
+  err: { word: 'Offline', title: 'You are offline', alerts: true, pulses: false, dot: 'err' },
+  quiet: { word: 'Not in use', title: 'No chains in use', alerts: false, pulses: false, dot: 'idle' },
+  unreachable: { word: 'Unreachable', title: "Can't reach this network", alerts: true, pulses: false, dot: 'err' },
 } satisfies Record<NetworkHealth, HealthFacts>;
 
 /** A live chain is overdue past this many block times without a block. */
 const OVERDUE_BLOCK_TIMES = 3;
 
 /** What the verdict reads of a chain. */
-type ChainTiming = Pick<ChainClock, 'label' | 'sinceLast' | 'blockTimeMs' | 'state' | 'alarm'>;
+type ChainTiming = Pick<ChainClock, 'label' | 'sinceLast' | 'blockTimeMs' | 'state' | 'alarm' | 'reachable'>;
 
 /**
  * The overall verdict, over the chains in use or pending only. It judges no connection milestone itself, only each
- * chain's state, alarm and time since its last block, so a verdict cannot latch on a dead connection.
+ * chain's state, alarm and time since its last block, so a verdict cannot latch on a dead connection. A network that
+ * offers no endpoint for any of its chains is unreachable, whatever uses them.
  */
 export function describeLiveNetwork(status: readonly ChainTiming[]): LiveVerdict {
+  if (status.length > 0 && status.every(chain => !chain.reachable)) {
+    return { tone: 'unreachable' };
+  }
   const counted = status.filter(chain => chain.state !== 'unused');
   if (counted.length === 0) {
     return { tone: 'quiet' };
@@ -75,6 +82,7 @@ export function isNetworkOffline(health: NetworkHealth): boolean {
     case 'idle':
     case 'warn':
     case 'quiet':
+    case 'unreachable':
       return false;
   }
 }

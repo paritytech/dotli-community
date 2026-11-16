@@ -49,6 +49,29 @@
   padding: 0;
   list-style: none;
 }
+/* While the options overflow, the bottom row fades out, so a cut row reads as more to scroll to. The fade follows the
+   list's own scroll: it is gone at the end, and a list that fits has no scroll timeline, so it never fades. */
+@property --list-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@supports (animation-timeline: scroll()) {
+  .list {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--list-fade)), transparent);
+    animation: list-end linear both;
+    animation-timeline: scroll(self);
+    animation-range: calc(100% - 24px) 100%;
+  }
+}
+@keyframes list-end {
+  from {
+    --list-fade: 24px;
+  }
+  to {
+    --list-fade: 0px;
+  }
+}
 .status {
   display: flex;
   flex: none;
@@ -56,8 +79,8 @@
   gap: var(--sp-3);
   height: 40px;
   padding: 0 var(--sp-3);
-  color: var(--text-secondary);
-  font: var(--fw-regular) var(--fs-title) / var(--lh-tight) var(--font-sans);
+  color: var(--chrome-text-muted);
+  font: var(--fw-regular) var(--fs-body) / var(--lh-tight) var(--font-sans);
 }
 .status > .spinner {
   flex: none;
@@ -73,19 +96,16 @@
   padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
   color: inherit;
-  font: var(--fw-regular) var(--fs-title) / 1 var(--font-sans);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
   cursor: pointer;
 }
-.option[aria-checked='true'] {
-  background-color: var(--chrome-info-fill);
-}
-/* A layer over the chosen fill, so the arrow keys or the pointer landing on the chosen option still show. */
+/* The check alone marks the chosen option, so the fill only follows the arrow keys and the pointer. */
 .option[aria-selected='true'] {
-  background-image: linear-gradient(var(--chrome-fill), var(--chrome-fill));
+  background: var(--chrome-fill);
 }
 @media (hover: hover) {
   .option:hover {
-    background-image: linear-gradient(var(--chrome-fill), var(--chrome-fill));
+    background: var(--chrome-fill);
   }
 }
 .text {
@@ -98,12 +118,16 @@
   text-overflow: ellipsis;
 }
 .detail {
-  color: var(--text-secondary);
+  color: var(--chrome-text-muted);
+}
+/* The fill lowers the muted text's contrast, so the active row reads its detail at full strength. */
+.option[aria-selected='true'] .detail {
+  color: var(--chrome-text);
 }
 .icon {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: var(--chrome-text-muted);
 }
 .check {
@@ -121,8 +145,16 @@
     max-width: none;
     max-height: 342px;
   }
+  .status,
+  .option {
+    font-size: var(--fs-title);
+  }
   .option {
     height: var(--h-control);
+  }
+  .icon {
+    width: 20px;
+    height: 20px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

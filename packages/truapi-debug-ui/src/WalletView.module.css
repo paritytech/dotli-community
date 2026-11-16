@@ -1,0 +1,24 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A value not known yet, or not set, so it reads as a state rather than as data. */
+.placeholder {
+  color: var(--td-fg-dim);
+  font-style: italic;
+}
+
+/* Below a rule, so the action that ends the wallet stands apart from the ones that keep one. */
+.signOut {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--td-line);
+}
+
+/* On a phone every action takes the full width, so stacked buttons line up. */
+@media (max-width: 560px) {
+  .action {
+    flex: 1 1 100%;
+  }
+}

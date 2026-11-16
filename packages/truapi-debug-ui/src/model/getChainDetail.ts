@@ -15,6 +15,8 @@ type ChainField = {
 
 export type ChainDetail = {
   summary: string | null;
+  /** The chain answered with an error. */
+  failed: boolean;
   fields: ChainField[];
 };
 
@@ -24,7 +26,11 @@ export function getChainDetail(tag: string, payload: unknown): ChainDetail | nul
   if (annotations === null) {
     return null;
   }
-  return { summary: summariseChainMessage(annotations, payload), fields: listChainFields(annotations) };
+  return {
+    summary: summariseChainMessage(annotations, payload),
+    failed: annotations.outcome === 'error',
+    fields: listChainFields(annotations),
+  };
 }
 
 function listChainFields(annotations: ChainAnnotations): ChainField[] {

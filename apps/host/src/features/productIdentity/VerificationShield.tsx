@@ -3,6 +3,7 @@
 
 import { Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { PendingShieldIcon } from './PendingShieldIcon.js';
 import { TrustedShieldIcon } from './TrustedShieldIcon.js';
 import { VerifiedShieldIcon } from './VerifiedShieldIcon.js';
 import type { ShieldState } from './urlPillState.js';
@@ -18,8 +19,8 @@ export type VerificationShieldProps = {
 
 /**
  * The URL pill's shield, a glyph named by how the product was loaded. Once the product's icon is known it shows in
- * the glyph's place, with a warning shield on its corner when the product was only trusted.
- * Until the host knows (`state` null), the verified glyph shows and assistive tech skips it.
+ * the glyph's place, with the state's shield on its corner once the host knows how it loaded.
+ * Until the host knows (`state` null), a bare shield shows and assistive tech skips it.
  */
 export function VerificationShield(props: VerificationShieldProps): JSX.Element {
   const label = (): string | undefined => {
@@ -42,6 +43,7 @@ export function VerificationShield(props: VerificationShieldProps): JSX.Element 
         when={icon()}
         fallback={
           <>
+            <PendingShieldIcon class={[s['glyph'], s['pendingGlyph']]} testId="verification-shield-icon" />
             <VerifiedShieldIcon class={[s['glyph'], s['verifiedGlyph']]} testId="verification-shield-icon" />
             <TrustedShieldIcon class={[s['glyph'], s['trustedGlyph']]} testId="verification-shield-icon" />
           </>
@@ -49,8 +51,17 @@ export function VerificationShield(props: VerificationShieldProps): JSX.Element 
       >
         {src => (
           <>
-            <img class={s['productIcon']} src={src()} alt="" width="18" height="18" data-testid="url-pill-icon" />
-            <TrustedShieldIcon class={s['badge']} strokeWidth="2.5" testId="url-pill-trusted-badge" />
+            <img class={s['productIcon']} src={src()} alt="" width="20" height="20" data-testid="url-pill-icon" />
+            <VerifiedShieldIcon
+              class={[s['badge'], s['verifiedBadge']]}
+              strokeWidth="2.5"
+              testId="url-pill-verified-badge"
+            />
+            <TrustedShieldIcon
+              class={[s['badge'], s['trustedBadge']]}
+              strokeWidth="2.5"
+              testId="url-pill-trusted-badge"
+            />
           </>
         )}
       </Show>

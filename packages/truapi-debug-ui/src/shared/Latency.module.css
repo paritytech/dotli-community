@@ -2,7 +2,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 .latency {
-  margin-left: 6px;
   color: var(--td-green);
   font-size: 11px;
 }

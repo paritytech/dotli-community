@@ -110,9 +110,9 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
 }
 
 /**
- * The window page's frame for one screen, laid out for the view it shows: its content and buttons in a card with the
- * note under it, or on a phone over the whole page, with the content in the middle and the buttons and the note at the
- * foot. The buttons stack with the main answer first and the way out last.
+ * The window page's frame for one screen, laid out for the view it shows: its content, buttons and note in a card, or
+ * on a phone over the whole page, with the content in the middle and any buttons and the note at the foot. With no
+ * buttons the note follows the content. The buttons stack with the main answer first and the way out last.
  */
 export function WindowShell(props: { view: WindowScreen['view']; parts: SignInParts }): JSX.Element {
   let card: HTMLElement | undefined;
@@ -128,7 +128,12 @@ export function WindowShell(props: { view: WindowScreen['view']; parts: SignInPa
     },
   );
   return (
-    <main class={s['window']} data-testid="session-window" data-view={props.view}>
+    <main
+      class={s['window']}
+      data-testid="session-window"
+      data-view={props.view}
+      data-buttons={buttons() ? '' : undefined}
+    >
       <section
         ref={el => {
           card = el;
@@ -145,8 +150,8 @@ export function WindowShell(props: { view: WindowScreen['view']; parts: SignInPa
             {props.parts.dismiss}
           </div>
         </Show>
+        {props.parts.note}
       </section>
-      {props.parts.note}
     </main>
   );
 }

@@ -31,8 +31,7 @@ export function Header(props: {
 
   return (
     <div class={s['header']} data-testid="td-header" data-dock={props.placement}>
-      <SectionTabs section={props.collapsed ? null : props.section} onSelect={props.onSelectSection} />
-      <span class={s['spacer']} />
+      <SectionTabs section={props.section} collapsed={props.collapsed} onSelect={props.onSelectSection} />
       <Button
         testId="td-dock"
         icon

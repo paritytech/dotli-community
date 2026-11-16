@@ -82,3 +82,24 @@ export const RevealButtonAfterFrame: Story = {
     });
   },
 };
+
+/** As a keyboard user, I Tab out of the folded app and the reveal button shows under the bar, named for what it does. */
+export const ShownOnFocus: Story = {
+  tags: ['!autodocs'],
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement);
+    await step('Given the bar has folded away', async () => {
+      fold();
+      await waitFor(() => expect(canvas.getByTestId('story-topbar')).toHaveAttribute('data-folded'));
+    });
+    const button = canvas.getByRole('button', { name: 'Show browser bar', hidden: true });
+    await step('When it takes focus', () => {
+      button.focus();
+    });
+    await step('Then it shows, focused, with the bar back', async () => {
+      await expect(button).toHaveFocus();
+      await expect(button).toBeVisible();
+      await waitFor(() => expect(canvas.getByTestId('story-topbar')).not.toHaveAttribute('data-folded'));
+    });
+  },
+};

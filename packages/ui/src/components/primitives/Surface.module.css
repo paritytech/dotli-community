@@ -38,33 +38,45 @@
   min-width: 0;
   padding: var(--sp-hair) var(--sp-1) 0;
 }
+/* In a sheet the head holds only its aside, which lines up with the edge of the content under it. */
+.surface[data-sheet] .head {
+  padding-inline: 0;
+}
+/* A step over any heading inside, so the title leads the surface. */
 .title {
   margin: 0;
-  font-size: var(--fs-pop-title);
+  font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
 }
+/* The hint takes the free space, so the action keeps to the right when it wraps under the hint. The hint starts at
+   the text inset of wells and callouts, so its icon lines up with theirs. */
 .foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-1) 0;
+  padding: var(--sp-2) var(--sp-1) 0 var(--sp-3);
   border-top: 1px solid var(--chrome-line);
 }
 .hint {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--sp-1_5);
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
+.foot > .hint {
+  margin-right: auto;
+}
+/* Centred on the first line, so a hint that wraps keeps its icon beside its start. */
 .hint-icon {
   flex: none;
   width: 14px;
   height: 14px;
+  margin-top: calc((1lh - 14px) / 2);
 }
 
 @media (max-width: 560px) {
@@ -77,9 +89,16 @@
   .head {
     gap: var(--sp-3);
   }
+  .title {
+    font-size: var(--fs-title-lg);
+  }
+  /* Equal sides, so a full-width action sits centred. Only the hint keeps the text inset. */
   .foot {
     gap: var(--sp-3);
-    padding-top: var(--sp-3);
+    padding: var(--sp-3) 0 0;
+  }
+  .foot > .hint {
+    padding-left: var(--sp-4);
   }
   .hint {
     gap: var(--sp-2);
@@ -87,5 +106,6 @@
   .hint-icon {
     width: 16px;
     height: 16px;
+    margin-top: calc((1lh - 16px) / 2);
   }
 }

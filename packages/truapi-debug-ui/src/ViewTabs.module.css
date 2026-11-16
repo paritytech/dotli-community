@@ -1,0 +1,21 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.tabs {
+  flex: none;
+}
+/* Gives way before the tabs, ending in an ellipsis. */
+.counts {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: 8px;
+  overflow: hidden;
+  color: var(--td-fg-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropped {
+  color: var(--td-amber);
+}

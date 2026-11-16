@@ -32,16 +32,15 @@
   display: flex;
 }
 
-/* Phones: the group fills its row and its own width is its room. Auto margins before the first shown item and
-   the end item centre the items. */
+/* Phones: the group fills its row and its own width is its room. An auto margin before the first shown item packs
+   the items at the end, beside the controls that follow the group. */
 @media (max-width: 560px) {
   .group {
     flex: 1;
     min-width: 0;
     gap: var(--sp-2);
   }
-  .group > :nth-child(1 of :not([data-parked], [hidden])),
-  .group > :last-child {
+  .group > :nth-child(1 of :not([data-parked], [hidden])) {
     margin-inline-start: auto;
   }
 }

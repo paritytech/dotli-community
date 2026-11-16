@@ -9,7 +9,7 @@ import type { DiagnosticsSnapshot, DiagnosticsSource } from './host.js';
 const uiReport = createReporter({ flow: 'ui' });
 
 /**
- * One Share diagnostic click in the debug panel. Tagged `outcome` and, on error, `reason`, as a failed one opens no
+ * One Share diagnostics click in the debug panel. Tagged `outcome` and, on error, `reason`, as a failed one opens no
  * issue.
  */
 const diagnosticsShareMetric = defineCount<'error' | 'ok'>('diagnostics.share');

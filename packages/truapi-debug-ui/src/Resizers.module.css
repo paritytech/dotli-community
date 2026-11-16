@@ -1,19 +1,15 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* A short grip at rest, so the edge reads as one to drag. */
 .handle {
   grid-area: handle;
+  background: linear-gradient(var(--td-line-hover), var(--td-line-hover)) center / 24px 2px no-repeat;
 }
-
-.splitter[data-orientation='vertical'] {
-  border-right: 1px solid var(--td-line);
-  border-left: 1px solid var(--td-line);
+.handle[data-orientation='vertical'] {
+  background-size: 2px 24px;
 }
-.splitter[data-orientation='horizontal'] {
-  border-top: 1px solid var(--td-line);
-  border-bottom: 1px solid var(--td-line);
-}
-.splitter:hover,
-.splitter[data-dragging] {
-  border-color: var(--td-accent);
+/* On the right dock it lies over the content's start, the full height of the panel. */
+:global([data-dock='right']) > .handle {
+  grid-area: 1 / 1 / -1 / 2;
 }

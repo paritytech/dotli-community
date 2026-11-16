@@ -50,17 +50,30 @@
   width: 16px;
   height: 16px;
 }
-/* Centred 1 px inside the icon's top-right corner. */
+/* At the icon's top-right corner. */
 .button[data-badge]::after {
   content: '';
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--tone);
-  box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
+}
+/* The idle grey is too dim to read as a mark at badge size, so an idle badge takes the lighter muted text colour. */
+.button[data-badge][data-tone='idle'] {
+  --tone: var(--chrome-text-muted);
+}
+/* The icon is cut away around the badge, a gap that reads on any background, where a ring of one colour would show on
+   every other. The cut centres on the badge. */
+.button[data-badge] > svg {
+  --badge-cut: 5px;
+  mask-image: radial-gradient(
+    circle at calc(100% + 1px) -1px,
+    transparent var(--badge-cut),
+    #000 calc(var(--badge-cut) + 0.5px)
+  );
 }
 .button[data-size='sm'] {
   width: 28px;
@@ -74,7 +87,7 @@
   transition: background var(--dur-fast);
 }
 .button[data-size='sm']:hover {
-  background: var(--chrome-fill);
+  background: var(--chrome-fill-strong);
   color: var(--chrome-text);
 }
 .button[data-size='sm']:active {
@@ -94,10 +107,13 @@
     height: 20px;
   }
   .button[data-badge]::after {
-    top: 9px;
-    right: 9px;
+    top: 7px;
+    right: 7px;
     width: var(--sp-2);
     height: var(--sp-2);
+  }
+  .button[data-badge] > svg {
+    --badge-cut: 6px;
   }
   .button[data-size='sm'] {
     width: var(--h-control-sm);

@@ -18,8 +18,6 @@ export type LoadingState = {
   step: readonly StepPart[];
   /** Part-typed while it turns over. */
   explanation: string;
-  /** Dims while the explanation turns over. */
-  explanationOpacity: number;
   /** The whole sentence, set once per line. */
   srText: string;
   /** The stall warning under the bar. */
@@ -31,7 +29,6 @@ const loading = atom<LoadingState>({
   progress: 0,
   step: ['Reaching out'],
   explanation: '',
-  explanationOpacity: 1,
   srText: '',
   warning: null,
   phase: 'active',

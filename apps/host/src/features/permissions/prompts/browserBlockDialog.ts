@@ -23,7 +23,7 @@ export function browserBlockDialog(request: BrowserBlockRequest): ModalView<Brow
     icon: permissionIcon(request.permission),
     title: 'Blocked by your browser',
     fields: [
-      { label: 'Application', value: request.app },
+      { label: 'App', value: request.app },
       { label: 'Permission', value: PERMISSION_CATALOG[request.permission].description },
     ],
     notice: request.retried ? `Your browser still blocks it. ${BLOCK_NOTICE}` : BLOCK_NOTICE,

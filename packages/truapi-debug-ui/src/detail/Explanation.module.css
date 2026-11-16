@@ -1,12 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* Plain, so the tinted summary above stays the one highlight. */
 .explanation {
   margin: 6px 0 10px;
   padding: 0;
-  background: var(--td-teal-bg);
-  border-left: 2px solid var(--td-teal);
-  border-radius: 0 3px 3px 0;
   color: var(--td-fg);
   font-size: 12px;
   line-height: 1.5;
@@ -15,7 +13,7 @@
 .toggle {
   cursor: pointer;
   margin: 0;
-  padding: 5px 10px;
+  padding: 4px 0;
   color: var(--td-teal-soft);
   font-weight: 500;
   font-size: 11px;
@@ -45,9 +43,13 @@
 .toggle:hover {
   color: var(--td-teal-pale);
 }
+.toggle:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: 0;
+}
 
 .body {
-  padding: 2px 10px 8px;
+  padding: 2px 0 4px 15px;
 }
 
 .paragraph {

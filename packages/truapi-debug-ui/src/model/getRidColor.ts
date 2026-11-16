@@ -3,10 +3,7 @@
 
 import { getHashColor } from './getHashColor.js';
 
-/**
- * A colour per id, light enough for 4.5:1 at any hue on the panel's backgrounds, the selected row's included. Never
- * throws.
- */
+/** A colour per id, light enough to read as text at any hue on the panel's backgrounds, the selected row's included. Never throws. */
 export function getRidColor(id: string): string {
-  return getHashColor(id, { saturation: 65, lightness: 65 });
+  return getHashColor(id, { lightness: 90, chroma: 0.1 });
 }
