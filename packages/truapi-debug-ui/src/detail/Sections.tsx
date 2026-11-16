@@ -10,10 +10,15 @@ import { Code } from '../shared/Code.js';
 import { CodeBlock } from '../shared/CodeBlock.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
 import { SectionTitle } from '../shared/SectionTitle.js';
+import s from './Sections.module.css';
 
-/** What an event means, in prose. */
-export function Summary(props: { text: string }): JSX.Element {
-  return <Callout testId="td-detail-summary">{props.text}</Callout>;
+/** What an event means, in prose, in the danger tone when it says something failed. */
+export function Summary(props: { text: string; failed?: boolean }): JSX.Element {
+  return (
+    <Callout testId="td-detail-summary" tone={props.failed === true ? 'danger' : 'info'} class={s['summary']}>
+      {props.text}
+    </Callout>
+  );
 }
 
 export function ChainSummary(props: { chain: ChainDetail | null }): JSX.Element {
@@ -22,7 +27,7 @@ export function ChainSummary(props: { chain: ChainDetail | null }): JSX.Element 
       {summary => (
         <>
           <SectionTitle>Summary</SectionTitle>
-          <Summary text={summary()} />
+          <Summary text={summary()} failed={props.chain?.failed === true} />
         </>
       )}
     </Show>
@@ -35,7 +40,7 @@ export function ChainFields(props: { chain: ChainDetail | null }): JSX.Element {
       {chain => (
         <>
           <SectionTitle>Chain</SectionTitle>
-          <KeyValueList testId="td-chain-head">
+          <KeyValueList testId="td-chain-head" class={s['fields']}>
             <For each={chain().fields}>
               {field => (
                 <KeyValue name={field.name}>{field.code ? <Code muted>{field.value}</Code> : field.value}</KeyValue>

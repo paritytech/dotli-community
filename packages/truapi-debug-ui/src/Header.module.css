@@ -1,6 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* One line on every dock. The tabs scroll when they run out of room, so the window controls stay in reach. */
 .header {
   display: flex;
   align-items: center;
@@ -9,20 +10,7 @@
   border-bottom: 1px solid var(--td-line);
   background: var(--td-bg-raised);
   white-space: nowrap;
-  /* Scroll rather than clip on a phone. */
-  overflow-x: auto;
-  scrollbar-width: none;
   grid-area: header;
-}
-/* Too narrow for the tabs and the controls on one line. */
-.header[data-dock='right'] {
-  flex-wrap: wrap;
-  padding-top: 5px;
-}
-
-.spacer {
-  flex: none;
-  margin-left: auto;
 }
 
 /* On a phone the panel always docks at the bottom, so the dock button goes and the header tightens. */

@@ -3,7 +3,7 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
-import { ReloadIcon, SlidersIcon } from '../../icons.js';
+import { RotateCwIcon, SlidersIcon } from '../../icons.js';
 import { showError } from './showError.js';
 import { showErrorPage } from './showErrorPage.js';
 
@@ -30,7 +30,7 @@ export const TitleActionsAndIcons: Story = {
         title: 'Could not load the app',
         detail: 'The network did not answer.',
         actions: [
-          { label: 'Reload', icon: ReloadIcon, onClick: () => undefined },
+          { label: 'Reload', icon: RotateCwIcon, onClick: () => undefined },
           { label: 'Open Settings', icon: SlidersIcon, onClick: () => undefined },
         ],
       });
@@ -68,7 +68,7 @@ export const MarkupShownAsText: Story = {
         await expect(
           within(canvas.getByTestId('error-page-detail')).getByText(XSS, { selector: 'strong' }),
         ).toBeVisible();
-        await expect(within(canvas.getByTestId('error-page-tips-list')).getByRole('listitem').textContent).toBe(XSS);
+        await expect(canvas.getByTestId('error-page-tip').textContent).toBe(XSS);
         await expect(canvas.getByTestId('error-page-retry-label').textContent).toBe(XSS);
       },
     );
@@ -84,7 +84,7 @@ export const NoEmptyTipsOrActions: Story = {
       'As a visitor, I see no empty Try list or button row when there is nothing to suggest or click',
       async () => {
         // When
-        showErrorPage({ title: 't', tips: [], actions: [] });
+        showErrorPage({ title: 'Could not load the app', tips: [], actions: [] });
 
         // Then
         await expect(canvas.getByTestId('error-page')).toBeVisible();
@@ -104,7 +104,7 @@ export const TitleTakesFocusWithoutTabStop: Story = {
       'As a screen-reader user, the new screen is announced when it replaces the old one, and the title takes no tab stop',
       async () => {
         // When
-        showErrorPage({ title: "Your connection won't be verified" });
+        showErrorPage({ title: "Your connection won't be verified", glyph: 'warning' });
 
         // Then
         const title = canvas.getByTestId('error-page-title');
@@ -125,7 +125,7 @@ export const KeyboardOrderMatchesReading: Story = {
       async () => {
         // When
         showErrorPage({
-          title: 't',
+          title: 'Could not load the app',
           actions: [
             { label: 'Reload', primary: true, onClick: () => undefined },
             { label: 'Open Settings', onClick: () => undefined },
@@ -135,14 +135,14 @@ export const KeyboardOrderMatchesReading: Story = {
         // Then
         const buttons = canvas.getAllByRole('button');
         await expect(buttons.map(b => b.textContent)).toEqual(['Open Settings', 'Reload']);
-        await expect(buttons[1]).toHaveAttribute('data-primary');
+        await expect(buttons[1]).toHaveAttribute('data-variant', 'primary');
         await expect(buttons[1]).toHaveAttribute('id', 'error-retry-btn');
       },
     );
   },
 };
 
-/** As a visitor, I see tips handed to the shorthand and a bare retry callback shown as a Retry button. */
+/** As a visitor, I see tips handed to the shorthand as a list and a bare retry callback shown as a Retry button with the reload arrow. */
 export const ShimTipsAndRetryButton: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -154,21 +154,47 @@ export const ShimTipsAndRetryButton: Story = {
         let clicked = false;
 
         // When the shorthand shows a page and I press its Retry button
-        showError('t', {
-          detail: 'd',
+        showError('Could not reach the network', {
+          detail: 'The light client lost its peers.',
           action: () => {
             clicked = true;
           },
-          tips: ['Check the cable.'],
+          tips: ['Checking your internet connection.', 'Closing other dot.li tabs, then reloading.'],
         });
         canvas.getByRole('button', { name: 'Retry' }).click();
 
         // Then
-        await expect(within(canvas.getByTestId('error-page-tips-list')).getByRole('listitem')).toHaveTextContent(
-          'Check the cable.',
-        );
+        await expect(
+          within(canvas.getByTestId('error-page-tips-list'))
+            .getAllByRole('listitem')
+            .map(item => item.textContent),
+        ).toEqual(['Checking your internet connection.', 'Closing other dot.li tabs, then reloading.']);
         await expect(clicked).toBe(true);
+        await expect(
+          within(canvas.getByRole('button', { name: 'Retry' })).getByTestId('error-page-action-icon'),
+        ).toBeVisible();
       },
     );
+  },
+};
+
+/** As a visitor, I read a single tip as a plain line under its Try label, not as a one-item list. */
+export const OneTipAsLine: Story = {
+  tags: ['!autodocs'],
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement);
+    await step('As a visitor, I read a single tip as a plain line, not as a one-item list', async () => {
+      // When
+      showErrorPage({
+        title: 'Could not reach the network',
+        detail: 'The light client lost its peers.',
+        tips: ['Checking your internet connection.'],
+        actions: [{ label: 'Retry', icon: RotateCwIcon, primary: true, onClick: () => undefined }],
+      });
+
+      // Then
+      await expect(canvas.getByTestId('error-page-tip')).toHaveTextContent('Checking your internet connection.');
+      await expect(canvas.queryByTestId('error-page-tips-list')).toBeNull();
+    });
   },
 };

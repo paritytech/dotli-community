@@ -3,10 +3,14 @@
 
 /* The Surface around these parts sets the rhythm between them. */
 
+/* The dot sits on the title's line, not centred on a detail that wraps. */
 .status {
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--sp-2);
+}
+.status-dot {
+  margin-top: 4px;
 }
 .status-text {
   display: flex;
@@ -25,15 +29,21 @@
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
+  text-wrap: pretty;
 }
 
 .other {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
   padding: 0 var(--sp-1);
 }
+/* Set apart from the last chain, so the transfer rows never read as one more chain. */
 .transfer {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
+  margin-top: var(--sp-2);
   padding: 0 var(--sp-1);
 }
 /* Both rows empty (the product is on screen): no gap left behind. */
@@ -62,8 +72,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Set apart from the last strip, so the tip never reads as part of that chain. */
+.tips {
+  margin-top: var(--sp-2);
+}
+
 @media (max-width: 560px) {
   .status {
+    gap: var(--sp-3);
+  }
+  /* The sheet's padding is the text column, so these start on it. */
+  .other,
+  .transfer {
+    padding: 0;
+  }
+  .other {
     gap: var(--sp-3);
   }
   .transfer-row {

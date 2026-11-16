@@ -12,9 +12,20 @@ type Params = {
   shown: number;
 };
 
+/** The list's counts line in parts, each a phrase the line joins with a space. */
+export type ListCounts = {
+  total: string;
+  /** Only when the ring evicted events. */
+  dropped: string | null;
+  /** Only when the filters hide events. */
+  shown: string | null;
+};
+
 /** The list's counts line, naming evicted events and the filtered count only when there are any. Never throws. */
-export function formatListCounts({ total, dropped, shown }: Params): string {
-  const totalLabel = dropped > 0 ? `${formatEventCount(total)} (+${String(dropped)} dropped)` : formatEventCount(total);
-  const filterNote = shown !== total ? ` · ${String(shown)} shown` : '';
-  return `${totalLabel}${filterNote}`;
+export function formatListCounts({ total, dropped, shown }: Params): ListCounts {
+  return {
+    total: formatEventCount(total),
+    dropped: dropped > 0 ? `(+${String(dropped)} dropped)` : null,
+    shown: shown !== total ? `· ${String(shown)} shown` : null,
+  };
 }

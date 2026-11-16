@@ -58,6 +58,7 @@ function closePopovers(): void {
 export function showLayer(layer: HTMLElement, layout: LayerLayout): void {
   closePopovers();
   shownLayers.push({ element: layer, layout });
+  syncDepth();
   syncInert();
 }
 
@@ -76,5 +77,14 @@ export function hideLayer(layer: HTMLElement): void {
   if (index !== -1) {
     shownLayers.splice(index, 1);
   }
+  layer.style.removeProperty('--layer-depth');
+  syncDepth();
   syncInert();
+}
+
+/** Paints each shown layer over those opened before it, whatever their order in the page. */
+function syncDepth(): void {
+  for (const [index, { element }] of shownLayers.entries()) {
+    element.style.setProperty('--layer-depth', String(index));
+  }
 }

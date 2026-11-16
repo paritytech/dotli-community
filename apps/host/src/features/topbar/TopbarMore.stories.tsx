@@ -163,7 +163,7 @@ export const PhoneRowMarksUnverified: Story = {
       await openMore(userEvent);
     });
     await step('Then the Settings row carries the unverified mark and More none', async () => {
-      await expect(within(moreRow('settings')).getByRole('img')).toHaveAttribute('aria-label', 'Unverified session');
+      await expect(within(moreRow('settings')).getByRole('img')).toHaveAttribute('aria-label', 'Unverified connection');
       await expect(byId('more-button')).toHaveAttribute('aria-label', 'More');
     });
     await step('When the settings read as a verified session', () => {

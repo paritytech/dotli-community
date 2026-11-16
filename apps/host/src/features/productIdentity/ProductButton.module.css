@@ -11,6 +11,14 @@
   border-radius: var(--r-xs);
   object-fit: cover;
 }
+.lead {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4) var(--sp-2);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  text-wrap: pretty;
+}
 .footer {
   padding: var(--sp-2) var(--sp-4) 0;
 }

@@ -84,11 +84,12 @@
 
 .field-label {
   color: var(--chat-fg-secondary);
-  font-size: 0.7rem;
+  font-size: var(--fs-caption);
 }
 
 .field-input {
   box-sizing: border-box;
+  min-height: var(--h-control-sm);
   margin: 0;
   padding: var(--sp-1_5) var(--sp-2);
   border: 1px solid var(--chat-bg-surface-nested);
@@ -96,12 +97,19 @@
   background: var(--chat-bg-surface-container);
   color: var(--chat-fg-primary);
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: var(--fs-body);
 }
-.field-input:focus {
-  outline: none;
-  border-color: var(--text-faint);
+.field-input:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: -1px;
 }
 .field-input:disabled {
   opacity: 0.5;
+}
+@media (max-width: 560px) {
+  .field-input {
+    min-height: var(--h-control);
+    /* iOS Safari zooms into a focused field set under 16 px. */
+    font-size: var(--fs-title-lg);
+  }
 }

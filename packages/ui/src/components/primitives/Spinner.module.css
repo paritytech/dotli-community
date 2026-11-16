@@ -13,6 +13,13 @@
   animation: spin 0.8s linear infinite;
 }
 
+/* Slower, not still, so a wait still shows as one. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

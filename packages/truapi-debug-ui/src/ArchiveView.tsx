@@ -12,6 +12,8 @@ import { formatArchiveSummary } from './formatArchiveSummary.js';
 import type { LoadedArchive } from './toLoadedArchive.js';
 import type { ArchiveLoader, HostProduct } from './host.js';
 import { Bar } from './shared/Bar.js';
+import { Button } from './shared/Button.js';
+import { Callout } from './shared/Callout.js';
 import { CodeBlock } from './shared/CodeBlock.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { Item, ItemList } from './shared/ItemList.js';
@@ -109,9 +111,24 @@ export function ArchiveView(props: {
           </EmptyState>
         </Match>
         <Match when={getFailure() !== undefined}>
-          <EmptyState testId="td-archive-empty" class={s['whole']}>
-            Could not read the archive: {getFailure()}
-          </EmptyState>
+          <div class={[s['whole'], s['message']]}>
+            <Stack narrow>
+              <Callout testId="td-archive-failure" tone="danger" class={s['failure']}>
+                Could not read the archive: {getFailure()}
+              </Callout>
+              <Button
+                testId="td-archive-retry"
+                onClick={() => {
+                  const cid = getCid();
+                  if (cid !== undefined) {
+                    reader.update({ kind: 'shown', cid });
+                  }
+                }}
+              >
+                Read again
+              </Button>
+            </Stack>
+          </div>
         </Match>
         <Match when={getLoadedArchive() === undefined}>
           <EmptyState testId="td-archive-empty" class={s['whole']}>
@@ -142,7 +159,7 @@ export function ArchiveView(props: {
                   </For>
                 </ItemList>
               </div>
-              <Pane testId="td-archive-content" label="File content" padded>
+              <Pane testId="td-archive-content" label="File content" padded class={s['content']}>
                 <Switch fallback={<EmptyState testId="td-archive-empty">Select a file.</EmptyState>}>
                   <Match when={shown()?.kind === 'encrypted'}>
                     <EmptyState testId="td-archive-empty">
@@ -151,7 +168,12 @@ export function ArchiveView(props: {
                   </Match>
                   <Match when={shown()?.kind === 'image'}>
                     <Show when={imageUrl()}>
-                      {source => <img class={s['image']} src={source()} alt={selected()?.path ?? ''} />}
+                      {source => (
+                        <Stack>
+                          <FileCaption file={selected()} />
+                          <img class={s['image']} src={source()} alt={selected()?.path ?? ''} />
+                        </Stack>
+                      )}
                     </Show>
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>
@@ -161,7 +183,8 @@ export function ArchiveView(props: {
                   </Match>
                   <Match when={getShownText()}>
                     {text => (
-                      <Stack>
+                      <Stack stretch>
+                        <FileCaption file={selected()} />
                         <Show when={text().length > MAX_TEXT_CHARACTERS}>
                           <Note>Showing the first {MAX_TEXT_CHARACTERS.toLocaleString()} characters.</Note>
                         </Show>
@@ -176,5 +199,18 @@ export function ArchiveView(props: {
         </Match>
       </Switch>
     </div>
+  );
+}
+
+/** Names the file a preview shows, and its size. */
+function FileCaption(props: { file: ArchiveFile | undefined }): JSX.Element {
+  return (
+    <Show when={props.file}>
+      {file => (
+        <div class={s['caption']} data-testid="td-archive-caption" title={file().path}>
+          {file().path} · {formatSize(file().bytes.length)}
+        </div>
+      )}
+    </Show>
   );
 }

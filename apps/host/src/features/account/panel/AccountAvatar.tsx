@@ -10,12 +10,12 @@ import s from './AccountAvatar.module.css';
 
 /**
  * A session's initials in a circle, or the user glyph when it has none or there is no session. A local account's
- * circle is ringed, so it never passes for a paired one.
+ * circle is ringed, and titled for a pointer, so it never passes for a paired one.
  */
 export function AccountAvatar(props: {
   session: AccountSession | undefined;
-  /** `sm` sits in a bar control, `lg` heads an account panel or a sign-in card. */
-  size: 'sm' | 'lg';
+  /** `bar` fills a bar control on a phone, `sm` sits beside a line of text, `lg` heads an account panel or a sign-in card. */
+  size: 'bar' | 'sm' | 'lg';
   local?: boolean;
   /** Hidden from assistive tech where a label beside it already names the account. */
   decorative?: boolean;
@@ -30,6 +30,7 @@ export function AccountAvatar(props: {
       data-wallet={props.local === true ? 'local' : undefined}
       data-testid={props.testId}
       aria-hidden={props.decorative === true ? 'true' : undefined}
+      title={props.local === true ? 'Local account' : undefined}
     >
       <Show when={initials()} fallback={<UserIcon class={s['glyph']} />}>
         {value => <>{value()}</>}

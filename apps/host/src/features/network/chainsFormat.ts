@@ -49,10 +49,19 @@ export type NetworkStatusLine = {
 };
 
 /** What a caption reads of the network. */
-type CaptionFacts = { chainCount: number; slow: readonly string[] };
+type CaptionFacts = {
+  chainCount: number;
+  slow: readonly string[];
+  /** The chains in use still waiting for a block, by label. */
+  pending: readonly string[];
+  /** Whether a chain in use has found a peer, so peers are no longer what the network waits for. */
+  peered: boolean;
+};
 
 /** A backend's caption for each health. */
 type Captions = Record<NetworkHealth, (facts: CaptionFacts) => string>;
+
+const UNREACHABLE_DETAIL = 'It offers no endpoint for these chains.';
 
 const QUIET_DETAIL = 'Chains appear here once the app connects to them.';
 
@@ -76,30 +85,38 @@ function inSync(chainCount: number): string {
 
 /** The chains that lag, which either backend names the same way. */
 function behindCaption({ slow }: CaptionFacts): string {
-  return `${joinNames(slow)} ${slow.length === 1 ? 'is' : 'are'} behind`;
+  return `${joinNames(slow)} ${slow.length === 1 ? 'is' : 'are'} behind.`;
 }
 
 const LIGHT_CLIENT = {
-  ok: ({ chainCount }) => `Light client is ${inSync(chainCount)}`,
-  idle: () => 'Finding peers. This takes a few seconds.',
+  ok: ({ chainCount }) => `Light client is ${inSync(chainCount)}.`,
+  idle: ({ pending, peered }) =>
+    peered
+      ? `Waiting for ${joinNames(pending)}. This takes a few seconds.`
+      : 'Connecting to peers. This takes a few seconds.',
   warn: behindCaption,
   err: () => 'No peers on any chain. Retrying.',
   quiet: () => QUIET_DETAIL,
+  unreachable: () => UNREACHABLE_DETAIL,
 } satisfies Captions;
 
 /** The gateway has no peers and verifies nothing, so its captions say neither. */
 const GATEWAY = {
-  ok: () => 'Served by trusted providers',
+  ok: () => 'Served by trusted providers.',
   idle: () => 'Reaching trusted providers. This takes a few seconds.',
   warn: behindCaption,
   err: () => 'Trusted providers are out of reach. Retrying.',
   quiet: () => QUIET_DETAIL,
+  unreachable: () => UNREACHABLE_DETAIL,
 } satisfies Captions;
 
 /** Whether the menu speaks of a light client: under one, or while the page has not read its settings (`undefined`). */
 export function isLightClientOrUnread(backend: Backend | undefined): boolean {
   return backend === undefined || hasLightClient(backend);
 }
+
+/** What the status line reads of a chain. */
+type StatusChain = Pick<ChainView, 'label' | 'state' | 'reachable' | 'peers'>;
 
 /**
  * The network menu's status line.
@@ -108,19 +125,25 @@ export function isLightClientOrUnread(backend: Backend | undefined): boolean {
 export function describeNetworkStatus({
   verdict,
   offline,
-  chainCount,
+  chains,
   backend,
 }: {
   verdict: LiveVerdict;
   offline: boolean;
-  chainCount: number;
+  chains: readonly StatusChain[];
   backend: Backend | undefined;
 }): NetworkStatusLine {
   const captions: Captions = isLightClientOrUnread(backend) ? LIGHT_CLIENT : GATEWAY;
   const tone: NetworkHealth = offline ? 'err' : verdict.tone;
+  const pending = chains.filter(chain => chain.reachable && chain.state === 'pending');
   return {
     tone,
     title: NETWORK_HEALTH[tone].title,
-    detail: captions[tone]({ chainCount, slow: verdict.slow ?? [] }),
+    detail: captions[tone]({
+      chainCount: chains.filter(chain => chain.state === 'live').length,
+      slow: verdict.slow ?? [],
+      pending: pending.map(chain => chain.label),
+      peered: chains.some(chain => chain.reachable && chain.state !== 'unused' && (chain.peers ?? 0) > 0),
+    }),
   };
 }

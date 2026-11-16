@@ -6,6 +6,7 @@
 import type { EventSeq, StoredEvent } from './storedEvent.js';
 import { computeGlobalYPositions } from './computeGlobalYPositions.js';
 import { computeLayout, type SegmentEntry } from './computeLayout.js';
+import { fitBoxLabel } from './fitBoxLabel.js';
 import { LANE_GAP, LANE_GUTTER, LANE_WIDTH, MARGIN_WIDTH, RAIL_COLUMN_WIDTH, ROW_HEIGHT } from './timelineGeometry.js';
 import { partitionIntoSwimlanes } from './partitionIntoSwimlanes.js';
 
@@ -36,6 +37,8 @@ export type TimelineBox = {
   height: number;
   color: string;
   pending: boolean;
+  /** The tag as it fits the box, empty when none does. */
+  label: string;
   tooltip: string;
   connector: { x1: number; x2: number; y: number } | null;
   pendingEdge: { x1: number; x2: number; y: number } | null;
@@ -95,6 +98,7 @@ function toTimelineBox(segment: SegmentEntry, lanesStartX: number): TimelineBox 
     height,
     color: segment.color,
     pending: segment.pending,
+    label: fitBoxLabel(segment.label, LANE_WIDTH),
     tooltip: formatSegmentTooltip(segment),
     connector:
       segment.linkedRailIndex === undefined

@@ -54,7 +54,7 @@ describe('one core asks', () => {
     });
     const camera = asks.permissions.devicePermission(PRODUCT, 'Camera');
     await page.waitForPrompt({
-      matches: prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account Access',
+      matches: prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account access',
     });
 
     // Then

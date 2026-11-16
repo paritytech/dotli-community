@@ -9,10 +9,12 @@
 
 .lead {
   margin: 0;
-  text-align: center;
+  color: var(--chrome-text-muted);
   font-size: var(--fs-body);
-  font-weight: 500;
-  color: var(--text-strong);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-body);
+  text-align: center;
+  text-wrap: pretty;
 }
 
 .status {
@@ -21,5 +23,17 @@
   justify-content: center;
   gap: var(--sp-2);
   font-size: var(--fs-small);
-  color: var(--chrome-text-muted);
+  color: var(--chrome-text);
+}
+.status > .spinner {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+/* A sheet heads from the start of the line, so its lead follows. The phone and the status under it stay centred. */
+@media (max-width: 560px) {
+  .lead {
+    text-align: start;
+  }
 }

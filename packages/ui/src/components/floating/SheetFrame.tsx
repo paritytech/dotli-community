@@ -1,10 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { onCleanup, Show } from 'solid-js';
+import { onCleanup, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '../createDrags.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
+import type { IconProps } from '../icons/iconProps.js';
+import { IconTile } from '../primitives/IconTile.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { InSheet } from './inSheet.js';
 import { dragSheet } from './dragSheet.js';
@@ -12,11 +14,13 @@ import s from './SheetFrame.module.css';
 
 export type SheetFrameProps = {
   title: string;
+  /** Drawn bare before the title. */
+  icon?: Component<IconProps> | undefined;
   onDismiss: () => void;
   closeLabel?: string;
   /** False draws no close button, and a swipe still calls `onDismiss`. Default true. */
   closable?: boolean | undefined;
-  /** Prefix for `-sheet-head`, `-sheet-title`, `-sheet-close`. */
+  /** Prefix for `-sheet-head`, `-sheet-icon`, `-sheet-title`, `-sheet-close`. */
   testId: string;
   /** Whether its layer is open. The sheet slides on this. */
   open: boolean;
@@ -77,9 +81,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         onPointerDown={handlePointerDown}
       >
         <div class={s['grabber']} aria-hidden="true" />
-        <h2 class={s['title']} data-testid={`${props.testId}-sheet-title`}>
-          {props.title}
-        </h2>
+        <Heading title={props.title} icon={props.icon} testId={props.testId} />
         <Show when={props.closable !== false}>
           <IconButton
             size="sm"
@@ -104,6 +106,20 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
       >
         <InSheet value={() => true}>{props.children}</InSheet>
       </div>
+    </div>
+  );
+}
+
+/** The head's title, led by its icon when it has one. */
+function Heading(props: { title: string; icon: Component<IconProps> | undefined; testId: string }): JSX.Element {
+  return (
+    <div class={s['heading']}>
+      <Show when={props.icon}>
+        {icon => <IconTile icon={icon()} class={s['icon']} testId={`${props.testId}-sheet-icon`} />}
+      </Show>
+      <h2 class={s['title']} data-testid={`${props.testId}-sheet-title`}>
+        {props.title}
+      </h2>
     </div>
   );
 }

@@ -14,7 +14,7 @@ export type PasswordDecision = 'cancel' | 'unlock';
 export function createPasswordPromptView(options?: { error?: string }): ModalView<PasswordDecision> {
   return {
     icon: LockIcon,
-    title: 'Encrypted Content',
+    title: 'Encrypted content',
     testId: 'password-prompt',
     fields: [],
     input: {

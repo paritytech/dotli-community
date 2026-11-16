@@ -6,8 +6,14 @@ import type { JSX } from '@solidjs/web';
 import { LogoSymbol } from '@dotli/ui/brand';
 import { Spinner } from '@dotli/ui';
 import { drawQrCode, prepareQrCode, type DrawQr } from './qrCode.js';
-import { presentQr } from './qrDrawer.js';
+import { presentQr, QR_MARGIN } from './qrDrawer.js';
 import s from './PairingQr.module.css';
+
+/**
+ * The modules across the code the placeholder sketches, before its payload is known: a short pairing deeplink's. The
+ * placeholder's corner marks sit on that code's grid, so they land where its finder patterns are drawn.
+ */
+const SKETCH_MODULES = 33;
 
 type DrawnQr = {
   payload: string;
@@ -116,7 +122,13 @@ export function PairingQr(props: PairingQrProps): JSX.Element {
         <Show
           when={qr()}
           fallback={
-            <div class={s['placeholder']}>
+            // The spinner is hidden from assistive tech, so its place says what it waits for.
+            <div
+              class={s['placeholder']}
+              style={{ '--qr-modules': String(SKETCH_MODULES), '--qr-margin': String(QR_MARGIN) }}
+              role="status"
+              aria-label="Getting the sign-in code ready"
+            >
               <Spinner class={s['placeholderSpinner']} testId="auth-modal-spinner" />
             </div>
           }

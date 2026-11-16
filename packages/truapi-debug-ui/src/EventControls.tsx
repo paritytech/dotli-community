@@ -17,9 +17,8 @@ import s from './EventControls.module.css';
 
 const COPY_FLASH_MS = 1200;
 
-/** The TrUAPI log's count and its controls: pause, clear, and the export as a download or a copy. */
+/** The TrUAPI log's controls: pause, clear, and the export as a download or a copy. */
 export function EventControls(props: {
-  counts: string;
   paused: boolean;
   exportJson: () => string;
   onTogglePause: () => void;
@@ -52,9 +51,6 @@ export function EventControls(props: {
 
   return (
     <div class={s['controls']} data-testid="td-event-controls">
-      <span class={s['counts']} data-testid="td-counts">
-        {props.counts}
-      </span>
       <Button testId="td-pause" active={props.paused} onClick={props.onTogglePause}>
         {props.paused ? 'Resume' : 'Pause'}
       </Button>

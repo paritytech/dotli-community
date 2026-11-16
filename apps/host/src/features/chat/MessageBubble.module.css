@@ -10,6 +10,10 @@
 .row[data-author='user'] {
   justify-content: flex-end;
 }
+/* Bubbles of one run sit close, so a run ends with its own space. */
+.row[data-run-end] {
+  margin-bottom: var(--sp-1);
+}
 
 .bubble {
   box-sizing: border-box;
@@ -18,50 +22,50 @@
   padding: var(--sp-2) var(--sp-3);
   border-radius: 12px;
   background: var(--fill);
-  color: var(--text);
-  font-size: 0.8rem;
+  color: var(--text-strong);
+  font-size: var(--fs-body);
   line-height: 1.4;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 .row[data-author='user'] .bubble {
-  background: var(--fill-strong);
+  background: var(--chat-bg-own);
 }
 
 .bubble[data-look='event'] {
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-style: italic;
 }
 
 .bubble[data-look='custom'] {
   width: 85%;
-  max-width: 85%;
-  padding: var(--sp-2) var(--sp-3);
 }
 
 .meta {
+  display: block;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
 }
 
 .time {
   display: block;
   box-sizing: border-box;
-  margin: var(--sp-hair) 0 0;
+  margin: var(--sp-1) 0 0;
   padding: 0;
   color: var(--text-muted);
-  font-size: 0.62rem;
+  font-size: var(--fs-label);
   font-style: normal;
   cursor: default;
 }
 .row[data-author='user'] .time {
   text-align: right;
 }
-.bubble[data-look='custom'] .time,
-.actions + .time {
-  margin-top: var(--sp-2);
+/* An event reads as one line beside the conversation. */
+.bubble[data-look='event'] .time {
+  display: inline;
+  margin: 0 0 0 var(--sp-1_5);
 }
 
 .actions {
@@ -69,7 +73,7 @@
   flex-direction: column;
   gap: var(--sp-2);
   box-sizing: border-box;
-  margin: var(--sp-2) 0 var(--sp-hair);
+  margin: var(--sp-2) 0 0;
   padding: 0;
 }
 .actions:first-child {

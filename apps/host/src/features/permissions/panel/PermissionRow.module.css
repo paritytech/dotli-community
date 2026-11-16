@@ -21,6 +21,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.modified {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chrome-text-muted);
+}
 
 @media (max-width: 560px) {
   .label {

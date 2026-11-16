@@ -65,10 +65,10 @@ export const TitleTakesNoFocus: Story = {
       showNoContentError('nothing');
 
       // Then
-      await expect(canvas.getByTestId('error-page-title')).toHaveTextContent("This app can't be reached");
+      await expect(canvas.getByTestId('error-page-title')).toHaveTextContent('No app with this name');
       await expect(canvas.getByTestId('error-page-title')).not.toHaveAttribute('tabindex');
       await expect(canvas.getByTestId('error-page-title')).not.toHaveFocus();
-      await expect(canvas.getByTestId('error-page-detail')).toHaveTextContent(/^Check if there is a typo in nothing/);
+      await expect(canvas.getByTestId('error-page-detail')).toHaveTextContent(/^Check the name for a typo: nothing/);
     });
   },
 };

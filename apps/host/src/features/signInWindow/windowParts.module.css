@@ -1,0 +1,139 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A site's full origin, then what the view says of it, each on a line of its own. */
+.origin {
+  display: block;
+  color: var(--chrome-text);
+  overflow-wrap: anywhere;
+}
+.lead {
+  display: block;
+}
+.origin + .lead {
+  margin-top: var(--sp-1);
+}
+/* The domain a group covers, split evenly over two lines rather than leave its last word alone. */
+.group {
+  text-wrap: balance;
+}
+
+/* What a site gets, one row each in a single well. */
+.gets {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+}
+.gets + .gets {
+  border-top: 1px solid var(--chrome-line);
+}
+.gets-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: calc((var(--fs-small) * var(--lh-body) - 16px) / 2);
+  color: var(--chrome-ok);
+}
+
+/* Holds a long call to half the window, so the answers under it stay in view. */
+.call {
+  max-height: 50vh;
+  overflow: auto;
+  border-radius: var(--r-sm);
+  overscroll-behavior: contain;
+}
+.call:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+
+/* The call heads its well, and each argument follows on rows of their own. */
+.call-name {
+  padding: var(--sp-2) 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+.arg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--chrome-line);
+}
+.arg-name {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-body);
+}
+/* A value keeps the line breaks of its text and may hold no break at all. */
+.arg-value {
+  color: var(--chrome-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* One site of the list, a row of the one well: its name, its other origins and when it was used in one column, with
+   Revoke beside the column's middle. */
+.site {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+.site + .site {
+  border-top: 1px solid var(--chrome-line);
+}
+.site-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.site-name {
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+.site-origin {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+/* The dates on one line, set a step further from the origins than the origins are from each other. */
+.site-uses {
+  margin-top: var(--sp-1);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+}
+/* A date breaks only between the two, never inside one. */
+.site-use {
+  white-space: nowrap;
+}
+
+.list-loading {
+  display: flex;
+  justify-content: center;
+}
+
+/* The well rounds more on a phone, and the box it scrolls in follows it. */
+@media (max-width: 560px) {
+  .call {
+    border-radius: var(--r-md);
+  }
+}

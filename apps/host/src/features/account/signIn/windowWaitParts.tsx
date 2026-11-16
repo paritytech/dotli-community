@@ -4,7 +4,7 @@
 // The sign-in modal's views while a sign-in goes through the sign-in window, and what their buttons ask of the page.
 
 import type { JSX } from '@solidjs/web';
-import { ExternalWindowIcon } from '@dotli/ui/icons';
+import { BanIcon, CircleAlertIcon, ExternalWindowIcon } from '@dotli/ui/icons';
 import type { AuthModalView } from './authModalState.js';
 import {
   SIGN_IN_CLOSE_ID,
@@ -12,6 +12,7 @@ import {
   type HeadingLevel,
   type SignInAction,
   type SignInParts,
+  type StatusMark,
 } from './SignInViews.js';
 import s from './windowWaitParts.module.css';
 
@@ -62,6 +63,20 @@ function windowCopy(view: WindowWaitView, host: string | null): { title: string;
   }
 }
 
+/** What heads the view: where the sign-in stands, or nothing over a prompt, which only asks. */
+function windowMark(view: WindowWaitView): StatusMark | undefined {
+  switch (view.kind) {
+    case 'window':
+      return { icon: ExternalWindowIcon };
+    case 'blocked':
+      return { icon: CircleAlertIcon, tone: 'warn' };
+    case 'refused':
+      return { icon: BanIcon };
+    case 'prompt':
+      return undefined;
+  }
+}
+
 function windowActions(view: WindowWaitView, props: WindowWaitPartsProps): SignInAction[] {
   const retry = (): void => {
     props.onRetry();
@@ -80,7 +95,7 @@ function windowActions(view: WindowWaitView, props: WindowWaitPartsProps): SignI
       return [
         {
           label: 'Show the window',
-          icon: ExternalWindowIcon,
+          primary: true,
           onPress: () => {
             props.onFocusWindow();
           },
@@ -110,6 +125,7 @@ function windowActions(view: WindowWaitView, props: WindowWaitPartsProps): SignI
 /** The screen for a view that waits on the sign-in window. Each call builds the screen anew. */
 export function windowWaitParts(view: WindowWaitView, props: WindowWaitPartsProps): SignInParts {
   const parts = StatusScreen({
+    mark: windowMark(view),
     get title() {
       return windowCopy(view, props.host).title;
     },

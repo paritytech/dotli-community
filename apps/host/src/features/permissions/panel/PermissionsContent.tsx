@@ -36,10 +36,10 @@ const MENU_GROUPS: readonly { id: PermissionGroup; label: string }[] = getKeys(P
   label: PERMISSION_GROUPS[id].label,
 }));
 
-const NOTICES: Record<PermissionsNotice, string> = {
-  loading: 'Wait for the app to finish loading to change its permissions.',
-  'no-app': 'No app is loaded on this domain.',
-  unavailable: 'Permissions are unavailable for this app.',
+const NOTICES: Record<PermissionsNotice, { title: string; detail: string }> = {
+  loading: { title: 'App still loading', detail: 'Wait for it to finish loading to change its permissions.' },
+  'no-app': { title: 'No app loaded', detail: 'Permissions show here once an app loads on this domain.' },
+  unavailable: { title: 'Permissions unavailable', detail: "dot.li couldn't read this app's permissions." },
 };
 
 export type PermissionsContentProps = {
@@ -84,9 +84,9 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
     })),
   );
 
-  const hint = (): string | undefined => {
-    const notice = props.notice();
-    return notice === undefined ? undefined : NOTICES[notice];
+  const notice = (): { title: string; detail: string } | undefined => {
+    const current = props.notice();
+    return current === undefined ? undefined : NOTICES[current];
   };
 
   const statusOf = (list: readonly PermissionStatus[], perm: MenuPermission): PermissionStatus =>
@@ -101,6 +101,11 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
         setFailed(names);
       }
     });
+  };
+
+  const changedFrom = (list: readonly PermissionStatus[], perm: MenuPermission): string | undefined => {
+    const { preset } = presetOf(list);
+    return statusOf(list, perm) === preset.statuses[perm.name] ? undefined : preset.label;
   };
 
   const failedText = (): string | undefined => {
@@ -132,7 +137,18 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
     <Surface width="lg" padded>
       <SurfaceHead title="Permissions" testId="permissions-popover-header" />
       <div class={s['list']} id="permissions-popover-list" data-pending={props.pending() ? '' : undefined}>
-        <Show when={hint()}>{text => <Callout testId="permissions-popover-hint">{text()}</Callout>}</Show>
+        <Show when={notice()}>
+          {text => (
+            <Well class={s['notice']} testId="permissions-popover-hint">
+              <p class={s['noticeTitle']} data-testid="permissions-popover-hint-title">
+                {text().title}
+              </p>
+              <p class={s['noticeDetail']} data-testid="permissions-popover-hint-detail">
+                {text().detail}
+              </p>
+            </Well>
+          )}
+        </Show>
         <Show when={props.statuses()}>
           {list => (
             <>
@@ -146,6 +162,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
               <Show when={failedText()}>{text => <Callout testId="permissions-popover-error">{text()}</Callout>}</Show>
               <Accordion
                 title="Advanced"
+                class={s['advanced']}
                 open={advanced()}
                 onToggle={setAdvanced}
                 testId="permissions-advanced"
@@ -166,6 +183,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                               <PermissionRow
                                 perm={perm}
                                 status={statusOf(list(), perm)}
+                                changedFrom={changedFrom(list(), perm)}
                                 disabled={props.pending()}
                                 choose={(name, status) => {
                                   apply({ [name]: status });

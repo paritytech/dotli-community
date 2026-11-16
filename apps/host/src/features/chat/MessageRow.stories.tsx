@@ -39,6 +39,7 @@ const meta = {
     chat: chat(),
     record: record({ tag: 'Text', value: { text: 'hello' } }),
     now: NOW,
+    endsRun: true,
     onActionError: fn(),
   },
 } satisfies Meta<typeof MessageRow>;

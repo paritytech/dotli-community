@@ -4,10 +4,10 @@
 import { createMemo, createSignal, lazy, onSettled, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ActionItem, Button, Popover } from '@dotli/ui';
-import { AlertTriangleIcon } from '@dotli/ui/icons';
 import { TOPBAR_PRIORITY } from '../../page/index.js';
 import { AccountAvatar } from './AccountAvatar.js';
 import { sessionDisplayName, sessionInitials } from './accountNames.js';
+import { SignInIcon } from './SignInIcon.js';
 import { UserIcon } from './UserIcon.js';
 import { getAuthButtonState } from './account.js';
 import type { Account, AccountSession, AuthButtonFace, AuthButtonState } from './account.js';
@@ -49,7 +49,7 @@ function getAuthLabel(state: AuthButtonState, local: boolean): string {
     case 'checking':
       return 'Checking sign-in';
     case 'unreachable':
-      return "Can't reach your sign-in";
+      return 'Retry sign-in';
     case 'signingOut':
       return 'Signing out';
     case 'resume':
@@ -81,8 +81,9 @@ function getAuthTitle(state: AuthButtonState, label: string): string {
   switch (state.kind) {
     case 'resume':
       return RESUME_TITLE;
-    case 'checking':
     case 'unreachable':
+      return "Can't reach your sign-in. Retry";
+    case 'checking':
     case 'signingOut':
     case 'signIn':
     case 'signedIn':
@@ -105,7 +106,7 @@ function chipLook(named: boolean): ButtonLook {
   return { variant: 'secondary', class: [s['chip'], named ? undefined : s['avatarOnly']].join(' ').trim() };
 }
 
-/** The look of `face`: a chip for the account and the alert, else the sign-in pill. */
+/** The look of `face`: a chip for the account, else the sign-in pill. */
 function getButtonLook(face: AuthButtonFace, showName: boolean): ButtonLook {
   switch (face.kind) {
     case 'account':
@@ -113,7 +114,7 @@ function getButtonLook(face: AuthButtonFace, showName: boolean): ButtonLook {
     case 'prompt':
       return { variant: 'primary', class: s['signIn'] ?? '' };
     case 'alert':
-      return chipLook(false);
+      return { variant: 'secondary', class: s['signIn'] ?? '' };
   }
 }
 
@@ -121,8 +122,8 @@ function getButtonLook(face: AuthButtonFace, showName: boolean): ButtonLook {
  * The auth button and the account popover, in the topbar and in the landing page's corner.
  *
  * A click toggles the popover only while `Connected`, and starts a sign-in in any other state, a pairing under way
- * while logged in included. It takes no clicks while the saved session is being read, and shows an alert icon button
- * that reads it again while it cannot be reached. The trigger ARIA follows the click: the Popover writes it while
+ * while logged in included. It takes no clicks while the saved session is being read, and shows an alert button that
+ * reads it again while it cannot be reached. The trigger ARIA follows the click: the Popover writes it while
  * `Connected`, this component writes it for the auth modal otherwise. Signed out while a sign-in made elsewhere waits, it reads Continue session.
  */
 export function AuthButton(props: AuthButtonProps): JSX.Element {
@@ -154,7 +155,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         const name = getShownName(face.session, props.showName === true);
         return (
           <>
-            <AccountAvatar session={face.session} size="sm" local={props.account.local()} testId="user-badge" />
+            <AccountAvatar session={face.session} size="bar" local={props.account.local()} testId="user-badge" />
             {/* The space keeps the initials and the name apart in the visible text, as in the button's name. */}
             {name === undefined ? null : (
               <>
@@ -168,7 +169,8 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
       case 'prompt':
         return (
           <>
-            <UserIcon class={s['signInIcon']} />
+            {/* Not the account's own glyph, so a phone tells this button from a signed-in account without initials. */}
+            <SignInIcon class={s['signInIcon']} />
             <span
               class={s['label']}
               data-testid="auth-button-label"
@@ -179,7 +181,15 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
           </>
         );
       case 'alert':
-        return <AlertTriangleIcon class={s['signInIcon']} />;
+        return (
+          <>
+            {/* The account icon keeps the control recognisable on a phone, where the label hides. */}
+            <span class={s['alertMark']} data-testid="auth-button-alert">
+              <UserIcon class={s['signInIcon']} />
+            </span>
+            <span class={s['label']}>{label()}</span>
+          </>
+        );
     }
   };
   onSettled(() => {
@@ -221,6 +231,8 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         trigger={opensPopover() ? button() : undefined}
         class={s['popover']}
         preload={AccountPanel.preload}
+        // Sign out never takes focus as the popover opens: the sites link does, or else the popover itself.
+        initialFocus={root => root.querySelector<HTMLElement>('[data-initial-focus]') ?? undefined}
       >
         <AccountPanel account={props.account} onLogout={props.onLogout} sitesUrl={props.sitesUrl} />
       </Popover>

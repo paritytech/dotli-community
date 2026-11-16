@@ -1,24 +1,83 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* Holds the list and, over its foot, the cue to jump back to the newest event. */
+.frame {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.frame[hidden] {
+  display: none;
+}
+/* In the accent, as it floats over rows of every colour. */
+.frame > .jump {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--td-accent);
+  border-radius: 999px;
+  background: var(--td-accent);
+  box-shadow: 0 2px 8px var(--td-shadow);
+  color: var(--td-fg-bright);
+  transform: translateX(-50%);
+}
+.frame > .jump:hover:enabled {
+  border-color: var(--td-focus);
+  background: var(--td-focus);
+}
+
+/* Its rows fit their columns to the list's own width, whichever dock or split it sits in. */
+.list {
+  container: td-list / inline-size;
+}
 /* Beats global.css's :focus-visible whatever the sheet order (dev loads it last). */
 .list:focus-visible {
   outline: none;
 }
 
+/* Every row shares these columns: time, direction, product, id, tag and summary, then latency and pending. */
 .row {
   display: grid;
-  grid-template-columns: max-content 16px 90px 58px minmax(0, 1fr);
+  grid-template-columns: max-content 16px 90px 12ch minmax(0, 1fr) max-content;
   align-items: baseline;
   gap: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A layer badge replaces the arrow and product. */
+/* A narrow list gives the method the room: the product and a system row's layer go, since the tag names the layer,
+   and the pending badge drops its word. */
+@container td-list (max-width: 520px) {
+  .row {
+    grid-template-columns: max-content 12px 10ch minmax(10ch, 1fr) max-content;
+  }
+  .product,
+  .layer,
+  .pendingWord {
+    display: none;
+  }
+  .id {
+    grid-column: 3;
+  }
+}
+/* An inset edge, so the timestamp keeps its place. */
 .row[data-system] {
-  grid-template-columns: max-content max-content 90px minmax(0, 1fr);
-  border-left: 2px solid var(--td-system-edge);
+  box-shadow: inset 2px 0 0 var(--td-system-edge);
+}
+.row[data-system][data-selection='selected'] {
+  box-shadow:
+    inset 2px 0 0 var(--td-system-edge),
+    inset 0 0 0 1px var(--td-accent);
+}
+/* A system row's layer badge takes the direction and product columns. */
+.layer {
+  grid-column: span 2;
+  min-width: 0;
 }
 
 .product,
@@ -26,13 +85,13 @@
   min-width: 0;
 }
 .product {
-  color: var(--td-slate);
+  color: var(--td-fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 11px;
 }
 .product[data-anon] {
-  color: var(--td-fg-faint);
+  color: var(--td-fg-dim);
   font-style: italic;
 }
 .tagAndSummary {
@@ -45,14 +104,19 @@
   font-size: 11px;
 }
 
+.end {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .pending {
-  margin-left: 6px;
   padding: 0 5px;
   border-radius: 3px;
   background: var(--td-slate-bg);
   color: var(--td-blue-soft);
   border: 1px solid var(--td-slate-line);
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;

@@ -8,10 +8,13 @@ import { createSignal, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { HexString, RenderContext, RendererNode } from '@parity/truapi';
 import { toHex } from '@dotli/shared';
+import { Spinner } from '@dotli/ui';
 import { CustomNode } from './CustomNode.js';
 import type { ChatMessageActions } from './chat.js';
 import { visibilityWatcher, type WatchVisibility } from './visibility.js';
 import s from './CustomMessage.module.css';
+
+const LOADING = 'Loading…';
 
 export type CustomMessageProps = {
   chat: Pick<ChatMessageActions, 'renderCustomMessage' | 'triggerRendererAction'>;
@@ -29,7 +32,9 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
   // A message's identity never changes for its row, so read it once.
   const mount = untrack(() => ({ ...props }));
   const [tree, setTree] = createSignal<RendererNode>();
-  const [placeholder, setPlaceholder] = createSignal<string | undefined>('Loading…');
+  const [placeholder, setPlaceholder] = createSignal<string | undefined>(LOADING);
+  // Under the tree, which stays usable after a tap that did not reach the app.
+  const [actionFailed, setActionFailed] = createSignal(false);
   let root: HTMLDivElement | undefined;
 
   // The same context names the body on the render request and on every
@@ -44,6 +49,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
   };
 
   const onAction = (actionId: string, payload?: Uint8Array): void => {
+    setActionFailed(false);
     mount.chat
       .triggerRendererAction(mount.productId, {
         context,
@@ -51,7 +57,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
         payload: payload === undefined ? '0x' : toHex(payload),
       })
       .catch(() => {
-        setPlaceholder('The app could not be reached.');
+        setActionFailed(true);
       });
   };
 
@@ -113,9 +119,17 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
       >
         {text => (
           <span class={s['placeholder']} data-testid="chat-custom-placeholder">
+            <Show when={text() === LOADING}>
+              <Spinner class={s['spinner']} />
+            </Show>
             {text()}
           </span>
         )}
+      </Show>
+      <Show when={actionFailed()}>
+        <span class={s['error']} role="alert" data-testid="chat-custom-error">
+          The app could not be reached. Try again.
+        </span>
       </Show>
     </div>
   );

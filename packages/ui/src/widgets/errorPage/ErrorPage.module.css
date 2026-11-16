@@ -39,24 +39,16 @@
   padding: 0;
 }
 
+/* Bare on the page. */
 .glyph {
-  display: grid;
+  display: flex;
   flex: none;
-  place-items: center;
-  box-sizing: border-box;
-  width: var(--sp-14);
-  height: var(--sp-14);
   margin: 0;
   padding: 0;
-  border-radius: var(--r-full);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
   color: var(--text-secondary);
 }
 
 .glyph[data-warning] {
-  background: var(--chrome-warn-fill);
-  box-shadow: inset 0 0 0 1px var(--chrome-warn-ring);
   color: var(--chrome-warn);
 }
 
@@ -65,13 +57,14 @@
 }
 
 .title {
-  margin: var(--sp-6) 0 0;
+  margin: var(--sp-4) 0 0;
   padding: 0;
   font-size: var(--fs-h1);
   font-weight: var(--fw-semibold);
   letter-spacing: var(--ls-tight);
   line-height: var(--lh-tight);
   color: var(--text-strong);
+  text-wrap: balance;
 }
 
 /* Focused only by script, never by Tab, so a ring would mark nothing actionable. */
@@ -95,8 +88,12 @@
 
 .tips {
   box-sizing: border-box;
-  width: 100%;
   margin: var(--sp-6) 0 0;
+}
+/* The well hugs its longest tip, so it does not set a third width between the title and the actions. */
+.tips[data-layout='list'] {
+  width: fit-content;
+  max-width: 100%;
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-md);
   background: var(--surface);
@@ -112,6 +109,15 @@
   letter-spacing: var(--ls-caps);
   text-transform: uppercase;
   color: var(--text-secondary);
+}
+
+.tip {
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-strong);
+  text-wrap: pretty;
 }
 
 .tips-list {
@@ -132,57 +138,6 @@
   padding: 0;
 }
 
-.retry {
-  display: inline-flex;
-  gap: var(--sp-2);
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  height: var(--h-control);
-  margin: 0;
-  padding: 0 var(--sp-5);
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
-  color: var(--text-strong);
-  font: var(--fw-semibold) var(--fs-title) / 1 var(--font-sans);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--dur-fast);
-}
-
-.retry:hover {
-  background: var(--fill);
-}
-
-.retry:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
-/* After the hover rule, so it keeps its fill under the pointer. */
-.retry[data-primary] {
-  background: var(--inverse-bg);
-  box-shadow: none;
-  color: var(--inverse-fg);
-}
-
-.retry[data-primary]:hover {
-  background: var(--inverse-bg-hover);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .retry {
-    transition: none;
-  }
-}
-
-.retry-icon {
-  display: inline-flex;
-  flex: none;
-}
-
 /* A caller's icon may carry its own size. */
 .action-icon {
   display: block;
@@ -190,14 +145,18 @@
   height: 16px;
 }
 
-/* Phones put the recommended button on top, full width, under the thumb. */
+/* Phones stack the buttons full width in reading order, the recommended one last as in a dialog sheet. */
 @media (max-width: 560px) {
   .page {
     padding: 0 calc(var(--sp-4) + var(--safe-right)) var(--sp-14) calc(var(--sp-4) + var(--safe-left));
   }
 
+  .tips[data-layout='list'] {
+    width: 100%;
+  }
+
   .actions {
-    flex-direction: column-reverse;
+    flex-direction: column;
     width: 100%;
   }
 }

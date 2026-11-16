@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
@@ -18,6 +18,8 @@ import { PINNED } from './fit.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { GlobeIcon } from '../icons/GlobeIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
+import { Chip } from '../primitives/Chip.js';
+import { StatusDot } from '../primitives/StatusDot.js';
 
 type Activation = {
   name: string;
@@ -60,7 +62,8 @@ function Item(props: {
   priority: number;
   visible?: boolean;
   alert?: ActionAlert | undefined;
-  aside?: string | undefined;
+  /** A word after a status dot of the alert's tone, as a health reads, or a count in a chip. */
+  aside?: { word: string } | { count: string } | undefined;
   width?: number;
 }): JSX.Element {
   return (
@@ -71,7 +74,7 @@ function Item(props: {
       priority={props.priority}
       visible={props.visible ?? true}
       alert={props.alert}
-      aside={props.aside === undefined ? undefined : () => props.aside}
+      aside={props.aside === undefined ? undefined : () => <Aside aside={props.aside} tone={props.alert?.tone} />}
       activate={event => {
         activations.push({ name: props.name, detail: event.detail });
       }}
@@ -80,6 +83,29 @@ function Item(props: {
         {props.name}
       </button>
     </ActionItem>
+  );
+}
+
+function Aside(props: {
+  aside: { word: string } | { count: string } | undefined;
+  tone: ActionAlert['tone'] | undefined;
+}): JSX.Element {
+  const count = (): string | undefined =>
+    props.aside !== undefined && 'count' in props.aside ? props.aside.count : undefined;
+  const word = (): string => (props.aside !== undefined && 'word' in props.aside ? props.aside.word : '');
+  return (
+    <Show when={count()} fallback={<WordAside word={word()} tone={props.tone} />}>
+      {value => <Chip>{value()}</Chip>}
+    </Show>
+  );
+}
+
+function WordAside(props: { word: string; tone: ActionAlert['tone'] | undefined }): JSX.Element {
+  return (
+    <>
+      <StatusDot tone={props.tone ?? 'ok'} size="sm" />
+      <span>{props.word}</span>
+    </>
   );
 }
 
@@ -393,17 +419,28 @@ export const CollapsedKeepsAnchor: Story = {
   },
 };
 
+/** The network row's word for its alert, as the network item puts its health after its label. */
+function networkWord(): { word: string } | undefined {
+  const word = networkAlert()?.label.replace(/^network /, '');
+  return word === undefined ? undefined : { word: word.charAt(0).toUpperCase() + word.slice(1) };
+}
+
 function AlertItems(props: { aside?: boolean }): JSX.Element {
   return (
     <>
       <Item name="auth" priority={PINNED} />
-      <Item name="network" priority={5} alert={networkAlert()} />
+      <Item
+        name="network"
+        priority={5}
+        alert={networkAlert()}
+        aside={props.aside === true ? networkWord() : undefined}
+      />
       <Item
         name="chat"
         priority={4}
         visible={props.aside === true}
         alert={{ tone: 'info', label: 'chat has unread messages' }}
-        aside="3"
+        aside={{ count: '3' }}
       />
       <Item name="settings" priority={1} />
     </>
@@ -466,7 +503,7 @@ export const NoBadgeWhenItemShows: Story = {
   },
 };
 
-/** As a phone user with several collapsed items raising a status, More shows the most severe as its badge and its row shows the aside. */
+/** As a phone user with several collapsed items raising a status, More shows the most severe as its badge and each row shows its own. */
 export const PhoneSeveralAlerts: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: () => {
@@ -487,17 +524,18 @@ export const PhoneSeveralAlerts: Story = {
       fitSlots(1);
       await openMore(userEvent);
     });
-    await step('Then More shows unread chat, the most severe, and names both, and the chat row its count', async () => {
+    await step('Then More shows unread chat, the most severe, and names both, and each row its status', async () => {
       await expect(more()).toHaveAttribute('data-tone', 'info');
       await expect(more()).toHaveAttribute('aria-label', 'More, network syncing, chat has unread messages');
       await expect(within(getMoreRow('chat')).getByTestId('more-row-aside')).toHaveTextContent('3');
-      await expect(getMoreRow('network').querySelector('[data-testid="more-row-aside"]')).toBeNull();
+      await expect(within(getMoreRow('network')).getByTestId('more-row-aside')).toHaveTextContent('Syncing');
     });
     await step('When the network goes offline', () => {
       setNetworkAlert({ tone: 'err', label: 'network offline' });
     });
-    await step('Then More shows the error', async () => {
+    await step('Then More shows the error, and the network row says so', async () => {
       await waitFor(() => expect(more()).toHaveAttribute('data-tone', 'err'));
+      await expect(within(getMoreRow('network')).getByTestId('more-row-aside')).toHaveTextContent('Offline');
       await expect(more()).toHaveAttribute('aria-label', 'More, network offline, chat has unread messages');
     });
   },

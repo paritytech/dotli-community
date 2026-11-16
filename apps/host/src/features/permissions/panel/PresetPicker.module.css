@@ -21,7 +21,7 @@
 }
 .title {
   color: var(--chrome-text);
-  font: var(--fw-semibold) var(--fs-title) / var(--lh-tight) var(--font-sans);
+  font: var(--fw-semibold) var(--fs-body) / var(--lh-tight) var(--font-sans);
 }
 /* The row's own selector outranks the Spinner's default size and margin. */
 .name > .spinner {
@@ -31,9 +31,18 @@
   border-width: 1.5px;
 }
 .line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
   margin: 0;
   color: var(--chrome-text-muted);
-  font: 12px / 1.4 var(--font-sans);
+  font: var(--fs-caption) / 1.4 var(--font-sans);
+}
+.warn {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--chrome-warn);
 }
 @media (max-width: 560px) {
   .picker {
@@ -43,10 +52,7 @@
   .readout {
     gap: var(--sp-1);
   }
-  .title {
-    font-size: var(--fs-title-lg);
-  }
   .line {
-    font-size: 13px;
+    font-size: var(--fs-small);
   }
 }

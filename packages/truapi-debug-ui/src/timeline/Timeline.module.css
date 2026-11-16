@@ -7,10 +7,11 @@
   min-width: 100%;
 }
 
+/* Never narrower than its boxes, so the timeline scrolls as one rather than lane by lane. */
 .col {
   display: flex;
   flex-direction: column;
-  flex: 1 1 240px;
+  flex: 1 0 auto;
   box-sizing: border-box;
   min-width: 160px;
   border-right: 1px solid var(--td-bg-chip);
@@ -26,7 +27,6 @@
   background: var(--td-bg-raised);
   border-bottom: 1px solid var(--td-line);
   padding: 4px 8px;
-  font-family: system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -40,9 +40,6 @@
 
 .body {
   flex: 1 1 auto;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
 }
 
 .svg {
@@ -72,23 +69,35 @@
   r: 4;
 }
 
-/* The outline is the text colour the panel sets, on every box. */
+/* Filled and outlined in its own colour, so a small box still reads as its call. The selected one takes the list's
+   selection fill with a bright outline, so a selection reads the same in both views. */
 .segment {
   cursor: pointer;
-  fill-opacity: 0.25;
-  stroke: currentColor;
-  stroke-opacity: 0.8;
+  fill: var(--box-color);
+  fill-opacity: 0.35;
+  stroke: var(--box-color);
   stroke-width: 1;
   transition: fill-opacity 0.1s;
 }
 .segment:hover {
-  fill-opacity: 0.4;
+  fill-opacity: 0.5;
 }
 .segment[data-pending] {
-  fill-opacity: 0.18;
+  fill-opacity: 0.22;
 }
 .segment[data-selected] {
-  fill-opacity: 0.55;
+  fill: var(--td-selected);
+  fill-opacity: 1;
+  stroke: var(--td-focus);
+  stroke-width: 2;
+}
+
+/* On the box's first row, and click-through, so the box under it takes the click. */
+.boxLabel {
+  fill: var(--td-fg-bright);
+  font-size: 10px;
+  dominant-baseline: central;
+  pointer-events: none;
 }
 
 .pendingEdge {

@@ -20,10 +20,26 @@
   width: 14px;
   height: 14px;
 }
+/* The account icon with a dot at its top-right corner, in the tone of a sign-in that needs attention. */
+.alert-mark {
+  position: relative;
+  display: inline-flex;
+}
+.alert-mark::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chrome-warn);
+  box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
+}
 /* The avatar sits as far from the chip's left edge as from its top and bottom. */
 .chip {
   max-width: 132px;
-  padding: 0 var(--sp-3) 0 calc((var(--h-bar-control) - 26px) / 2);
+  padding: 0 var(--sp-3) 0 calc((var(--h-bar-control) - 28px) / 2);
   box-shadow: none;
   font-weight: var(--fw-semibold);
 }
@@ -35,6 +51,10 @@
 }
 .avatar-only:hover {
   background: var(--chrome-fill);
+}
+/* The ring hugs the avatar rather than the transparent box around it. */
+.chip.avatar-only:focus-visible {
+  outline-offset: -3px;
 }
 .chip[aria-expanded='true'] {
   background: var(--chrome-fill-strong);
@@ -64,7 +84,15 @@
     height: 20px;
     stroke-width: 1.75;
   }
+  .alert-mark::after {
+    width: var(--sp-2);
+    height: var(--sp-2);
+  }
   .chip {
     background: transparent;
+  }
+  /* The phone avatar fills its button, so the ring sits outside it. */
+  .chip.avatar-only:focus-visible {
+    outline-offset: 2px;
   }
 }

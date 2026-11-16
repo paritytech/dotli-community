@@ -34,9 +34,9 @@ export type ToastInput = {
   text: string;
   label: string;
   deeplink?: string | undefined;
-  /** Drawn in the toast's tile, which sizes it and colors it by tone. Its tone's icon without one. */
+  /** Drawn bare in the tone's colour. Its tone's icon without one, and always the warning glyph for warn and err. */
   icon?: Component<IconProps> | undefined;
-  /** Tints the icon tile. */
+  /** Colours the icon. */
   tone?: StatusTone | undefined;
   /** 0 is persistent. */
   dismissMs: number;

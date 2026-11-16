@@ -11,9 +11,11 @@
   color: var(--td-fg);
   font: inherit;
   font-size: 11px;
+  /* Fixed, so a glyph button and a text button stand the same height. */
+  line-height: 13px;
   cursor: pointer;
 }
-.button:hover {
+.button:hover:enabled {
   background: var(--td-line-strong);
   border-color: var(--td-line-hover);
 }
@@ -22,8 +24,25 @@
   border-color: var(--td-accent);
   color: var(--td-fg-bright);
 }
+/* The red marks the edge only. As text it is too dark to read on the panel. */
+.button[data-tone='danger'] {
+  border-color: var(--td-danger);
+}
+.button[data-tone='danger']:hover:enabled {
+  border-color: var(--td-danger);
+  background: color-mix(in srgb, var(--td-danger) 15%, var(--td-bg));
+}
+/* Flat and quiet, so a busy or unavailable action reads as one at a glance. */
 .button:disabled {
+  border-color: var(--td-line);
+  background: transparent;
+  color: var(--td-fg-dim);
+  font-style: italic;
   cursor: default;
+}
+.button:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: 1px;
 }
 .button[hidden] {
   display: none;
@@ -33,12 +52,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 8px;
+  padding: 3px 8px;
   color: var(--td-fg-muted);
 }
-.icon:hover {
+.icon:hover:enabled {
   color: var(--td-fg);
 }
 .icon svg {
   display: block;
+  width: 13px;
+  height: 13px;
 }

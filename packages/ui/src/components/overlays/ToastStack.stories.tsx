@@ -5,7 +5,6 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { toasts, type ToastInput } from '../../page/state/createToasts.js';
-import { BellIcon } from '../icons/BellIcon.js';
 import { ToastStack } from './ToastStack.js';
 
 const onAction = fn<() => void>().mockName('onAction');
@@ -29,12 +28,20 @@ export const OneToast: Story = { beforeEach: showOne };
 /** As a dotli user, I see three toasts stacked. */
 export const ThreeToasts: Story = { beforeEach: showThree };
 
-/** As a dotli user, I see only the newest three of four toasts, with Dismiss all offered. */
+/** As a dotli user, I see only the newest three of four toasts, with how many the pile holds and its front card's close. */
 export const FourToastsShowNewestThree: Story = {
   beforeEach: showLabelled(['A', 'B', 'C', 'D']),
+  play: async ({ canvas, step }) => {
+    await step('Then the pile counts all four and offers to close its front card', async () => {
+      await expect(canvas.getByTestId('notif-count')).toBeVisible();
+      await expect(canvas.getByTestId('notif-count')).toHaveTextContent('4');
+      await waitFor(() => expect(canvas.getByRole('button', { name: 'Dismiss' })).toBeVisible());
+      await expect(canvas.getByTestId('notif-close-all')).not.toBeVisible();
+    });
+  },
 };
 
-/** As a dotli user, I see a toast's tinted icon, title, link, action and close button, and pressing the action runs it once. */
+/** As a dotli user, I see a toast's toned icon, title, link, action and close button, and pressing the action runs it once. */
 export const ToastParts: Story = {
   beforeEach: showLabelled(['Update available'], {
     deeplink: 'https://dot.li/',
@@ -48,21 +55,18 @@ export const ToastParts: Story = {
   }),
   play: async ({ canvas, userEvent, step }) => {
     const card = canvas.getByTestId('notif-card');
-    await step(
-      'Then the toast shows its tinted icon, title, link, action and close button, read politely',
-      async () => {
-        await expect(within(card).getByTestId('notif-icon')).toHaveAttribute('data-tone', 'err');
-        await expect(within(card).getByTestId('notif-title')).toHaveTextContent('Update available');
-        const link = within(card).getByRole('link', { name: 'Update available happened' });
-        await expect(link).toHaveAttribute('href', 'https://dot.li/');
-        await expect(link).toHaveAttribute('target', '_blank');
-        await expect(link).toHaveAttribute('rel', 'noopener');
-        await expect(within(card).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
-        const live = canvas.getByRole('status');
-        await expect(live).toHaveAttribute('aria-live', 'polite');
-        await expect(canvas.queryByRole('button', { name: 'Dismiss all' })).toBeNull();
-      },
-    );
+    await step('Then the toast shows its toned icon, title, link, action and close button, read politely', async () => {
+      await expect(within(card).getByTestId('notif-icon')).toHaveAttribute('data-tone', 'err');
+      await expect(within(card).getByTestId('notif-title')).toHaveTextContent('Update available');
+      const link = within(card).getByRole('link', { name: 'Update available happened' });
+      await expect(link).toHaveAttribute('href', 'https://dot.li/');
+      await expect(link).toHaveAttribute('target', '_blank');
+      await expect(link).toHaveAttribute('rel', 'noopener');
+      await expect(within(card).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+      const live = canvas.getByRole('status');
+      await expect(live).toHaveAttribute('aria-live', 'polite');
+      await expect(canvas.getByTestId('notif-close-all')).not.toBeVisible();
+    });
     await step('When I press its action', async () => {
       await userEvent.click(within(card).getByRole('button', { name: 'Reload' }));
     });
@@ -98,26 +102,45 @@ export const DismissOne: Story = {
   },
 };
 
-/** As a dotli user, I dismiss all toasts and each plays its exit, leaving the stack empty. */
-export const DismissAll: Story = {
+/** As a dotli user, I clear an expanded stack with its labelled Clear all and the stack empties. */
+export const ClearAllWhenExpanded: Story = {
+  tags: ['!autodocs'],
+  beforeEach: showLabelled(['A', 'B', 'C', 'D']),
+  play: async ({ canvas, canvasElement, userEvent, step }) => {
+    await step('Given the stack is expanded', async () => {
+      await userEvent.click(canvas.getAllByTestId('notif-text').at(-1) ?? canvasElement);
+      await waitFor(() => expect(canvas.getByTestId('notif-stack')).toHaveAttribute('data-expanded'));
+    });
+    await step('When I press Clear all', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Clear all' }));
+    });
+    await step('Then the stack collapses and empties', async () => {
+      await expect(toasts.store.get().expanded).toBe(false);
+      await waitFor(() => expect(canvas.queryByTestId('notif-stack')).toBeNull());
+    });
+  },
+};
+
+/** As a dotli user, I close the front card of the pile and only that toast leaves. */
+export const DismissFront: Story = {
   tags: ['!autodocs'],
   beforeEach: showThree,
-  play: async ({ canvas, userEvent, mount, step }) => {
+  play: async ({ canvas, canvasElement, userEvent, mount, step }) => {
     await step('When the stack renders', async () => {
       await mount();
     });
     await step('Then three toasts are stacked', async () => {
       await expect(canvas.getAllByTestId('notif-card')).toHaveLength(3);
     });
-    await step('When I dismiss them all', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Dismiss all' }));
+    await step('When I press the close button on the front card', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Dismiss' }));
     });
-    await step('Then every toast plays its exit, and once they end the stack is empty', async () => {
-      for (const card of canvas.getAllByTestId('notif-card')) {
-        await expect(card).toHaveAttribute('data-leaving');
-      }
+    await step('Then only the front card leaves, and the other two stay', async () => {
+      await waitFor(() =>
+        expect(readTitles(canvasElement, true)).toEqual(['Account connected', 'Your transfer is in a block']),
+      );
+      await expect(canvas.getAllByTestId('notif-card')).toHaveLength(2);
       await expect(toasts.store.get().expanded).toBe(false);
-      await waitFor(() => expect(canvas.queryByTestId('notif-stack')).toBeNull());
     });
   },
 };
@@ -149,6 +172,8 @@ export const ClickExpandsOutsideCollapses: Story = {
       await waitFor(() => expect(canvas.getByTestId('notif-stack')).toHaveAttribute('data-expanded'));
       await expect(toasts.store.get().expanded).toBe(true);
       await expect(readTitles(canvasElement, true)).toEqual(['A', 'B', 'C', 'D']);
+      await expect(canvas.getByRole('button', { name: 'Clear all' })).toBeVisible();
+      await expect(canvas.getByTestId('notif-count')).not.toBeVisible();
     });
     await step('When I click outside it', async () => {
       await userEvent.click(document.body);
@@ -285,12 +310,12 @@ export const TimedToastLeavesOnItsOwn: Story = {
   },
 };
 
-function buildToast(text: string): ToastInput {
-  return { text, label: 'playground.dot', icon: BellIcon, dismissMs: 0 };
+function buildToast(label: string): ToastInput {
+  return { text: 'playground.dot', label, dismissMs: 0 };
 }
 
 function buildLabelled(label: string, overrides: Partial<ToastInput> = {}): ToastInput {
-  return { text: `${label} happened`, label, icon: BellIcon, dismissMs: 0, ...overrides };
+  return { text: `${label} happened`, label, dismissMs: 0, ...overrides };
 }
 
 /** A beforeEach that pushes one toast per label, with `overrides`, and resets the page after the story. */

@@ -4,47 +4,64 @@
 .group {
   padding: 0 var(--sp-1);
 }
-/* The surface's gap plus 4 between chains. */
+/* Wide enough that each strip reads as its own name's, not the next chain's. */
 .group + .group {
-  margin-top: var(--sp-1);
+  margin-top: var(--sp-3);
 }
 .group-label {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: var(--sp-1_5);
   margin: 0;
   color: var(--chrome-text);
   font-size: var(--fs-body);
-  font-weight: var(--fw-medium);
+}
+.name {
+  flex: 1;
+  font-weight: var(--fw-semibold);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.caption {
+  flex: none;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Two captions on a row, such as a countdown and the peers, read as two facts. */
+.caption + .caption {
+  margin-left: var(--sp-1_5);
+}
+.caption[data-tone='warn'] {
+  color: var(--chrome-warn-text);
+}
+.caption[data-tone='err'] {
+  color: var(--chrome-err-text);
 }
 .cell {
   min-width: 0;
   overflow: hidden;
   text-align: left;
 }
-/* A chain nobody uses keeps its row and last bars, faded, so the known chains never jump around. Its "Not in use" chip
-   stays at full strength, as faded muted text falls below readable contrast. */
+/* A chain nobody uses, or with no endpoint, keeps its row and strip, so the known chains never jump around. Only its
+   bars fade, and its last bars lose their verdict colour: faded text falls below readable contrast. The empty slots
+   keep their strength, so the rail stays visible. */
 .group-label[data-state='unused'] .name,
-.cell[data-state='unused'] {
-  opacity: 0.5;
-}
-.cell[data-unavailable],
-.waiting {
+.group-label[data-unavailable] .name {
   color: var(--chrome-text-muted);
-  font-size: var(--fs-caption);
-  line-height: 1;
-  white-space: nowrap;
 }
-.waiting {
-  flex: none;
-  align-self: center;
-  margin-right: var(--sp-1);
+.cell[data-state='unused'] .bar,
+.cell[data-unavailable] .bar {
+  opacity: calc(var(--slot-opacity) * 0.5);
+}
+.cell[data-state='unused'] .bar {
+  background: var(--chrome-idle);
 }
 .bars {
   position: relative;
-  /* The pending trail sizes its slots from the strip's width. */
-  container-type: inline-size;
   display: flex;
   /* 48 slots share the width, the newest at the right edge. */
   flex-direction: row;
@@ -60,10 +77,12 @@
 .bars[data-sliding] {
   transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
+/* Each slot sets --slot-opacity, so older slots fade. */
 .bar {
   flex: 1;
   min-width: 0;
   height: 100%;
+  opacity: var(--slot-opacity);
   border-radius: var(--r-hair);
   transform-origin: bottom center;
 }
@@ -71,26 +90,10 @@
 .stub {
   flex: 1;
   min-width: 0;
-  height: 3px;
+  height: 4px;
   border-radius: var(--r-hair);
-  background: var(--chrome-fill-strong);
-}
-/* Before a first bar the status text leads the strip. The slots keep the size they have in a full strip and the
-   oldest ones go under the text's edge, so they don't shrink as the countdown's width changes. */
-.trail {
-  display: flex;
-  flex: 1;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: var(--sp-hair);
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-}
-.trail > .stub,
-.trail > .bar {
-  flex: none;
-  width: calc((100cqw - (var(--slots) - 1) * var(--sp-hair)) / var(--slots));
+  background: color-mix(in srgb, var(--chrome-idle) 25%, transparent);
+  opacity: var(--slot-opacity);
 }
 .bar[data-new] {
   animation: bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -109,21 +112,16 @@
   background: var(--chrome-ok);
 }
 .bar[data-health='late'] {
-  height: 8px;
   background: var(--chrome-warn);
 }
 .bar[data-health='veryLate'] {
-  height: 5px;
   background: var(--chrome-err);
 }
 /* Inline height is the elapsed share of the block time once a first head anchors the estimate. */
 .pending {
-  height: 20%;
-  background: var(--chrome-idle);
-  opacity: 0.75;
-}
-.pending[data-pending='searching'] {
   height: 45%;
+  min-height: 8px;
+  background: var(--chrome-idle);
 }
 .pending[data-pending='due'] {
   height: 100%;
@@ -152,19 +150,20 @@
 }
 
 @media (max-width: 560px) {
+  /* The sheet's padding is the text column, so the chains start on it. */
+  .group {
+    padding: 0;
+  }
+  .group + .group {
+    margin-top: var(--sp-4);
+  }
   .group-label {
     gap: var(--sp-2);
   }
+  .caption + .caption {
+    margin-left: var(--sp-2);
+  }
   .bars {
     height: var(--sp-4);
-  }
-  .stub {
-    height: 4px;
-  }
-  .bar[data-health='late'] {
-    height: 10px;
-  }
-  .bar[data-health='veryLate'] {
-    height: 6px;
   }
 }

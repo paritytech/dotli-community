@@ -35,6 +35,7 @@ const meta = {
   args: {
     record: record({ tag: 'Text', value: { text: 'hello <b>there</b>' } }),
     now: NOW,
+    endsRun: true,
     onAction: fn(),
     custom: customBody,
   },
@@ -65,6 +66,17 @@ export const OwnMessage: Story = {
   args: { record: record({ tag: 'Text', value: { text: 'me' } }, 'user') },
 };
 
+/** As a reader, I see no time on a message its author followed up within the minute. */
+export const InsideARun: Story = {
+  args: { endsRun: false },
+  play: async ({ canvas, step }) => {
+    await step('Then the bubble shows its text without a time', async () => {
+      await expect(canvas.getByTestId('chat-msg-bubble')).toHaveTextContent('hello <b>there</b>');
+      await expect(canvas.queryByTestId('chat-msg-time')).toBeNull();
+    });
+  },
+};
+
 const RICH_KINDS = [
   { name: 'rich', content: { tag: 'RichText', value: { text: 'pics', media: [{}, {}] } } },
   { name: 'reaction', content: { tag: 'Reaction', value: { emoji: '👍' } } },
@@ -89,17 +101,18 @@ export const RichKindsReadAsToday: Story = {
       within(canvas.getByTestId(`kind-${name}`)).getByTestId('chat-msg-bubble');
     await step('Then rich text shows its text and counts its attachments', async () => {
       await expect(bubbleOf('rich')).toHaveTextContent('pics');
-      await expect(within(bubbleOf('rich')).getByTestId('chat-msg-meta').textContent).toBe(' [2 attachments]');
+      await expect(within(bubbleOf('rich')).getByTestId('chat-msg-meta').textContent).toBe('2 attachments');
     });
     await step('Then reactions read as what was done', async () => {
       await expect(bubbleOf('reaction')).toHaveTextContent('reacted 👍');
       await expect(bubbleOf('removed')).toHaveTextContent('removed reaction 👍');
     });
-    await step('Then a file shows its name', async () => {
-      await expect(bubbleOf('file')).toHaveTextContent('[file] a.pdf');
+    await step('Then a file shows its name over its kind', async () => {
+      await expect(bubbleOf('file')).toHaveTextContent('a.pdf');
+      await expect(within(bubbleOf('file')).getByTestId('chat-msg-meta').textContent).toBe('File');
     });
     await step('Then an unknown kind reads as unsupported', async () => {
-      await expect(bubbleOf('unknown')).toHaveTextContent('[unsupported message]');
+      await expect(bubbleOf('unknown')).toHaveTextContent('Unsupported message');
     });
   },
 };

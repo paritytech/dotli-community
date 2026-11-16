@@ -72,7 +72,7 @@ export const OpensBody: Story = {
   },
 };
 
-/** As a host booting, I see no mark on the settings button before the settings are read, and a mark on an unverified session. */
+/** As a host booting, I see no mark on the settings button before the settings are read, and a mark on an unverified connection. */
 export const UnverifiedMark: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -85,8 +85,9 @@ export const UnverifiedMark: Story = {
     await step('When the host reads them on trusted providers', () => {
       givenSettings({ ...DEFAULT_SETTINGS, backend: 'rpc-gateway', verified: false });
     });
-    await step('Then the button carries the mark', async () => {
+    await step('Then the button carries the mark and names it', async () => {
       await waitFor(() => expect(byId('mode-button')).toHaveAttribute('data-badge'));
+      await expect(byId('mode-button')).toHaveAttribute('aria-label', 'Settings, unverified connection');
     });
   },
 };

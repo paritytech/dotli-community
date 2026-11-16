@@ -216,7 +216,7 @@ function buildRails(
       topY: getTopY(positions, start.seq),
       bottomY: getBottomY(positions, stop?.event.seq),
       railIndex: rails.length,
-      color: getHashColor(genesisHash ?? '', { saturation: 60, lightness: 55 }),
+      color: getHashColor(genesisHash ?? '', { lightness: 74, chroma: 0.12 }),
       label: formatRailLabel(genesisHash, siblings.length),
       pending: stop === undefined,
     };
@@ -350,7 +350,7 @@ function buildSystemSegment(flow: Group<StoredSystemEvent>, positions: GlobalYPo
     memberSeqs: flow.map(e => e.seq),
     topY: getTopY(positions, first.seq),
     bottomY: getBottomY(positions, last.seq),
-    color: getHashColor(first.flowId, { saturation: 60, lightness: 62 }),
+    color: getHashColor(first.flowId, { lightness: 86, chroma: 0.11 }),
     label: toWrappingLabel(getEventLabel(first)),
     detail: flow.length === 1 ? undefined : `${first.layer}·${formatCount(flow.length, 'step')}`,
     // A sandbox of another release can send a name the union lacks, which ends no flow.

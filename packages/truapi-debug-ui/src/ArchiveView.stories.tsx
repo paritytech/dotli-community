@@ -222,6 +222,26 @@ export const ReadAgainAfterFailure: Story = {
   },
 };
 
+/** As a developer using the debug panel, I ask to read the archive again after a failed read and it is read and listed. */
+export const ReadAgainFromFailure: Story = {
+  args: { load: flakyLoad },
+  beforeEach: () => {
+    flakyLoad.mockRejectedValueOnce(new Error('gateway 504'));
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Given the read failed', async () => {
+      await expect(await canvas.findByText(/Could not read the archive: gateway 504/)).toBeVisible();
+    });
+    await step('When I ask to read it again', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Read again' }));
+    });
+    await step('Then the archive is read again and listed', async () => {
+      await expect(await canvas.findByTestId('td-archive-summary')).toHaveTextContent('1 file');
+      await expect(flakyLoad).toHaveBeenCalledTimes(2);
+    });
+  },
+};
+
 /** As a developer using the debug panel, I switch products while the previous archive is still being read and only the current product's archive is listed. */
 export const DropsLateReadOfOldCid: Story = {
   args: { load: newProductLoad },

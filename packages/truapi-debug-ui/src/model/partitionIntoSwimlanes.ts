@@ -77,7 +77,7 @@ function describeSwimlane({ event, genesisByCall, followedGenesis }: Params) {
   return {
     key: `chain-${genesisHash}`,
     header: formatChainDisplay(genesisHash),
-    color: getHashColor(genesisHash, { saturation: 60, lightness: 60 }),
+    color: getHashColor(genesisHash, { lightness: 76, chroma: 0.12 }),
     rank: 1,
   };
 }

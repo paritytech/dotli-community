@@ -15,7 +15,13 @@ const FLASH_MS = 1000;
  * A value that copies itself on click, then reads "Copied", or "Copy failed", for a moment, and says so to a screen
  * reader. Its name is the text it shows, and the title says what clicking copies.
  */
-export function CopyValue(props: { label: string; value: string }): JSX.Element {
+export function CopyValue(props: {
+  label: string;
+  value: string;
+  /** Shown in place of the value, such as a long hash cut short. The whole value is still what is copied. */
+  text?: string | undefined;
+  testId?: string | undefined;
+}): JSX.Element {
   const effects = useContext(PanelEffectsContext);
   const [outcome, setOutcome] = createSignal<CopyOutcome | null>(null);
   const flash = createFlash<CopyOutcome>({
@@ -44,7 +50,9 @@ export function CopyValue(props: { label: string; value: string }): JSX.Element 
         data-copy-failed={outcome() === 'failed' ? '' : undefined}
         onClick={copy}
       >
-        <code class={s['code']}>{getStatus() === '' ? props.value : getStatus()}</code>
+        <code class={s['code']} data-testid={props.testId}>
+          {getStatus() === '' ? (props.text ?? props.value) : getStatus()}
+        </code>
       </button>
       <Announce>{getStatus()}</Announce>
     </>

@@ -19,7 +19,8 @@ type Violation = {
 };
 
 const COLLAPSED_HEIGHT = 32;
-const HEADER_AND_HANDLE = 32 + 5;
+// The header under the panel's 1px top border. The handle lies over the header and takes no height.
+const ABOVE_LOG = 32 + 1;
 
 export type ViolationPanelProps = {
   /** The product's frame, whose violations the panel lists. */
@@ -50,7 +51,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
     }
     appendViolation(entries, {
       id: nextId++,
-      time: new Date(violation.timestamp).toLocaleTimeString(),
+      time: new Date(violation.timestamp).toLocaleTimeString(undefined, { hourCycle: 'h23' }),
       api: violation.api,
       details: violation.details,
     });
@@ -64,7 +65,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
     if (collapsed() || panelHeight === null) {
       return undefined;
     }
-    return { panel: `${String(panelHeight)}px`, log: `${String(panelHeight - HEADER_AND_HANDLE)}px` };
+    return { panel: `${String(panelHeight)}px`, log: `${String(panelHeight - ABOVE_LOG)}px` };
   };
 
   const onDragMove = (event: PointerEvent): void => {
@@ -143,7 +144,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
             setCollapsed(!collapsed());
           }}
         >
-          <ChevronDownIcon class={s['chevron']} size={12} />
+          <ChevronDownIcon class={s['chevron']} size={16} />
         </button>
       </div>
       <div

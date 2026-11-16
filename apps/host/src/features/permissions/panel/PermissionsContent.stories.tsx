@@ -49,8 +49,12 @@ function reset(): HTMLButtonElement {
   return byTestId('permissions-popover-reset', document, HTMLButtonElement);
 }
 
-function hint(): string | null | undefined {
-  return document.querySelector('#permissions-popover-list [data-testid="permissions-popover-hint"]')?.textContent;
+/** The notice's title and detail, empty when none shows. */
+function hint(): (string | null | undefined)[] {
+  return ['title', 'detail'].map(
+    part =>
+      document.querySelector(`#permissions-popover-list [data-testid="permissions-popover-hint-${part}"]`)?.textContent,
+  );
 }
 
 function presets(): HTMLElement {
@@ -169,7 +173,9 @@ export const NoApp: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then it says to wait for the app', async () => {
-      await waitFor(() => expect(hint()).toBe('Wait for the app to finish loading to change its permissions.'));
+      await waitFor(() =>
+        expect(hint()).toEqual(['App still loading', 'Wait for it to finish loading to change its permissions.']),
+      );
       await expect(document.querySelector('[data-testid="permissions-popover-foot"]')).toBeNull();
       await expect(document.querySelector('[data-testid="permissions-presets"]')).toBeNull();
     });
@@ -177,7 +183,9 @@ export const NoApp: Story = {
       givenNotice('no-app');
     });
     await ctx.step('Then it says no app is loaded here', async () => {
-      await waitFor(() => expect(hint()).toBe('No app is loaded on this domain.'));
+      await waitFor(() =>
+        expect(hint()).toEqual(['No app loaded', 'Permissions show here once an app loads on this domain.']),
+      );
     });
   },
 };
@@ -191,7 +199,9 @@ export const Unavailable: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then it says they are unavailable', async () => {
-      await waitFor(() => expect(hint()).toBe('Permissions are unavailable for this app.'));
+      await waitFor(() =>
+        expect(hint()).toEqual(['Permissions unavailable', "dot.li couldn't read this app's permissions."]),
+      );
     });
   },
 };
@@ -252,12 +262,16 @@ export const RowMarksModified: Story = {
     await ctx.step('When I allow Location', async () => {
       await ctx.userEvent.click(segment('Location', 'granted'));
     });
-    await ctx.step('Then only Location was asked for and Secure shows modified', async () => {
+    await ctx.step('Then only Location was asked for, Secure shows modified and only Location is marked', async () => {
       await expect(permissionsAsked.changes).toHaveBeenCalledTimes(1);
       await expect(permissionsAsked.changes).toHaveBeenCalledWith({ Location: 'granted' });
       await waitFor(() => expect(statusOf('Location')).toBe('granted'));
       await expectPreset('secure', true);
       await expect(slider()).toHaveAttribute('data-marked');
+      await expect(within(row('Location')).getByTestId('permissions-popover-row-modified')).toHaveAccessibleName(
+        'Changed from Secure',
+      );
+      await expect(within(row('Camera')).queryByTestId('permissions-popover-row-modified')).toBeNull();
     });
   },
 };

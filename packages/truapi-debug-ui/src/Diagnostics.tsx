@@ -10,9 +10,14 @@ import { Button } from './shared/Button.js';
 import { Code } from './shared/Code.js';
 import { Column, Columns } from './shared/Columns.js';
 import { CopyValue } from './shared/CopyValue.js';
-import { KeyValue, KeyValueList, ListHeading } from './shared/KeyValueList.js';
+import { Inline } from './shared/Inline.js';
+import { KeyValue, KeyValueGroup, KeyValueList, ListHeading } from './shared/KeyValueList.js';
+import { Note } from './shared/Note.js';
 import { Pane } from './shared/Pane.js';
 import { Stack } from './shared/Stack.js';
+
+/** Fits the usual package name, so a version holds its place whichever packages show, and every section's values line up. */
+const PACKAGE_NAME_WIDTH = 26;
 
 /** Read afresh each time the tab opens. */
 export function Diagnostics(props: { active: boolean; source: DiagnosticsSource }): JSX.Element {
@@ -37,31 +42,39 @@ function DiagnosticsContent(props: { source: DiagnosticsSource; sharer: Diagnost
 
   return (
     <Stack gap="md">
-      <Button
-        disabled={sharing()}
-        onClick={() => {
-          void sharer.share(snapshot);
-        }}
-        title="Open a new issue on paritytech/dotli pre-filled with these diagnostics"
-      >
-        Share diagnostic
-      </Button>
+      <Inline>
+        <Button
+          disabled={sharing()}
+          onClick={() => {
+            void sharer.share(snapshot);
+          }}
+        >
+          {sharing() ? 'Sharing…' : 'Share diagnostics'}
+        </Button>
+        <Note testId="td-diagnostics-share-note">
+          Opens a new GitHub issue on paritytech/dotli with these diagnostics.
+        </Note>
+      </Inline>
       <Columns>
         <Column>
-          <ListHeading>Page</ListHeading>
-          <KeyValueList testId="td-diagnostics-rows">
-            <For each={snapshot.rows}>
-              {([label, value, copyable]) => <Row label={label} value={value} copyable={copyable} />}
-            </For>
-          </KeyValueList>
+          <KeyValueGroup keyWidth={PACKAGE_NAME_WIDTH}>
+            <ListHeading>Page</ListHeading>
+            <KeyValueList testId="td-diagnostics-rows">
+              <For each={snapshot.rows}>
+                {([label, value, copyable]) => <Row label={label} value={value} copyable={copyable} />}
+              </For>
+            </KeyValueList>
+          </KeyValueGroup>
         </Column>
         <Column testId="td-packages">
-          <ListHeading>Light client</ListHeading>
-          <KeyValueList>
-            <Row label="@parity/truapi-provider" value={snapshot.lightClientVersion} />
-          </KeyValueList>
-          <PackageGroup title="@polkadot-api" packages={snapshot.polkadotApi} />
-          <PackageGroup title="@parity/truapi" packages={snapshot.parityTruapi} />
+          <KeyValueGroup keyWidth={PACKAGE_NAME_WIDTH}>
+            <ListHeading>Light client</ListHeading>
+            <KeyValueList>
+              <Row label="@parity/truapi-provider" value={snapshot.lightClientVersion} />
+            </KeyValueList>
+            <PackageGroup title="Polkadot API" packages={snapshot.polkadotApi} />
+            <PackageGroup title="TrUAPI" packages={snapshot.parityTruapi} />
+          </KeyValueGroup>
         </Column>
       </Columns>
     </Stack>

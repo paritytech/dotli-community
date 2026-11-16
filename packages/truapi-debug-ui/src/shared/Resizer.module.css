@@ -3,8 +3,6 @@
 
 .resizer {
   position: relative;
-  background: transparent;
-  transition: background 0.12s;
   user-select: none;
 }
 .resizer[data-orientation='horizontal'] {
@@ -13,13 +11,55 @@
 .resizer[data-orientation='vertical'] {
   cursor: col-resize;
 }
-.resizer:hover,
-.resizer[data-dragging] {
-  background: var(--td-accent);
-}
 .resizer[data-disabled] {
   visibility: hidden;
 }
+/* The line answers focus, so no outline is drawn around the strip. */
+.resizer:focus-visible {
+  outline: none;
+}
+
+/* One line along the middle, thicker and in the accent while hovered, focused or dragged. */
+.resizer::before {
+  content: '';
+  position: absolute;
+  background: transparent;
+  transition: background 0.12s;
+}
+.resizer[data-divider]::before {
+  background: var(--td-line);
+}
+.resizer[data-orientation='horizontal']::before {
+  left: 0;
+  right: 0;
+  top: calc(50% - 0.5px);
+  height: 1px;
+}
+.resizer[data-orientation='vertical']::before {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+}
+.resizer:hover::before,
+.resizer:focus-visible::before,
+.resizer[data-dragging]::before {
+  background: var(--td-accent);
+}
+.resizer[data-orientation='horizontal']:is(:hover, :focus-visible, [data-dragging])::before {
+  top: calc(50% - 1px);
+  height: 2px;
+}
+.resizer[data-orientation='vertical']:is(:hover, :focus-visible, [data-dragging])::before {
+  left: calc(50% - 1px);
+  width: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .resizer::before {
+    transition: none;
+  }
+}
+
 /* A wider hit area than the visible line. */
 .resizer::after {
   content: '';

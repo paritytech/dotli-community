@@ -18,14 +18,9 @@ const BODIES: Record<PhoneAsk, Component> = {
  * The waiting step for a review titled `title`. Every way out answers WAITING_BACKGROUND, since it only moves the
  * wait out of sight and rejects nothing.
  */
-export function phoneWaitingView(args: {
-  title: string;
-  icon?: ModalView<string>['icon'];
-  ask: PhoneAsk;
-}): ModalView<typeof WAITING_BACKGROUND> {
+export function phoneWaitingView(args: { title: string; ask: PhoneAsk }): ModalView<typeof WAITING_BACKGROUND> {
   return {
     title: args.title,
-    ...(args.icon === undefined ? {} : { icon: args.icon }),
     fields: [],
     buttons: [{ label: 'Wait in background', variant: 'secondary', result: WAITING_BACKGROUND }],
     dismissOnBackdrop: true,

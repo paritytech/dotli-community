@@ -35,7 +35,7 @@ const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
   {
     match: /OriginPersonProviderError/,
     title: 'Your account is still being set up',
-    subtitle: 'Please try again later',
+    subtitle: 'Polkadot App is still setting up your account. Try again in a few minutes.',
     pending: true,
     hideDetail: true,
   },

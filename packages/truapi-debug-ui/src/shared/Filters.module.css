@@ -5,8 +5,22 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+}
+/* Takes spare width. Too narrow for the label and the field side by side, it drops the label, as the field's
+   placeholder and accessible name still say what it filters. */
+.field {
+  container-type: inline-size;
+  flex: 1 1 200px;
+  max-width: 260px;
+}
+@container (max-width: 199px) {
+  .field > .label {
+    display: none;
+  }
 }
 .label {
+  flex: none;
   color: var(--td-fg-dim);
   font-size: 11px;
   text-transform: uppercase;
@@ -17,9 +31,8 @@
 .check {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--td-fg-muted);
-  font-family: system-ui, sans-serif;
   font-size: 11px;
   cursor: pointer;
 }
@@ -29,11 +42,29 @@
   font: inherit;
   accent-color: var(--td-accent);
 }
+.checkbox:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: 2px;
+}
 
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+/* One line that scrolls, fading at its end so a cut chip reads as more to scroll to. The padding gives the focus ring
+   room inside the clip, and lets the last chip clear the fade. */
+.scroll {
+  flex-wrap: nowrap;
+  min-width: 0;
+  margin: -4px 0;
+  padding: 4px 16px 4px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
+}
+.scroll > .chip {
+  flex: none;
 }
 .chip {
   margin: 0;
@@ -51,17 +82,25 @@
 }
 .chip:hover {
   border-color: var(--td-line-hover);
-  color: var(--td-fg);
+  color: var(--td-fg-bright);
 }
 .chip[data-active] {
   background: var(--td-accent);
   border-color: var(--td-accent);
   color: var(--td-fg-bright);
 }
+.chip:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: 1px;
+}
 
 .input {
   box-sizing: border-box;
-  width: 140px;
+  /* The width sets what the field asks of the row, and the flex lets it grow from there. */
+  width: 110px;
+  flex: 1 1 110px;
+  min-width: 0;
+  text-overflow: ellipsis;
   margin: 0;
   background: var(--td-bg);
   border: 1px solid var(--td-line-strong);
@@ -77,4 +116,10 @@
 }
 .input[aria-invalid='true'] {
   border-color: var(--td-danger);
+}
+/* The browser's clear button, quieter and smaller than its default. */
+.input::-webkit-search-cancel-button {
+  opacity: 0.6;
+  transform: scale(0.75);
+  cursor: pointer;
 }

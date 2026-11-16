@@ -97,7 +97,7 @@ test('As a developer, I share a diagnostic and get a GitHub issue prefilled with
 
   // When: the issue opens with `noopener`, so it is a new page of the context and not this page's popup
   const opened = context.waitForEvent('page');
-  await diagnostics.getByRole('button', { name: 'Share diagnostic' }).click();
+  await diagnostics.getByRole('button', { name: 'Share diagnostics' }).click();
   const issue = await opened;
   await issue.waitForURL('https://github.com/**');
 

@@ -6,15 +6,32 @@
   flex-direction: column;
   gap: var(--sp-2);
 }
-@media (max-width: 560px) {
-  .list {
-    gap: var(--sp-3);
-  }
+/* Advanced's name starts on the preset's and the footer's edge, while its wells keep the surface's full width. */
+.advanced {
+  padding: 0 var(--sp-1);
 }
 .groups {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  margin: 0 calc(-1 * var(--sp-1));
+}
+/* Why the panel has nothing to set: a title over a line of detail. */
+.notice {
+  gap: var(--sp-hair);
+}
+.notice-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.notice-detail {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  text-wrap: pretty;
 }
 @media (max-width: 560px) {
   .groups {

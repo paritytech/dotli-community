@@ -19,6 +19,7 @@ function loadPhraseScreen(): Promise<PhraseScreenModule> {
 import { expectPhone } from '../../testing/stories/topbarFrame.js';
 import { windowPageStory } from '../../testing/stories/windowPage.js';
 import type { DrawQr } from '../account/index.js';
+import { drawQrCode } from '../account/signIn/qrCode.js';
 import { SessionWindow } from './SessionWindow.js';
 
 const DEEPLINK = 'polkadotapp://pair?handshake=test';
@@ -46,8 +47,8 @@ const onSiteCancel = fn<() => void>();
 /** What the site list asks of the grants. */
 const onRevoke = fn<(token: string) => void>();
 const onSiteListRetry = fn<() => void>();
-/** The QR renderer the window is given, which draws nothing. */
-const drawQr = fn<DrawQr>(() => Promise.resolve());
+/** The QR renderer the window is given, which draws the real code. */
+const drawQr = fn<DrawQr>(drawQrCode);
 /** The phrase form's loader the window is given, which loads the form's own chunk unless a story says otherwise. */
 const loadPhrase = fn<() => Promise<PhraseScreenModule>>(loadPhraseScreen);
 
@@ -195,20 +196,36 @@ export const SignedOut: Story = {
   args: { screen: { view: 'signed-out' } },
 };
 
-/** As a phone user who signed out, I read that I am signed out and find Close this window after it. */
+/** As a phone user who signed out, I read that I am signed out and find Close after it. */
 export const SignedOutPhone: Story = {
   tags: ['!autodocs'],
   globals: PHONE,
   args: { screen: { view: 'signed-out' }, isMobile: () => true },
 };
 
-/** As a user who signed in from a window no page opened, I am told I am signed in and to return to the app. */
+/**
+ * As a user who signed in from a window no page opened, I am told I am signed in and to return to the app, and can
+ * close the window as when I sign out.
+ */
 export const DoneNoOpener: Story = {
   tags: ['!autodocs'],
   args: { screen: { ...SIGN_IN_START, view: 'done-no-opener' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the card says I am signed in, with Close alone', async () => {
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent("You're signed in");
+      await expect(status()).toHaveAttribute('data-tone', 'ok');
+      await expect(buttonNames()).toEqual(['Close']);
+    });
+    await step('When I press Close', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Close' }));
+    });
+    await step('Then the window was asked to close once', async () => {
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+  },
 };
 
-/** As a phone user who signed in from a window no page opened, I am told to return to the app, with no button. */
+/** As a phone user who signed in from a window no page opened, I am told to return to the app and find Close after it. */
 export const DoneNoOpenerPhone: Story = {
   tags: ['!autodocs'],
   globals: PHONE,
@@ -439,7 +456,7 @@ export const Approving: Story = {
   },
 };
 
-/** As a user whose pairing was declined, I see why and can pair again. */
+/** As a user whose pairing was declined, I see why and can pair again or give up. */
 export const PairingFailed: Story = {
   tags: ['!autodocs'],
   args: {
@@ -457,6 +474,26 @@ export const PairingFailed: Story = {
         detail: 'Rejected',
       },
     },
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the window shows the failure in its tone with Try again and Cancel', async () => {
+      await expect(byTestId('auth-modal-failure')).toHaveAttribute('data-tone', 'err');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sign-in was declined');
+      await expect(buttonNames()).toEqual(['Try again', 'Cancel']);
+    });
+    await step('When I press Try again', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Try again' }));
+    });
+    await step('Then the window was asked to pair again once', async () => {
+      await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
+    });
+    await step('When I give up', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the round was cancelled, not the window closed outright', async () => {
+      await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
+      await expect(onClose).not.toHaveBeenCalled();
+    });
   },
 };
 
@@ -621,20 +658,24 @@ function reviewedArgs(): { name: string; value: string }[] {
     }));
 }
 
-/** As a user a site asks to sign a long call, I read its origin, its name and every argument whole, and sign it. */
+/** As a user a site asks to sign a long call, I read what it asks, its origin, the call and every argument, and sign it. */
 export const SiteReview: Story = {
   tags: ['!autodocs'],
   args: { screen: { view: 'site-review', origin: SITE_ORIGIN, call: LONG_CALL, account: SITE_ACCOUNT } },
   play: async ({ canvas, userEvent, step }) => {
-    await step('Then the card heads with the full origin, says what the site asks and names the call', async () => {
-      await expect(windowView()).toHaveAttribute('data-view', 'site-review');
-      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(SITE_ORIGIN);
-      await expect(byTestId('session-window-review')).toHaveTextContent(
-        'asks you to sign a transaction with your myapp.dot account 0',
-      );
-      await expect(canvas.getByRole('heading', { level: 2 })).toHaveTextContent('Utility.batch_all');
-    });
+    await step(
+      'Then the card heads with what the site asks, its full origin under it, and names the call',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'site-review');
+        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sign transaction');
+        await expect(byTestId('session-window-review')).toHaveTextContent(
+          `${SITE_ORIGIN}asks you to sign with your myapp.dot account.`,
+        );
+        await expect(canvas.getByRole('heading', { level: 2 })).toHaveTextContent('Utility.batch_all');
+      },
+    );
     await step('Then each argument shows whole, its value wrapped inside the card', async () => {
+      await expect(canvas.getByRole('region', { name: 'Transaction' })).toBeVisible();
       await expect(reviewedArgs()).toEqual(LONG_CALL.args);
       const frame = card().getBoundingClientRect();
       for (const value of within(card()).getAllByTestId('session-window-call-arg-value')) {
@@ -671,7 +712,7 @@ export const SiteApproving: Story = {
   args: { screen: { view: 'site-approving', origin: SITE_ORIGIN } },
 };
 
-/** As a user signing a site's transaction, I am asked to open Polkadot App for its origin and can cancel. */
+/** As a user signing in to a site, I am asked to approve sharing my account in Polkadot App and can cancel. */
 export const SiteSharing: Story = {
   tags: ['!autodocs'],
   args: { screen: { view: 'site-sharing', origin: SITE_ORIGIN } },
@@ -817,9 +858,9 @@ export const SiteListFailed: Story = {
   play: async ({ canvas, userEvent, step }) => {
     await step('Then the window says the list could not be read, in its tone, and lists no site', async () => {
       await expect(windowView()).toHaveAttribute('data-view', 'sites-failed');
-      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sites you signed in to');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Could not load your sites');
       await expect(status()).toHaveAttribute('data-tone', 'err');
-      await expect(canvas.getByRole('alert')).toHaveTextContent('The list could not be read');
+      await expect(canvas.getByRole('alert')).toHaveTextContent('The list of sites you signed in to could not be read');
       await expect(canvas.queryByTestId('session-window-site')).toBeNull();
       await expect(buttonNames()).toEqual(['Try again']);
     });

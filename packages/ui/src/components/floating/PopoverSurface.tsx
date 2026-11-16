@@ -18,8 +18,18 @@ export function PopoverSurface(props: {
   class?: string | undefined;
   placement?: Placement | undefined;
   testId?: string | undefined;
+  initialFocus?: ((root: HTMLElement) => HTMLElement | undefined) | undefined;
   children: JSX.Element;
 }): JSX.Element {
+  const placeFocus = (root: HTMLElement): void => {
+    const pick = props.initialFocus;
+    if (pick === undefined) {
+      focusInto(root);
+      return;
+    }
+    const target = pick(root);
+    focusInto(root, target === undefined ? [] : [target]);
+  };
   const body = (root: () => HTMLElement | null | undefined): JSX.Element => (
     <RootBoundary root={`popover:${props.state.id}`} onBroken={props.state.close}>
       <Loading
@@ -30,7 +40,7 @@ export function PopoverSurface(props: {
         }
       >
         {props.children}
-        <FocusWhenLoaded root={root} />
+        <FocusWhenLoaded root={root} focus={placeFocus} />
       </Loading>
     </RootBoundary>
   );
@@ -43,10 +53,10 @@ export function PopoverSurface(props: {
       testId={props.testId}
       trapFocus
       onOpened={surface => {
-        focusInto(surface);
+        placeFocus(surface);
       }}
       sheetTestId="popover"
-      sheetFocus={firstControl}
+      sheetFocus={wrapper => (props.initialFocus === undefined ? firstControl(wrapper) : props.initialFocus(wrapper))}
       sheetChildren={wrapper => body(wrapper)}
     >
       {body(() => document.getElementById(props.state.id))}
@@ -60,7 +70,10 @@ function firstControl(root: HTMLElement): HTMLElement | undefined {
 }
 
 /** A popover that opened before its content loaded focused the surface itself, so focus moves in once it renders. */
-function FocusWhenLoaded(props: { root: () => HTMLElement | null | undefined }): JSX.Element {
+function FocusWhenLoaded(props: {
+  root: () => HTMLElement | null | undefined;
+  focus: (root: HTMLElement) => void;
+}): JSX.Element {
   onSettled(() => {
     const root = props.root();
     if (root === null || root === undefined) {
@@ -68,7 +81,7 @@ function FocusWhenLoaded(props: { root: () => HTMLElement | null | undefined }):
     }
     const holder = root.closest('[data-modal-surface]') ?? root;
     if (document.activeElement === holder) {
-      focusInto(root);
+      props.focus(root);
     }
   });
   return null;

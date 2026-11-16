@@ -1,22 +1,29 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The password prompt's parts, inside a modal that draws its own frame. */
+/* The prompt's own parts, inside a modal that draws its own frame. */
 
+/* The notice's glyph takes the text's colour. */
+.warning {
+  color: var(--chrome-warn-text);
+}
+
+/* The instruction reads as the body's own text, as it is what the prompt asks. */
 .caption {
   margin: 0;
-  color: var(--chrome-text-muted);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-body);
-  text-align: center;
+  text-wrap: pretty;
 }
 .error {
   margin: 0;
   color: var(--chrome-err-text);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-small);
   font-weight: var(--fw-medium);
   line-height: var(--lh-body);
-  text-align: center;
+}
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
 }
 .input {
   box-sizing: border-box;
@@ -40,6 +47,14 @@
 .input:focus-visible {
   outline: var(--chrome-focus-ring);
   outline-offset: 0;
+}
+/* Inside the pill, so it still shows within the focus ring. */
+.input[aria-invalid='true'] {
+  box-shadow: inset 0 0 0 1px var(--chrome-err);
+}
+/* The ring takes the error's colour, so a focused invalid field does not read as two states. */
+.input[aria-invalid='true']:focus-visible {
+  outline-color: var(--chrome-err);
 }
 
 @media (max-width: 560px) {

@@ -6,11 +6,10 @@
  * above it are evicted.
  */
 export function pinListScroll(list: HTMLElement, update: () => void): void {
-  // Within a few px of the end still counts as following the newest row.
-  const wasAtBottom = list.scrollHeight - list.clientHeight - list.scrollTop < 4;
+  const wasAtBottom = isFollowingNewest(list);
   const previousScrollTop = list.scrollTop;
   const anchor = wasAtBottom ? null : findTopRow(list, previousScrollTop);
-  const anchorTop = anchor?.offsetTop ?? 0;
+  const anchorTop = anchor === null ? 0 : getOffsetInList(list, anchor);
   update();
   // A hidden or empty list has no position to keep. `hidden` is typed to allow 'until-found' too.
   if (list.hidden !== false || list.querySelector('[data-seq]') === null) {
@@ -19,10 +18,20 @@ export function pinListScroll(list: HTMLElement, update: () => void): void {
   if (wasAtBottom) {
     list.scrollTop = list.scrollHeight;
   } else if (anchor?.isConnected === true) {
-    list.scrollTop = previousScrollTop + anchor.offsetTop - anchorTop;
+    list.scrollTop = previousScrollTop + getOffsetInList(list, anchor) - anchorTop;
   } else {
     list.scrollTop = previousScrollTop;
   }
+}
+
+/** Whether the list shows its newest row, within a few px of the end. */
+export function isFollowingNewest(list: HTMLElement): boolean {
+  return list.scrollHeight - list.clientHeight - list.scrollTop < 4;
+}
+
+/** The row's offset from the list's top, so a bar above the list that changes height in the same update moves neither. */
+function getOffsetInList(list: HTMLElement, row: HTMLElement): number {
+  return row.offsetTop - list.offsetTop;
 }
 
 /** The first row still in view at `scrollTop`, by bisection over offsets relative to the first row. */

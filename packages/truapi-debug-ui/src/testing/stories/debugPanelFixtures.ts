@@ -160,7 +160,7 @@ export function getRowByTag(tag: string): HTMLElement {
   return row;
 }
 
-/** The header's event counts as shown. Throws when the panel is not mounted. */
+/** The view bar's event counts as shown. Throws when the panel is not mounted. */
 export function readCounts(): string {
   return getPart('td-counts').textContent;
 }

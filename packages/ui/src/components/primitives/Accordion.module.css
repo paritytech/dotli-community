@@ -4,7 +4,8 @@
 :where(.accordion) {
   margin: 0;
 }
-/* Only the name and its chevron take presses and the focus ring, not the row's width. */
+/* Only the name and its chevron take presses and the focus ring, not the row's width. The margin gives back the
+   side padding, so the name lines up with the body. */
 .summary {
   box-sizing: border-box;
   display: flex;
@@ -12,10 +13,11 @@
   gap: var(--sp-1);
   width: fit-content;
   min-height: 36px;
+  margin: 0 calc(-1 * var(--sp-1));
   padding: var(--sp-1_5) var(--sp-1);
   border-radius: var(--r-xs);
   color: var(--chrome-text);
-  font: var(--fw-medium) 13px / var(--lh-tight) var(--font-sans);
+  font: var(--fw-semibold) var(--fs-body) / var(--lh-tight) var(--font-sans);
   list-style: none;
   cursor: pointer;
 }
@@ -31,20 +33,23 @@
   flex: none;
   width: 14px;
   height: 14px;
-  color: var(--chrome-text-muted);
-  transition:
-    transform var(--dur) var(--ease-out),
-    color var(--dur-fast);
-}
-.summary:hover > .chevron {
-  color: var(--chrome-text);
+  transition: transform var(--dur) var(--ease-out);
 }
 .accordion[open] > .summary > .chevron {
   transform: rotate(180deg);
 }
-/* Padding, not a margin, so the closed section folds it away with the body. */
+/* Padding, not a margin, so the closed section folds it away with the body. Plain text in the body reads under its
+   header. */
 .body {
   padding-top: var(--sp-2);
+  color: var(--chrome-text-muted);
+  font: var(--fw-regular) var(--fs-body) / var(--lh-body) var(--font-sans);
+}
+.body > :first-child {
+  margin-top: 0;
+}
+.body > :last-child {
+  margin-bottom: 0;
 }
 /* A browser that cannot size to `auto` in a transition opens the section at once with its native styles. */
 @supports (interpolate-size: allow-keywords) {
@@ -70,8 +75,7 @@
 @media (max-width: 560px) {
   .summary {
     min-height: 44px;
-    margin: var(--sp-hair) 0;
-    font-size: 14px;
+    margin: var(--sp-hair) calc(-1 * var(--sp-1));
   }
   .chevron {
     width: 16px;

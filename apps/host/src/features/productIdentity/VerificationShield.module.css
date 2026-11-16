@@ -21,36 +21,41 @@
 .shield[data-state='verified'] {
   color: var(--chrome-ok);
 }
-/* The verified glyph shows until the host knows the product was only trusted. */
+/* A bare shield until the host knows how the product loaded, so it claims no check before one passed. */
 .glyph {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-.trusted-glyph,
-.shield[data-state='trusted'] .verified-glyph {
   display: none;
+  width: 16px;
+  height: 16px;
 }
+.pending-glyph,
+.shield[data-state='verified'] .verified-glyph,
 .shield[data-state='trusted'] .trusted-glyph {
   display: block;
 }
+.shield[data-state] .pending-glyph {
+  display: none;
+}
 .product-icon {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--r-hair);
   object-fit: cover;
 }
-/* Only a trusted product marks its icon. The solid fill keeps the shield readable over any icon. */
+/* A known state marks the icon's corner. The disc, in the bar's dark end under the pill, cuts the shield out of any
+   icon, so it stays readable without a ring of its own. */
 .badge {
   position: absolute;
-  right: -3px;
-  bottom: -4px;
+  right: -6px;
+  bottom: -6px;
   display: none;
-  width: 12px;
-  height: 12px;
-  fill: var(--chrome-solid);
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-full);
+  background: var(--chrome-bottom);
+  fill: var(--chrome-bottom);
 }
-.shield[data-state='trusted'] .badge {
+.shield[data-state='verified'] .verified-badge,
+.shield[data-state='trusted'] .trusted-badge {
   display: block;
 }

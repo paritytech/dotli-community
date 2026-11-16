@@ -4,3 +4,81 @@
 .filters {
   grid-area: filters;
 }
+
+/* The filters never wrap at random. By the panel's width they take three lines, two rows or one, and the product
+   chips shrink and scroll before anything else gives way. Three lines: kind and direction, then products with the
+   log's controls, which drop below the products when the two do not fit, then the two fields side by side. */
+.layout {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+}
+/* Only the product chips give way, and never below a few chips' width. They ask only that width of their line, so the
+   controls join them whenever both fit. */
+.show,
+.dir {
+  flex: none;
+}
+.product {
+  flex: 1 1 150px;
+  min-width: 150px;
+}
+.controls {
+  flex: none;
+  margin-left: auto;
+}
+.layout .include,
+.layout .exclude {
+  flex: 1 1 0;
+  max-width: none;
+}
+
+/* Two rows: what to show, then the fields with the controls at their end. */
+@container td-panel (min-width: 760px) {
+  .layout {
+    flex-flow: row wrap;
+    align-items: center;
+    /* Half the gap, as the row break below is a line of its own with a gap on each side. */
+    gap: 4px 12px;
+  }
+  .line {
+    display: contents;
+  }
+  .layout::after {
+    content: '';
+    flex-basis: 100%;
+    order: 1;
+  }
+  .layout .include,
+  .layout .exclude {
+    order: 2;
+    flex: 1 1 200px;
+    min-width: 180px;
+  }
+  .controls {
+    order: 3;
+  }
+}
+
+/* One row once all of it fits, the controls last. */
+@container td-panel (min-width: 1400px) {
+  .layout::after {
+    content: none;
+  }
+  .product {
+    flex: 0 1 auto;
+  }
+  .layout .include,
+  .layout .exclude {
+    max-width: 260px;
+  }
+}

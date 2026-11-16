@@ -129,7 +129,9 @@ export const HiddenUntilFirstViolation: Story = {
       const firstEntry = within(at(entries, 0));
       await expect(firstEntry.getByTestId('sc-api')).toHaveTextContent('localStorage.getItem');
       await expect(firstEntry.getByTestId('sc-details')).toHaveTextContent('key=x n=1');
-      await expect(firstEntry.getByTestId('sc-time')).toHaveTextContent(new Date(0).toLocaleTimeString());
+      await expect(firstEntry.getByTestId('sc-time')).toHaveTextContent(
+        new Date(0).toLocaleTimeString(undefined, { hourCycle: 'h23' }),
+      );
       await expect(within(at(entries, 1)).queryByTestId('sc-details')).toBeNull();
     });
   },

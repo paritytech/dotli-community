@@ -24,6 +24,7 @@ export function ContactRow(props: {
         type="button"
         class={s['roomItem']}
         data-testid="chat-room-item"
+        data-unread={props.unread > 0 ? '' : undefined}
         onClick={() => {
           props.onOpen(props.id);
         }}

@@ -56,6 +56,8 @@ type ExpectedBody = {
   detail?: string;
   speed?: [string, string];
   size?: [string, string];
+  /** Whether the tip about steadier peers shows, by default it does. */
+  tips?: boolean;
 };
 
 function readCell(cell: HTMLElement): ExpectedCell {
@@ -68,7 +70,7 @@ function readCell(cell: HTMLElement): ExpectedCell {
   return [...cell.querySelectorAll<HTMLElement>('[data-testid="chains-bar"]')].map(bar => bar.dataset['block'] ?? '');
 }
 
-/** The body: a cell per known chain, the transfer rows while the product loads, and the tips. */
+/** The body: a cell per known chain, the transfer rows while the product loads, and the tip while chains sync or lag. */
 async function expectBody(expected: ExpectedBody): Promise<void> {
   const root = content();
   const cells = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-cell"]')];
@@ -79,7 +81,7 @@ async function expectBody(expected: ExpectedBody): Promise<void> {
   const [speedRow, sizeRow] = [...root.querySelectorAll('[data-testid="chains-transfer-row"]')];
   await expect(speedRow === undefined ? null : rowTexts(speedRow)).toEqual(expected.speed ?? []);
   await expect(sizeRow === undefined ? null : rowTexts(sizeRow)).toEqual(expected.size ?? []);
-  await expect(root.querySelector('[data-testid="chains-tips"]')).not.toBeNull();
+  await expect(root.querySelector('[data-testid="chains-tips"]') !== null).toBe(expected.tips ?? true);
 }
 
 /** The network button and panel as the host composes them, reading the story's network. */
@@ -146,13 +148,20 @@ function statusStory(
   };
 }
 
-/** As a dotli user opening it with nothing in use, it says no chains are in use. */
-export const StatusNothingInUse: Story = statusStory([], { cells: [] });
+/** As a dotli user opening it with nothing in use, it says no chains are in use and gives no tip about peers. */
+export const StatusNothingInUse: Story = statusStory([], { cells: [], tips: false });
 
-/** As a dotli user opening it while starting, with no chain reachable, every chain says it has no endpoint. */
+/**
+ * As a dotli user opening it on a network with no endpoint for any chain, every chain says so and the status says the
+ * network is out of reach, with no tip about peers.
+ */
 export const StatusStartingUnreachable: Story = statusStory(
-  [chain({ reachable: false }), chain({ role: 'assethub', label: 'Asset Hub', reachable: false })],
-  { cells: ['unavailable', 'unavailable'] },
+  [
+    chain({ reachable: false, state: 'unused' }),
+    chain({ role: 'assethub', label: 'Asset Hub', reachable: false, state: 'unused' }),
+  ],
+  { cells: ['unavailable', 'unavailable'], detail: 'It offers no endpoint for these chains.', tips: false },
+  { verdict: VERDICTS.unreachable },
 );
 
 /** As a dotli user opening it while connecting, before any block or phase, each chain searches and the download shows. */
@@ -166,20 +175,23 @@ export const StatusConnecting: Story = statusStory(
   { transfer: { bytesPerSecond: 512, fetched: 2048, total: 4_194_304 } },
 );
 
-/** As a dotli user opening it with a chain syncing and one without an endpoint, each says so. */
+/** As a dotli user opening it with a chain syncing and one without an endpoint, each says so and the status names the chain it waits for. */
 export const StatusSyncingNoEndpoint: Story = statusStory(
-  [chain({ phase: 'syncing', peers: 1 }), chain({ role: 'people', label: 'People', reachable: false, peers: 3 })],
-  { cells: ['waiting', 'unavailable'] },
+  [
+    chain({ phase: 'syncing', peers: 1 }),
+    chain({ role: 'people', label: 'People', reachable: false, state: 'unused', peers: 3 }),
+  ],
+  { cells: ['waiting', 'unavailable'], detail: 'Waiting for Relay chain. This takes a few seconds.' },
 );
 
-/** As a dotli user opening it with one of two chains ready, the other counts down to its next block. */
+/** As a dotli user opening it with chains ready, one counts down to its next block and the status names the one it waits for. */
 export const StatusOneOfTwoReady: Story = statusStory(
   [
     chain({ latest: 10, sinceLast: 1500, peers: 4 }),
     chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3), sinceLast: 1000, peers: 8 }),
     chain({ role: 'people', label: 'People' }),
   ],
-  { cells: ['waiting', ['18', '19', '20'], 'waiting'] },
+  { cells: ['waiting', ['18', '19', '20'], 'waiting'], detail: 'Waiting for People. This takes a few seconds.' },
 );
 
 /** As a dotli user opening it while chains are overdue, it says the connection is unstable and which chains lag. */
@@ -198,7 +210,7 @@ export const StatusOverdue: Story = statusStory(
   { verdict: waitingOn('Relay chain', 'Asset Hub') },
 );
 
-/** As a dotli user opening it with a good connection after the product loaded, it says so and shows no transfer. */
+/** As a dotli user opening it with a good connection after the product loaded, it says so and shows no transfer or tip. */
 export const StatusGood: Story = statusStory(
   [
     chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
@@ -209,7 +221,8 @@ export const StatusGood: Story = statusStory(
       ['8', '9', '10'],
       ['18', '19', '20'],
     ],
-    detail: 'Light client is in sync on both chains',
+    detail: 'Light client is in sync on both chains.',
+    tips: false,
   },
   { transfer: { bytesPerSecond: 800, fetched: 4096, total: 4096 }, loaded: true, verdict: VERDICTS.good },
 );
@@ -299,10 +312,10 @@ export const CountdownTicksWhileOpen: Story = {
     await open(ctx);
     await ctx.step('Given a chain one second past its last block', async () => {
       given([chain({ latest: 10, sinceLast: 1000 })]);
-      await waitFor(() => expect(waitingText()).toBe('next block in about 5s'));
+      await waitFor(() => expect(waitingText()).toBe('First block in about 5s'));
     });
     await ctx.step('Then a second later it counts on', async () => {
-      await waitFor(() => expect(waitingText()).toBe('next block in about 4s'));
+      await waitFor(() => expect(waitingText()).toBe('First block in about 4s'));
     });
     await ctx.step('When I close the popover', async () => {
       await ctx.userEvent.keyboard('{Escape}');
@@ -355,13 +368,18 @@ export const RenderErrorCloses: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('When rendering the next network state throws', () => {
-      given([
-        Object.defineProperty(chain({ latest: 11, sinceLast: 0 }), 'label', {
-          get: () => {
-            throw new Error('the island broke');
-          },
-        }),
-      ]);
+      // A verdict of its own, as earning one would read the label that throws.
+      given(
+        [
+          Object.defineProperty(chain({ latest: 11, sinceLast: 0 }), 'label', {
+            get: () => {
+              throw new Error('the island broke');
+            },
+          }),
+        ],
+        undefined,
+        VERDICTS.good,
+      );
     });
     await ctx.step('Then it is reported once and the popover closes', async () => {
       await waitFor(() => expect(captured).toHaveBeenCalledTimes(1));

@@ -18,7 +18,7 @@ const meta = {
     return resetAllStoresForTests;
   },
   render: args => {
-    const notice = getPhoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: 'dotli.dot' });
+    const notice = getPhoneOutcomeNotice({ outcome: args.outcome, title: 'Sign transaction', app: 'dotli.dot' });
     if (notice !== undefined) {
       showNotification(notice);
     }
@@ -59,7 +59,7 @@ export const Rejected: Story = {
   args: { outcome: { kind: 'rejected' } },
 };
 
-/** As a user, the app stops waiting for my phone and one toast says so. */
+/** As a user whose app took its request back, one toast says the app cancelled it. */
 export const Withdrawn: Story = {
   args: { outcome: { kind: 'withdrawn' } },
 };

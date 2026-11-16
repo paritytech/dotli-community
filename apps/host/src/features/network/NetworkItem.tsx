@@ -41,10 +41,10 @@ export function NetworkItem(props: NetworkItemProps): JSX.Element {
       name="network"
       label="Network"
       icon={GlobeIcon}
-      alert={facts().alerts ? { tone: props.health(), label: `network ${facts().word.toLowerCase()}` } : undefined}
+      alert={facts().alerts ? { tone: facts().dot, label: `network ${facts().word.toLowerCase()}` } : undefined}
       aside={() => (
         <>
-          <StatusDot tone={props.health()} size="sm" pulse={facts().pulses} />
+          <StatusDot tone={facts().dot} size="sm" pulse={facts().pulses} />
           <span>{facts().word}</span>
         </>
       )}
@@ -61,7 +61,7 @@ export function NetworkItem(props: NetworkItemProps): JSX.Element {
         title="Network"
         aria-label="Network"
         badge
-        badgeTone={props.health()}
+        badgeTone={facts().dot}
       >
         <GlobeIcon />
       </IconButton>

@@ -7,8 +7,8 @@ import { createDiagnosticsSharer } from './createDiagnosticsSharer.js';
 import { DIAGNOSTICS_SNAPSHOT as SNAPSHOT, fakeDiagnosticsSource } from './testing/fakeDiagnosticsSource.js';
 import { recordShareReports } from './testing/recordShareReports.js';
 
-describe('the Share diagnostic button', () => {
-  it('As a dotli developer, I click Share diagnostic again while the report builds and one issue opens with the button busy until then', async () => {
+describe('the Share diagnostics button', () => {
+  it('As a dotli developer, I click Share diagnostics again while the report builds and one issue opens with the button busy until then', async () => {
     // Given
     recordShareReports();
     const built = createDeferred<string>();

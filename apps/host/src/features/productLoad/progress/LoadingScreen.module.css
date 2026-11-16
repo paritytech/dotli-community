@@ -121,7 +121,7 @@
   box-sizing: border-box;
   width: 240px;
   max-width: 100%;
-  margin: var(--sp-5) 0 0;
+  margin: var(--sp-3) 0 0;
   padding: 0;
 }
 
@@ -186,16 +186,25 @@
   color: var(--text-secondary);
 }
 
-/* Always laid out, with two lines reserved, and shown by visibility: the column is centred, so a notice
-   that took up room as it appeared would shift everything above it. */
+/* Two lines of notice reserved, and the notice shown by visibility: the column is centred, so a notice that took up
+   room as it appeared would shift everything above it. The box itself is only as tall as its text. */
+.warning-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: calc(2 * var(--sp-3) + 3em);
+  margin: var(--sp-8) 0 0;
+  font-size: var(--fs-small);
+}
 .warning {
   display: flex;
   gap: var(--sp-2);
   align-items: flex-start;
   box-sizing: border-box;
   max-width: 100%;
-  min-height: calc(2 * var(--sp-3) + 3em);
-  margin: var(--sp-8) 0 0;
+  margin: 0;
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-md);
   background: var(--chrome-warn-fill);

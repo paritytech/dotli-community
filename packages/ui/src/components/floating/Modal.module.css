@@ -2,8 +2,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 .card {
-  /* Positioned so it paints above the layer's fixed scrim. */
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -62,7 +60,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
+  /* The bare glyph has no box of its own, so the title keeps its distance from it here. */
+  gap: var(--sp-3);
   margin: 0;
   padding: 0;
   text-align: center;
@@ -70,34 +69,59 @@
 .title {
   margin: 0;
   padding: 0;
-  font-size: var(--fs-title);
+  font-size: var(--fs-h2);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
-/* The padding, given back by the margin, keeps an input's focus ring inside the scroll's clip. */
+/* The padding, given back by the margin, keeps a control's focus ring and its offset inside the scroll's clip. */
 .body {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
   min-height: 0;
-  margin: calc(-1 * var(--sp-hair));
-  padding: var(--sp-hair);
+  margin: calc(-1 * var(--sp-1));
+  padding: var(--sp-1);
   overflow-y: auto;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+/* A body cut off above the answers fades out at its foot, so the cut reads as more to scroll. The fade follows the
+   scroll and is gone at the end. A body that does not scroll has no timeline, so it never fades. */
+@property --modal-body-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@supports (animation-timeline: scroll()) {
+  .body {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--modal-body-fade)), transparent);
+    animation: modal-body-fade linear both;
+    animation-timeline: scroll(self);
+  }
+}
+@keyframes modal-body-fade {
+  from {
+    --modal-body-fade: 32px;
+  }
+  to {
+    --modal-body-fade: 0px;
+  }
 }
 
 .actions {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
-  gap: var(--sp-1_5);
+  gap: var(--sp-2);
   margin: 0;
   padding: 0;
 }
-/* Narrow sides let "Always allow" fit in a third of the row. */
-.actions > * {
-  padding: 0 var(--sp-2);
+/* Three answers stack, as a third of the row is too narrow for a label such as "Always allow". */
+.actions:has(> :nth-child(3)) {
+  grid-auto-flow: row;
 }
 
 /* The sheet head carries the title. */
@@ -109,10 +133,6 @@
 }
 .sheetBody .actions {
   grid-auto-flow: row;
-  gap: var(--sp-2);
-}
-.sheetBody .actions > * {
-  padding: 0 var(--sp-3);
 }
 
 @keyframes modal-in {

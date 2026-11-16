@@ -3,6 +3,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { SectionLabel } from '@dotli/ui';
 import { LogoSymbol } from '@dotli/ui/brand';
 import { AccountAvatar } from '../account/index.js';
 import type { AccountSession } from '../account/index.js';
@@ -23,7 +24,7 @@ export function ProductCard(props: ProductCardProps): JSX.Element {
   return (
     <div class={s['card']} data-testid="product-card">
       <div class={s['icon']}>
-        <Show when={props.card.icon} fallback={<LogoSymbol class={s['mark']} height={24} testId="product-card-mark" />}>
+        <Show when={props.card.icon} fallback={<LogoSymbol class={s['mark']} height={36} testId="product-card-mark" />}>
           {icon => (
             <img class={s['image']} src={icon()} alt="" width="40" height="40" data-testid="product-card-icon" />
           )}
@@ -31,16 +32,18 @@ export function ProductCard(props: ProductCardProps): JSX.Element {
       </div>
       <div class={s['body']}>
         <div class={s['heading']}>
-          <p class={s['name']} data-testid="product-card-name">
+          <p class={s['name']} title={props.card.name} data-testid="product-card-name">
             {props.card.name}
           </p>
-          <p class={s['domain']} data-testid="product-card-domain">
-            {props.card.domain}
-          </p>
+          <Show when={props.card.name !== props.card.domain}>
+            <p class={s['domain']} data-testid="product-card-domain">
+              {props.card.domain}
+            </p>
+          </Show>
         </div>
         <Show when={props.card.description}>
           {description => (
-            <p class={s['description']} data-testid="product-card-description">
+            <p class={s['description']} data-testid="product-card-description" title={description()}>
               {description()}
             </p>
           )}
@@ -61,7 +64,7 @@ function getAuthorSection(author: AuthorStatus): JSX.Element {
     case 'ready':
       return author.author === null ? null : (
         <div class={s['author']} data-testid="product-card-author">
-          <p class={s['label']}>Author</p>
+          <SectionLabel class={s['label']} text="Author" />
           <AuthorRow author={author.author} />
         </div>
       );

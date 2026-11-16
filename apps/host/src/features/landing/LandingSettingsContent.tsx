@@ -23,11 +23,11 @@ import { TransportChoices } from '../settings/index.js';
 import { isResetRunning, type ApplySettings, type SavedSettings, type SettingsResetStatus } from '../settings/index.js';
 import s from './LandingSettingsContent.module.css';
 
-type Category = 'network' | 'provider' | 'advanced';
+type Category = 'network' | 'transport' | 'advanced';
 
 const CATEGORIES: readonly SegmentOption<Category>[] = [
   { value: 'network', label: 'Network', testId: 'landing-settings-category-network' },
-  { value: 'provider', label: 'Provider', testId: 'landing-settings-category-provider' },
+  { value: 'transport', label: 'Transport', testId: 'landing-settings-category-transport' },
   { value: 'advanced', label: 'Advanced', testId: 'landing-settings-category-advanced' },
 ];
 
@@ -67,8 +67,16 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
   const [network, setNetwork] = createSignal<Network>(saved.network);
   const [backend, setBackend] = createSignal<Backend>(saved.backend);
   const categories = saved.enabledNetworks.length > 1 ? CATEGORIES : CATEGORIES.filter(c => c.value !== 'network');
-  const [category, setCategory] = createSignal<Category>(categories[0]?.value ?? 'provider');
+  const [category, setCategory] = createSignal<Category>(categories[0]?.value ?? 'transport');
   const [clearing, setClearing] = createSignal(false);
+  const dirty = (): boolean => network() !== saved.network || backend() !== saved.backend;
+  // Named from the categories shown, so it never speaks of a hidden one.
+  const reloadHint = categories.some(c => c.value === 'network')
+    ? 'Network and transport changes reload the page'
+    : 'Transport changes reload the page';
+
+  // A reset this panel did not start by clearing is an apply, from this opening or an earlier one.
+  const applying = (): boolean => isResetRunning(props.reset()) && !clearing();
 
   function clearCache(): void {
     setClearing(true);
@@ -104,7 +112,7 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
         <Show when={category() === 'network'}>
           <NetworkChoices networks={saved.enabledNetworks} value={network()} onChoose={setNetwork} />
         </Show>
-        <Show when={category() === 'provider'}>
+        <Show when={category() === 'transport'}>
           <TransportChoices
             value={backend()}
             sharedWorkerAvailable={saved.sharedWorkerAvailable}
@@ -117,12 +125,15 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
             <div data-testid="landing-settings-clear-row">
               <Button
                 block
+                variant="danger"
                 onClick={clearCache}
                 title="Forget the app names suggested under the name input and reload. The page reads them from the network again."
-                disabled={clearing() || isResetRunning(props.reset())}
+                disabled={isResetRunning(props.reset())}
+                loading={clearing()}
+                aria-label={clearing() ? 'Clearing…' : undefined}
               >
                 <TrashIcon class={s['icon']} />
-                {clearing() ? 'Clearing…' : 'Clear cache'}
+                Clear cache
               </Button>
             </div>
           </Stack>
@@ -130,9 +141,12 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
       </div>
       <SurfaceFoot
         hint={
-          <Hint icon={ReloadIcon} testId="landing-settings-apply-warning">
-            Network and transport changes reload the page
-          </Hint>
+          // Advanced clears at once, so the reload notice shows there only while a draft waits.
+          <Show when={category() !== 'advanced' || dirty()}>
+            <Hint icon={ReloadIcon} testId="landing-settings-apply-warning">
+              {reloadHint}
+            </Hint>
+          </Show>
         }
       >
         <div class={s['apply']} data-testid="landing-settings-apply-row">
@@ -140,13 +154,11 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
             variant="primary"
             block={popover.sheet()}
             onClick={apply}
-            disabled={
-              (network() === saved.network && backend() === saved.backend) ||
-              clearing() ||
-              isResetRunning(props.reset())
-            }
+            disabled={!dirty() || clearing() || isResetRunning(props.reset())}
+            loading={applying()}
+            aria-label={applying() ? 'Applying…' : undefined}
           >
-            {isResetRunning(props.reset()) ? 'Resetting…' : 'Save and apply'}
+            Save and apply
           </Button>
         </div>
       </SurfaceFoot>

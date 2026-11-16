@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { getChainDetail } from './getChainDetail.js';
 
 describe('chain detail', () => {
-  it('As a dotli developer, I select a chain response and it shows its summary and its decoded annotations', () => {
+  it('As a dotli developer, I select a chain response and it shows its summary, its failure and its decoded annotations', () => {
     // Given
     const payload = { tag: 'V1', value: { success: false, value: { reason: 'block not pinned' } } };
 
@@ -14,6 +14,7 @@ describe('chain detail', () => {
 
     // Then
     expect(detail?.summary).toBe('Header fetch failed: block not pinned.');
+    expect(detail?.failed).toBe(true);
     expect(detail?.fields.map(field => [field.name, field.value])).toEqual([
       ['method', 'chainHead.header'],
       ['outcome', 'error: block not pinned'],

@@ -12,23 +12,39 @@
   border-top: 1px solid var(--border-subtle);
   background: var(--surface);
   color-scheme: dark;
-  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
 }
 
 .panel[data-visible] {
   display: block;
 }
 
+/* A grip in the middle says the edge drags. It is centred on the panel's top edge, clear of the header's text, with a
+   hit area taller than the grip. */
 .resizeHandle {
-  height: 5px;
-  background: transparent;
+  position: absolute;
+  top: 0;
+  transform: translateY(-50%);
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 10px;
   cursor: ns-resize;
-  transition: background 0.15s;
+}
+.resizeHandle::before {
+  content: '';
+  width: 32px;
+  height: 3px;
+  border-radius: var(--r-full);
+  background: var(--chrome-idle);
+  transition: background var(--dur-fast);
 }
 
-.resizeHandle:hover,
-.resizeHandle:active {
+.resizeHandle:hover::before,
+.resizeHandle:active::before {
   background: var(--border-focus);
 }
 
@@ -54,31 +70,44 @@
   min-width: 20px;
   height: 18px;
   padding: 0 var(--sp-1);
-  border-radius: 9px;
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-size: 0.68rem;
-  font-weight: 600;
+  border-radius: var(--r-full);
+  background: var(--chrome-danger-fill-strong);
+  color: var(--chrome-err-text);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
 }
 
 .label {
-  color: var(--text-muted);
-  font-family: system-ui, sans-serif;
-  font-size: 0.75rem;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
 }
 
+/* Positioned, so it sits over the handle's hit area and takes its own presses. */
 .toggle {
+  position: relative;
   margin: 0 0 0 auto;
   padding: var(--sp-hair) var(--sp-1_5);
   border: none;
+  border-radius: var(--r-xs);
   background: none;
-  color: var(--text-faint);
-  font-size: 0.75rem;
+  color: var(--text-muted);
   cursor: pointer;
 }
 
 .toggle:hover {
   color: var(--text-strong);
+}
+
+.toggle:focus-visible {
+  outline: var(--chrome-focus-ring);
+}
+
+/* Inset, as the panel clips anything past its edge. */
+.log:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: -2px;
 }
 
 .chevron {
@@ -90,11 +119,15 @@
   transform: rotate(180deg);
 }
 
+/* A row scrolled half under the header fades out over the top padding, so no cut glyphs show at the edge. */
 .log {
   box-sizing: border-box;
   max-height: 160px;
-  padding: var(--sp-1) var(--sp-3);
+  padding: var(--sp-1) var(--sp-3) var(--sp-2);
   overflow-y: auto;
+  /* A row scrolled into view clears the edge, not half under it. */
+  scroll-padding-block: var(--sp-1) var(--sp-2);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--sp-1));
 }
 
 .panel[data-collapsed] .log {
@@ -106,22 +139,18 @@
   align-items: baseline;
   gap: var(--sp-2);
   padding: var(--sp-hair) 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.entry:last-child {
-  border-bottom: none;
 }
 
 .time {
   flex-shrink: 0;
-  color: var(--text-faint);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .api {
   flex-shrink: 0;
   color: var(--text-strong);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .details {
@@ -129,4 +158,13 @@
   color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A phone has no room for one line per violation, so the details wrap rather than cut. */
+@media (max-width: 560px) {
+  .details {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
 }

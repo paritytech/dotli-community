@@ -50,7 +50,7 @@ export const Default: Story = {
         'false',
         'false',
       ]);
-      await expect(within(getPart('td-filters')).getByTestId('td-counts')).toHaveTextContent('0 events');
+      await expect(within(getPart('td-view-bar')).getByTestId('td-counts')).toHaveTextContent('0 events');
     });
     await step('Then the filters start wide open', async () => {
       const filters = within(getPart('td-filters'));
@@ -550,6 +550,7 @@ export const TextFiltersFlagInvalid: Story = {
     });
     await step('Then it is flagged and inert', async () => {
       await expect(include).toHaveAttribute('aria-invalid', 'true');
+      await expect(include).toHaveAccessibleDescription('Invalid regex, so this filter is off');
       await expect(listRows()).toHaveLength(5);
     });
     await step('When an exclude regex does not parse', async () => {
@@ -586,7 +587,7 @@ export const RowClickHighlightsGroup: Story = {
           direction: 'outgoing',
           product: 'app.dot',
           tag: 'system_handshake_request',
-          requestId: 'req-aa req-aaa-111',
+          requestId: 'req-aaa-111',
           group: '2 events: system_handshake_response +50ms',
         });
         await expect(getPart('td-detail-pre').textContent).toBe(JSON.stringify({ version: 1 }, null, 2));
@@ -623,7 +624,7 @@ export const SystemDetailExplains: Story = {
         source: 'dotli',
         layer: 'boot',
         event: 'started',
-        flowId: 'flow-b flow-boot-1',
+        flowId: 'flow-boot-1',
         group: '1 event',
       });
       await expect(getPart('td-detail-summary')).toHaveTextContent('Host boot started (chain: smoldot-direct).');

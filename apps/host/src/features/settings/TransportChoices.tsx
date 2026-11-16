@@ -9,12 +9,12 @@ import { Chip, Choice, SectionLabel, Stack } from '@dotli/ui';
 /** The order the transport choices are listed in. */
 const TRANSPORT_ORDER: readonly Backend[] = ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'];
 
-/** What the transport choice for each backend says. */
+/** What the transport choice for each backend says, and the chip that marks it: recommended, or unverified. */
 const TRANSPORT_FACTS = {
-  'smoldot-direct': { description: 'Verified in your browser, separate for each tab', recommended: true },
-  'smoldot-shared-worker': { description: 'Verified in your browser, shared across tabs', recommended: false },
-  'rpc-gateway': { description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
-} satisfies Record<Backend, { description: string; recommended: boolean }>;
+  'smoldot-direct': { description: 'Verified in your browser, separate for each tab', mark: 'recommended' },
+  'smoldot-shared-worker': { description: 'Verified in your browser, shared across tabs', mark: null },
+  'rpc-gateway': { description: 'Fetched from trusted servers. Fastest, but less private', mark: 'unverified' },
+} satisfies Record<Backend, { description: string; mark: 'recommended' | 'unverified' | null }>;
 
 export type TransportChoicesProps = {
   /** The chosen backend, drawn as selected. */
@@ -41,7 +41,7 @@ export function TransportChoices(props: TransportChoicesProps): JSX.Element {
                   ? 'Unavailable in this browser or private window'
                   : TRANSPORT_FACTS[value].description
               }
-              chip={TRANSPORT_FACTS[value].recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
+              chip={getMarkChip(TRANSPORT_FACTS[value].mark)}
               selected={props.value === value}
               radio={{
                 name: 'dotli-backend',
@@ -57,4 +57,16 @@ export function TransportChoices(props: TransportChoicesProps): JSX.Element {
       </Stack>
     </Stack>
   );
+}
+
+/** The chip beside a choice. Unverified answers the warning mark the settings button shows on that transport. */
+function getMarkChip(mark: 'recommended' | 'unverified' | null): JSX.Element {
+  switch (mark) {
+    case 'recommended':
+      return <Chip tone="ok">Recommended</Chip>;
+    case 'unverified':
+      return <Chip tone="warn">Unverified</Chip>;
+    case null:
+      return undefined;
+  }
 }

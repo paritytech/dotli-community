@@ -1,7 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The size and leading of a Callout, so prose beside one reads as the same text. */
 .note {
   color: var(--td-fg-dim);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.45;
 }

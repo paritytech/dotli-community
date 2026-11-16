@@ -11,10 +11,10 @@ type Params = {
   source: Pick<DiagnosticsSource, 'report' | 'openIssue'>;
 };
 
-/** The Share diagnostic button's command, as its factory builds it. */
+/** The Share diagnostics button's command, as its factory builds it. */
 export type DiagnosticsSharer = ReturnType<typeof createDiagnosticsSharer>;
 
-/** The Share diagnostic button's command. Opening a tab is not idempotent, so overlapping clicks share once. */
+/** The Share diagnostics button's command. Opening a tab is not idempotent, so overlapping clicks share once. */
 export function createDiagnosticsSharer({ source }: Params) {
   const shares = createAsyncTaskPool({ poolSize: 1 });
   const busy = atom(false);

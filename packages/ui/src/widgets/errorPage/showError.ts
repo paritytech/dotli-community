@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { RotateCwIcon } from '../../icons.js';
 import type { ErrorAction } from './arrangeErrorActions.js';
 import { showErrorPage } from './showErrorPage.js';
 
@@ -26,7 +27,7 @@ function toActions(action: ErrorAction | ErrorAction[] | (() => void) | undefine
     return [];
   }
   if (typeof action === 'function') {
-    return [{ label: 'Retry', onClick: action }];
+    return [{ label: 'Retry', icon: RotateCwIcon, onClick: action }];
   }
   if (Array.isArray(action)) {
     return action;

@@ -27,6 +27,11 @@
     transform: translateY(100%);
   }
 }
+/* A layer opened over this one makes it inert. The sheet then leaves the screen, so no sliver of it shows above a
+   shorter sheet, and slides back once that layer closes. */
+:global([data-modal-layer][inert]) .sheet[data-state='open'] {
+  transform: translateY(100%);
+}
 .sheet:focus-visible {
   outline: none;
 }
@@ -50,9 +55,20 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--sp-3);
-  padding: var(--sp-6) var(--sp-4) var(--sp-3) var(--sp-5);
+  padding: var(--sp-6) var(--sp-4) var(--sp-3);
   touch-action: none;
   cursor: grab;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+/* Sized to the title it leads, not to a card head. The heading in the selector outranks the tile's own size. */
+.heading > .icon > svg {
+  width: 24px;
+  height: 24px;
 }
 .grabber {
   position: absolute;
@@ -73,6 +89,7 @@
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .body {

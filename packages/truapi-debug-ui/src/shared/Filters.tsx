@@ -3,7 +3,7 @@
 
 // The panel's filter controls. Each control carries its value as `data-value`, and the caller owns the filter state.
 
-import { For, untrack } from 'solid-js';
+import { createUniqueId, For, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { IconProps } from '../icons/iconProps.js';
 import { Bar } from './Bar.js';
@@ -23,9 +23,15 @@ export function FilterBar(props: {
 }
 
 /** A labelled run of controls in the bar. */
-export function FilterGroup(props: { label: string; children: JSX.Element }): JSX.Element {
+export function FilterGroup(props: {
+  label: string;
+  /** Holds a text field, which takes the row's spare width and, when too narrow for both, drops its label. */
+  field?: boolean;
+  class?: string | undefined;
+  children: JSX.Element;
+}): JSX.Element {
   return (
-    <div class={s['group']}>
+    <div class={[s['group'], props.field === true && s['field'], props.class]}>
       <span class={s['label']}>{props.label}</span>
       {props.children}
     </div>
@@ -69,9 +75,11 @@ export function FilterChips<T extends string>(props: {
   chips: readonly FilterChip<T>[];
   selected: T;
   onSelect: (value: T) => void;
+  /** Keeps the chips on one line that scrolls, for a list that can grow. */
+  scroll?: boolean;
 }): JSX.Element {
   return (
-    <div class={s['chips']}>
+    <div class={[s['chips'], props.scroll === true && s['scroll']]}>
       <For each={props.chips} keyed={chip => chip.value}>
         {chip => {
           const Icon = untrack(() => chip().icon);
@@ -96,28 +104,39 @@ export function FilterChips<T extends string>(props: {
   );
 }
 
+/** A text filter. While its query does not parse, it is marked invalid and says why. */
 export function FilterInput(props: {
   testId: string;
   label: string;
   placeholder: string;
   title: string;
   invalid: boolean;
+  /** Why an invalid query does not parse. */
+  invalidHint: string;
   onInput: (value: string) => void;
 }): JSX.Element {
+  const hintId = createUniqueId();
   return (
-    <input
-      class={s['input']}
-      data-testid={props.testId}
-      aria-invalid={props.invalid ? 'true' : undefined}
-      type="search"
-      aria-label={props.label}
-      placeholder={props.placeholder}
-      title={props.title}
-      spellcheck="false"
-      autocomplete="off"
-      onInput={e => {
-        props.onInput(e.currentTarget.value);
-      }}
-    />
+    <>
+      <input
+        class={s['input']}
+        data-testid={props.testId}
+        aria-invalid={props.invalid ? 'true' : undefined}
+        aria-describedby={props.invalid ? hintId : undefined}
+        type="search"
+        aria-label={props.label}
+        placeholder={props.placeholder}
+        title={props.invalid ? props.invalidHint : props.title}
+        spellcheck="false"
+        autocomplete="off"
+        onInput={e => {
+          props.onInput(e.currentTarget.value);
+        }}
+      />
+      {/* Hidden, yet still read out through aria-describedby. */}
+      <span id={hintId} hidden>
+        {props.invalidHint}
+      </span>
+    </>
   );
 }

@@ -280,7 +280,8 @@ export const DraftEnablesSave: Story = {
         { backend: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
       );
       await expect(applyButton()).toBeDisabled();
-      await expect(applyButton()).toHaveTextContent('Resetting…');
+      await expect(applyButton()).toHaveAttribute('aria-busy', 'true');
+      await expect(applyButton()).toHaveAccessibleName('Applying…');
     });
   },
 };
@@ -373,7 +374,8 @@ export const ClearAllUsesSaved: Story = {
       await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
       await expect(settingsAsked.apply).toHaveBeenCalledWith(saved, saved, { forceFullWipe: true });
       await expect(clear()).toBeDisabled();
-      await expect(clear()).toHaveTextContent('Clearing…');
+      await expect(clear()).toHaveAttribute('aria-busy', 'true');
+      await expect(clear()).toHaveAccessibleName('Clearing…');
     });
     await ctx.step('When I try it again', () => {
       clear().click();
@@ -400,6 +402,7 @@ export const SaveWhileClearing: Story = {
     await ctx.step('Then Save and apply waits and only the clear ran', async () => {
       const saved = { backend: DEFAULT_SETTINGS.backend, network: DEFAULT_SETTINGS.network, cache: DEFAULT_CACHE };
       await expect(applyButton()).toBeDisabled();
+      await expect(applyButton()).not.toHaveAttribute('aria-busy');
       await expect(applyButton()).toHaveTextContent('Save and apply');
       await expect(settingsAsked.apply).toHaveBeenCalledTimes(1);
       await expect(settingsAsked.apply).toHaveBeenCalledWith(saved, saved, { forceFullWipe: true });
@@ -424,8 +427,10 @@ export const OpensWhileResetting: Story = {
     await ctx.step('Then both buttons are disabled and the running one says so', async () => {
       const clear = query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
       await expect(applyButton()).toBeDisabled();
-      await expect(applyButton()).toHaveTextContent('Resetting…');
+      await expect(applyButton()).toHaveAttribute('aria-busy', 'true');
+      await expect(applyButton()).toHaveAccessibleName('Applying…');
       await expect(clear).toBeDisabled();
+      await expect(clear).not.toHaveAttribute('aria-busy');
       await expect(clear).toHaveTextContent('Clear all caches');
     });
   },

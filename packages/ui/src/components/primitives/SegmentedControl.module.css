@@ -4,6 +4,7 @@
 /* Pressed is a raised fill, never coloured text, to keep AAA contrast and every option's width. */
 
 :where(.seg) {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   flex: none;
@@ -13,7 +14,10 @@
   padding: var(--sp-hair);
   border-radius: var(--r-full);
   background: var(--chrome-well);
-  box-shadow: var(--chrome-shadow-inset);
+  /* The edge draws the track, which its fill alone barely lifts off the surface. */
+  box-shadow:
+    var(--chrome-shadow-inset),
+    inset 0 0 0 1px var(--chrome-line);
 }
 .seg[data-block] {
   width: 100%;
@@ -21,7 +25,27 @@
 .seg[data-block] > .option {
   flex: 1;
 }
+/* Shown once placed, so it appears in place and slides only between options. */
+.pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  pointer-events: none;
+  transition:
+    transform var(--dur) var(--ease-out),
+    width var(--dur) var(--ease-out),
+    height var(--dur) var(--ease-out);
+}
+.pill[data-placed] {
+  display: block;
+}
+/* Positioned, so it paints over the pill. */
 .option {
+  position: relative;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -36,35 +60,40 @@
   color: var(--chrome-text-muted);
   font: var(--fw-medium) var(--fs-caption) / 1 var(--font-sans);
   cursor: pointer;
-  transition:
-    background var(--dur-fast),
-    color var(--dur-fast),
-    box-shadow var(--dur-fast);
+  transition: color var(--dur-fast);
 }
 .option:hover {
   color: var(--chrome-text);
 }
-.seg[aria-disabled='true'] > .option {
-  cursor: default;
-  opacity: 0.5;
-}
+/* Faint text, not dimming, so the text keeps its contrast and the focus ring its colour. The pill keeps its full
+   fill, so the picked option still reads. */
+.seg[aria-disabled='true'] > .option,
 .seg[aria-disabled='true'] > .option:hover {
-  color: var(--chrome-text-muted);
+  color: var(--text-faint);
+  cursor: default;
 }
-.seg[aria-disabled='true'] > .option[aria-pressed='true'] {
-  color: var(--chrome-text);
-}
+/* Inside the option, so the ring stays within the track and reads on the pill rather than beside it. */
 .option:focus-visible {
   outline: var(--chrome-focus-ring);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 .option[aria-pressed='true'] {
   background: var(--chrome-fill-strong);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
 }
+.pill[data-placed] ~ .option[aria-pressed='true'] {
+  background: transparent;
+  box-shadow: none;
+}
 .option > svg {
   flex: none;
+}
+/* A short option takes presses above and below it too, as far as a comfortable target. */
+.seg[data-size='md'] > .option::before {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
 }
 @media (max-width: 560px) {
   .option {
@@ -79,6 +108,9 @@
   padding: var(--sp-1);
   border-radius: var(--r-sm);
 }
+.seg[data-size='lg'] > .pill {
+  border-radius: var(--r-xs);
+}
 .seg[data-size='lg'] > .option {
   flex-direction: column;
   height: 60px;
@@ -86,8 +118,8 @@
   font-size: var(--fs-small);
 }
 .seg[data-size='lg'] > .option > svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 @media (max-width: 560px) {
   .seg[data-size='lg'] {
@@ -97,12 +129,12 @@
     height: var(--h-tile);
     border-radius: var(--r-sm);
   }
-  .seg[data-size='lg'] > .option > svg {
-    width: 20px;
-    height: 20px;
+  .seg[data-size='lg'] > .pill {
+    border-radius: var(--r-sm);
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .pill,
   .option {
     transition: none;
   }

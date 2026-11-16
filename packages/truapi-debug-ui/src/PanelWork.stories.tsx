@@ -466,8 +466,36 @@ export const ScrolledUpKeepsRows: Story = {
       }
       await waitFor(() => expect(listRows()[5]).toBe(topRow));
     });
-    await step('Then the same row stays under me', async () => {
+    await step('Then the same row stays under me, and a cue counts the new events below', async () => {
       await expect(list.scrollTop).toBe(5 * rowHeight);
+      await waitFor(() => expect(getPart('td-jump-newest')).toHaveTextContent('5 new events'));
+    });
+  },
+};
+
+/** As a developer using the debug panel, I scrolled up while events arrived, jump back to the newest and the list follows again. */
+export const JumpToNewest: Story = {
+  play: async ({ userEvent, step }) => {
+    getDebugPanel().mount({ capacity: 50 });
+    for (let index = 0; index < 40; index++) {
+      emitMessage('x_receive', `r${String(index)}`);
+    }
+    await waitFor(() => expect(listRows()).toHaveLength(40));
+    const list = getPart('td-list');
+    await step('Given I scrolled up and three events arrived', async () => {
+      list.scrollTop = 0;
+      await waitFor(() => expect(list.scrollTop).toBe(0));
+      for (let index = 0; index < 3; index++) {
+        emitMessage('x_receive', `n${String(index)}`);
+      }
+      await waitFor(() => expect(getPart('td-jump-newest')).toHaveTextContent('3 new events'));
+    });
+    await step('When I jump to the newest', async () => {
+      await userEvent.click(getPart('td-jump-newest'));
+    });
+    await step('Then the list shows the newest row and the cue is gone', async () => {
+      await expect(list.scrollHeight - list.clientHeight - list.scrollTop).toBeLessThan(4);
+      await waitFor(() => expect(getPanel().querySelector('[data-testid="td-jump-newest"]')).toBeNull());
     });
   },
 };

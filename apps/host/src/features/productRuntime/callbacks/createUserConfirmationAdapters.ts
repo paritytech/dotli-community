@@ -43,17 +43,17 @@ const CONFIRMATION_COPY: Record<
   ServedReview['tag'],
   { title: string; action: string; cancelAction: string; icon?: ModalView<string>['icon'] }
 > = {
-  SignPayload: { title: 'Sign Transaction', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
-  SignRaw: { title: 'Sign Message', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
-  StatementStoreProductSign: { title: 'Sign Statement', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
-  SignVrf: { title: 'Sign VRF Transcript', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
-  CreateTransaction: { title: 'Sign Transaction', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
-  AccountAlias: { title: 'Alias Permission', action: 'Allow', cancelAction: 'Deny' },
-  CreateProof: { title: 'Proof Permission', action: 'Allow', cancelAction: 'Deny' },
-  AccountAccess: { title: 'Account Access', action: 'Allow', cancelAction: 'Deny' },
-  IdentityDisclosure: { title: 'Identity Disclosure', action: 'Allow', cancelAction: 'Deny' },
-  ProductSubtree: { title: 'Product Account', action: 'Allow', cancelAction: 'Deny' },
-  ResourceAllocation: { title: 'Resource Allocation', action: 'Allow', cancelAction: 'Cancel' },
+  SignPayload: { title: 'Sign transaction', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
+  SignRaw: { title: 'Sign message', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
+  StatementStoreProductSign: { title: 'Sign statement', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
+  SignVrf: { title: 'Sign VRF transcript', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
+  CreateTransaction: { title: 'Sign transaction', action: 'Sign', cancelAction: 'Cancel', icon: SignIcon },
+  AccountAlias: { title: 'Alias permission', action: 'Allow', cancelAction: 'Deny' },
+  CreateProof: { title: 'Proof permission', action: 'Allow', cancelAction: 'Deny' },
+  AccountAccess: { title: 'Account access', action: 'Allow', cancelAction: 'Deny' },
+  IdentityDisclosure: { title: 'Identity disclosure', action: 'Allow', cancelAction: 'Deny' },
+  ProductSubtree: { title: 'Product account', action: 'Allow', cancelAction: 'Deny' },
+  ResourceAllocation: { title: 'Approve an allowance', action: 'Allow', cancelAction: 'Cancel' },
 };
 
 /**
@@ -100,7 +100,7 @@ export function createUserConfirmationAdapters({ core, prompts }: Params): Requi
         return undefined;
       }
       const { method } = claim.request;
-      const { title, icon } = CONFIRMATION_COPY[review.tag];
+      const { title } = CONFIRMATION_COPY[review.tag];
       const answered = new AbortController();
       let background = false;
       void claim.ended.then(outcome => {
@@ -110,7 +110,7 @@ export function createUserConfirmationAdapters({ core, prompts }: Params): Requi
       const closed = createDeferred<undefined>();
       hold(closed.promise);
       return {
-        view: phoneWaitingView({ title, ...(icon === undefined ? {} : { icon }), ask: PHONE_METHODS[method].ask }),
+        view: phoneWaitingView({ title, ask: PHONE_METHODS[method].ask }),
         signal: AbortSignal.any([signal, answered.signal]),
         closed(result) {
           background = result === WAITING_BACKGROUND;

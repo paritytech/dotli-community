@@ -6,7 +6,7 @@
   --pile-step: 7px;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   box-sizing: border-box;
   min-width: 0;
   margin: 0;
@@ -55,62 +55,60 @@
   --tone: var(--chrome-info);
 }
 .icon {
-  display: grid;
+  display: flex;
   flex: none;
-  place-items: center;
-  box-sizing: border-box;
-  width: var(--sp-8);
-  height: var(--sp-8);
   margin: 0;
   padding: 0;
-  border-radius: 10px;
-  /* Half the status tint, so the tile sits back behind the title. */
-  background: color-mix(in srgb, var(--tone) 8%, transparent);
   color: var(--tone);
 }
-/* The tile sizes its icon, whatever size it was drawn at. */
+/* Sized here, whatever size it was drawn at. */
 .icon-glyph {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .text {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: var(--sp-hair);
+  /* Room for the link's focus ring below the title. */
+  gap: var(--sp-1);
   box-sizing: border-box;
   min-width: 0;
   margin: 0;
   padding: 0;
 }
 
+/* Up to two lines, so a long headline still reads whole. */
 .title {
+  display: -webkit-box;
   min-width: 0;
   overflow: hidden;
   color: var(--chrome-text);
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .body {
   margin: 0;
   color: var(--chrome-text-muted);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-small);
   line-height: var(--lh-body);
 }
-/* Its hover, underline and focus ring hug the text, not the card's width. */
+/* Underlined at rest so it reads as a link. Its hover and focus ring hug the text, not the card's width. */
 a.body {
   align-self: flex-start;
   border-radius: var(--r-hair);
-  text-decoration: none;
-}
-a.body:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+a.body:hover {
+  color: var(--chrome-text);
 }
 a.body:focus-visible {
   outline: var(--chrome-focus-ring);
@@ -122,8 +120,10 @@ a.body:focus-visible {
   flex: none;
 }
 
-/* While cards pile up, one badge dismisses them all in place of each card's close button. */
-.card[data-piled] .close {
+/* While cards pile up, only the front card keeps its close button. */
+.card[data-piled][data-depth='1'] .close,
+.card[data-piled][data-depth='2'] .close,
+.card[data-piled][data-depth='3'] .close {
   display: none;
 }
 
@@ -151,18 +151,8 @@ a.body:focus-visible {
 @media (max-width: 560px) {
   .card {
     --pile-step: var(--sp-2);
-    gap: var(--sp-3);
     padding: var(--sp-3);
     border-radius: var(--r-lg);
-  }
-  .icon {
-    width: var(--h-control-sm);
-    height: var(--h-control-sm);
-    border-radius: var(--r-sm);
-  }
-  .icon-glyph {
-    width: 20px;
-    height: 20px;
   }
 }
 

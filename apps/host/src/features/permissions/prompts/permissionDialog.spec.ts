@@ -20,7 +20,7 @@ describe('permission request dialog', () => {
     const view = permissionRequestDialog({ ...CAMERA, reloads: false });
 
     // Then
-    expect(view.fields).toContainEqual({ label: 'Application', value: 'myapp.dot' });
+    expect(view.fields).toContainEqual({ label: 'App', value: 'myapp.dot' });
     expect(view.notice).toBeUndefined();
     expect(view.dismissOnBackdrop).toBe(true);
     expect(view.dismissResult).toBe('dismissed');

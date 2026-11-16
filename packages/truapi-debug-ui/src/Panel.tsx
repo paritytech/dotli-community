@@ -20,7 +20,7 @@ import { createInitialFilterState, type FilterState } from './model/filterState.
 import { getPanelDockInset } from './model/getPanelDockInset.js';
 import { sectionStorage, type PanelSection } from './model/createSectionStorage.js';
 import { appendVisible } from './model/appendVisible.js';
-import { formatListCounts } from './model/formatListCounts.js';
+import { formatListCounts, type ListCounts } from './model/formatListCounts.js';
 
 import type { ResolutionRecorder } from './model/createResolutionRecorder.js';
 import { Diagnostics } from './Diagnostics.js';
@@ -124,10 +124,17 @@ export function Panel(props: {
   });
   // A memo, so a frame that shows nothing new keeps the same list and redraws nothing.
   const visible = createMemo(() => filtered().shown);
+  // Read with each snapshot, so an event the ring evicts stops counting as hidden.
+  const selectionFilteredOut = createMemo((): boolean => {
+    const current = filtered().filters;
+    const selected = selection();
+    const event = selected === null ? undefined : store.getBySeq(selected.seq);
+    return event !== undefined && !matchesFilters(event, current);
+  });
   // Keyed on the recorder, not the store, so TrUAPI traffic does not redraw the Resolution view.
   const resolutionVersion = createMemo(() => snapshot().resolutionVersion);
 
-  const counts = (): string =>
+  const counts = (): ListCounts =>
     formatListCounts({ total: snapshot().events.length, dropped: snapshot().dropped, shown: visible().length });
 
   function refreshDetail(): void {
@@ -339,7 +346,6 @@ export function Panel(props: {
           onChange={changeFilters}
           controls={
             <EventControls
-              counts={counts()}
               paused={snapshot().paused}
               exportJson={exportJson}
               onTogglePause={() => {
@@ -366,7 +372,7 @@ export function Panel(props: {
           aria-labelledby={getTabId(SECTION_TABS_ID, section())}
         >
           <div class={s['views']} data-testid="td-views">
-            <ViewTabs view={view()} hidden={!eventsShown()} onSelect={selectView} />
+            <ViewTabs view={view()} counts={counts()} hidden={!eventsShown()} onSelect={selectView} />
             <div
               id={VIEW_PANEL_ID}
               class={s['viewPanel']}
@@ -419,7 +425,9 @@ export function Panel(props: {
             selectedSeq={selection()?.seq ?? null}
             view={view()}
             store={store}
+            events={snapshot().events}
             hidden={!eventsShown()}
+            filteredOut={selectionFilteredOut()}
             onSelectPair={select}
           />
         </div>

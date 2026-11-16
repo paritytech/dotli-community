@@ -16,9 +16,9 @@ import { ChatDock } from './ChatDock.js';
 
 const SLOW = { timeout: 5000 };
 
-/** A one-pixel PNG, as a real browser drops an icon it cannot decode for the letter fallback. */
+/** A bot's icon that loads, so its row shows the image and not the letter fallback. */
 const ICON =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Crect width="1" height="1" fill="teal"/%3E%3C/svg%3E';
 
 function rows(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')];
@@ -120,6 +120,33 @@ export const MessagesRenderAndRepliesPublish: Story = {
       // Then
       await waitFor(() => expect(stage.published).toEqual([{ roomId: 'main', text: 'hello back' }]), SLOW);
       await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello back'));
+    });
+  },
+};
+
+/** As a reader, I see one time under a run of messages an author sent within a minute. */
+export const OneTimePerRun: Story = {
+  tags: ['!autodocs'],
+  play: async ({ step }) => {
+    await step('As a reader, a run of messages shows its time once, under its last message', async () => {
+      // Given
+      stage.createRoom('main', 'Main');
+      stage.productSays('main', 'first');
+      stage.productSays('main', 'second');
+
+      // When
+      openChat();
+      await openRoom('Main');
+      send('mine');
+
+      // Then
+      await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('mine'), SLOW);
+      const bubbles = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-msg-bubble"]')];
+      await expect(bubbles.map(bubble => bubble.querySelector('[data-testid="chat-msg-time"]') !== null)).toEqual([
+        false,
+        true,
+        true,
+      ]);
     });
   },
 };
@@ -344,7 +371,7 @@ export const UnkeptReplyKeepsText: Story = {
       send('hello');
 
       // Then
-      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible(), SLOW);
+      await waitFor(() => expect(byId('chat-panel-hint')).toHaveTextContent('Message not sent. Try again.'), SLOW);
       await expect(byId('chat-panel-input')).toHaveValue('hello');
       await expect(byId('chat-panel-messages')).not.toHaveTextContent('hello');
     });
@@ -365,6 +392,10 @@ export const OpeningRoomFocusesComposer: Story = {
 
       // Then
       await waitFor(() => expect(byId('chat-panel-input')).toHaveFocus());
+    });
+    await step('As a user, a room with no messages says so', async () => {
+      // Then
+      await expect(byId('chat-panel-hint')).toHaveTextContent('No messages yet.');
     });
   },
 };

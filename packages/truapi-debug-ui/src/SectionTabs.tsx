@@ -22,15 +22,17 @@ const SECTIONS: readonly TabOption<PanelSection>[] = PANEL_SECTIONS.map(section 
   label: SECTION_LABELS[section],
 }));
 
-/** In the header, so they stay in reach while the panel is collapsed. A collapsed panel selects none. */
+/** In the header, so they stay in reach while the panel is collapsed. A collapsed panel selects none, but still marks the tab it opens on. */
 export function SectionTabs(props: {
-  section: PanelSection | null;
+  section: PanelSection;
+  collapsed: boolean;
   onSelect: (section: PanelSection) => void;
 }): JSX.Element {
   return (
     <Tabs
       tabs={SECTIONS}
-      selected={props.section}
+      selected={props.collapsed ? null : props.section}
+      current={props.section}
       onSelect={props.onSelect}
       variant="primary"
       label="Panel sections"

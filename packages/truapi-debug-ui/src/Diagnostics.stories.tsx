@@ -80,7 +80,7 @@ function getRowValue(canvasElement: HTMLElement, label: string): HTMLElement {
 export const PageRowsAndVersion: Story = {
   play: async ({ canvas, canvasElement, step }) => {
     await step('Then the tab shows the share button, the page rows and the light client version', async () => {
-      await expect(canvas.getByRole('button', { name: 'Share diagnostic' })).toBeEnabled();
+      await expect(canvas.getByRole('button', { name: 'Share diagnostics' })).toBeEnabled();
       for (const [label, value] of ROWS) {
         await expect(getRowValue(canvasElement, label)).toHaveTextContent(value);
       }
@@ -117,8 +117,8 @@ export const PackagesByGroup: Story = {
       const packages = within(canvas.getByTestId('td-packages'));
       await expect(packages.getAllByRole('heading').map(heading => heading.textContent)).toEqual([
         'Light client',
-        '@polkadot-api',
-        '@parity/truapi',
+        'Polkadot API',
+        'TrUAPI',
       ]);
       await expect(packages.getAllByRole('term').map(term => term.textContent)).toEqual([
         '@parity/truapi-provider',
@@ -217,22 +217,22 @@ export const ShareOnceAcrossTabs: Story = {
     const built = createDeferred<string>();
     source.report.mockReturnValueOnce(built.promise);
     const toggle = canvas.getByRole('button', { name: 'Toggle diagnostics' });
-    await step('Given I clicked Share diagnostic and the report is still building', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Share diagnostic' }));
+    await step('Given I clicked Share diagnostics and the report is still building', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Share diagnostics' }));
     });
     await step('When I leave the tab and come back', async () => {
       await userEvent.click(toggle);
       await userEvent.click(toggle);
     });
-    await step('Then the button is still disabled', async () => {
-      await expect(canvas.getByRole('button', { name: 'Share diagnostic' })).toBeDisabled();
+    await step('Then the button still reads Sharing and is disabled', async () => {
+      await expect(canvas.getByRole('button', { name: 'Sharing…' })).toBeDisabled();
     });
     await step('When I click it again and the report is built', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Share diagnostic' }));
+      await userEvent.click(canvas.getByRole('button', { name: 'Sharing…' }));
       built.resolve('Site: app.dot.li');
     });
     await step('Then one issue opens and the button takes clicks again', async () => {
-      await waitFor(() => expect(canvas.getByRole('button', { name: 'Share diagnostic' })).toBeEnabled());
+      await waitFor(() => expect(canvas.getByRole('button', { name: 'Share diagnostics' })).toBeEnabled());
       await expect(source.report).toHaveBeenCalledTimes(1);
       await expect(source.openIssue).toHaveBeenCalledTimes(1);
     });

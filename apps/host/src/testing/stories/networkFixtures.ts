@@ -8,14 +8,16 @@ import type { Backend } from '@dotli/config';
 import type { BlockHealth } from '../../features/network/networkMonitorState.js';
 import type { ChainBar } from '../../features/network/chain.js';
 import type { ChainView, NetworkView, TransferView } from '../../features/network/chains.js';
+import { describeLiveNetwork } from '../../features/network/networkVerdict.js';
 import type { LiveVerdict, NetworkHealth } from '../../features/network/networkVerdict.js';
 import type { NetworkItemProps } from '../../features/network/NetworkItem.js';
 
 const NO_TRANSFER: TransferView = { bytesPerSecond: null, fetched: null, total: null };
 
-/** Verdicts a story gives the network. A story that checks the status line gives the one its chains earn. */
+/** Verdicts a story gives the network in place of the one its chains earn. */
 export const VERDICTS = {
   quiet: { tone: 'quiet' },
+  unreachable: { tone: 'unreachable' },
   connecting: { tone: 'idle' },
   good: { tone: 'ok' },
 } satisfies Record<string, LiveVerdict>;
@@ -74,15 +76,16 @@ export function bars(from: number, count: number, gapMs = 6000, health: BlockHea
 }
 
 /**
- * The network, read just now, so a countdown shows its first value. With no `verdict`, chains in use are still
- * connecting.
+ * The network, read just now, so a countdown shows its first value, with the health its verdict earns online. With no
+ * `verdict`, it is the one the chains earn with no alarm raised, so the status line agrees with the rows.
  */
 export function given(
   chains: ChainView[],
   transfer: TransferView = NO_TRANSFER,
-  verdict: LiveVerdict = chains.length === 0 ? VERDICTS.quiet : VERDICTS.connecting,
+  verdict: LiveVerdict = describeLiveNetwork(chains.map(chain => ({ ...chain, alarm: false }))),
 ): void {
   setNetwork({ chains, transfer, readAt: Date.now(), verdict });
+  setHealthSignal(verdict.tone);
 }
 
 export function setHealth(next: NetworkHealth): void {

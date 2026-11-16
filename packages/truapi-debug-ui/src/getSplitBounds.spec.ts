@@ -6,7 +6,7 @@ import { getSplitBounds } from './getSplitBounds.js';
 
 describe('debug panel splitter bounds', () => {
   it('As a keyboard user of the debug panel, I move the splitter and it keeps to the bounds a drag keeps to', () => {
-    // Given a body 1000px wide, and one too narrow for both minimums
+    // Given a body 1000px wide, and one too narrow for both minimums, where each pane keeps a third
 
     // When
     const bounds = [getSplitBounds(1000), getSplitBounds(300)];
@@ -14,7 +14,7 @@ describe('debug panel splitter bounds', () => {
     // Then
     expect(bounds).toEqual([
       { min: 220, max: 734 },
-      { min: 220, max: 220 },
+      { min: 98, max: 196 },
     ]);
   });
 });

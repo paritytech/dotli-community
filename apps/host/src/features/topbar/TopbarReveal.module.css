@@ -13,7 +13,7 @@
   background: var(--chrome-glass);
   box-shadow: var(--chrome-shadow-pop);
   color: var(--chrome-text);
-  font: var(--fw-medium) 12px / 1 var(--font-sans);
+  font: var(--fw-medium) var(--fs-caption) / 1 var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
   transform: translateX(-50%);

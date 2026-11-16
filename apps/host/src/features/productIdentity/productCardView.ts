@@ -26,9 +26,11 @@ export function getProductCardView({ product, pill, card }: Params): ProductCard
   if (product.status !== 'loaded' || product.cid === undefined || pill.kind !== 'product') {
     return null;
   }
+  const domain = `${pill.domain}${pill.tld}`;
   return {
-    name: product.facts.displayName ?? product.label,
-    domain: `${pill.domain}${pill.tld}`,
+    // With no display name the domain names it, so the card never shows the label above its own domain.
+    name: product.facts.displayName ?? domain,
+    domain,
     description:
       product.facts.description === undefined || product.facts.description === '' ? null : product.facts.description,
     icon: card.icon,

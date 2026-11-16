@@ -126,13 +126,13 @@ describe('user confirmation modal', () => {
           },
         },
       },
-      title: 'Sign Transaction',
+      title: 'Sign transaction',
       icon: SignIcon,
       fields: {
         App: 'localhost:3000',
         Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
-        'Genesis Hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
-        'Call Data': '0x0000',
+        'Genesis hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+        'Call data': '0x0000',
         Version: '4',
       },
     },
@@ -156,7 +156,7 @@ describe('user confirmation modal', () => {
           },
         },
       },
-      title: 'Sign Message',
+      title: 'Sign message',
       icon: SignIcon,
       fields: {
         App: 'localhost:3000',
@@ -184,7 +184,7 @@ describe('user confirmation modal', () => {
           },
         },
       },
-      title: 'Sign VRF Transcript',
+      title: 'Sign VRF transcript',
       icon: SignIcon,
       fields: {
         'Requesting product': 'truapi-playground.dot',
@@ -215,14 +215,14 @@ describe('user confirmation modal', () => {
           },
         },
       },
-      title: 'Sign Transaction',
+      title: 'Sign transaction',
       icon: SignIcon,
       fields: {
         App: 'localhost:3000',
         Signer: 'truapi-playground.dot / 3',
-        'Genesis Hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
-        'Call Data': '0x0500',
-        'Tx Ext Version': '5',
+        'Genesis hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+        'Call data': '0x0500',
+        'Tx ext version': '5',
       },
     },
     {
@@ -235,7 +235,7 @@ describe('user confirmation modal', () => {
           resources: [{ tag: 'StatementStoreAllowance' }, { tag: 'AutoSigning' }],
         },
       },
-      title: 'Resource Allocation',
+      title: 'Approve an allowance',
       icon: undefined,
       fields: {
         'Requesting product': 'localhost:3000',
@@ -259,7 +259,7 @@ describe('user confirmation modal', () => {
           },
         },
       },
-      title: 'Alias Permission',
+      title: 'Alias permission',
       icon: undefined,
       fields: {
         'Requesting product': 'truapi-playground.dot',
@@ -287,7 +287,7 @@ describe('user confirmation modal', () => {
           message: new Uint8Array([0x48, 0x69]),
         },
       },
-      title: 'Proof Permission',
+      title: 'Proof permission',
       icon: undefined,
       fields: {
         'Requesting product': 'truapi-playground.dot',
@@ -308,7 +308,7 @@ describe('user confirmation modal', () => {
           targetProductId: asProductId('other-product.dot'),
         },
       },
-      title: 'Account Access',
+      title: 'Account access',
       icon: undefined,
       fields: {
         'Requesting product': 'truapi-playground.dot',
@@ -324,7 +324,7 @@ describe('user confirmation modal', () => {
           productId: asProductId('truapi-playground.dot'),
         },
       },
-      title: 'Identity Disclosure',
+      title: 'Identity disclosure',
       icon: undefined,
       fields: {
         'Requesting product': 'truapi-playground.dot',
@@ -341,7 +341,7 @@ describe('user confirmation modal', () => {
           productId: asProductId('truapi-playground.dot'),
         },
       },
-      title: 'Product Account',
+      title: 'Product account',
       icon: undefined,
       fields: {
         'Requesting product': 'truapi-playground.dot',
@@ -395,8 +395,8 @@ describe('user confirmation modal', () => {
       fields: {
         App: 'localhost:3000',
         Signer: 'truapi-playground.dot / 2',
-        'Genesis Hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
-        'Call Data': '0x0500',
+        'Genesis hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+        'Call data': '0x0500',
         Version: '4',
       },
       warnings: [],
@@ -668,8 +668,7 @@ describe('waiting on the phone', () => {
     // Then
     await expect(confirmation).resolves.toBe(true);
     expect(isWaiting()).toBe(true);
-    expect(getShownDialog().title).toBe('Sign Transaction');
-    expect(getShownDialog().icon).toBe(SignIcon);
+    expect(getShownDialog().title).toBe('Sign transaction');
   });
 
   it('As a user, I sign on my phone and the waiting step closes while I see it signed', async () => {
@@ -684,8 +683,8 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(page.listPending()).toEqual([]);
-    expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
-    expect(notices[0]?.label).toBe(withActiveTld('localhost:3000'));
+    expect(notices.map(n => n.label)).toEqual(['Transaction signed']);
+    expect(notices[0]?.text).toBe(`${withActiveTld('localhost:3000')} · in Polkadot App`);
     expect(sentry.counted('signing.phone_request')).toEqual([
       { outcome: 'ok', reason: 'signPayload', background: 'no' },
     ]);
@@ -709,7 +708,7 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(page.listPending()).toEqual([]);
-    expect(notices.map(n => n.text)).toEqual(['Rejected in Polkadot App']);
+    expect(notices.map(n => n.label)).toEqual(['Rejected in Polkadot App']);
     expect(sentry.counted('signing.phone_request')).toEqual([
       { outcome: 'refused', reason: 'signPayload', background: 'yes' },
     ]);
@@ -733,7 +732,7 @@ describe('waiting on the phone', () => {
     const notices = await page.waitForNotices(1);
 
     // Then
-    expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
+    expect(notices.map(n => n.label)).toEqual(['Transaction signed']);
     expect(sentry.counted('signing.phone_request')).toEqual([
       { outcome: 'ok', reason: 'signPayload', background: 'yes' },
     ]);
@@ -882,7 +881,7 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(confirmed).toBe(true);
-    expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
+    expect(notices.map(n => n.label)).toEqual(['Transaction signed']);
   });
 
   it('As a user, I lose the connection while I wait and the waiting step closes without a toast', async () => {
@@ -961,8 +960,8 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(isWaiting()).toBe(true);
-    expect(getShownDialog().body).toBe(phoneWaitingView({ title: 'Resource Allocation', ask: 'approve' }).body);
-    expect(getShownDialog().body).not.toBe(phoneWaitingView({ title: 'Resource Allocation', ask: 'sign' }).body);
+    expect(getShownDialog().body).toBe(phoneWaitingView({ title: 'Approve an allowance', ask: 'approve' }).body);
+    expect(getShownDialog().body).not.toBe(phoneWaitingView({ title: 'Approve an allowance', ask: 'sign' }).body);
   });
 
   it('As a user, I allow account access once and the core hears AllowOnce while the dialog waits on the phone', async () => {
@@ -992,7 +991,7 @@ describe('waiting on the phone', () => {
     // Then
     await expect(decision).resolves.toBe('AllowOnce');
     expect(isWaiting()).toBe(true);
-    expect(getShownDialog().title).toBe('Account Access');
+    expect(getShownDialog().title).toBe('Account access');
   });
 });
 

@@ -165,7 +165,7 @@ export const FailedRenderIsNeutral: Story = {
   },
 };
 
-/** As a reader of a custom message, I am told when I tap a button and the app cannot be reached. */
+/** As a reader of a custom message, I am told under its buttons when I tap one and the app cannot be reached. */
 export const UnreachableTapSaysSo: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {
@@ -178,7 +178,7 @@ export const UnreachableTapSaysSo: Story = {
       await userEvent.click(await canvas.findByRole('button', { name: 'Vote' }));
     });
     await step(
-      'Then the tap carried the message context and the message says the app could not be reached',
+      'Then the tap carried the message context and the message says the app could not be reached under its button',
       async () => {
         await expect(service.actions).toEqual([
           {
@@ -188,8 +188,9 @@ export const UnreachableTapSaysSo: Story = {
           },
         ]);
         await waitFor(() =>
-          expect(canvas.getByTestId('chat-custom-root')).toHaveTextContent('The app could not be reached.'),
+          expect(canvas.getByTestId('chat-custom-error')).toHaveTextContent('The app could not be reached.'),
         );
+        await expect(canvas.getByRole('button', { name: 'Vote' })).toBeVisible();
       },
     );
   },

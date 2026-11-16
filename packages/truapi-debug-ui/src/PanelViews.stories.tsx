@@ -256,7 +256,7 @@ export const TimelineClickShowsGroup: Story = {
           'response',
         ]);
         await expect(readDetailRows()).toMatchObject({
-          requestId: 'req-aa req-aaa-111',
+          requestId: 'req-aaa-111',
           group: '2 events',
           duration: '50ms',
         });

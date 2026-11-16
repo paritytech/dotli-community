@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import type { StatusTone } from '@dotli/ui';
 import type { ChainClock } from './networkMonitorState.js';
 import {
   NETWORK_HEALTH,
@@ -55,6 +56,12 @@ describe('The network health verdict', () => {
       expected: 'warn',
     },
     {
+      story: 'on a network with no endpoint for any chain',
+      chains: [createChain({ reachable: false, state: 'unused' }), createChain({ label: 'Hub', reachable: false })],
+      online: true,
+      expected: 'unreachable',
+    },
+    {
       story: 'whose chain stalled or dropped back to connecting',
       chains: [createChain({ alarm: true, latest: null, sinceLast: null })],
       online: true,
@@ -106,22 +113,30 @@ describe('The network menu verdict', () => {
 });
 
 describe('NETWORK_HEALTH', () => {
-  it.each<{ health: NetworkHealth; word: string; title: string; alerts: boolean; pulses: boolean }>([
-    { health: 'ok', word: 'Connected', title: 'Your connection is good', alerts: false, pulses: false },
-    { health: 'idle', word: 'Syncing', title: 'Syncing', alerts: true, pulses: true },
-    { health: 'warn', word: 'Unstable', title: 'Connection is unstable', alerts: true, pulses: false },
-    { health: 'err', word: 'Offline', title: 'You are offline', alerts: true, pulses: false },
-    { health: 'quiet', word: 'Not in use', title: 'No chains in use', alerts: false, pulses: false },
+  it.each<{ health: NetworkHealth; word: string; title: string; alerts: boolean; pulses: boolean; dot: StatusTone }>([
+    { health: 'ok', word: 'Connected', title: 'Your connection is good', alerts: false, pulses: false, dot: 'ok' },
+    { health: 'idle', word: 'Syncing', title: 'Syncing', alerts: true, pulses: true, dot: 'idle' },
+    { health: 'warn', word: 'Unstable', title: 'Connection is unstable', alerts: true, pulses: false, dot: 'warn' },
+    { health: 'err', word: 'Offline', title: 'You are offline', alerts: true, pulses: false, dot: 'err' },
+    { health: 'quiet', word: 'Not in use', title: 'No chains in use', alerts: false, pulses: false, dot: 'idle' },
+    {
+      health: 'unreachable',
+      word: 'Unreachable',
+      title: "Can't reach this network",
+      alerts: true,
+      pulses: false,
+      dot: 'err',
+    },
   ])(
     'As a dotli user whose network is $health, I see "$word" in the More row and "$title" in the panel',
-    ({ health, word, title, alerts, pulses }) => {
+    ({ health, word, title, alerts, pulses, dot }) => {
       // Given the row's network health, from the table
 
       // When
       const facts = NETWORK_HEALTH[health];
 
       // Then
-      expect(facts).toEqual({ word, title, alerts, pulses });
+      expect(facts).toEqual({ word, title, alerts, pulses, dot });
     },
   );
 
@@ -131,6 +146,7 @@ describe('NETWORK_HEALTH', () => {
     { health: 'warn', offline: false },
     { health: 'err', offline: true },
     { health: 'quiet', offline: false },
+    { health: 'unreachable', offline: false },
   ])(
     'As a dotli user whose network is $health, I ask whether I am offline and am told $offline',
     ({ health, offline }) => {

@@ -13,6 +13,7 @@ import {
   SectionLabel,
   SegmentedControl,
   type SegmentOption,
+  Spinner,
   Stack,
   Surface,
   SurfaceFoot,
@@ -35,13 +36,6 @@ const CATEGORIES: readonly SegmentOption<Category>[] = [
   { value: 'network', label: 'Network', testId: 'settings-category-network' },
   { value: 'advanced', label: 'Advanced', testId: 'settings-category-advanced' },
 ];
-
-/** What each button reads while the page's settings reset is in each state. */
-const RESET_LABELS = {
-  idle: { apply: 'Save and apply', clear: 'Clear all caches' },
-  applying: { apply: 'Resetting…', clear: 'Clear all caches' },
-  clearing: { apply: 'Save and apply', clear: 'Clearing…' },
-} satisfies Record<SettingsResetStatus, { apply: string; clear: string }>;
 
 type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
 
@@ -127,6 +121,8 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
           <Stack>
             <SectionLabel text="Appearance" />
             <AppearancePicker theme={props.theme} onTheme={props.onTheme} />
+            {/* The chrome stays dark, so a pick shows nothing here and says what it themes. */}
+            <Hint testId="theme-hint">Apps that support it follow this theme</Hint>
           </Stack>
         </Show>
         <Show when={category() === 'network'}>
@@ -161,34 +157,40 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
             <div data-testid="mode-clear-all-row">
               <Button
                 block
+                variant="danger"
                 onClick={clearAll}
                 title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
                 disabled={isResetRunning(props.reset())}
+                loading={props.reset() === 'clearing'}
+                aria-label={props.reset() === 'clearing' ? 'Clearing…' : undefined}
               >
                 <TrashIcon class={s['icon']} />
-                {RESET_LABELS[props.reset()].clear}
+                Clear all caches
               </Button>
             </div>
+            <Show when={!props.debugMode()}>
+              <div data-testid="mode-debug-row">
+                <Button
+                  block
+                  onClick={props.onDebugMode}
+                  title="Reload this tab with the debug panel and its diagnostics"
+                >
+                  <TerminalIcon class={s['icon']} />
+                  Open in debug mode
+                </Button>
+              </div>
+            </Show>
           </Stack>
-          <Show when={!props.debugMode()}>
-            <div data-testid="mode-debug-row">
-              <Button
-                block
-                onClick={props.onDebugMode}
-                title="Reload this tab with the debug panel and its diagnostics"
-              >
-                <TerminalIcon class={s['icon']} />
-                Open in debug mode
-              </Button>
-            </div>
-          </Show>
         </Show>
       </div>
       <SurfaceFoot
         hint={
-          <Hint icon={ReloadIcon} testId="mode-apply-warning">
-            Transport and cache changes reload the app
-          </Hint>
+          // The theme on General applies at once, so the reload notice shows only where a change reloads.
+          <Show when={category() !== 'general' || dirty()}>
+            <Hint icon={ReloadIcon} testId="mode-apply-warning">
+              Transport and cache changes reload the page
+            </Hint>
+          </Show>
         }
       >
         <div class={s['apply']} data-testid="mode-apply-row">
@@ -197,8 +199,10 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
             block={popover.sheet()}
             onClick={apply}
             disabled={!dirty() || isResetRunning(props.reset())}
+            loading={props.reset() === 'applying'}
+            aria-label={props.reset() === 'applying' ? 'Applying…' : undefined}
           >
-            {RESET_LABELS[props.reset()].apply}
+            Save and apply
           </Button>
         </div>
       </SurfaceFoot>
@@ -215,7 +219,16 @@ export function SettingsContent(props: SettingsContentProps): JSX.Element {
   return (
     <div class={s['content']} id="mode-popover-content" data-sheet={popover.sheet() ? '' : undefined}>
       {/* Not keyed, so later writes of the saved settings do not remount the panel mid-edit. */}
-      <Show when={props.settings()}>{saved => <SettingsPanel {...props} saved={saved()} />}</Show>
+      <Show
+        when={props.settings()}
+        fallback={
+          <div class={s['loading']} role="status" aria-label="Reading settings" data-testid="settings-loading">
+            <Spinner />
+          </div>
+        }
+      >
+        {saved => <SettingsPanel {...props} saved={saved()} />}
+      </Show>
     </div>
   );
 }

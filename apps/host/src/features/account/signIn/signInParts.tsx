@@ -6,7 +6,14 @@
 import { CircleAlertIcon, CircleXIcon } from '@dotli/ui/icons';
 import type { PairingView } from './authModalState.js';
 import type { DrawQr } from './qrCode.js';
-import { ApprovingScreen, PairingScreen, StatusScreen, type HeadingLevel, type SignInParts } from './SignInViews.js';
+import {
+  ApprovingScreen,
+  PairingScreen,
+  SIGN_IN_CLOSE_ID,
+  StatusScreen,
+  type HeadingLevel,
+  type SignInParts,
+} from './SignInViews.js';
 
 /** What every pairing view needs from the place that shows it. */
 export type SignInPartsProps = {
@@ -19,7 +26,7 @@ export type SignInPartsProps = {
   mobile: boolean;
   /** What closes once the user approves, as the layout knows it. */
   closesCopy: string;
-  /** The Cancel shown while the phone approves. */
+  /** The Cancel shown while the phone approves, and beside a failure's Try again. */
   onClose: () => void;
   /** Signs in again from a failure's Try again. */
   onRetry: () => void;
@@ -63,6 +70,15 @@ export function signInParts(view: PairingView, props: SignInPartsProps): SignInP
                   props.onRetry();
                 },
                 testId: 'auth-modal-retry',
+              },
+              {
+                label: 'Cancel',
+                onPress: () => {
+                  props.onClose();
+                },
+                dismisses: true,
+                id: SIGN_IN_CLOSE_ID,
+                testId: SIGN_IN_CLOSE_ID,
               },
             ]
           : [],

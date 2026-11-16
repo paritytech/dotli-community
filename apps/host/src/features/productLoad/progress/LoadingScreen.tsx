@@ -19,7 +19,6 @@ export function LoadingScreen(props: LoadingScreenProps): JSX.Element {
   const shown = createMemo(() => Math.round(progress()));
   const step = createMemo(() => props.state().step);
   const explanation = createMemo(() => props.state().explanation);
-  const explanationOpacity = createMemo(() => props.state().explanationOpacity);
   const srText = createMemo(() => props.state().srText);
   const warning = createMemo(() => props.state().warning);
   const dismissing = createMemo(() => props.state().phase === 'dismissing');
@@ -50,7 +49,7 @@ export function LoadingScreen(props: LoadingScreenProps): JSX.Element {
                   }
                 </For>
               </p>
-              <p id="status" class={s['line']} aria-hidden="true" style={{ opacity: String(explanationOpacity()) }}>
+              <p id="status" class={s['line']} aria-hidden="true">
                 {explanation()}
               </p>
               <p class={s['srOnly']} id="status-sr" aria-live="polite">
@@ -74,10 +73,17 @@ export function LoadingScreen(props: LoadingScreenProps): JSX.Element {
               {`${String(shown())}%`}
             </span>
           </div>
-          <p class={s['warning']} id="loading-warning" role="status" data-visible={warning() !== null ? '' : undefined}>
-            <AlertTriangleIcon class={s['warningIcon']} size={16} strokeWidth="2" />
-            <span id="loading-warning-text">{warning() ?? ''}</span>
-          </p>
+          <div class={s['warningSlot']}>
+            <p
+              class={s['warning']}
+              id="loading-warning"
+              role="status"
+              data-visible={warning() !== null ? '' : undefined}
+            >
+              <AlertTriangleIcon class={s['warningIcon']} size={16} strokeWidth="2" />
+              <span id="loading-warning-text">{warning() ?? ''}</span>
+            </p>
+          </div>
         </div>
       </div>
     </Show>

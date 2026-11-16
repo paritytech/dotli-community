@@ -3,6 +3,6 @@
 
 .time {
   min-width: 0;
-  color: var(--td-fg-faint);
+  color: var(--td-fg-dim);
   font-size: 11px;
 }

@@ -55,7 +55,7 @@ export const NoUsername: Story = {
   args: { card: { ...PUBLISHED, author: { status: 'ready', author: { address: ADDRESS, username: null } } } },
   play: async ({ canvas, step }) => {
     await step('Then the author shows the address and no name', async () => {
-      await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF...utQY');
+      await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF…utQY');
       await expect(canvas.queryByTestId('product-card-author-name')).toBeNull();
     });
   },
@@ -72,16 +72,20 @@ export const NoOwner: Story = {
   },
 };
 
-/** As a visitor, I open the card of a product with no manifest and see its label beside the Polkadot mark. */
+/** As a visitor, I open the card of a product with no manifest and see it named by its domain beside the Polkadot mark. */
 export const NoManifest: Story = {
-  args: { card: { ...PUBLISHED, name: 'swap', description: null, icon: null } },
+  args: { card: { ...PUBLISHED, name: PUBLISHED.domain, description: null, icon: null } },
   play: async ({ canvas, step }) => {
-    await step('Then the card shows the label, no description and the Polkadot mark as its icon', async () => {
-      await expect(canvas.getByTestId('product-card-name')).toHaveTextContent('swap');
-      await expect(canvas.queryByTestId('product-card-description')).toBeNull();
-      await expect(canvas.getByTestId('product-card-mark')).toBeVisible();
-      await expect(canvas.queryByTestId('product-card-icon')).toBeNull();
-    });
+    await step(
+      'Then the card is named by its domain once, with no description and the Polkadot mark as its icon',
+      async () => {
+        await expect(canvas.getByTestId('product-card-name')).toHaveTextContent(PUBLISHED.domain);
+        await expect(canvas.queryByTestId('product-card-domain')).toBeNull();
+        await expect(canvas.queryByTestId('product-card-description')).toBeNull();
+        await expect(canvas.getByTestId('product-card-mark')).toBeVisible();
+        await expect(canvas.queryByTestId('product-card-icon')).toBeNull();
+      },
+    );
   },
 };
 

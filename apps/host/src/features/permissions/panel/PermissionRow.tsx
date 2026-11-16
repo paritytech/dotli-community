@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Show } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
 import { Row, SegmentedControl, type SegmentOption } from '@dotli/ui';
 import { permissionIcon } from './permissionIcons.js';
@@ -22,6 +23,8 @@ export type PermissionRowProps = {
   choose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
   /** A change is pending, so the row shows its status but takes no press. */
   disabled?: boolean;
+  /** The shown preset's name, when the status differs from that preset's. */
+  changedFrom?: string | undefined;
 };
 
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
@@ -30,11 +33,22 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
     <Row
       testId="permissions-popover-row"
       label={
-        <span class={s['label']}>
+        <span class={s['label']} data-modified={props.changedFrom === undefined ? undefined : ''}>
           <Icon class={s['icon']} />
           <span class={s['name']} id={`permissions-popover-name-${props.perm.name}`}>
             {props.perm.label}
           </span>
+          <Show when={props.changedFrom}>
+            {preset => (
+              <span
+                class={s['modified']}
+                role="img"
+                aria-label={`Changed from ${preset()}`}
+                title={`Changed from ${preset()}`}
+                data-testid="permissions-popover-row-modified"
+              />
+            )}
+          </Show>
         </span>
       }
     >
