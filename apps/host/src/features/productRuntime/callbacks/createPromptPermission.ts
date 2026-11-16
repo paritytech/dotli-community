@@ -3,12 +3,14 @@
 
 // The core keeps "Allow once" for the current execution, so it is offered only where the core is the
 // gate. A grant gated by the iframe `allow` attribute reloads the product into a new execution, which
-// would drop it. Auto-grants answer `AllowOnce` so the core records nothing the user never saw.
+// would drop it. Auto-grants answer `AllowOnce` so the core records nothing the user never saw, and so does a device
+// whose consent is the browser's own prompt.
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
 import type { HostDevicePermissionRequest, RemotePermissionRequest } from '@parity/truapi';
 import type { BrowserPermissions, BrowserPermissionStatus } from '../../permissions/index.js';
+import { isBrowserBlocked, isBrowserConsented } from '../../permissions/index.js';
 import type { PermissionAuthorizations } from '../../permissions/index.js';
 import { hasFrameDirective, type EnforceablePermissionName, type PermissionStatus } from '../../permissions/index.js';
 import { throwIfModalAborted } from '../../../kit/throwIfModalAborted.js';
@@ -38,7 +40,10 @@ type Params = {
   prompts: Pick<HostPrompts, 'askPermission' | 'askBrowserBlock' | 'notify'>;
   /** The stored statuses a prompt reads first and the store its answer is recorded in. */
   permissions: PromptPermissionStores;
-  /** The browser's own permissions, asked in the click that allows a device permission and read where it is not asked. */
+  /**
+   * The browser's own permissions, asked in the click that allows a device permission and read where it is not asked,
+   * or where the browser's prompt is the consent.
+   */
   browser: Pick<BrowserPermissions, 'read' | 'request'>;
 };
 
@@ -51,7 +56,8 @@ type PromptRequest = {
 
 /**
  * Answers the core's device and remote permission asks from the stored status, or else by asking the user in the
- * page's prompt queue. Rejects when the prompts go past the rate limit, the user dismisses the dialog, or the
+ * page's prompt queue. A device whose consent is the browser's own prompt is allowed once with no dialog. Rejects when
+ * the prompts go past the rate limit, the user dismisses the dialog, the browser blocks such a device, or the
  * permission guards a request this host does not serve.
  */
 export function createPromptPermission({ core, prompts, permissions, browser }: Params): Permissions {
@@ -80,8 +86,19 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
       case 'refuse':
         throw new Error(ERRORS.UNSERVED_REQUEST);
       case 'prompt':
-        return decidePromptPermission({ name: rule.name, kind });
+        return isBrowserConsented(rule.name)
+          ? answerForBrowser(rule.name)
+          : decidePromptPermission({ name: rule.name, kind });
     }
+  }
+
+  /** The browser's own prompt is the consent, so no dialog shows and the product hears at once. */
+  async function answerForBrowser(name: EnforceablePermissionName): Promise<PermissionDecision> {
+    if (isBrowserBlocked(await browser.read(name))) {
+      // A rejection, unlike Deny, is not stored, so the user's choice stays with the browser.
+      throw new Error(ERRORS.BROWSER_BLOCKED_DEVICE);
+    }
+    return 'AllowOnce';
   }
 
   /** Only a question waits for the dialog queue. A stored answer needs no dialog, so it never waits behind one. */

@@ -52,7 +52,7 @@ describe('one core asks', () => {
         targetProductId: asProductId('other-product.dot'),
       },
     });
-    const camera = asks.permissions.devicePermission(PRODUCT, 'Camera');
+    const notifications = asks.permissions.devicePermission(PRODUCT, 'Notifications');
     await page.waitForPrompt({
       matches: prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account access',
     });
@@ -72,7 +72,7 @@ describe('one core asks', () => {
     page.decide('granted');
 
     // Then
-    await expect(camera).resolves.toEqual('AllowAlways');
+    await expect(notifications).resolves.toEqual('AllowAlways');
     expect(page.listPending()).toEqual([]);
   });
 });
