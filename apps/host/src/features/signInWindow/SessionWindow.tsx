@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { isShallowEqual } from '@dotli/shared';
 import type { SignInScreen, WindowScreen } from './sessionWindowState.js';
 import { isMobileDevice } from '../../kit/isMobileDevice.js';
-import { loadPhraseScreen, type PhraseScreenModule } from '../account/index.js';
+import type { PhraseScreenModule } from '../account/index.js';
 import { createPhraseFormLoad } from '../account/index.js';
 import type { SignInParts } from '../account/index.js';
 import { pairingPayload, sameSignInScreen } from '../account/index.js';
@@ -38,7 +38,7 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
 
   // The phrase form is debug only, so its chunk loads the first time the phrase view is on show.
   const phraseForm = createPhraseFormLoad(
-    untrack(() => props.loadPhraseScreen) ?? loadPhraseScreen,
+    untrack(() => props.loadPhraseScreen) ?? (() => import('../account/signIn/PhraseScreen.js')),
     () => props.screen.view === 'phrase',
   );
 

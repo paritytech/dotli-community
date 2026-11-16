@@ -12,7 +12,6 @@ import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn, mark
 import { siteGrants } from '@dotli/storage';
 import { hostPrompts } from '../../permissions/index.js';
 import { loadHostRuntimeChunk, loadPolkadotApi, loadTxFillers } from '../../../kit/lazy.js';
-import { loadLocalWalletCore } from '../../account/index.js';
 import { pageNotifications } from '../../notifications/index.js';
 import { getProductFrameContainer, productFrameView } from '../../productLoad/index.js';
 import { productState } from '../../page/index.js';
@@ -99,7 +98,7 @@ const bootRuntime = createCoreRuntimeBoot({
               browser: browserPermissions,
             }),
     }),
-  loadLocalWalletCore,
+  loadLocalWalletCore: () => import('../../account/session/localWalletCore.js'),
 });
 
 // The page's own sign-out and the restore rule's visible checks run here one at a time.

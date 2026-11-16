@@ -11,6 +11,7 @@ import { featureTestFiles, storyFiles, testOnlyFiles } from './testFiles.js';
 /**
  * An import, a re-export or an `import()`, as far as the boundary reads it.
  * @typedef {{
+ *   type?: string,
  *   importKind?: string,
  *   exportKind?: string,
  *   specifiers?: Array<{ importKind?: string, exportKind?: string }>,
@@ -70,13 +71,14 @@ function reachesUp({ from, to, typeOnly }) {
 }
 
 /**
- * Whether a reference into feature unit `to` skips its index. A type-only import may reach past the index. So may Astro
- * markup that imports an Astro component or an island, since Astro hydrates the module the markup imports.
- * @param {{ to: string, target: string, typeOnly: boolean, fromMarkup: boolean }} params
+ * Whether a reference into feature unit `to` skips its index. A type-only import may reach past the index. So may an
+ * `import()`, which names the chunk it loads. So may Astro markup that imports an Astro component or an island, since
+ * Astro hydrates the module the markup imports.
+ * @param {{ to: string, target: string, typeOnly: boolean, onDemand: boolean, fromMarkup: boolean }} params
  */
-function skipsIndex({ to, target, typeOnly, fromMarkup }) {
+function skipsIndex({ to, target, typeOnly, onDemand, fromMarkup }) {
   const markupPart = fromMarkup && (target.endsWith('.astro') || /Island\.[jt]sx?$/.test(target));
-  if (!to.startsWith('features/') || typeOnly || markupPart) {
+  if (!to.startsWith('features/') || typeOnly || onDemand || markupPart) {
     return false;
   }
   const isIndex = /^index(\.[jt]sx?)?$/.test(path.basename(target)) && path.dirname(target).endsWith(to);
@@ -118,7 +120,7 @@ const featureBoundary = {
       const typeOnly = isTypeOnly(node);
       if (reachesUp({ from, to, typeOnly })) {
         context.report({ node: source, messageId: 'upward', data: { from, to } });
-      } else if (skipsIndex({ to, target, typeOnly, fromMarkup })) {
+      } else if (skipsIndex({ to, target, typeOnly, onDemand: node.type === 'ImportExpression', fromMarkup })) {
         context.report({ node: source, messageId: 'index', data: { from, to } });
       }
     }

@@ -8,7 +8,7 @@ import { byId } from '@dotli/ui/testing';
 import { expectPhone, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
-import type { ChatPanelModule } from './lazy.js';
+import type { ChatPanelModule } from './ChatDock.js';
 import { ChatItem } from './ChatButton.js';
 import { ChatDock } from './ChatDock.js';
 

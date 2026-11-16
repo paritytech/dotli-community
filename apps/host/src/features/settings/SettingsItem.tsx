@@ -7,14 +7,13 @@ import { createSignal, lazy, omit, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { SlidersIcon } from '@dotli/ui/icons';
 import { ActionItem, IconButton, Popover, StatusDot } from '@dotli/ui';
-import { loadSettingsContent } from './lazy.js';
 import { TOPBAR_PRIORITY } from '../page/index.js';
 import type { SavedSettings } from './settings.js';
 import type { SettingsContentProps } from './SettingsContent.js';
 import s from './SettingsItem.module.css';
 
 // Its own chunk, which the popover loads while the browser is idle.
-const Settings = lazy(loadSettingsContent, { export: 'SettingsContent' });
+const Settings = lazy(() => import('./SettingsContent.js'), { export: 'SettingsContent' });
 
 export type SettingsItemProps = {
   /** The page owns whether it is open, so a way into Settings from outside the bar can open it. */

@@ -28,7 +28,11 @@ import { AuthButton } from '../panel/AuthButton.js';
 import type { AuthModalState, AuthModalView } from './authModalState.js';
 import { AuthModal } from './AuthModal.js';
 import type { DrawQr } from './qrCode.js';
-import { loadPhraseScreen, type PhraseScreenModule } from '../lazy.js';
+import type { PhraseScreenModule } from './phraseFormLoad.js';
+
+function loadPhraseScreen(): Promise<PhraseScreenModule> {
+  return import('./PhraseScreen.js');
+}
 
 const DEEPLINK = 'polkadotapp://pair?handshake=test';
 const TITLE = 'Sign in with Polkadot App';

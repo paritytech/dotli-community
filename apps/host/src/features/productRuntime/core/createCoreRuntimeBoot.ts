@@ -13,7 +13,7 @@ import type {
 import type { BundledStack } from '@dotli/config';
 import { createReporter } from '@dotli/metrics';
 import type { CoreCallbacksParams } from '../callbacks/createHostCallbacks.js';
-import type { LocalWalletCoreModule } from '../../account/index.js';
+import type * as LocalWalletCoreNamespace from '../../account/session/localWalletCore.js';
 import type { CoreContext, PageProduct } from './createPageCore.js';
 import { createTruapiRuntimeConfig } from './createTruapiRuntimeConfig.js';
 import { getAskedProductId } from '../../../kit/getAskedProductId.js';
@@ -48,7 +48,7 @@ export type CoreRuntimeBootParams = {
   /** Builds the callbacks a core asks the page through. */
   createCallbacks: (params: CoreCallbacksParams) => WebWorkerHostCallbacks;
   /** Loads the local wallet core's chunk. Rejects when it fails to load. */
-  loadLocalWalletCore: () => Promise<Pick<LocalWalletCoreModule, 'bootLocalWalletCore'>>;
+  loadLocalWalletCore: () => Promise<Pick<typeof LocalWalletCoreNamespace, 'bootLocalWalletCore'>>;
 };
 
 export type BootCoreRuntime = ReturnType<typeof createCoreRuntimeBoot>;

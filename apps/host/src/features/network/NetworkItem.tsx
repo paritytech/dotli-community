@@ -7,7 +7,6 @@ import { createSignal, lazy, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { GlobeIcon } from '@dotli/ui/icons';
 import { ActionItem, IconButton, Popover, StatusDot } from '@dotli/ui';
-import { loadChainsContent } from './lazy.js';
 import { TOPBAR_PRIORITY } from '../page/index.js';
 import type { NetworkView } from './chains.js';
 import type { ChainsContentProps } from './ChainsContent.js';
@@ -16,7 +15,7 @@ import type { NetworkHealth } from './networkVerdict.js';
 import s from './NetworkItem.module.css';
 
 // Its own chunk, which the popover loads while the browser is idle.
-const Chains = lazy(loadChainsContent, { export: 'ChainsContent' });
+const Chains = lazy(() => import('./ChainsContent.js'), { export: 'ChainsContent' });
 
 export type NetworkItemProps = {
   /**

@@ -7,7 +7,6 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getErrorName, realTimers, setErrorName, withTimeout, type Timers } from '@dotli/shared';
 import { loadPolkadotApi } from '../../kit/lazy.js';
-import { loadHostBridge } from '../productRuntime/index.js';
 
 const report = createReporter({ flow: 'ui' });
 
@@ -101,6 +100,7 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
 
 /** The page's query, over the host's chains. The bridge and `polkadot-api` chunks load only once it is called. */
 export const queryFinalizedBlock = createFinalizedBlockQuery({
-  provider: async genesisHash => (await loadHostBridge()).getHostChainProvider(genesisHash),
+  provider: async genesisHash =>
+    (await import('../productRuntime/core/bridge.js')).hostBridge.getHostChainProvider(genesisHash),
   createClient: async provider => (await loadPolkadotApi()).createClient(provider),
 });

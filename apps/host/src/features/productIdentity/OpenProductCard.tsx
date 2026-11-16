@@ -5,11 +5,10 @@
 
 import { lazy, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { loadProductCard } from './lazy.js';
 import type { ProductCardView } from './productCardView.js';
 
 // Its own chunk, loaded apart from the page's first paint.
-const Card = lazy(loadProductCard, { export: 'ProductCard' });
+const Card = lazy(() => import('./ProductCard.js'), { export: 'ProductCard' });
 
 export type OpenProductCardProps = {
   card: ProductCardView;

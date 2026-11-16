@@ -22,7 +22,6 @@ import { createPageCidCache } from '../features/productLoad/index.js';
 import { createProductAuthor } from '../features/productIdentity/index.js';
 import { createProductLoader } from './createProductLoader.js';
 import type { H160Address } from '../kit/h160Address.js';
-import { loadHostBridge } from '../features/productRuntime/index.js';
 import { loadFailureScreen } from '../features/productLoad/index.js';
 import { pageNotifications } from '../features/notifications/index.js';
 import { PAGE_START } from './pageStart.js';
@@ -132,7 +131,10 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
 
 /** Built on the host pool's Asset Hub connection, since the resolver cannot import the pool. */
 async function loadRpcResolver(): Promise<RpcResolver> {
-  const [resolveModule, bridge] = await Promise.all([loadResolve(), loadHostBridge()]);
+  const [resolveModule, { hostBridge: bridge }] = await Promise.all([
+    loadResolve(),
+    import('../features/productRuntime/core/bridge.js'),
+  ]);
   return resolveModule.createDotnsResolver({
     assetHub: bridge.getHostAssetHubProvider,
     dotns: getActiveServicesConfig().dotns,

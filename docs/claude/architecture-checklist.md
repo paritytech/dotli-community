@@ -72,7 +72,7 @@ rule, flag it and propose a row.
 ## Lazy loading
 
 - **major** (docs/code/placement.md § Cut rules): What a visit may never open, such as a panel's content or the debug
-  panel, imported eagerly instead of through `lazy()` or a loader in a `lazy.ts`.
+  panel, imported eagerly instead of through `lazy()` or an `import()`.
 - **major** (docs/code/placement.md § Cut rules): A hand-made split or lazy load of a component a visit opens anyway,
   where importing it where it is used lets the bundler split chunks.
 

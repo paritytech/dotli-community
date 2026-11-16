@@ -7,13 +7,12 @@ import { createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { LockIcon } from '@dotli/ui/icons';
 import { ActionItem, IconButton, Popover } from '@dotli/ui';
-import { loadPermissionsContent } from '../lazy.js';
 import { TOPBAR_PRIORITY } from '../../page/index.js';
 import type { PermissionsContentProps } from './PermissionsContent.js';
 import s from './PermissionsItem.module.css';
 
 // Its own chunk, which the popover loads while the browser is idle.
-const Permissions = lazy(loadPermissionsContent, { export: 'PermissionsContent' });
+const Permissions = lazy(() => import('./PermissionsContent.js'), { export: 'PermissionsContent' });
 
 export type PermissionsItemProps = PermissionsContentProps;
 

@@ -7,12 +7,11 @@ import { createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { SlidersIcon } from '@dotli/ui/icons';
 import { IconButton, Popover } from '@dotli/ui';
-import { loadLandingSettingsContent } from './lazy.js';
 import type { LandingSettingsContentProps } from './LandingSettingsContent.js';
 import s from './LandingSettingsItem.module.css';
 
 // Its own chunk, which the popover loads while the browser is idle.
-const Settings = lazy(loadLandingSettingsContent, { export: 'LandingSettingsContent' });
+const Settings = lazy(() => import('./LandingSettingsContent.js'), { export: 'LandingSettingsContent' });
 
 export type LandingSettingsItemProps = LandingSettingsContentProps;
 

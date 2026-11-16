@@ -12,8 +12,6 @@ import { markHandled, pageLocalStorage } from '@dotli/shared';
 import { bootTracker } from './createBootTracker.js';
 import { isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import { loadRecoveryPhrase } from '../features/account/index.js';
-import { loadHostBridge } from '../features/productRuntime/index.js';
 import { createBlockingModalCoordinator } from '../kit/createBlockingModalCoordinator.js';
 import { networkPause } from '../features/network/index.js';
 import { pendingResets } from '../kit/createPendingResets.js';
@@ -118,7 +116,7 @@ export async function startHost({
   networkPause.addTarget(getProtocolClient().chains);
   // The chunk loads before the settings settle, so it must not depend on them. Its failure is awaited at the bridge load, or
   // dropped when the settings fail first.
-  const bridgeChunk = markHandled(loadHostBridge());
+  const bridgeChunk = markHandled(import('../features/productRuntime/core/bridge.js').then(chunk => chunk.hostBridge));
   const settings = await settingsBoot;
   settingsState.init();
 
@@ -179,7 +177,7 @@ export async function startHost({
       coordinator: blockingModalCoordinator,
       bridge: () => bridgeReady,
       handoff: getPageSignInHandoff(role),
-      loadRecoveryPhrase,
+      loadRecoveryPhrase: () => import('../features/account/signIn/recoveryPhrase.js'),
     });
   }
 

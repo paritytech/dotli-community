@@ -54,8 +54,8 @@ for other packages' tests. Never import another package's internal modules.
 
 - Inside a package, import relative paths with the `.js` extension (`./foo.js`), as NodeNext resolution requires. ESLint
   rejects a `.ts` extension, except in files Node loads directly.
-- A module loaded on demand gets a loader in a `lazy.ts`, the app's or its feature's (`loadHostBridge()`, typed
-  `HostBridge`), so it stays a separate chunk.
+- A module loaded on demand goes through an `import()`, so it stays a separate chunk. A package module gets a loader in
+  a `lazy.ts`. A feature's module is imported in place by its caller, such as `import('./AccountContent.js')`.
 - Build-time code that Node runs (the Vite plugins) lives in `@config/vite`, one subpath per plugin
   (`@config/vite/build-info`, …), so a consumer loads only the one it imports. CSS is exported as `./styles.css`.
 - Each `package.json` declares `sideEffects`. List a module there if it is imported only for its effects.

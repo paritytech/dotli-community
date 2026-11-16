@@ -18,7 +18,6 @@ import type { ChatStore } from './createChatStore.js';
 import type { ChatChange, ChatView } from './createChatView.js';
 import { productState } from '../page/index.js';
 import { authState } from '../account/index.js';
-import { loadChatStore } from './lazy.js';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
 
 export type ChatPanelState = {
@@ -205,7 +204,10 @@ function persistWidth(): void {
   widthStorage.setItem(PANEL_WIDTH_KEY, String(panel.get().width));
 }
 
-function start({ chat = loadChatStore, storage = pageLocalStorage }: Params = {}): () => void {
+function start({
+  chat = async () => (await import('./createChatStore.js')).chatStore,
+  storage = pageLocalStorage,
+}: Params = {}): () => void {
   return run.join({ chat, storage });
 }
 

@@ -10,4 +10,3 @@ export { getHostAssetHubProvider, getHostChainProvider } from './getHostChainPro
 export { readOriginalAccount } from './readOriginalAccount.js';
 export type { PeopleUsernames } from './readPeopleUsernames.js';
 export { readPeopleUsernames } from './readPeopleUsernames.js';
-export { loadHostChainProviders } from './lazy.js';

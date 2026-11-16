@@ -4,10 +4,12 @@
 import { createEffect, createMemo, createSignal, untrack, type Accessor } from 'solid-js';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { createReporter } from '@dotli/metrics';
-import type { PhraseScreenModule } from '../lazy.js';
+import type * as PhraseScreenNamespace from './PhraseScreen.js';
 import { reportLazyMiss } from '../../../kit/reportLazyMiss.js';
 
 const report = createReporter({ flow: 'wallet' });
+
+export type PhraseScreenModule = typeof PhraseScreenNamespace;
 
 /** Where the phrase form's chunk stands on a phrase view: on its way, failed, or loaded. */
 export type PhraseForm = 'loading' | 'failed' | PhraseScreenModule;

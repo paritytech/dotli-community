@@ -29,8 +29,10 @@
   `config/eslint/featureBoundaries.js` and turned on in the host app's ESLint config. The rule decides. It reports a
   value import into another feature that is not that feature's `index.ts`. It allows these past a feature's index:
   - a type-only import
+  - an `import()`, which names the chunk it loads (D-015). A static value import never does.
   - Astro markup importing an Astro component or an island by its own module. Astro hydrates the module the markup
     imports, so an index never lists a page's islands. An island is told by its `Island` suffix (D-012).
   - test code: specs, stories, fakes, `__tests__` and `src/testing`
 
-  It still reports kit or a feature importing the shell or the pages, and kit importing a feature at runtime.
+  It still reports kit or a feature importing the shell or the pages, and kit importing a feature at runtime, an
+  `import()` included.

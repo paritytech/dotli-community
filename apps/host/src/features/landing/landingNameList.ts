@@ -9,7 +9,6 @@ import { isExpectedReadError, loadResolve, type DotnsResolver } from '@dotli/res
 import { nameList, type NameList } from '@dotli/storage';
 import { atom, type ReadableAtom } from 'nanostores';
 import { createNameListTrace, type NameListTrace } from './createNameListTrace.js';
-import { loadHostChainProviders } from '../chains/index.js';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
 import { settingsState, type SettingsState } from '../settings/index.js';
 import { syncNameList, type NameListReads } from './syncNameList.js';
@@ -156,7 +155,7 @@ export const landingNameList = createLandingNameList({
 
 /** Builds the resolver on the host chain pool's Asset Hub lease. Rejects when its chunk or the chain providers' chunk fails to load. */
 async function openPageReads(settings: SettingsState): Promise<DotnsResolver> {
-  const [resolveModule, providers] = await Promise.all([loadResolve(), loadHostChainProviders()]);
+  const [resolveModule, providers] = await Promise.all([loadResolve(), import('../chains/getHostChainProvider.js')]);
   return resolveModule.createDotnsResolver({
     assetHub: providers.getHostAssetHubProvider,
     dotns: NETWORK_NAME_TO_SERVICES_CONFIG[settings.network].dotns,

@@ -11,7 +11,6 @@ import type {
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
 import { createReporter } from '@dotli/metrics';
-import { loadSigningWorker } from '../lazy.js';
 import { liteUsernameRefresh } from './createLiteUsernameRefresh.js';
 import { reportLocalWalletFailure, walletLocalActivateMetric, type LocalWalletFailureReason } from './walletFailure.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
@@ -107,7 +106,7 @@ export function createLocalWalletCoreBoot({
 
 /** The page's local wallet core boot. */
 export const bootLocalWalletCore: BootLocalWalletCore = createLocalWalletCoreBoot({
-  loadSigningWorker,
+  loadSigningWorker: () => import('./signingWorker.js?worker'),
   refreshLiteUsername: liteUsernameRefresh.refresh,
   reportFailure: reportLocalWalletFailure,
 });

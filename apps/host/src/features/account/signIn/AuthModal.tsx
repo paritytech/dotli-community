@@ -7,8 +7,7 @@ import { isShallowEqual } from '@dotli/shared';
 import { Button, LayerTracker, Modal } from '@dotli/ui';
 import type { AuthModalState, AuthModalView, PairingView } from './authModalState.js';
 import { isMobileDevice } from '../../../kit/isMobileDevice.js';
-import { loadPhraseScreen, type PhraseScreenModule } from '../lazy.js';
-import { createPhraseFormLoad, type PhraseForm } from './phraseFormLoad.js';
+import { createPhraseFormLoad, type PhraseForm, type PhraseScreenModule } from './phraseFormLoad.js';
 import type { DrawQr } from './qrCode.js';
 import { SIGN_IN_CLOSE_ID, type SignInParts } from './SignInViews.js';
 import { signInParts, type SignInPartsProps } from './signInParts.js';
@@ -129,7 +128,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
 
   // The phrase form is debug only, so its chunk loads the first time a phrase view is on show.
   const phraseForm = createPhraseFormLoad(
-    untrack(() => props.loadPhraseScreen) ?? loadPhraseScreen,
+    untrack(() => props.loadPhraseScreen) ?? (() => import('./PhraseScreen.js')),
     () => screen().kind === 'phrase',
   );
 

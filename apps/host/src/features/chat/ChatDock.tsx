@@ -5,10 +5,12 @@ import { type Accessor, createEffect, createSignal, lazy, Loading, onSettled, Sh
 import type { JSX } from '@solidjs/web';
 import { preloadWhenIdle, RootBoundary } from '@dotli/ui';
 import type { ChatConversation } from './chat.js';
-import { type ChatPanelModule, loadChatPanel } from './lazy.js';
+import type * as ChatPanelNamespace from './ChatPanel.js';
 import s from './ChatDock.module.css';
 
-const PageChatPanel = lazy(loadChatPanel, { export: 'ChatPanel' });
+export type ChatPanelModule = typeof ChatPanelNamespace;
+
+const PageChatPanel = lazy(() => import('./ChatPanel.js'), { export: 'ChatPanel' });
 
 export type ChatDockProps = {
   open: Accessor<boolean>;

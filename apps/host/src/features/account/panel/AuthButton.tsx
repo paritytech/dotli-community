@@ -12,9 +12,8 @@ import { UserIcon } from './UserIcon.js';
 import { getAuthButtonState } from './account.js';
 import type { Account, AccountSession, AuthButtonFace, AuthButtonState } from './account.js';
 import s from './AuthButton.module.css';
-import { loadAccountContent } from '../lazy.js';
 
-const AccountPanel = lazy(loadAccountContent, { export: 'AccountContent' });
+const AccountPanel = lazy(() => import('./AccountContent.js'), { export: 'AccountContent' });
 
 export type AuthButtonProps = {
   account: Account;

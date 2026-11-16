@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export type { LocalWalletCoreModule, PhraseScreenModule } from './lazy.js';
-export { loadLocalWalletCore, loadPhraseScreen, loadRecoveryPhrase } from './lazy.js';
 export { AccountAvatar } from './panel/AccountAvatar.js';
 export { AccountButtonIsland } from './panel/AccountButtonIsland.js';
 export { AccountItem } from './panel/AuthButton.js';
@@ -51,7 +49,7 @@ export { createCoreAuthCommands } from './signIn/createCoreAuthCommands.js';
 export type { LogoutOutcome, PageSignOut, UntoldLogout } from './signIn/createPageSignOut.js';
 export { createPageSignOut } from './signIn/createPageSignOut.js';
 export { getLoginFailureView } from './signIn/getLoginFailureView.js';
-export type { PhraseForm } from './signIn/phraseFormLoad.js';
+export type { PhraseForm, PhraseScreenModule } from './signIn/phraseFormLoad.js';
 export { createPhraseFormLoad } from './signIn/phraseFormLoad.js';
 export type { DrawQr } from './signIn/qrCode.js';
 export type { AuthCommands } from './signIn/runAuthCommand.js';

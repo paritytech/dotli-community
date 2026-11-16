@@ -29,4 +29,5 @@
     synchronously: the index may re-export it, and an eager caller still uses the loader (D-014).
 - Source: the change that regroups the host, sandbox and protocol apps by flow, design
   `docs/_plans/app-flow-folders-design.md`.
-- Status: active
+- Status: superseded by D-015. The owner reversed it outright on the same change: after option D was built and
+  measured, "Keep it".

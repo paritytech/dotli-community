@@ -11,8 +11,6 @@ import { startSandboxChannel } from '@dotli/sandbox-wire';
 import { createRandomId, formatElapsed, log, markHandled } from '@dotli/shared';
 import { debugBus, resolveDebugMode } from '@dotli/truapi-debug';
 import { loadTruapiDebugMount } from '@dotli/truapi-debug-ui';
-import { loadHostBridge } from '../features/productRuntime/index.js';
-import { loadDebugPanelHost } from '../features/debugPanel/index.js';
 import { listenForSandboxDebugEvents } from '../features/debug/index.js';
 import { reportSandboxHandlerFailure } from './reportSandboxHandlerFailure.js';
 import type { PageRole } from '../features/account/index.js';
@@ -56,10 +54,12 @@ export async function startShell(route: Exclude<ShellRoute, { kind: 'nested' }>,
   if (debugMode.enabled) {
     debugBus.enableBuffering();
     // The describer reports its own failed load, and the boot reports the bridge's.
-    void markHandled(loadHostBridge().then(bridge => bridge.wireDescriber.preload()));
+    void markHandled(
+      import('../features/productRuntime/core/bridge.js').then(chunk => chunk.hostBridge.wireDescriber.preload()),
+    );
     void startDebugPanel({
       load: loadTruapiDebugMount,
-      host: loadDebugPanelHost,
+      host: async () => (await import('../features/debugPanel/debugPanelHost.js')).debugPanelHost,
       startCollapsed: !debugMode.explicit,
     });
     // The page never stops the monitor or the sandbox's debug events early, so their cleanups go unused.

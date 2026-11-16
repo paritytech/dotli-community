@@ -5,7 +5,6 @@
 
 import { pageScreen } from '@dotli/ui';
 import type { ProductFrameView } from './createProductFrame.js';
-import { loadViolationPanelMount } from '../../debug/index.js';
 import { pageLoading, type LoadingController } from '../progress/createLoadingController.js';
 import { productFrameLayout, type ProductFrameLayout } from '../../page/index.js';
 import { getProductTitle } from './getProductTitle.js';
@@ -60,7 +59,7 @@ export function createProductFrameView({
     loadCheckerPanel:
       import.meta.env.VITE_SANDBOX_CHECKER !== 'true'
         ? undefined
-        : async () => (await loadViolationPanelMount()).mountViolationPanel,
+        : async () => (await import('../../debug/mount.js')).mountViolationPanel,
   };
 }
 

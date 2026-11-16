@@ -7,7 +7,7 @@ import { decodeWireMessage } from '@parity/truapi';
 import { createLazyLoad } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
 import { createReporter } from '@dotli/metrics';
-import { loadWireDescriber } from './lazy.js';
+import type * as WireDescriberNamespace from './debugWireDescribe.js';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
 import { walletModeState } from '../account/index.js';
 
@@ -15,7 +15,7 @@ const report = createReporter({ flow: 'ui' });
 
 type Params = {
   /** Loads the describer's chunk. Rejects when it fails to load. */
-  load: typeof loadWireDescriber;
+  load: () => Promise<typeof WireDescriberNamespace>;
 };
 
 /** Where a frame crossed, and which product's connection it crossed. */
@@ -42,7 +42,7 @@ export function createWireDescriber({ load }: Params) {
 }
 
 /** The page's describer. Preloading it early keeps the first frames from waiting on the chunk. */
-export const wireDescriber = createWireDescriber({ load: loadWireDescriber });
+export const wireDescriber = createWireDescriber({ load: () => import('./debugWireDescribe.js') });
 
 /** Shows `message` to the debug panel when it listens. Never throws, and a describer that fails to load drops it. */
 export function emitWireFrameDebug({ direction, productId, message }: EmitWireFrameDebugParams): void {

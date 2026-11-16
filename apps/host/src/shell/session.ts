@@ -35,7 +35,6 @@ import { getRoute } from '../kit/sessionRoute.js';
 import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from '../features/signInWindow/index.js';
 import { closeWindow } from '../features/signInWindow/index.js';
 import { reportWalletFailure } from '../features/account/index.js';
-import { loadRecoveryPhrase } from '../features/account/index.js';
 import type { HostBridge } from '../features/productRuntime/index.js';
 import { createWindowFlow, type WindowFlow, type WindowFlowParams } from '../features/signInWindow/index.js';
 import { getResponderScreen } from '../features/signInWindow/index.js';
@@ -215,7 +214,7 @@ function startFlow(
     commands: bridge.authCommands,
     signOut: bridge.pageSignOut,
     ...bridge.windowStore,
-    loadPhrase: loadRecoveryPhrase,
+    loadPhrase: () => import('../features/account/signIn/recoveryPhrase.js'),
     ...flow,
   });
   sessionWindowState.setWindowIntents(started);

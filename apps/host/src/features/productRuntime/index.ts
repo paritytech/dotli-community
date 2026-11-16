@@ -6,4 +6,3 @@ export type { ServedReview } from './callbacks/servedRequests.js';
 export type { HostBridge } from './core/bridge.js';
 export type { CoreConnection, CoreLease, PageCore, PageProduct } from './core/createPageCore.js';
 export type { CoreProvider } from './core/ownCoreConnection.js';
-export { loadHostBridge } from './lazy.js';

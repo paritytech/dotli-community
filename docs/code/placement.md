@@ -136,8 +136,9 @@ The host has user flows:
   several features sits there too.
 - `src/kit/` holds helpers several features use. It imports no feature at runtime.
 - A feature's `index.ts` is its public surface. Other features, `shell/` and `pages/` import only that file. A type-only
-  import and a test may reach past it. Astro markup imports an Astro component or an island by its own module, since
-  Astro hydrates the module the markup imports, so an index never lists a page's islands.
+  import and a test may reach past it. So may an `import()`, which names the chunk it loads. Astro markup imports an
+  Astro component or an island by its own module, since Astro hydrates the module the markup imports, so an index never
+  lists a page's islands.
 - An island is named with an `Island` suffix, so it never shares a name with the view it renders.
 - The `page` feature holds the state every flow that places chrome reads, such as the shown product and the topbar's
   slots.
@@ -160,10 +161,10 @@ the folders.
 These hold in every app and package. The `src/index.ts` entry and the `./testing` entry are for packages alone.
 
 - Each package exposes only `src/index.ts`. Never import another package's internal modules.
-- On-demand modules go through a loader in `src/lazy.ts` to stay a separate chunk. In an app with features, a feature
-  keeps the loaders of its own modules in its `lazy.ts` and exports them through its `index.ts`, which never re-exports
-  a module a loader loads. The one exception is a module that only code already in a lazy chunk imports from the index.
-  An eager caller then takes the loader. `src/kit/lazy.ts` keeps the loaders of packages.
+- On-demand modules load through an `import()` to stay a separate chunk. A package keeps its loaders in `src/lazy.ts`.
+  In an app with features, the caller writes the `import()` of a feature's module where it needs it, and
+  `src/kit/lazy.ts` keeps the loaders of packages. A feature's `index.ts` never re-exports a module an `import()`
+  loads. The one exception is a module that only code already in a lazy chunk imports from the index.
 - Styles go in a CSS module beside the component.
 - A unit test sits beside its module: `src/foo.ts` gets `src/foo.spec.ts`.
 - Functional tests live in `<pkg>/tests/` as `*.test.ts`. In an app with features, a feature's functional tests live in
@@ -195,8 +196,8 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
   bus.
 - Shared Vite plugins live in `config/vite/src/` as `@config/vite`.
 - Import a component where it is used and let the bundler split chunks. What a visit may never open (a panel's content,
-  the debug panel) loads through `lazy()` or a loader in a `lazy.ts`. The startup size budgets in CI guard what a page
-  loads first, not import rules.
+  the debug panel) loads through `lazy()` or an `import()`. The startup size budgets in CI guard what a page loads
+  first, not import rules.
 
 ## No home found
 

@@ -11,7 +11,11 @@ import { must } from '@dotli/shared/testing';
 import type { PairingView } from '../account/index.js';
 import type { SiteListScreen } from '../siteSignIn/index.js';
 import type { SignInScreen } from './sessionWindowState.js';
-import { loadPhraseScreen, type PhraseScreenModule } from '../account/index.js';
+import type { PhraseScreenModule } from '../account/index.js';
+
+function loadPhraseScreen(): Promise<PhraseScreenModule> {
+  return import('../account/signIn/PhraseScreen.js');
+}
 import { expectPhone } from '../../testing/stories/topbarFrame.js';
 import { windowPageStory } from '../../testing/stories/windowPage.js';
 import type { DrawQr } from '../account/index.js';

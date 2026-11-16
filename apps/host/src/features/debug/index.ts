@@ -4,6 +4,5 @@
 export { emitWireFrameDebug, wireDescriber } from './createWireDescriber.js';
 export { closeDebugMode, isTruapiDebugEnabled, openInDebugMode } from './debugMode.js';
 export { formatAppVersion } from './formatAppVersion.js';
-export { loadViolationPanelMount } from './lazy.js';
 export { listenForSandboxDebugEvents } from './listenForSandboxDebugEvents.js';
 export { startMainThreadMonitor } from './startMainThreadMonitor.js';
