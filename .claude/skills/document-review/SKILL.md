@@ -57,6 +57,9 @@ Present your findings, then:
 2. **Ask approval** before substantive changes (restructuring, removing sections, changing meaning).
 3. **Update** the document inline, with no separate files and no metadata sections.
 
+Inside the `architecture` skill, the `architect` agent runs this review and cannot ask the owner directly. Each ask here
+and in Step 6 goes to the owner as a `QUESTION` through the main session, and the owner's answer decides.
+
 ### Simplification Guidance
 
 Simplification is purposeful removal of unnecessary complexity, not shortening for its own sake.

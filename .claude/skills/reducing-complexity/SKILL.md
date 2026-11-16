@@ -9,18 +9,15 @@ description: >-
 
 # Reducing complexity
 
-Simple code is code whose every step a reader can follow and agree with, not the fewest lines or states. The owner:
-"simplicity is not an amount of steps ... it may contain like 100 end states, but each state transition musth be clear,
-simple, readable, reasonable".
+Simple code is code whose every step a reader can follow and agree with, not the fewest lines or states. A unit may have
+many states, as long as each transition is clear and reasonable.
 
 These rules add to `AGENTS.md` and `docs/code/style.md`. Where a style rule blocks a shape whose steps read clearer,
-simplicity wins. The owner: "if code style conflicts with your reasoning for simplicity - pick simplicity". It never
-licenses a change of form. Where `AGENTS.md` names a tool for a job, such as `createAsyncTaskPool` or `createSharedRun`,
-that tool wins over any rule here.
+simplicity wins. It never licenses a change of form. Where `AGENTS.md` names a tool for a job, such as
+`createAsyncTaskPool` or `createSharedRun`, that tool wins over any rule here.
 
 Turning a declaration into an arrow or back is a change of form, and so are renaming, reordering and rewording on their
-own. None is a simplification, and each breaks the style. The owner: "changing functions to arrow functions is 100%
-unnecessary, it does not add simplicity, just break codestyle".
+own. None is a simplification, and each breaks the style.
 
 ## The loop
 
@@ -48,8 +45,7 @@ suite before calling the work done, since unit tests pass while a flow across mo
 - Add a mechanism only for the problem it solves. A state machine is earned only when the unit itself runs and waits on
   the work that makes a phase outlive a synchronous call. An await, a remote reply or a timer it set is such work. A
   unit whose transitions are synchronous calls from outside keeps its closures, even when a phase spans someone else's
-  wait. So does a synchronous router with latches. The owner: "please do not blindly apply state machine everywhere ...
-  you do not reason enough". `style.md` § A lifecycle is one state value states the same rule.
+  wait. So does a synchronous router with latches. `style.md` § A lifecycle is one state value states the same rule.
 - A machine whose only async phase a pool or a shared run already owns is not earned. A lazy load whose one wait is the
   load its pool runs is a closure over that pool.
 - Revert a migration that fails the rule, unless the plain version is no simpler or a peer depends on the machine. Then
@@ -95,8 +91,7 @@ Values:
 - A stored callback that only reports becomes an event or an effect. It stays when callers rely on the synchronous order
   it runs in, such as a close that ends every call before it returns.
 
-Side effects. The owner: "all side effects lives in side effects. all transition work happens inside handlers. no weird
-relations".
+Side effects:
 
 - **Transition work** is what the next state owns, and it starts in the handler (`style.md` § A lifecycle is one state
   value). That is async work whose result comes back as an event (`update(promise)`), and a timer or listener whose
@@ -111,8 +106,7 @@ relations".
   effects in order after the state is published, and isolates a throw. In a handler, a log can run before its step and a
   throw can skip a later stop. The style rule that inlines a forwarding function does not reach effect cases.
 - Nothing the logic starts refers back to the machine. An effect never sends to its own machine, and a callback or timer
-  sends through the `update` it was given. The owner: "why you need a cyclic reference to state machine? internal handle
-  API is not enough?"
+  sends through the `update` it was given.
 - A shared primitive's API, such as the state machine factory's, is fixed. Work within it.
 
 ## Any code
@@ -168,9 +162,8 @@ whether it can still meet current code:
   with everything that serves only it.
 - **Two purposes,** when the path also covers a live case. Keep the behaviour and reword the reason.
 
-During an unreleased refactor, add no shim for the code it replaces. The owner: "do not make backward-compatable
-changes, it does not make sense now". When a path's fate turns on a policy fact, such as how long a visitor's data is
-kept, ask the owner with that fact.
+During an unreleased refactor, add no shim for the code it replaces. When a path's fate turns on a policy fact, such as
+how long a visitor's data is kept, ask the owner with that fact.
 
 ## Boot size
 
@@ -186,8 +179,7 @@ structure.
 - Moving a step a microtask later, or behind another listener, changes behaviour. It is fine only when `LSP` shows no
   caller relies on the order. Say so in the commit, and a spec that pins an incidental microtask count may then change.
 - Name every accepted behaviour change in the commit.
-- Fix a real bug found on the way, with a spec that fails first. The owner: "fix found issue, does not hold back if
-  there are real bugs". These are bugs, not trade-offs:
+- Fix a real bug found on the way, with a spec that fails first. These are bugs, not trade-offs:
   - a leak, or a set or map that grows with no bound
   - a wait that never settles, or a throw that skips the cleanup after it
   - a wrong, lost or doubled report, or a misleading log value
@@ -200,8 +192,7 @@ structure.
   - a key so narrow that two owners collide, or an input the trust boundary lets through
   - a regression the simplification caused
 - Judge a suspected bug by its usual case. A status that looks wrong on a rare path is right when its usual cause really
-  is what it shows. The owner: "you again overcomplicate things". A defect only a contrived action reaches is left and
-  recorded. The owner: "noone in real life will resize app only in sake of resizing".
+  is what it shows. A defect only a contrived action reaches is left and recorded.
 
 ## What goes to the owner
 
@@ -212,7 +203,7 @@ style).
 
 Decide alone, act, and name it in the commit:
 
-- a bug of the kinds above with a small local fix (the owner: "you ask too much, why")
+- a bug of the kinds above with a small local fix
 - a report's shape, which `AGENTS.md` fixes
 - an export only its own spec uses, unless it is a working capability
 - a type with no importer, or a helper only removed code used
