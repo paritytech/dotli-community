@@ -132,6 +132,8 @@ function createHarness({
   loadCheckerPanel,
 }: CreateHarnessParams = {}) {
   const hosts: FakeIframeHost[] = [];
+  // What each frame's `onPort` returned for the port of its latest document.
+  const retireDocuments = new Map<FakeIframeHost, () => void>();
   let held: Promise<undefined> | null = null;
   let asked = 0;
   let failing: Error | null = null;
@@ -227,6 +229,11 @@ function createHarness({
     reconnect,
     /** Puts up both screens the way the shell does, as disposers the test can count. */
     putUpScreens,
+    /**
+     * A product document in frame `host` taking a port, as the iframe host connects each one: the port of the document
+     * it replaced is retired first. Returns the frames posted to the new document, in order.
+     */
+    openDocument,
     /** How many listeners the permission store holds. */
     countPermissionListeners: () => permissionListeners.size,
     /** How many handlers the sandbox channel holds. */
@@ -311,6 +318,32 @@ function createHarness({
     frameView.showScreen('page', disposePage);
     return { disposeLoading, disposePage };
   }
+
+  function openDocument(host = 0): unknown[] {
+    const framed = nth(hosts, host);
+    retireDocuments.get(framed)?.();
+    const frames: unknown[] = [];
+    const retire = framed.options.onPort(createRecordingPort(frames, fakes.changes.notify));
+    if (typeof retire === 'function') {
+      retireDocuments.set(framed, retire);
+    }
+    return frames;
+  }
+}
+
+/** The host's end of a product document's channel, which records each frame posted into it in `frames`. */
+function createRecordingPort(frames: unknown[], onFrame: () => void): MessagePort {
+  const port = {
+    onmessage: null,
+    start: () => undefined,
+    close: () => undefined,
+    postMessage(frame: unknown): void {
+      frames.push(frame);
+      onFrame();
+    },
+  };
+  // The frame's provider reads no other member of the port, so the record stands in for it.
+  return port as unknown as MessagePort;
 }
 
 /** A sandbox message, as the browser delivers it from the window `source` of `origin`. */
@@ -1432,6 +1465,26 @@ describe('product frame and the topbar login', () => {
     expect(pairing.postMessage).toHaveBeenCalledTimes(1);
     expect(pairing.dispose).not.toHaveBeenCalled();
     expect(fakes.runtimes).toHaveLength(1);
+  });
+});
+
+describe('product frame documents', () => {
+  it('As a developer whose local product navigates its whole page, I see the core send its frames only to the new page', async () => {
+    // Given a local product on screen whose page took its port
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildIframeProduct('product'));
+    const core = await answerConnection(fakes, 0);
+    await rendered;
+    const before = fakes.openDocument();
+
+    // When the product navigates to a new page, which takes a port of its own, and the core sends a frame
+    const after = fakes.openDocument();
+    const frame = new Uint8Array([1]);
+    core.listener?.(frame);
+    await fakes.changes.until(() => after.length === 1);
+
+    // Then
+    expect({ before, after }).toEqual({ before: [], after: [frame] });
   });
 });
 

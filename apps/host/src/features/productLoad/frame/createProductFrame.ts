@@ -26,7 +26,7 @@ import type { CoreConnection, CoreLease, PageCore, PageProduct } from '../../pro
 import type { PermissionAuthorizations } from '../../permissions/index.js';
 import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
-import { pipeProviders } from './pipeProviders.js';
+import { pipeProviders, type PipeProvidersParams } from './pipeProviders.js';
 import { buildFrameUrl, getAppOrigin, getFrameSandbox } from './productFrameUrl.js';
 import { registerProductChat } from '../../chat/index.js';
 import { traceProductRender, type RenderTrace } from './traceProductRender.js';
@@ -387,9 +387,14 @@ export function createProductFrame({
                   allowedOrigin: url.origin,
                   allow: `${allow}; cross-origin-isolated`,
                   sandbox: getFrameSandbox(product),
-                  onPort: port => {
-                    pipeProductPort(port, { attempt, link, label: product.label, flowId: flows.bridge, timers });
-                  },
+                  onPort: port =>
+                    pipeProductPort(port, attempt, {
+                      core: link.coreProvider,
+                      flowId: flows.bridge,
+                      label: product.label,
+                      productId: link.productId,
+                      timers,
+                    }),
                 }),
               iframeHost => {
                 attempt.frame.hold(() => {
@@ -482,17 +487,17 @@ export function createProductFrame({
     );
   };
 
-  const spaceReplacement: HandlerOf<FrameMachine, LivelyKind, 'replacementSpaced'> = (state, { timer }, transition) => {
+  // A render since the death already answered it.
+  const spaceReplacement: HandlerOf<FrameMachine, 'connecting' | 'connected' | 'failed', 'replacementSpaced'> = (
+    state,
+    { timer },
+    transition,
+  ) => {
     const { replacement } = state;
     if (replacement.kind !== 'spacing' || replacement.timer !== timer) {
       return;
     }
-    // A render since the death already answered it.
-    if (state.kind !== 'lost') {
-      moveTo(state, { ...state, replacement: { kind: 'ready' } }, transition);
-      return;
-    }
-    renderOnReplacement(state, transition);
+    moveTo(state, { ...state, replacement: { kind: 'ready' } }, transition);
   };
 
   // A frame that still hears its core while failed keeps a product whose last render failed, so it is rendered again as
@@ -636,7 +641,13 @@ export function createProductFrame({
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
-        replacementSpaced: spaceReplacement,
+        replacementSpaced(state, { timer }, transition) {
+          const { replacement } = state;
+          if (replacement.kind !== 'spacing' || replacement.timer !== timer) {
+            return;
+          }
+          renderOnReplacement(state, transition);
+        },
         halted: stopRendering,
         disposed: endFrame,
       },
@@ -1126,31 +1137,18 @@ function runStepWork<T>(
   }).then(toEvent, (error: unknown): FrameEvent => ({ kind: 'stepFailed', attempt, error }));
 }
 
-/** Pipes the product's port to the core under `attempt` until the attempt's core side ends. */
-function pipeProductPort(
-  port: MessagePort,
-  {
-    attempt,
-    link,
-    label,
-    flowId,
-    timers,
-  }: { attempt: Attempt; link: Link; label: string; flowId: string; timers: Timers },
-): void {
-  const productProvider = createMessagePortProvider(port);
-  attempt.core.hold(() => {
-    productProvider.dispose();
+/**
+ * Pipes a product document's port to the core under `attempt`, until the attempt's core side ends or the returned stop
+ * runs as a newer document takes over.
+ */
+function pipeProductPort(port: MessagePort, attempt: Attempt, pipe: Omit<PipeProvidersParams, 'product'>): () => void {
+  const product = createMessagePortProvider(port);
+  const unpipe = pipeProviders({ ...pipe, product });
+  return attempt.core.hold(() => {
+    // Unpiped first, since the pipe disposes the core once the product closes, and a newer document's pipe shares it.
+    unpipe();
+    product.dispose();
   });
-  attempt.core.hold(
-    pipeProviders({
-      product: productProvider,
-      core: link.coreProvider,
-      flowId,
-      label,
-      productId: link.productId,
-      timers,
-    }),
-  );
 }
 
 /** Nobody asked for a render the frame starts on its own, so the frame is the one to report it. */
