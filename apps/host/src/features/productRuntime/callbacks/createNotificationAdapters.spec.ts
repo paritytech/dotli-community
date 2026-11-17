@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { ERRORS } from '../../../kit/errors.js';
 import { createNotificationAdapters, type NotificationScheduler } from './createNotificationAdapters.js';
-import type { NotificationParams } from '@dotli/ui';
 
 const PRODUCT_ID = asProductId('myapp.paseo');
 function getProductId() {
@@ -13,17 +12,13 @@ function getProductId() {
 }
 
 describe('notification host callbacks', () => {
-  it('As a product developer, I push a notification that is due now and it is scheduled under my full product id, shown with my label and answered with its id', async () => {
+  it('As a product developer, I push a notification that is due now and it is scheduled under my full product id with my label and answered with its id', async () => {
     // Given
     const { scheduler, schedule } = createFakeScheduler();
-    const shown: NotificationParams[] = [];
     const { pushNotification } = createNotificationAdapters({
       label: 'myapp',
       getProductId,
       scheduler,
-      notify: params => {
-        shown.push(params);
-      },
     });
 
     // When
@@ -40,7 +35,6 @@ describe('notification host callbacks', () => {
       deeplink: null,
       scheduledAt: null,
     });
-    expect(shown).toEqual([{ text: 'hello', deeplink: undefined, label: 'myapp' }]);
   });
 
   it('As a product developer, I push or cancel a notification before the core parsed my product id and both reject without touching the scheduler', async () => {
@@ -52,7 +46,6 @@ describe('notification host callbacks', () => {
         throw new Error(ERRORS.PRODUCT_ID_NOT_READY);
       },
       scheduler,
-      notify: () => undefined,
     });
 
     // When
@@ -74,7 +67,6 @@ describe('notification host callbacks', () => {
       label: 'myapp',
       getProductId,
       scheduler,
-      notify: () => undefined,
     });
 
     // When
@@ -87,15 +79,13 @@ describe('notification host callbacks', () => {
   });
 });
 
-/** A scheduler that answers each schedule with id 7, fired at once, and each cancel as done. */
+/** A scheduler that answers each schedule with id 7, and each cancel as done. */
 function createFakeScheduler(): {
   scheduler: NotificationScheduler;
   schedule: ReturnType<typeof vi.fn<NotificationScheduler['schedule']>>;
   cancel: ReturnType<typeof vi.fn<NotificationScheduler['cancel']>>;
 } {
-  const schedule = vi.fn<NotificationScheduler['schedule']>(() =>
-    Promise.resolve({ ok: true, id: 7, immediate: true }),
-  );
+  const schedule = vi.fn<NotificationScheduler['schedule']>(() => Promise.resolve({ ok: true, id: 7 }));
   const cancel = vi.fn<NotificationScheduler['cancel']>(() => Promise.resolve(true));
   return { scheduler: { schedule, cancel }, schedule, cancel };
 }

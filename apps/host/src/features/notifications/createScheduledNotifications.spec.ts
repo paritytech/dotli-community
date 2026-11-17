@@ -427,6 +427,22 @@ describe('scheduled notifications poller', () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dApp user, I push a notification that is due now and it shows at once, under a new id, without being stored', async () => {
+    // Given
+    const { start } = createPollerHarness();
+    const store = createRecordStore({ records: [] });
+    store.allocateId.mockResolvedValue(3);
+    const { notifications, show } = start({ store });
+
+    // When
+    const result = await notifications.schedule({ ...DUE, deeplink: 'https://acme.dot/inbox', scheduledAt: null });
+
+    // Then
+    expect(result).toEqual({ ok: true, id: 3 });
+    expect(show).toHaveBeenCalledExactlyOnceWith({ label: 'Acme', text: 'x', deeplink: 'https://acme.dot/inbox' });
+    expect(store.schedule).not.toHaveBeenCalled();
+  });
+
   it('As a user, I load a page and its first pageshow opens no second channel', () => {
     // Given
     const { page, start } = createPollerHarness();
@@ -621,7 +637,7 @@ describe('scheduled notifications disposed', () => {
     await advanceTicks(3);
 
     // Then the store holds it, and no poller starts to show either
-    expect(result).toEqual({ ok: true, id: 2, immediate: false });
+    expect(result).toEqual({ ok: true, id: 2 });
     expect(store.schedule).toHaveBeenCalledTimes(1);
     expect(show).not.toHaveBeenCalled();
     expect(timers.countPending()).toBe(0);

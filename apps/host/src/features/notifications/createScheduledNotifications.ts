@@ -29,8 +29,7 @@ const report = createReporter({ flow: 'notifications' });
 /** Count. A transition of the scheduler threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const notificationsTransitionMetric = defineCount<'error'>('notifications.transition');
 
-export type ScheduleNotificationResult =
-  { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
+export type ScheduleNotificationResult = { ok: true; id: number } | { ok: false; error: 'ScheduleLimitReached' };
 
 type ScheduleRequest = {
   productId: ProductId;
@@ -45,7 +44,7 @@ export type ScheduledNotificationStore = typeof scheduledNotifications;
 export type ScheduledNotificationsParams = {
   /** Where scheduled notifications persist. */
   store: ScheduledNotificationStore;
-  /** Shows a notification that fell due. */
+  /** Shows a notification that is due. */
   show: ShowNotification;
   /** Undefined where the browser has no Web Locks. */
   locks: Pick<LockManager, 'request'> | undefined;
@@ -415,10 +414,10 @@ export function createScheduledNotifications({
      */
     init,
     /**
-     * Schedules a notification. An immediate fire (null or past `scheduledAt`) only allocates an id and is not
-     * persisted. Before `init` it starts no poller, and `init` fires it once due. After `dispose` it still persists the
-     * notification for another tab or the next load to fire, but starts no poller. Rejects when the store cannot
-     * allocate or write it.
+     * Schedules a notification. One due now (null or past `scheduledAt`) shows at once under a newly allocated id and
+     * is not persisted, also before `init` and after `dispose`. Before `init` a later one starts no poller, and `init`
+     * fires it once due. After `dispose` it still persists the notification for another tab or the next load to fire,
+     * but starts no poller. Rejects when the store cannot allocate or write it, or when showing it throws.
      */
     schedule,
     /**
@@ -444,7 +443,8 @@ export function createScheduledNotifications({
 
     if (request.scheduledAt === null || request.scheduledAt <= now) {
       const id = await store.allocateId(request.productId);
-      return { ok: true, id, immediate: true };
+      show({ label: request.title, text: request.text, deeplink: request.deeplink ?? undefined });
+      return { ok: true, id };
     }
 
     const result = await store.schedule({
@@ -455,13 +455,10 @@ export function createScheduledNotifications({
       scheduledAt: request.scheduledAt,
     });
 
-    if (!result.ok) {
-      return result;
+    if (result.ok) {
+      machine.update({ kind: 'scheduled' });
     }
-
-    machine.update({ kind: 'scheduled' });
-
-    return { ok: true, id: result.id, immediate: false };
+    return result;
   }
 
   function cancel(productId: ProductId, perProductId: number): Promise<boolean> {

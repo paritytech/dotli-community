@@ -9,7 +9,6 @@ import type { HostPushNotificationRequest, HostPushNotificationResponse, Product
 import { createReporter } from '@dotli/metrics';
 import type { ScheduledNotifications } from '../../notifications/index.js';
 import { ERRORS } from '../../../kit/errors.js';
-import type { HostPrompts } from '../../permissions/index.js';
 
 const report = createReporter({ flow: 'notifications' });
 
@@ -24,22 +23,16 @@ type Params = {
    * queues. Throws until the core has parsed it.
    */
   getProductId: () => ProductId;
-  /** Where a notification waits until it is due. */
+  /** Where a notification waits until it is due, and shows once it is. */
   scheduler: NotificationScheduler;
-  /** Shows a due notification on the page. */
-  notify: HostPrompts['notify'];
 };
 
 /**
- * Schedules the product's push notifications and shows a due one at once. A push rejects when the product has reached
- * its schedule limit. A push or cancel rejects before the core has parsed the product's id, and touches nothing.
+ * Hands the product's push notifications to the scheduler, which shows a due one at once. A push rejects when the
+ * product has reached its schedule limit. A push or cancel rejects before the core has parsed the product's id, and
+ * touches nothing.
  */
-export function createNotificationAdapters({
-  label,
-  getProductId,
-  scheduler,
-  notify,
-}: Params): Required<Notifications> {
+export function createNotificationAdapters({ label, getProductId, scheduler }: Params): Required<Notifications> {
   async function pushNotification({
     text,
     deeplink,
@@ -58,10 +51,6 @@ export function createNotificationAdapters({
     });
     if (!result.ok) {
       throw new Error(ERRORS.SCHEDULE_LIMIT_REACHED);
-    }
-
-    if (result.immediate) {
-      notify({ text, deeplink, label });
     }
     return { id: result.id };
   }
