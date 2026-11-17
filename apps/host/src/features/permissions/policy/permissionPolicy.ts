@@ -88,15 +88,6 @@ type PermissionFacts = {
 
 /** Every permission a user can be asked for, in menu order. */
 export const PERMISSION_CATALOG = {
-  Notifications: {
-    label: 'Notifications',
-    group: 'device',
-    description: 'Show in-app and system notifications',
-    // Notifications has no directive, and its own prompt gates it.
-    directive: null,
-    trusted: 'granted',
-    browserCheck: 'notifications',
-  },
   Camera: {
     label: 'Camera',
     group: 'device',
@@ -154,6 +145,15 @@ export const PERMISSION_CATALOG = {
     directive: 'publickey-credentials-get',
     trusted: 'ask',
     browserCheck: null,
+  },
+  Notifications: {
+    label: 'Notifications',
+    group: 'device',
+    description: 'Show in-app and system notifications',
+    // Notifications has no directive, and its own prompt gates it.
+    directive: null,
+    trusted: 'granted',
+    browserCheck: 'notifications',
   },
   IdentityDisclosure: {
     label: 'Identity disclosure',

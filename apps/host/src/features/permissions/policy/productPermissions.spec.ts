@@ -298,7 +298,7 @@ describe('product permissions store', () => {
       { name: 'Notifications', status: 'Authorized' },
       { name: 'Camera', status: 'Denied' },
     ]);
-    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications', 'Camera'], allowChanged: true }]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Camera', 'Notifications'], allowChanged: true }]);
     expect(captures.exception).not.toHaveBeenCalled();
   });
 
