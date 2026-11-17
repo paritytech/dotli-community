@@ -322,7 +322,7 @@ describe('topbar login over the page core', () => {
     expect(fakes.session.reportLoginFailure).toHaveBeenCalledWith(failure.message);
   });
 
-  it.each([
+  it.each<{ name: string; failure: Error; reason: string }>([
     { name: 'a cancelled login', failure: new LoginRequestError({ tag: 'Cancelled' }), reason: 'Cancelled' },
     { name: 'a denied login', failure: new LoginRequestError({ tag: 'Denied' }), reason: 'Denied' },
     {

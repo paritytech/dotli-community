@@ -217,7 +217,7 @@ describe('createDotnsResolver', () => {
     expect(assetHub).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
+  it.each<[string, Error]>([
     [
       'the halted answer to a read in flight',
       new RpcError({ code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' }),

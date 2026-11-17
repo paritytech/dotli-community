@@ -9,7 +9,7 @@ import { isExpectedReadError } from './isExpectedReadError.js';
 import { NetworkSyncTimeoutError } from './networkSyncTimeoutError.js';
 
 describe('isExpectedReadError', () => {
-  it.each([
+  it.each<{ failure: string; error: Error }>([
     { failure: 'times out', error: new NetworkSyncTimeoutError('Asset Hub', 1000) },
     { failure: 'finds no peer to serve it', error: new OperationInaccessibleError() },
     { failure: 'is refused for the operation limit', error: new OperationLimitError() },

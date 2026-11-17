@@ -21,7 +21,7 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@solidjs/vite-plugin": "3.0.0-next.57",
+    "@solidjs/vite-plugin": "3.0.0",
     "storybook": "10.6.7",
     "storybook-solidjs-vite": "10.7.4"
   },
@@ -34,8 +34,8 @@
     "@dotli/stores-solid": "*",
     "@dotli/truapi-debug": "*",
     "@dotli/ui": "*",
-    "@solidjs/web": "2.0.0-rc.22",
+    "@solidjs/web": "2.0.0",
     "nanostores": "1.5.5",
-    "solid-js": "2.0.0-rc.22"
+    "solid-js": "2.0.0"
   }
 }
