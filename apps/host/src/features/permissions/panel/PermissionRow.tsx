@@ -22,8 +22,8 @@ const STATUS_OPTIONS: readonly SegmentOption<PermissionStatus>[] = [
 
 // The browser asks for these itself, so dot.li offers only to block them.
 const BROWSER_OPTIONS: readonly SegmentOption<PermissionStatus>[] = [
-  { value: 'ask', label: 'Browser decides', testId: 'permissions-popover-segment-ask' },
-  { value: 'denied', label: 'Block', testId: 'permissions-popover-segment-denied' },
+  { value: 'ask', label: 'Allow', testId: 'permissions-popover-segment-ask' },
+  { value: 'denied', label: 'Deny', testId: 'permissions-popover-segment-denied' },
 ];
 
 export type PermissionRowProps = {
