@@ -20,7 +20,7 @@ import {
   storyPermissions,
 } from '../../../testing/stories/permissionsFixtures.js';
 import { PermissionsItem } from './PermissionsItem.js';
-import { SECURE, TRUSTED, UNLIMITED } from './presets.js';
+import { SECURE, TRUSTED } from './presets.js';
 
 type UserEvent = Parameters<NonNullable<Story['play']>>[0]['userEvent'];
 
@@ -72,6 +72,10 @@ function slider(): HTMLElement {
 
 function stop(id: string): HTMLElement {
   return byTestId(`permissions-preset-stop-${id}`, document, HTMLElement);
+}
+
+function presetWarning(): Element | null {
+  return document.querySelector('[data-testid="permissions-preset-warn"]');
 }
 
 function errorLine(): Element | null {
@@ -212,7 +216,7 @@ export const Unavailable: Story = {
   },
 };
 
-/** As a user, pressing Trusted asks for all twelve of its statuses and the slider shows Trusted. */
+/** As a user, pressing Trusted asks for all twelve of its statuses and the slider shows Trusted with its warning. */
 export const PresetMove: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -220,16 +224,18 @@ export const PresetMove: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Given the slider shows Secure, not modified', async () => {
+    await ctx.step('Given the slider shows Secure, not modified, with no warning', async () => {
       await expectPreset('secure', false);
+      await expect(presetWarning()).toBeNull();
     });
     await ctx.step('When I press Trusted', async () => {
       await ctx.userEvent.click(stop('trusted'));
     });
-    await ctx.step('Then all twelve Trusted statuses were asked for and Trusted shows', async () => {
+    await ctx.step('Then all twelve Trusted statuses were asked for and Trusted shows with its warning', async () => {
       await expect(permissionsAsked.changes).toHaveBeenCalledTimes(1);
       await expect(permissionsAsked.changes).toHaveBeenCalledWith(TRUSTED.statuses);
       await expectPreset('trusted', false);
+      await expect(presetWarning()).not.toBeNull();
     });
   },
 };
@@ -242,15 +248,15 @@ export const KeyboardSteps: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('When I press ArrowRight twice on the slider', async () => {
+    await ctx.step('When I press ArrowRight and then ArrowLeft on the slider', async () => {
       slider().focus();
       await ctx.userEvent.keyboard('{ArrowRight}');
       await expectPreset('trusted', false);
-      await ctx.userEvent.keyboard('{ArrowRight}');
+      await ctx.userEvent.keyboard('{ArrowLeft}');
     });
-    await ctx.step('Then Trusted and then Unlimited were asked for', async () => {
+    await ctx.step('Then Trusted and then Secure were asked for', async () => {
       await expect(permissionsAsked.changes).toHaveBeenNthCalledWith(1, TRUSTED.statuses);
-      await expect(permissionsAsked.changes).toHaveBeenNthCalledWith(2, UNLIMITED.statuses);
+      await expect(permissionsAsked.changes).toHaveBeenNthCalledWith(2, SECURE.statuses);
     });
   },
 };
@@ -372,8 +378,8 @@ export const FailedChangeNamesPermissions: Story = {
       await expectPreset('trusted', true);
     });
     const release = holdChanges();
-    await ctx.step('When I press Unlimited and close the panel while it is pending', async () => {
-      await ctx.userEvent.click(stop('unlimited'));
+    await ctx.step('When I press Trusted again and close the panel while it is pending', async () => {
+      await ctx.userEvent.click(stop('trusted'));
       await waitFor(() => expect(errorLine()).toBeNull());
       await ctx.userEvent.keyboard('{Escape}');
       await waitFor(() => expect(byId('permissions-popover')).not.toHaveAttribute('data-open'));
@@ -403,15 +409,15 @@ export const OlderFailureNeverShows: Story = {
     await open(ctx);
     const releaseOlder = holdChanges();
     await ctx.step(
-      'Given I press Unlimited, which the core will refuse for Sign transactions, and it stays pending',
+      'Given I press Trusted, which the core will refuse for Sign transactions, and it stays pending',
       async () => {
-        await ctx.userEvent.click(stop('unlimited'));
+        await ctx.userEvent.click(stop('trusted'));
         await waitFor(() => expect(byId('permissions-popover-list')).toHaveAttribute('data-pending'));
       },
     );
     refuseChanges([]);
     const releaseNewer = holdChanges();
-    await ctx.step('When I press Secure, which lands, and then Unlimited fails', async () => {
+    await ctx.step('When I press Secure, which lands, and then Trusted fails', async () => {
       await ctx.userEvent.click(stop('secure'));
       await expect(permissionsAsked.changes).toHaveBeenCalledTimes(2);
       releaseNewer();

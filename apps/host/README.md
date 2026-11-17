@@ -181,7 +181,7 @@ request in session storage, so a reload answers the same round.
 ### Permissions
 
 - One permissions store over the core's permission store. The product frame, the prompts and the menu share it.
-- The panel shows four presets on a slider, with every permission under Advanced. The preset is derived, never stored.
+- The panel shows three presets on a slider, with every permission under Advanced. The preset is derived, never stored.
 - Every change goes through one retrying write. The frame reloads only when its `allow` attribute changes.
 - Each permission's facts are one table in the runtime.
 - One list names the permissions dot.li does not support, such as NFC, whose browser API cannot run in a frame. The

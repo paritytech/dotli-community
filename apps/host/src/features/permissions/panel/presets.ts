@@ -1,18 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The four presets the permissions slider offers, and which one a set of statuses reads as. A preset is never stored,
+// The three presets the permissions slider offers, and which one a set of statuses reads as. A preset is never stored,
 // it is read from the statuses each time.
 
 import {
   ALL_PERMISSIONS,
-  isBrowserConsented,
   PERMISSION_CATALOG,
   type EnforceablePermissionName,
   type PermissionStatus,
 } from '../policy/permissionPolicy.js';
 
-export type PresetId = 'restricted' | 'secure' | 'trusted' | 'unlimited';
+export type PresetId = 'restricted' | 'secure' | 'trusted';
 
 export type Preset = {
   id: PresetId;
@@ -43,16 +42,8 @@ export const TRUSTED: Preset = {
   statuses: mapStatuses(name => PERMISSION_CATALOG[name].trusted),
 };
 
-export const UNLIMITED: Preset = {
-  id: 'unlimited',
-  label: 'Unlimited',
-  line: 'For apps you fully trust.',
-  // The browser asks for its own devices, so even full trust leaves them to it.
-  statuses: mapStatuses(name => (isBrowserConsented(name) ? 'ask' : 'granted')),
-};
-
 /** Safest first, as the slider lays them out. */
-export const PRESETS = [RESTRICTED, SECURE, TRUSTED, UNLIMITED] as const;
+export const PRESETS = [RESTRICTED, SECURE, TRUSTED] as const;
 
 // Deny, Ask and Allow lie on one line, so Deny against Allow is two steps apart.
 const RANK: Readonly<Record<PermissionStatus, number>> = { denied: 0, ask: 1, granted: 2 };

@@ -27,7 +27,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one
   variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
-  protocol's set is dropped, and several pieces of logic walk the catalog built on those names.
+  protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
+  unreachable.
 - [existing-call-needs-a-variant](existing-call-needs-a-variant.md): a shared primitive needs a second form of a call
   that differs in one aspect.
 - [files-away-from-their-feature](files-away-from-their-feature.md): files that serve one feature sit in a top-level

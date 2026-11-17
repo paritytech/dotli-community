@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { AlertTriangleIcon } from '@dotli/ui/icons';
 import { Chip, Spinner, StepSlider } from '@dotli/ui';
 import type { PermissionStatus } from '../policy/permissionPolicy.js';
-import { PRESETS, presetOf, UNLIMITED, type Preset } from './presets.js';
+import { PRESETS, presetOf, TRUSTED, type Preset } from './presets.js';
 import s from './PresetPicker.module.css';
 
 const STOPS = PRESETS.map(preset => ({ label: preset.label, testId: `permissions-preset-stop-${preset.id}` }));
@@ -50,8 +50,8 @@ export function PresetPicker(props: PresetPickerProps): JSX.Element {
           </Show>
         </div>
         <p class={s['line']} data-testid="permissions-preset-line">
-          {/* Unlimited grants everything without asking, so its line carries a warning. */}
-          <Show when={shown().preset === UNLIMITED}>
+          {/* Trusted grants without asking, so its line carries a warning. */}
+          <Show when={shown().preset === TRUSTED}>
             <AlertTriangleIcon class={s['warn']} testId="permissions-preset-warn" />
           </Show>
           {shown().preset.line}
