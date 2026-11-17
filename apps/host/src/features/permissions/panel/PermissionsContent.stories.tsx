@@ -564,8 +564,11 @@ export const BrowserGatedRows: Story = {
     await open(ctx);
     await openAdvanced(ctx.userEvent);
     await ctx.step('Then Camera says the browser blocks it, while Microphone says nothing', async () => {
-      await expect(within(row('Camera')).getByTestId('permissions-popover-row-browser-blocked')).toBeVisible();
-      await expect(within(row('Microphone')).queryByTestId('permissions-popover-row-browser-blocked')).toBeNull();
+      const note = byId('permissions-popover-browser-blocked-Camera');
+      await expect(note).toBeVisible();
+      await expect(note).toHaveTextContent('Blocked in browser');
+      await expect(row('Camera').nextElementSibling).toBe(note);
+      await expect(document.getElementById('permissions-popover-browser-blocked-Microphone')).toBeNull();
     });
     await ctx.step('When I press Block on Camera', async () => {
       await ctx.userEvent.click(segment('Camera', 'denied'));

@@ -43,6 +43,39 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A row note cancels its well's side padding for its tint, and puts the start inset back for its text. */
+:where(.rowNote) {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 calc(-1 * var(--sp-3));
+  padding: var(--sp-1_5) var(--sp-3);
+  background: var(--chrome-warn-fill);
+  color: var(--chrome-warn-text);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
+}
+.well[data-layout='controls'] > .rowNote {
+  margin-right: calc(-1 * var(--sp-1_5));
+}
+.well[data-layout='flush'] > .rowNote {
+  margin-right: 0;
+  margin-left: 0;
+}
+/* Only the row layouts end on their last child, with no block padding under it. */
+.well[data-layout='list'] > .rowNote:last-child,
+.well[data-layout='controls'] > .rowNote:last-child,
+.well[data-layout='flush'] > .rowNote:last-child {
+  border-bottom-right-radius: inherit;
+  border-bottom-left-radius: inherit;
+}
+/* The glyph keeps a fixed box, so every note's text starts at the same inset. */
+.rowNote > svg {
+  flex: none;
+  width: 16px;
+  height: 12px;
+  color: var(--chrome-warn);
+}
 :where(.callout) {
   flex-direction: row;
   align-items: flex-start;
@@ -76,6 +109,18 @@
   :where(.row) {
     gap: var(--sp-3);
     min-height: var(--h-row);
+  }
+  :where(.rowNote) {
+    gap: var(--sp-3);
+    margin: 0 calc(-1 * var(--sp-4));
+    padding: var(--sp-1_5) var(--sp-4);
+  }
+  .well[data-layout='controls'] > .rowNote {
+    margin-right: calc(-1 * var(--sp-2));
+  }
+  .rowNote > svg {
+    width: 20px;
+    height: 14px;
   }
   :where(.callout) {
     gap: var(--sp-2);

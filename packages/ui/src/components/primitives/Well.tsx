@@ -42,6 +42,21 @@ export function Row(props: {
   );
 }
 
+/** A warning about the row before it, in a strip that runs edge to edge across the well. */
+export function RowNote(props: {
+  icon?: Component<IconProps> | undefined;
+  id?: string | undefined;
+  testId?: string;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <p class={s['rowNote']} id={props.id} data-testid={props.testId}>
+      <Show when={props.icon}>{icon => <DrawIcon icon={icon()} />}</Show>
+      <span>{props.children}</span>
+    </p>
+  );
+}
+
 /** Supporting information in a well, led by an optional small icon. */
 export function Callout(props: {
   icon?: Component<IconProps> | undefined;

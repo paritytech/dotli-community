@@ -34,8 +34,10 @@ function statusOf(name: string): PermissionStatus | undefined {
   if (row === null) {
     throw new Error(`No ${name} row`);
   }
+  // A browser-gated row has no granted segment, so a status may have none.
   return STATUSES.find(
-    status => within(row).getByTestId(`permissions-popover-segment-${status}`).getAttribute('aria-pressed') === 'true',
+    status =>
+      within(row).queryByTestId(`permissions-popover-segment-${status}`)?.getAttribute('aria-pressed') === 'true',
   );
 }
 
@@ -114,7 +116,7 @@ export const PhoneRowOpensPermissions: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: () => {
-    givenApp({ Camera: 'granted' });
+    givenApp({ Camera: 'denied' });
   },
   render: () => (
     <GroupFrame room={40}>
@@ -129,14 +131,14 @@ export const PhoneRowOpensPermissions: Story = {
     await step('When I choose the Permissions row', async () => {
       await userEvent.click(moreRow('permissions'));
     });
-    await step("Then the panel took More's place with every permission, Camera pressed Allow", async () => {
+    await step("Then the panel took More's place with every permission, Camera pressed Deny", async () => {
       await waitFor(() => expect(byId('permissions-popover')).toHaveAttribute('data-open'));
       await waitFor(() =>
         expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(
           ALL_PERMISSIONS.length,
         ),
       );
-      await expect(statusOf('Camera')).toBe('granted');
+      await expect(statusOf('Camera')).toBe('denied');
       await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
     });
   },

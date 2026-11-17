@@ -6,8 +6,9 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { fn } from 'storybook/test';
 import { Field } from './Field.js';
 import { Switch } from './Switch.js';
+import { BanIcon } from '../icons/BanIcon.js';
 import { InfoIcon } from '../icons/InfoIcon.js';
-import { Callout, Row, Well } from './Well.js';
+import { Callout, Row, RowNote, Well } from './Well.js';
 
 const meta = {
   title: 'Primitives/Well',
@@ -55,6 +56,26 @@ export const Controls: Story = {
           </Row>
         )}
       </For>
+    </Well>
+  ),
+};
+
+/** As a dotli user, I read a warning about a row in a strip under it, and the last strip keeps the well round. */
+export const RowNotes: Story = {
+  args: { layout: 'controls' },
+  render: args => (
+    <Well {...args}>
+      <Row label="dotNS cache">
+        <Switch label="dotNS cache" checked onChange={onCacheChange} />
+      </Row>
+      <RowNote icon={BanIcon}>Turned off by the browser</RowNote>
+      <Row label="Archive cache">
+        <Switch label="Archive cache" checked onChange={onCacheChange} />
+      </Row>
+      <Row label="Worker cache">
+        <Switch label="Worker cache" checked={false} onChange={onCacheChange} />
+      </Row>
+      <RowNote icon={BanIcon}>Turned off by the browser</RowNote>
     </Well>
   ),
 };
