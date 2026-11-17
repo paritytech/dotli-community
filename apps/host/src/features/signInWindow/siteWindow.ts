@@ -100,7 +100,7 @@ export async function openSiteTransaction({
   ...round
 }: OpenSiteTransactionParams): Promise<SiteWindow | null> {
   // A request that carries its call never reads a payload.
-  const call = parseSiteCall(request.call ?? (await responder.payload()));
+  const call = request.call ?? parseSiteCall(await responder.payload());
   if (call === null) {
     refuseRound({ responder, party: 'third', reason: 'bad_request', route: 'sign' });
     close();

@@ -3,7 +3,7 @@
 
 import { NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createDeferred, isRecord } from '@dotli/shared';
+import { createDeferred, fromHex, isRecord } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { createFakeMessageBus, createFakeWindowHandle } from './listenToMessages.fake.js';
@@ -373,7 +373,7 @@ describe('session window round answer', () => {
         siteToken: null,
         groupToken: null,
         chain: HUB,
-        call: CALL,
+        call: fromHex(CALL),
       },
       booted: 'bridge',
     });

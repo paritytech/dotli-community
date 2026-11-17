@@ -251,7 +251,7 @@ function createFakeChain() {
  * A site's transaction window over the window's parts, a chain that builds it and an account reader that reads the site account,
  * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload.
  */
-function openTransactionWindow(call: string | null, { grantRead }: OpenTransactionWindowParams = {}) {
+function openTransactionWindow(call: Uint8Array | null, { grantRead }: OpenTransactionWindowParams = {}) {
   const parts = createWindowParts();
   const { chain, decoded } = createFakeChain();
   const asked = createDeferred<undefined>();
@@ -499,7 +499,7 @@ describe('site transaction window', () => {
   it("As a user, I open a site's transaction and see it go from Signing to its consent for the site I opened the window from", async () => {
     // Given a site's request that carries its call and a token whose grant is still being read
     const grantRead = createDeferred<undefined>();
-    const page = openTransactionWindow(CALL, { grantRead: grantRead.promise });
+    const page = openTransactionWindow(fromHex(CALL), { grantRead: grantRead.promise });
     const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
 
     // When the grant read ends
@@ -513,7 +513,7 @@ describe('site transaction window', () => {
 
   it('As a site, I send a call in my request and a payload and get my transaction signed for the call my request carries', async () => {
     // Given a site's request that carries its call, and a payload with another call the site posted as well
-    const page = openTransactionWindow(CALL);
+    const page = openTransactionWindow(fromHex(CALL));
     page.postPayload(PAYLOAD_CALL);
     const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
     await watched.waitForView('consent');

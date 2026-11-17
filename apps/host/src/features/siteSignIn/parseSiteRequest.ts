@@ -56,7 +56,7 @@ export function readSiteTokens(params: Readonly<Record<string, unknown>>): SiteT
 }
 
 /** An optional string field: `null` when absent, the value when valid, `undefined` when present and invalid. */
-export function readOptionalString(value: unknown, isValid: (candidate: string) => boolean): string | null | undefined {
+function readOptionalString(value: unknown, isValid: (candidate: string) => boolean): string | null | undefined {
   if (value === undefined) {
     return null;
   }

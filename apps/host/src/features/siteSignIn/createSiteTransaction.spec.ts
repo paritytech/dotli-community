@@ -272,7 +272,7 @@ async function startTransactionWith(options: StartTransactionParams, responder: 
       siteToken: options.siteToken ?? null,
       groupToken: options.groupToken ?? null,
       chain: SERVICES.assethub.genesis,
-      call: toHex(CALL),
+      call: CALL,
     },
     call: CALL,
     origin: SITE_ORIGIN,
