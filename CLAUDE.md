@@ -2,11 +2,14 @@
 
 ## Workflow
 
-Start every non-trivial change (`docs/code/glossary.md`) with the `architecture` skill.
+Start every non-trivial change (`docs/code/glossary.md`) with the `architecture` skill, except a simplification, which
+the `reduce-complexity` skill runs.
 
 - `architecture`: decides what the change is and where it goes, then builds it in slices the owner steers.
 - `document-review`: refines a design in `docs/_plans/` before the next step.
 - `reviewer`: audits a branch or PR against the `docs/claude/` checklists.
+- `reduce-complexity`: simplifies modules in rounds of scout, author, verifier and implementer, run by the
+  `complexity-orchestrator`.
 - `consult-oracle`: outside `architecture`, asks the `oracle` for the owner's precedent before a choice about how to
   build, and files the owner's answers.
 
@@ -17,10 +20,12 @@ Code and workflow corrections go to the repo, never agent memory. Each one goes 
 
 These rules bind the main session only. A subagent skips them.
 
-A non-trivial change runs in the `architect` agent (.claude/skills/architecture/SKILL.md § Who runs this skill). Each
-session tracks its agent in its own file, `docs/_plans/project-agent-<session id>.md`, where `<session id>` is
-`$CLAUDE_CODE_SESSION_ID`, so sessions running at once never share one. Another session's file is not this session's
-change. While this session's file exists, read the agent ID from it and route each owner message:
+A non-trivial change runs in the `architect` agent (.claude/skills/architecture/SKILL.md § Who runs this skill). A
+`reduce-complexity` run is a change too, and runs in the `complexity-orchestrator` agent
+(.claude/skills/reduce-complexity/SKILL.md § Who runs this skill). Each session tracks its agent in its own file,
+`docs/_plans/project-agent-<session id>.md`, where `<session id>` is `$CLAUDE_CODE_SESSION_ID`, so sessions running at
+once never share one. Another session's file is not this session's change. While this session's file exists, read the
+agent ID from it and route each owner message:
 
 - `p:` at the start sends the message to the agent and `m:` keeps it here. Strip the prefix.
 - A reply to the agent's open `QUESTION`, `APPROVAL` or `BLOCKED` goes to the agent.
