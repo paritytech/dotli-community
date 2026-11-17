@@ -15,8 +15,11 @@ function from(
 
 describe('permission presets', () => {
   it.each(PRESETS)('As the slider, statuses equal to $label read as $label, not modified', preset => {
+    // Given
+    const statuses = from(preset);
+
     // When
-    const shown = presetOf(from(preset));
+    const shown = presetOf(statuses);
 
     // Then
     expect(shown).toEqual({ preset, modified: false });
