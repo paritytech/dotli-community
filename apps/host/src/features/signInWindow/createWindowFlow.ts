@@ -12,7 +12,6 @@ import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol
 import { createReporter, defineCount } from '@dotli/metrics';
 import { computed, type ReadableAtom } from 'nanostores';
 import {
-  createDeferred,
   createStateMachine,
   isShallowEqual,
   nest,
@@ -105,9 +104,6 @@ export type WindowFlowParams = {
 /** A closed set, so the metric's `reason` tag stays bounded. */
 type StepName = 'decide' | 'continue' | 'another' | 'phrase' | 'back' | 'pairing' | 'finish';
 
-/** Import's promise, which the flow rejects with why the phrase could not be imported. */
-type ImportReply = { reject: (error: Error) => void };
-
 /** Every step of the round, with the view it shows. A step that waits on work keeps the view it was asked on. */
 type Step = { shown: Shown };
 
@@ -138,8 +134,9 @@ type Flow =
   | (Continued & { kind: 'forgettingWallet' })
   | (Continued & { kind: 'readingAfterForget' })
   | (Step & { kind: 'phrase'; check: PhraseCheck })
+  | (Step & { kind: 'phraseRejected'; check: PhraseCheck; asker: symbol; error: Error })
   | (Step & { kind: 'goingBack' })
-  | (Step & { kind: 'savingPhrase'; check: PhraseCheck; reply: ImportReply; entropy: Uint8Array })
+  | (Step & { kind: 'savingPhrase'; check: PhraseCheck; asker: symbol; entropy: Uint8Array })
   | (Step & { kind: 'readingAfterPhrase'; entropy: Uint8Array })
   | (Pairing & { kind: 'loggingIn' })
   | (Pairing & { kind: 'loginFailing' })
@@ -166,7 +163,7 @@ type Event =
   | { kind: 'continueAsked' }
   | { kind: 'anotherAsked' }
   | { kind: 'goOnAsked' }
-  | { kind: 'importAsked'; phrase: string; reply: ImportReply }
+  | { kind: 'importAsked'; phrase: string; asker: symbol }
   | { kind: 'closePhraseAsked' }
   | { kind: 'retryAsked' }
   | { kind: 'phraseLoaded'; check: PhraseCheck }
@@ -188,7 +185,6 @@ type Event =
 type Effect =
   | { kind: 'stepFailed'; name: StepName; error: unknown }
   | { kind: 'walletFailed'; error: Error; action: 'save' | 'forget' }
-  | { kind: 'importRejected'; reply: ImportReply; error: Error }
   | { kind: 'phraseMissed'; error: unknown }
   | { kind: 'logged'; line: string }
   | { kind: 'delivered'; result: SessionResult; to: NonNullable<WindowFlowParams['page']> }
@@ -317,6 +313,30 @@ export function createWindowFlow({
   ) => {
     emitState({ kind: 'finishing', shown, account });
     update(reads.readPaired().then(paired => ({ kind: 'pairedRead', ...paired }), mapWorkFailure));
+  };
+  const importPhrase: HandlerOf<FlowMachine, 'phrase' | 'phraseRejected', 'importAsked'> = (
+    { shown, check },
+    { phrase, asker },
+    { emitState, emitSideEffect, update },
+  ) => {
+    const entropy = check.toEntropy(phrase);
+    if (entropy === null) {
+      const error = new Error('Not a valid recovery phrase');
+      emitSideEffect({ kind: 'stepFailed', name: 'phrase', error });
+      emitState({ kind: 'phraseRejected', shown, check, asker, error });
+      return;
+    }
+    emitState({ kind: 'savingPhrase', shown, check, asker, entropy });
+    // Only a local wallet core reads the identity, and a window that takes a phrase pairs, so it saves none.
+    update(signIns.store(() => wallet.save(entropy, null)).then(() => ({ kind: 'phraseSaved' }), mapWorkFailure));
+  };
+  const goBack: HandlerOf<FlowMachine, 'phrase' | 'phraseRejected', 'closePhraseAsked'> = (
+    { shown },
+    _event,
+    { emitState, update },
+  ) => {
+    emitState({ kind: 'goingBack', shown });
+    update(toStoredRead(reads.readStored()));
   };
   /** Offers what the store holds, else pairs. */
   const offerOrPair: HandlerOf<FlowMachine, 'readingToOffer' | 'goingBack', 'storedRead'> = (
@@ -461,22 +481,12 @@ export function createWindowFlow({
         workFailed: failAnother,
       },
       phrase: {
-        importAsked({ shown, check }, { phrase, reply }, { emitState, emitSideEffect, update }) {
-          const entropy = check.toEntropy(phrase);
-          if (entropy === null) {
-            const error = new Error('Not a valid recovery phrase');
-            emitSideEffect({ kind: 'stepFailed', name: 'phrase', error });
-            emitSideEffect({ kind: 'importRejected', reply, error });
-            return;
-          }
-          emitState({ kind: 'savingPhrase', shown, check, reply, entropy });
-          // Only a local wallet core reads the identity, and a window that takes a phrase pairs, so it saves none.
-          update(signIns.store(() => wallet.save(entropy, null)).then(() => ({ kind: 'phraseSaved' }), mapWorkFailure));
-        },
-        closePhraseAsked({ shown }, _event, { emitState, update }) {
-          emitState({ kind: 'goingBack', shown });
-          update(toStoredRead(reads.readStored()));
-        },
+        importAsked: importPhrase,
+        closePhraseAsked: goBack,
+      },
+      phraseRejected: {
+        importAsked: importPhrase,
+        closePhraseAsked: goBack,
       },
       goingBack: {
         storedRead: offerOrPair,
@@ -491,11 +501,10 @@ export function createWindowFlow({
           update(readSessionAfterSave(reads.readSession()));
         },
         // The form shows the failure from the import's rejection, which is reported before it rejects.
-        workFailed({ shown, check, reply }, { error: cause }, { emitState, emitSideEffect }) {
+        workFailed({ shown, check, asker }, { error: cause }, { emitState, emitSideEffect }) {
           const error = new Error('The recovery phrase wallet could not be saved', { cause });
           emitSideEffect({ kind: 'walletFailed', error, action: 'save' });
-          emitSideEffect({ kind: 'importRejected', reply, error });
-          emitState({ kind: 'phrase', shown, check });
+          emitState({ kind: 'phraseRejected', shown, check, asker, error });
         },
       },
       readingAfterPhrase: {
@@ -656,9 +665,6 @@ export function createWindowFlow({
         case 'walletFailed':
           reportLocalWalletFailure(effect.error, effect.action);
           return;
-        case 'importRejected':
-          effect.reply.reject(effect.error);
-          return;
         case 'phraseMissed':
           reportLazyMiss({ report, step: 'phrase_import', error: effect.error });
           return;
@@ -711,15 +717,13 @@ export function createWindowFlow({
       const state = machine.state.get();
       return state.kind === 'live' && 'check' in state.flow && state.flow.check.toEntropy(phrase) !== null;
     },
-    importPhrase(phrase) {
-      const reply = createDeferred<undefined>();
-      // Heard before the import is asked, since a phrase that is no recovery phrase rejects the reply at once.
-      const answered = reply.promise.then(noop);
-      // An import the flow ignores gets no reply, so it resolves once the flow settled, as every ignored intent does.
-      void ask({ kind: 'importAsked', phrase, reply }).then(() => {
-        reply.resolve(undefined);
-      });
-      return answered;
+    async importPhrase(phrase) {
+      const asker = Symbol('asker');
+      await ask({ kind: 'importAsked', phrase, asker });
+      const settled = machine.state.get();
+      if (settled.kind === 'live' && settled.flow.kind === 'phraseRejected' && settled.flow.asker === asker) {
+        throw settled.flow.error;
+      }
     },
     closePhrase: () => ask({ kind: 'closePhraseAsked' }),
     retry: () => ask({ kind: 'retryAsked' }),
