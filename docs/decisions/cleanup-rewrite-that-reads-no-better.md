@@ -3,8 +3,10 @@
 A developer runs a simplification pass or a review fix over code that already works. A rule from the style guide or the
 reduce-complexity skill matches the shape in front of them. It may be a helper used only once, or a few functions
 that each branch over the same union. It may be an optional parameter that only the spec passes, or a unit's states
-that mirror another unit's states because only that other unit moves it between them. The rewrite the rule describes
-is possible, and the question is whether a match is reason enough to make it.
+that mirror another unit's states because only that other unit moves it between them. It may be one event that carries
+a collaborator's whole state, which handlers then switch on, where one event per meaning could be split out at the
+subscription. The rewrite the rule describes is possible, and the question is whether a match is reason enough to make
+it.
 
 ## How to resolve
 
@@ -18,6 +20,8 @@ is possible, and the question is whether a match is reason enough to make it.
    one state under a vaguer name, so the unit no longer says which phase it is in.
 4. Make the rewrite only when the gain is real and outweighs what it adds. When it reads the same or worse, leave the
    code as it is.
+5. A narrow style fix in the same code, such as an `===` test on a union member turned into a `switch` over every
+   member, still applies when the larger rewrite is left out.
 
 A rule matching the shape is not the gain. The owner called such a rewrite a random choice, and said the other one
 looked worse than before. Both were undone, and so was a dropped test seam, which the repo already allows. A merge of a
@@ -84,6 +88,33 @@ type SessionState =
 Folding `loading` and `live` into one `active` state, with the owner keeping the readiness instead, leaves a reader
 asking what `active` means and where the two phases went. Leave them.
 
+A machine that sends each change of a collaborator's store as one event, where a handler tests the payload for one
+member:
+
+```ts
+feed.subscribe((status) => send({ kind: 'feedMoved', status }));
+
+// Before: one member tested with ===
+feedMoved(state, event) {
+  if (event.status.kind === 'closed') return finish(state);
+  return state;
+},
+
+// After: the same event, the test turned into a switch over every member
+feedMoved(state, event) {
+  switch (event.status.kind) {
+    case 'closed':
+      return finish(state);
+    case 'open':
+    case 'paused':
+      return state;
+  }
+},
+```
+
+Splitting `feedMoved` into `feedOpened`, `feedPaused` and `feedClosed` at the subscription adds event kinds and moves
+the mapping into the subscription. Keep the one event and make only the style fix.
+
 ## Cases
 
 - Merging two states of a machine left two named handlers, a few lines each, that end a read on success and on
@@ -100,5 +131,10 @@ asking what `active` means and where the two phases went. Leave them.
   ready query and mark-ready call went with them. The owner could not tell what
   running meant, asked why syncing and ready went, and had it reverted. (branch complexity-review-fixes, fbfefce2c
   reverted by 0fdd2ed18)
+- A review fix found a machine sending each change of a collaborator's state store as one event carrying that state.
+  One handler switched on it to relay into a nested flow, and another tested it for one value with `===`. Splitting it
+  at the subscription into one event per meaning would drop the relay hop and the test, but add event kinds and move
+  the mapping switch to the subscription. The owner kept the one event, without a stated reason, and had only the `===`
+  test turned into an exhaustive `switch`. (branch complexity-review-fixes, design goal item 7)
 
 Status: active
