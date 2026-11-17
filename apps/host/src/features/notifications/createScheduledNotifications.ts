@@ -126,7 +126,7 @@ type SchedulerEvent =
   | { kind: 'claimFailed'; round: ClaimingRound; error: unknown };
 
 type SchedulerEffect =
-  | { kind: 'initialized' }
+  | { kind: 'started' }
   | { kind: 'stepSucceeded'; step: PollStep }
   | { kind: 'stepFailed'; step: PollStep; error: unknown }
   | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource }
@@ -164,7 +164,7 @@ export function createScheduledNotifications({
     transition.emitSideEffect({ kind: 'stepSucceeded', step: 'remove_stale' });
     runStep({ ...state, round: { kind: 'listing' } }, transition);
   };
-  /** Moves the round on to listing, since a stale record left behind is only a record not yet due. */
+  /** Moves the round on to listing anyway, so a failing delete never holds back the records that are due. */
   const listAfterStaleFailed: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'staleRemoveFailed'> = (
     state,
     { round, error },
@@ -294,7 +294,7 @@ export function createScheduledNotifications({
         initialized(_state, _event, transition) {
           const page = { stopListening: listenForPage(transition.update), lifetime: new AbortController() };
           const channel = openWakeChannel(transition.update);
-          transition.emitSideEffect({ kind: 'initialized' });
+          transition.emitSideEffect({ kind: 'started' });
           runStep({ kind: 'rehydrating', round: { kind: 'removingStale' }, page, channel }, transition);
         },
         disposed(_state, _event, { emitState }) {
@@ -365,7 +365,7 @@ export function createScheduledNotifications({
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'initialized':
+        case 'started':
           log.debug('Scheduled notifications: init');
           return;
         case 'stepSucceeded':
