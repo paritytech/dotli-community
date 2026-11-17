@@ -1,9 +1,10 @@
 # A cleanup rewrite that reads no better
 
-A developer runs a simplification pass over code that already works. A rule from the style guide or the
-reduce-complexity skill matches the shape in front of them, such as a helper used only once, a few functions that
-each branch over the same union, or an optional parameter that only the spec passes. The rewrite the rule describes is
-possible, and the question is whether a match is reason enough to make it.
+A developer runs a simplification pass or a review fix over code that already works. A rule from the style guide or the
+reduce-complexity skill matches the shape in front of them. It may be a helper used only once, or a few functions
+that each branch over the same union. It may be an optional parameter that only the spec passes, or a unit's states
+that mirror another unit's states because only that other unit moves it between them. The rewrite the rule describes
+is possible, and the question is whether a match is reason enough to make it.
 
 ## How to resolve
 
@@ -13,12 +14,14 @@ possible, and the question is whether a match is reason enough to make it.
 3. Look at what the rewrite adds to get there. A placeholder value with a check to stand in for a case the old code
    handled directly is a cost. So is a multi-line body moved into a place that used to read as a list of names. So is
    a dropped optional collaborator with a production default that only the spec passes, since it is the seam the spec
-   drives the unit through, and the spec then has to reach around the unit.
+   drives the unit through, and the spec then has to reach around the unit. So is folding a unit's named states into
+   one state under a vaguer name, so the unit no longer says which phase it is in.
 4. Make the rewrite only when the gain is real and outweighs what it adds. When it reads the same or worse, leave the
    code as it is.
 
 A rule matching the shape is not the gain. The owner called such a rewrite a random choice, and said the other one
-looked worse than before. Both were undone, and so was a dropped test seam, which the repo already allows. The owner
+looked worse than before. Both were undone, and so was a dropped test seam, which the repo already allows. A merge of a
+unit's two phases into one left the owner unable to tell what the new state meant, and it was undone too. The owner
 wants a cleanup to show taste in general, and does not want a stricter rule in its place, since an agent over-applies a
 strict rule the same way.
 
@@ -69,6 +72,18 @@ export function createGreeter({
 Dropping the two options because only the spec passes them leaves the spec with no way in short of module mocks. Leave
 them.
 
+A session's states, where only its owner moves it from loading to live:
+
+```ts
+type SessionState =
+  | { kind: 'loading' }
+  | { kind: 'live' }
+  | { kind: 'failed'; error: Error };
+```
+
+Folding `loading` and `live` into one `active` state, with the owner keeping the readiness instead, leaves a reader
+asking what `active` means and where the two phases went. Leave them.
+
 ## Cases
 
 - Merging two states of a machine left two named handlers, a few lines each, that end a read on success and on
@@ -80,5 +95,10 @@ them.
 - A factory's two optional collaborators, where its dialogs queue and how it notifies, each with a production default
   that only its spec passes, were removed in a simplification round. The spec no longer typechecked, and they were
   restored. (PR #484)
+- A review fix found a worker lifecycle's syncing and ready states mirroring the worker's own phases, since only the
+  worker marked it ready. It merged them into one running state and moved the readiness to the worker. The lifecycle's
+  ready query and mark-ready call went with them. The owner could not tell what
+  running meant, asked why syncing and ready went, and had it reverted. (branch complexity-review-fixes, fbfefce2c
+  reverted by 0fdd2ed18)
 
 Status: active
