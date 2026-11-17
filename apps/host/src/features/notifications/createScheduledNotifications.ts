@@ -212,9 +212,9 @@ export function createScheduledNotifications({
     if (!removed) {
       return;
     }
-    // A hidden tab's throttled poller may wake only once a minute, so only a record claimed over two minutes late is one
-    // the user missed rather than saw late.
-    emitSideEffect({ kind: 'fired', record, missed: claimedAt - record.scheduledAt > 120_000 });
+    // A hidden tab's throttled poller may wake only once a minute, so a record claimed within that minute counts as on
+    // time, and one claimed later is one the user missed.
+    emitSideEffect({ kind: 'fired', record, missed: claimedAt - record.scheduledAt > 60_000 });
   };
   /** Shows the claimed record, then claims the next due one when the claim is this round's. */
   const settleClaim: HandlerOf<SchedulerMachine, 'ticking', 'claimed'> = (state, event, transition) => {
