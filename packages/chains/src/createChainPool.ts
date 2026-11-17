@@ -185,7 +185,6 @@ type PoolEvent =
   | { kind: 'chainAsked'; key: string }
   | { kind: 'leased'; key: string; lanes: ChainLanes; holder: string; watched: boolean }
   | { kind: 'released'; key: string; lanes: ChainLanes; holder: string }
-  | { kind: 'askEnded'; key: string }
   | { kind: 'closeDue'; key: string }
   | { kind: 'laneStatus'; key: string; lanes: ChainLanes; status: ConnectionStatus }
   | { kind: 'laneHalted'; key: string; lanes: ChainLanes; error: unknown }
@@ -373,8 +372,6 @@ export function createChainPool({
         case 'laneHalted':
         case 'followFailed':
           return entry.chain.lanes === event.lanes ? entry : null;
-        // An ask that ends after a rebuild still counts the rebuilt chain down.
-        case 'askEnded':
         case 'chainAsked':
         case 'closeDue':
         case 'syncDue':
@@ -426,19 +423,16 @@ export function createChainPool({
       },
       unheld: {
         leased: holdEntry,
-        askEnded(entry, { key }, transition) {
-          idle(key, entry, transition);
-        },
         laneStatus: storeStatus,
         laneHalted: closeOnHalt,
         closeDue: closeQuietly,
         followFailed: reportFollowFailure,
       },
       expiring: {
-        chainAsked(entry, _event, { emitState, emitSideEffect }) {
+        chainAsked(entry, { key }, transition) {
           const { chain, status } = entry;
-          emitState({ kind: 'unheld', chain, status });
-          emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
+          transition.emitState(countDown(key, { kind: 'unheld', chain, status }, transition));
+          transition.emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
         },
         leased(entry, event, transition) {
           transition.emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
@@ -495,11 +489,11 @@ export function createChainPool({
       if (lanes === null) {
         return;
       }
-      const built: Entry = {
-        kind: 'unheld',
-        chain: { lanes, followGate: createRedialGate({ timers }), warn },
-        status: lanes.status(),
-      };
+      const built = countDown(
+        key,
+        { kind: 'unheld', chain: { lanes, followGate: createRedialGate({ timers }), warn }, status: lanes.status() },
+        transition,
+      );
       transition.emitState({ ...state, entries: new Map(state.entries).set(key, built) });
       transition.emitSideEffect({ kind: 'built', key });
     },
@@ -530,7 +524,6 @@ export function createChainPool({
     },
     leased: handleEntry,
     released: handleEntry,
-    askEnded: handleEntry,
     closeDue: handleEntry,
     laneStatus: handleEntry,
     laneHalted(state, event, transition) {
@@ -586,9 +579,6 @@ export function createChainPool({
     getLocalProvider(genesisHash, { holder = 'local' } = {}) {
       const key = genesisHash.toLowerCase();
       machine.update({ kind: 'chainAsked', key });
-      // Callers call the provider at once. One that never does must not keep
-      // the entry for good, so its countdown starts once this turn is over.
-      machine.update(Promise.resolve<PoolEvent>({ kind: 'askEnded', key }));
       if (findLive(key) === null) {
         return null;
       }
@@ -787,14 +777,19 @@ export function createChainPool({
       closeQuietly(entry, { kind: 'closeDue', key }, transition);
       return;
     }
+    transition.emitState(countDown(key, entry, transition));
+  }
+
+  /** Returns an unheld entry counting down to its close, or the entry itself under an infinite `destroyDelay`. */
+  function countDown(key: string, entry: UnheldEntry, { update }: Pick<Transition<EntryMachine>, 'update'>): Entry {
     // `setTimeout` clamps a non-finite delay to about 1 ms, which would close the entry at once.
     if (!Number.isFinite(destroyDelay)) {
-      return;
+      return entry;
     }
     const countdown = timers.setTimeout(() => {
-      transition.update({ kind: 'closeDue', key });
+      update({ kind: 'closeDue', key });
     }, destroyDelay);
-    transition.emitState({ ...entry, kind: 'expiring', countdown });
+    return { ...entry, kind: 'expiring', countdown };
   }
 
   /** Stops the watchers' follow, or its wait to follow again. */
@@ -884,26 +879,19 @@ export function createChainPool({
     machine.update({ kind: 'chainAsked', key });
     const entry = findLive(key);
     if (entry === null) {
-      machine.update({ kind: 'askEnded', key });
       return { kind: 'unreachable' };
     }
     const { lanes } = entry.chain;
     // A halt heard while the session opens is read from the lanes once it is open.
     let open = false;
-    let connection: BrokerConnection;
-    try {
-      connection = lanes.connect({
-        ...session,
-        onHalt: error => {
-          if (open) {
-            session.onHalt?.(error);
-          }
-        },
-      });
-    } catch (error) {
-      machine.update({ kind: 'askEnded', key });
-      throw error;
-    }
+    const connection = lanes.connect({
+      ...session,
+      onHalt: error => {
+        if (open) {
+          session.onHalt?.(error);
+        }
+      },
+    });
     machine.update({ kind: 'leased', key, lanes, holder, watched: watchers.size > 0 });
     // A halt while the session opens may not reach it, and a session on a closed chain would never hear one.
     const phase = lanes.phase();
