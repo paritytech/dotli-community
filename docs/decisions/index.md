@@ -21,6 +21,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to
   need it too.
+- [workflow-dispatches-several-subagents](workflow-dispatches-several-subagents.md): a workflow dispatches several
+  subagents for one change, and the question is which loads the code-writing docs and who runs the loop.
 
 ## Code structure
 

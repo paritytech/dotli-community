@@ -4,7 +4,8 @@ description: >-
   Use before any non-trivial change to code in `apps/`, `packages/` or `config/`, such as new code, a new, moved or
   renamed file, a new abstraction, extended behaviour or a refactor that moves logic. The single entry point that
   decides what the change is and where it goes before any file path is chosen, then builds it in small slices the owner
-  steers. Skip for a trivial edit as `docs/code/glossary.md` defines it.
+  steers. Skip for a trivial edit as `docs/code/glossary.md` defines it, and for a simplification, which the
+  `reduce-complexity` skill runs.
 ---
 
 # Architecture
@@ -184,15 +185,15 @@ Build the change as a run of slices. A slice is one commit the owner can read in
 files, that leaves typecheck and tests passing. Slices that set an interface between layers come before the slices that
 use it.
 
-**Writing a slice.** Write it yourself when it is small, or dispatch one fresh implementer ("Subagents"). Every line
-follows `docs/code/style.md` and the Architecture gate. Tests follow (docs/code/placement.md § Inside a package) for
-where they live and (AGENTS.md § Code style, Tests:) for how they behave. The implementer bans in "Subagents" bind you
-too.
+**Writing a slice.** Dispatch one fresh `implementer` ("Subagents"), which carries the code style, placement and the
+Architecture gate. Write a slice yourself only when it is small, and then read `.claude/agents/implementer.md` first,
+since its rules bind you too.
 
 **Judgment calls.** A call that shapes a public surface, a file's responsibility, a failure path or what a test covers
 goes to the oracle as an `ASK`. A smaller call is yours. List it as own judgment when the owner might decide it
-otherwise. An implementer that stops at a call gets the answer through `SendMessage` and goes on, and the smaller calls
-it lists in its report are yours to list.
+otherwise. An implementer that stops at a call hands it back as a ready `ASK`. Send it to the oracle as it stands, give
+the implementer the answer through `SendMessage`, and it goes on. The smaller calls it lists in its report are yours to
+list.
 
 **The stop.** After each slice commits, stop with an `APPROVAL` that holds:
 
@@ -222,12 +223,12 @@ confirmed only when the code shows the defect at its `file:line`, and the verifi
 finding confirmed or dropped in the review file, with one line why. It never adds a finding or changes a severity. A
 dropped finding is never fixed or raised again. Minor findings skip verification.
 
-**Fix.** Every confirmed blocking or major finding, and every minor one, is fixed in this branch, in one fresh dispatch
-or by you when small. A fix that would change the goal, the placement or an interface between layers follows "A
-discovery" in step 5 first. The fixer may close a minor finding when the fix would make the code worse, or when the
-finding misreads what the code is for, with the reason in one line under the finding. "It is minor" and "out of scope"
-are not reasons. Read each closure and send back any whose reason does not hold. A fix that changes only docs or
-comments ends the review.
+**Fix.** Every confirmed blocking or major finding, and every minor one, is fixed in this branch, in one fresh
+`implementer` dispatch or by you when small, as step 5 says. A fix that would change the goal, the placement or an
+interface between layers follows "A discovery" in step 5 first. The fixer may close a minor finding when the fix would
+make the code worse, or when the finding misreads what the code is for, with the reason in one line under the finding.
+"It is minor" and "out of scope" are not reasons. Read each closure and send back any whose reason does not hold. A fix
+that changes only docs or comments ends the review.
 
 **Scoped re-review.** A fresh subagent runs the `reviewer` skill on the fix's commit range, with the IDs of the findings
 it answers. It checks that each is fixed and audits the fix's diff. After a blocking or major fix it also reads every
@@ -256,14 +257,9 @@ Then send `DONE`. Finishing the branch (merge or PR) is a separate step the owne
 
 ### The Architecture gate
 
-The `## Architecture` section of `AGENTS.md` is a gate, not a nicety. Every implementer brief states it outright:
-
-- each layer owns one responsibility a reader can name from its module
-- the interfaces between layers are small and explicit
-- each layer recovers from its own failures without waiting to be asked and reports its status up
-- calls across layers are idempotent
-
-Where a fix would add a special case, move the responsibility to the layer that owns it.
+The `## Architecture` section of `AGENTS.md` is a gate, not a nicety. The `implementer` agent states it outright and
+holds every line to it, and so does a design. Where a fix would add a special case, move the responsibility to the layer
+that owns it.
 
 ### A request that breaks a convention
 
@@ -280,35 +276,26 @@ so the seat runs on your model.
   `Explore` on its own default. Read how it behaves with a fresh `general-purpose` on session, or inline. Inputs: one
   question, the paths to start from and the answer format.
 - **The oracle**: `subagent_type: "oracle"`, on its own model. Input: one `ASK`, `RECORD` or `LAYOUT`.
-- **A slice implementer**: `general-purpose`, on `sonnet` when the brief fully defines the slice, such as a rename or a
-  mechanical reshape, and on session otherwise. Inputs: the design path, the slice's goal and files in a few lines, what
-  earlier slices found that it needs, and the bans below.
-- **The reviewer, a verifier, a fix of blocking or major findings, a scoped re-review**: session. **A minor sweep**:
-  `sonnet`.
+- **A slice implementer**: `subagent_type: "implementer"`, on `sonnet` when the brief fully defines the slice, such as a
+  rename or a mechanical reshape, and on session otherwise. Inputs: the design path, the slice's goal and files in a few
+  lines, and what earlier slices found that it needs. The agent carries the code style, the Architecture gate and the
+  check and commit rules, so the brief never repeats them.
+- **A fix of blocking or major findings**: `implementer` on session. **A minor sweep**: `implementer` on `sonnet`.
+- **The reviewer, a verifier, a scoped re-review**: `general-purpose` on session. None of them is given the code style
+  docs beyond what its own skill reads.
 
 Briefs carry paths and inputs, never your verdicts. A seat writes its full report to the file its brief names. Its final
 message, at most 10 lines, gives that path and its counts.
 
-Every brief of a seat that reads code says how it looks up symbols:
+Every brief of a seat that reads code, other than the implementer, which carries its own, says how it reads:
 
 - Load LSP with `ToolSearch` (`select:LSP`) before the first lookup.
 - Answer a symbol question with LSP: `findReferences` for its users, `workspaceSymbol` or `goToDefinition` for where it
   is defined, `hover` for its type. Send independent calls in one turn.
 - Grep only plain text, config, Markdown and non-TypeScript files, or after an LSP call fails, and name that failure in
   the report.
-
-Every implementer brief carries these bans in words:
-
-- Read `docs/code/style.md` before the first edit, and write every line to it.
-- At a call the brief does not settle that shapes a public surface, a file's responsibility, a failure path or what a
-  test covers, stop and report it with the options you see. Never pick one. List the smaller calls you made in your
-  report.
-- No size, perf or measuring builds.
-- No slow Playwright suite before a commit. Commit after the fast checks, and run that suite on its own.
-- No sleeps or fixed timeouts. Wait on a readiness signal.
-- A rewrite that repeats one shape across many sites is one `perl -pi` or `node` script that fails when a pattern
-  matches nothing, followed by a read of its diff.
-- Stage only your files, by path.
+- Read a file whole, once, and again only after it changed. Keep each command's output under about 20k characters, so it
+  is never saved to a file.
 
 ## Red flags
 

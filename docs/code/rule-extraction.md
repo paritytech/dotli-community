@@ -67,7 +67,7 @@ something to propose.
 | Where code or files go                                | `docs/code/placement.md`                                                                                          | `docs/claude/architecture-checklist.md`                                        |
 | What a package owns or may import                     | that package's `README.md` or `eslint.config.js`, then the summary in `docs/code/placement.md` in the same commit | `docs/claude/architecture-checklist.md`, only when a diff can show a violation |
 | A new threshold definition                            | `docs/code/glossary.md`                                                                                           | none                                                                           |
-| Workflow or agent behaviour                           | `.claude/skills/architecture/SKILL.md`                                                                            | none                                                                           |
+| Workflow or agent behaviour                           | the skill or agent file that runs that workflow                                                                            | none                                                                           |
 
 The mirror column is the default. Some rules sit in both checklists, so the checklist whose section fits the diff
 surface decides, or the row goes in both where both apply. A checklist row exists only when a diff can show a violation.

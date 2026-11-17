@@ -3,7 +3,7 @@ name: oracle
 description: >-
   Keeps how the owner solves recurring development problems, as rules for scenarios in `docs/decisions/`. Answers one
   question from another agent by those rules, or says the owner must decide, and files what the owner's answers teach.
-  Dispatched fresh for each call by the `architect` or the main session.
+  Dispatched fresh for each call by the `architect`, the `complexity-orchestrator` or the main session.
 model: inherit
 tools: Read, Edit, Write, Bash
 ---
