@@ -252,7 +252,7 @@ describe('session window round answer', () => {
     await expect(answered).resolves.toBeUndefined();
   });
 
-  it('As a user signing in on a dot.li page, I open the sign-in window and it runs the flow for my intent once it booted', async () => {
+  it('As a user signing in on a dot.li page, I open the sign-in window and it runs the flow for my page and intent once it booted', async () => {
     // Given a sign-in window whose boot is still running
     const { responder, sayHello, readAnswers } = openWindow();
     const boot = createDeferred<string>();
@@ -268,8 +268,9 @@ describe('session window round answer', () => {
     boot.resolve('bridge');
     const round = await answered;
 
-    // Then the window runs the flow for the request's intent on what the boot gave, and nothing was posted yet
-    expect(round).toEqual({ party: 'first', intent: 'phrase', booted: 'bridge' });
+    // Then the window runs the flow for the request's intent and the vetted page on what the boot gave, and nothing was
+    // posted yet
+    expect(round).toEqual({ party: 'first', origin: PAGE, intent: 'phrase', booted: 'bridge' });
     expect(readAnswers()).toEqual([]);
   });
 

@@ -23,11 +23,11 @@ const report = createReporter({ flow: 'wallet' });
 
 /**
  * What the sign-in window runs for its round: dot.li's own flow for the request's intent, or a site's sign-in or
- * transaction for the vetted origin, which the browser vouched for, never one the request names. Each comes with what
- * the boot gave.
+ * transaction. Each is for the vetted origin, which the browser vouched for, never one the request names, and comes
+ * with what the boot gave.
  */
 export type SignInRound<Booted> =
-  | { party: 'first'; intent: SignInIntent; booted: Booted }
+  | { party: 'first'; origin: string; intent: SignInIntent; booted: Booted }
   | { party: 'third'; origin: string; request: SiteRequest; booted: Booted }
   | { party: 'third-sign'; origin: string; request: SiteSignRequest; booted: Booted };
 
@@ -130,7 +130,7 @@ export async function answerSignIn<Booted>({
         refuseRound({ responder, party: 'first', reason: 'bad_request', route: request.route });
         return null;
       }
-      return { party: 'first', intent: round.request.intent, booted: bootedValue };
+      return { party: 'first', origin, intent: round.request.intent, booted: bootedValue };
     case 'third':
       return { party: 'third', origin, request: round.request, booted: bootedValue };
     case 'third-sign':

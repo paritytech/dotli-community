@@ -86,14 +86,14 @@ export type WindowFlowParams = {
   /** Loads the phrase check. Rejects when its module could not load. */
   loadPhrase: () => Promise<PhraseCheck>;
   /**
-   * What the window's request asks for. A vetted round goes by it as it is. A window with no opener only picks its
+   * What the window's request asks for. A window with a page goes by it as it is. A window with no page only picks its
    * first view from it, so anything but `phrase` signs in, `resume` included, as nobody waits to take what it would
    * send.
    */
   intent: SignInIntent;
-  /** How the views name the page the window signs in for, from its vetted origin. */
-  pageLabel: (origin: string) => string;
-  /** Takes what the store holds once the flow ended its round with a vetted opener. Must not throw. */
+  /** The page the window signs in for, as the views name it, or null when no page opened the window. */
+  page: string | null;
+  /** Takes what the store holds once the flow ended its round for a page. Must not throw. */
   deliver: (result: SessionResult) => void;
   /** Closes the window. */
   close: () => void;
@@ -105,30 +105,23 @@ type StepName = 'decide' | 'continue' | 'another' | 'phrase' | 'back' | 'pairing
 /** Import's promise, which the flow rejects with why the phrase could not be imported. */
 type ImportReply = { reject: (error: Error) => void };
 
-/** What a round keeps from its opening. */
-type Round = {
-  intent: SignInIntent;
-  /** The page the window signs in for, null until the opener is known and when no page opened the window. */
-  page: string | null;
-};
-
 /** Every step of the round, with the view it shows. A step that waits on work keeps the view it was asked on. */
-type Step = { round: Round; shown: Shown };
+type Step = { shown: Shown };
 
 /** A step of Continue's view. */
-type Continued = { round: Round; shown: Extract<Shown, { view: 'continue' }> };
+type Continued = { shown: Extract<Shown, { view: 'continue' }> };
 
 /** A step of the pairing's view. */
-type Pairing = { round: Round; shown: Extract<Shown, { view: 'pairing' }> };
+type Pairing = { shown: Extract<Shown, { view: 'pairing' }> };
 
 /**
- * The round's flow, from the hello it waits for to the end of its round. Each step that waits on work is a kind of its
- * own. `loggingIn`, `loginFailing` and `loggingInThenRetry` run the window's login, which waits on the phone and so
- * answers outside `await()`: `loginFailing` shows how the pairing failed while the login still runs, and
- * `loggingInThenRetry` is a Retry pressed then, which decides once the login answered.
+ * The round's flow, from its start to the end of its round. Each step that waits on work is a kind of its own.
+ * `loggingIn`, `loginFailing` and `loggingInThenRetry` run the window's login, which waits on the phone and so answers
+ * outside `await()`: `loginFailing` shows how the pairing failed while the login still runs, and `loggingInThenRetry`
+ * is a Retry pressed then, which decides once the login answered.
  */
 type Flow =
-  | (Step & { kind: 'waiting' })
+  | (Step & { kind: 'starting' })
   | (Step & { kind: 'loadingPhrase' })
   | (Step & { kind: 'readingToOffer' })
   | (Step & { kind: 'readingToSend' })
@@ -163,8 +156,7 @@ type State =
 
 type Event =
   | { kind: 'responderMoved'; state: ResponderState }
-  // `origin` is the vetted opener's, and null for a window with no opener.
-  | { kind: 'openerKnown'; origin: string | null }
+  | { kind: 'started' }
   | { kind: 'authChanged'; auth: DotliAuthState }
   | { kind: 'disposed' }
   | { kind: 'cancelAsked' }
@@ -226,9 +218,9 @@ const FAILED_STEP = {
 type FailingKind = keyof typeof FAILED_STEP;
 
 /**
- * The sign-in window's flow over `responder`, which starts deciding once the responder knows its opener. An intent
- * pressed while a step runs is ignored and resolves once the flow settled, except Retry over a failed pairing whose
- * login still runs.
+ * The sign-in window's flow for `page`, which decides at once what to show from the main store. An intent pressed
+ * while a step runs is ignored and resolves once the flow settled, except Retry over a failed pairing whose login still
+ * runs.
  */
 export function createWindowFlow({
   responder,
@@ -239,12 +231,14 @@ export function createWindowFlow({
   store,
   wallet,
   loadPhrase,
-  intent,
-  pageLabel,
+  intent: asked,
+  page,
   deliver,
   close,
 }: WindowFlowParams) {
   const reads = createMainStoreReads({ store, wallet });
+  // Nobody waits to take what a window with no page would send, so it signs in unless it was asked for a phrase.
+  const intent: SignInIntent = page === null && asked !== 'phrase' ? 'signin' : asked;
 
   // Every state hears Cancel, so a step under way never holds the window open. A pairing given up stored nothing and so
   // raised no flag.
@@ -284,26 +278,26 @@ export function createWindowFlow({
     { emitState, emitSideEffect },
   ) => {
     emitSideEffect({ kind: 'stepFailed', name: FAILED_STEP[state.kind], error });
-    emitState({ kind: 'failed', round: state.round, shown: { view: 'failed' } });
+    emitState({ kind: 'failed', shown: { view: 'failed' } });
   };
   /** Use another account failed, so Continue offers what it offered with the failure on show. */
   const failAnother: HandlerOf<FlowMachine, 'loggingOut' | 'checkingSignedOut' | 'readingAfterForget', 'workFailed'> = (
-    { round, shown },
+    { shown },
     { error },
     { emitState, emitSideEffect },
   ) => {
     emitSideEffect({ kind: 'stepFailed', name: 'another', error });
-    emitState({ kind: 'continue', round, shown: { ...shown, failure: 'step' } });
+    emitState({ kind: 'continue', shown: { ...shown, failure: 'step' } });
   };
   // Only a running login is followed, so a failure a login left stays on show whatever the auth state does. The login's
   // answer, not the auth state, decides how a pairing ends.
   const followLogin: HandlerOf<FlowMachine, 'loggingIn' | 'loginFailing', 'authChanged'> = (
-    { round, shown },
+    { shown },
     { auth: changed },
     { emitState },
   ) => {
     const pairing = getPairingView(shown.pairing, changed);
-    emitState({ kind: pairing.kind === 'error' ? 'loginFailing' : 'loggingIn', round, shown: { ...shown, pairing } });
+    emitState({ kind: pairing.kind === 'error' ? 'loginFailing' : 'loggingIn', shown: { ...shown, pairing } });
   };
   /** A login whose retry is asked, or that already paired, only shows how far the core got. */
   const followAuth: HandlerOf<FlowMachine, 'loggingInThenRetry' | 'finishing' | 'cachingAccount', 'authChanged'> = (
@@ -315,11 +309,11 @@ export function createWindowFlow({
   };
   /** Sends what the login paired, which the command answered only once the main store held it. */
   const finishPairing: HandlerOf<FlowMachine, 'loggingIn' | 'loginFailing' | 'loggingInThenRetry', 'loginPaired'> = (
-    { round, shown },
+    { shown },
     { account },
     { emitState, update },
   ) => {
-    emitState({ kind: 'finishing', round, shown, account });
+    emitState({ kind: 'finishing', shown, account });
     update(reads.readPaired().then(paired => ({ kind: 'pairedRead', ...paired }), mapWorkFailure));
   };
   /**
@@ -330,13 +324,13 @@ export function createWindowFlow({
     FlowMachine,
     'readingToOffer' | 'goingBack' | 'readingToSend' | 'readingForContinue',
     'storedRead'
-  > = ({ round, shown }, { stored }, { emitState, update }) => {
+  > = ({ shown }, { stored }, { emitState, update }) => {
     const offered = getOffered(stored);
     if (offered !== null) {
-      emitState({ kind: 'continue', round, shown: { view: 'continue', offered, failure: null } });
+      emitState({ kind: 'continue', shown: { view: 'continue', offered, failure: null } });
       return;
     }
-    emitState({ kind: 'clearingFlag', round, shown });
+    emitState({ kind: 'clearingFlag', shown });
     // Never rejects, since no drop runs.
     update(signIns.clear().then(() => ({ kind: 'flagLanded' })));
   };
@@ -353,7 +347,7 @@ export function createWindowFlow({
       offerOrPair(state, event, transition);
       return;
     }
-    transition.emitState({ kind: 'storingFlag', round: state.round, shown: state.shown, stored: event.stored });
+    transition.emitState({ kind: 'storingFlag', shown: state.shown, stored: event.stored });
     // Never rejects, since the write does nothing.
     transition.update(signIns.store(noop).then(() => ({ kind: 'flagLanded' })));
   };
@@ -362,23 +356,19 @@ export function createWindowFlow({
     find: ({ flow }) => flow,
     store: (state, _event, flow) => ({ ...state, flow }),
     handlers: {
-      waiting: {
-        openerKnown({ round, shown }, { origin }, transition) {
-          const known: Round =
-            origin === null
-              ? { ...round, intent: round.intent === 'phrase' ? 'phrase' : 'signin' }
-              : { ...round, page: pageLabel(origin) };
-          decide({ round: known, shown }, transition);
+      starting: {
+        started(state, _event, transition) {
+          decide(state, transition);
         },
       },
       loadingPhrase: {
-        phraseLoaded({ round }, { check }, { emitState }) {
-          emitState({ kind: 'phrase', round, shown: { view: 'phrase' }, check });
+        phraseLoaded(_state, { check }, { emitState }) {
+          emitState({ kind: 'phrase', shown: { view: 'phrase' }, check });
         },
         // A module that could not load is a missed chunk, so the step itself ends without failing.
-        workFailed({ round }, { error }, { emitState, emitSideEffect }) {
+        workFailed(_state, { error }, { emitState, emitSideEffect }) {
           emitSideEffect({ kind: 'phraseMissed', error });
-          emitState({ kind: 'failed', round, shown: { view: 'failed' } });
+          emitState({ kind: 'failed', shown: { view: 'failed' } });
         },
       },
       readingToOffer: {
@@ -390,8 +380,8 @@ export function createWindowFlow({
         workFailed: failStep,
       },
       clearingFlag: {
-        flagLanded({ round }, _event, transition) {
-          pair(round, transition);
+        flagLanded(_state, _event, transition) {
+          pair(transition);
         },
       },
       storingFlag: {
@@ -400,8 +390,8 @@ export function createWindowFlow({
         },
       },
       continue: {
-        continueAsked({ round, shown }, _event, { emitState, update }) {
-          emitState({ kind: 'readingForContinue', round, shown });
+        continueAsked({ shown }, _event, { emitState, update }) {
+          emitState({ kind: 'readingForContinue', shown });
           update(toStoredRead(reads.readStoredForContinue(shown.offered.stored)));
         },
         anotherAsked(state, _event, transition) {
@@ -423,26 +413,25 @@ export function createWindowFlow({
         workFailed: failStep,
       },
       loggingOut: {
-        loggedOut({ round, shown }, { outcome }, transition) {
+        loggedOut({ shown }, { outcome }, transition) {
           switch (outcome.phone) {
             case 'untold':
               transition.emitState({
                 kind: 'phoneUntold',
-                round,
                 shown: { ...shown, failure: 'phone' },
                 untold: outcome,
               });
               return;
             case 'told':
-              leaveForAnother({ round, shown }, transition);
+              leaveForAnother({ shown }, transition);
               return;
           }
         },
         workFailed: failAnother,
       },
       checkingSignedOut: {
-        sessionHeld({ round, shown }, _event, { emitState }) {
-          emitState({ kind: 'continue', round, shown: { ...shown, failure: 'sign-out' } });
+        sessionHeld({ shown }, _event, { emitState }) {
+          emitState({ kind: 'continue', shown: { ...shown, failure: 'sign-out' } });
         },
         sessionGone(state, _event, transition) {
           forgetWallet(state, transition);
@@ -450,32 +439,32 @@ export function createWindowFlow({
         workFailed: failAnother,
       },
       forgettingWallet: {
-        walletForgotten({ round }, _event, transition) {
-          pair(round, transition);
+        walletForgotten(_state, _event, transition) {
+          pair(transition);
         },
         // The wallet is still stored, so the flag stays up for it.
-        workFailed({ round, shown }, { error }, { emitState, emitSideEffect, update }) {
+        workFailed({ shown }, { error }, { emitState, emitSideEffect, update }) {
           const failure = new Error('Local wallet could not be forgotten', { cause: error });
           emitSideEffect({ kind: 'walletFailed', error: failure, action: 'forget' });
-          emitState({ kind: 'readingAfterForget', round, shown });
+          emitState({ kind: 'readingAfterForget', shown });
           update(toStoredRead(reads.readStored()));
         },
       },
       readingAfterForget: {
-        storedRead({ round, shown }, { stored }, { emitState }) {
+        storedRead({ shown }, { stored }, { emitState }) {
           const offered = getOffered(stored);
           // A wallet that cannot be read may still be stored, so the window starts no pairing over it, and Retry
           // forgets it again first.
           if (offered === null) {
-            emitState({ kind: 'forgetFailed', round, shown: { view: 'failed' }, continued: shown });
+            emitState({ kind: 'forgetFailed', shown: { view: 'failed' }, continued: shown });
             return;
           }
-          emitState({ kind: 'continue', round, shown: { view: 'continue', offered, failure: 'sign-out' } });
+          emitState({ kind: 'continue', shown: { view: 'continue', offered, failure: 'sign-out' } });
         },
         workFailed: failAnother,
       },
       phrase: {
-        importAsked({ round, shown, check }, { phrase, reply }, { emitState, emitSideEffect, update }) {
+        importAsked({ shown, check }, { phrase, reply }, { emitState, emitSideEffect, update }) {
           const entropy = check.toEntropy(phrase);
           if (entropy === null) {
             const error = new Error('Not a valid recovery phrase');
@@ -483,12 +472,12 @@ export function createWindowFlow({
             emitSideEffect({ kind: 'importRejected', reply, error });
             return;
           }
-          emitState({ kind: 'savingPhrase', round, shown, check, reply, entropy });
+          emitState({ kind: 'savingPhrase', shown, check, reply, entropy });
           // Only a local wallet core reads the identity, and a window that takes a phrase pairs, so it saves none.
           update(signIns.store(() => wallet.save(entropy, null)).then(() => ({ kind: 'phraseSaved' }), mapWorkFailure));
         },
-        closePhraseAsked({ round, shown }, _event, { emitState, update }) {
-          emitState({ kind: 'goingBack', round, shown });
+        closePhraseAsked({ shown }, _event, { emitState, update }) {
+          emitState({ kind: 'goingBack', shown });
           update(toStoredRead(reads.readStored()));
         },
       },
@@ -497,19 +486,19 @@ export function createWindowFlow({
         workFailed: failStep,
       },
       savingPhrase: {
-        phraseSaved({ round, shown, entropy }, _event, { emitState, emitSideEffect, update }) {
+        phraseSaved({ shown, entropy }, _event, { emitState, emitSideEffect, update }) {
           emitSideEffect({ kind: 'logged', line: 'sign-in window saved a recovery phrase wallet' });
-          emitState({ kind: 'readingAfterPhrase', round, shown, entropy });
+          emitState({ kind: 'readingAfterPhrase', shown, entropy });
           // A paired session stays, so the user can switch back to it. A session that cannot be read now fails the
           // step on the failed view, since the form saying the save failed would be wrong.
           update(readSessionAfterSave(reads.readSession()));
         },
         // The form shows the failure from the import's rejection, which is reported before it rejects.
-        workFailed({ round, shown, check, reply }, { error: cause }, { emitState, emitSideEffect }) {
+        workFailed({ shown, check, reply }, { error: cause }, { emitState, emitSideEffect }) {
           const error = new Error('The recovery phrase wallet could not be saved', { cause });
           emitSideEffect({ kind: 'walletFailed', error, action: 'save' });
           emitSideEffect({ kind: 'importRejected', reply, error });
-          emitState({ kind: 'phrase', round, shown, check });
+          emitState({ kind: 'phrase', shown, check });
         },
       },
       readingAfterPhrase: {
@@ -521,8 +510,8 @@ export function createWindowFlow({
       loggingIn: {
         // A login that ends without a sign-in leaves a failure on show for Retry, one that says how it ended, so no
         // dead code stays up.
-        loginEnded({ round, shown }, { how }, { emitState }) {
-          emitState({ kind: 'pairingIdle', round, shown: { ...shown, pairing: getEndedLoginView(how) } });
+        loginEnded({ shown }, { how }, { emitState }) {
+          emitState({ kind: 'pairingIdle', shown: { ...shown, pairing: getEndedLoginView(how) } });
         },
         loginPaired: finishPairing,
         workFailed: failStep,
@@ -530,36 +519,36 @@ export function createWindowFlow({
       },
       loginFailing: {
         // The core's own failure stays on show for Retry.
-        loginEnded({ round, shown }, _event, { emitState }) {
-          emitState({ kind: 'pairingIdle', round, shown });
+        loginEnded({ shown }, _event, { emitState }) {
+          emitState({ kind: 'pairingIdle', shown });
         },
         // Retry decides only once the login under way answered, so it never lands in the round of the failed one.
-        retryAsked({ round, shown }, _event, { emitState }) {
-          emitState({ kind: 'loggingInThenRetry', round, shown });
+        retryAsked({ shown }, _event, { emitState }) {
+          emitState({ kind: 'loggingInThenRetry', shown });
         },
         loginPaired: finishPairing,
         workFailed: failStep,
         authChanged: followLogin,
       },
       loggingInThenRetry: {
-        loginEnded({ round }, _event, transition) {
-          retryPairing(round, transition);
+        loginEnded(_state, _event, transition) {
+          retryPairing(transition);
         },
         loginPaired: finishPairing,
         workFailed: failStep,
         authChanged: followAuth,
       },
       pairingIdle: {
-        retryAsked({ round }, _event, transition) {
-          retryPairing(round, transition);
+        retryAsked(_state, _event, transition) {
+          retryPairing(transition);
         },
       },
       finishing: {
-        pairedRead({ round, shown, account }, { blob, localWallet }, { emitState, update }) {
+        pairedRead({ shown, account }, { blob, localWallet }, { emitState, update }) {
           // From the account the login answered with. The window runs no session state to cache it, so it caches it
           // here, for a page that shows the main store without a core of its own and for a later Continue.
           const uiState = JSON.stringify(account);
-          emitState({ kind: 'cachingAccount', round, shown, result: { session: { blob, uiState }, localWallet } });
+          emitState({ kind: 'cachingAccount', shown, result: { session: { blob, uiState }, localWallet } });
           update(store.writeUiCache(uiState).then(() => ({ kind: 'accountCached' }), mapWorkFailure));
         },
         workFailed: failStep,
@@ -573,8 +562,8 @@ export function createWindowFlow({
         authChanged: followAuth,
       },
       forgetFailed: {
-        retryAsked({ round, continued }, _event, transition) {
-          forgetWallet({ round, shown: continued }, transition);
+        retryAsked({ continued }, _event, transition) {
+          forgetWallet({ shown: continued }, transition);
         },
       },
       failed: {
@@ -589,45 +578,40 @@ export function createWindowFlow({
     initial: {
       kind: 'live',
       flow: {
-        kind: 'waiting',
-        round: { intent, page: null },
+        kind: 'starting',
         shown: { view: 'connecting' },
       },
     },
     handlers: {
       live: {
-        responderMoved(state, event, transition) {
+        responderMoved(_state, event, transition) {
           switch (event.state.kind) {
             case 'refused':
-              transition.emitState({ kind: 'refused', screen: getStopScreen(state.flow, 'refused') });
+              transition.emitState({ kind: 'refused', screen: getStopScreen('refused', page) });
               return;
             case 'answered':
               transition.emitSideEffect({ kind: 'closed' });
               return;
-            case 'vetted':
-              transition.update({ kind: 'openerKnown', origin: event.state.origin });
-              return;
-            case 'no-opener':
-              transition.update({ kind: 'openerKnown', origin: null });
-              return;
             case 'connecting':
+            case 'vetted':
+            case 'no-opener':
               return;
           }
         },
         // The round's result goes to the page that opened the window, or is said as done when no page did.
         roundEnded({ flow }, { result }, { emitState, emitSideEffect }) {
-          if (flow.round.page === null) {
-            emitState({ kind: 'ended', screen: getStopScreen(flow, 'done-no-opener') });
+          if (page === null) {
+            emitState({ kind: 'ended', screen: getStopScreen('done-no-opener', null) });
             emitSideEffect({ kind: 'logged', line: 'sign-in window signed in with no opener' });
             return;
           }
-          emitState({ kind: 'ended', screen: getSignInScreen(flow) });
+          emitState({ kind: 'ended', screen: getSignInScreen(flow.shown, page) });
           emitSideEffect({ kind: 'logged', line: 'sign-in window sends its result' });
           emitSideEffect({ kind: 'delivered', result });
         },
         cancelAsked: closeWindow,
         disposed: disposeWindow,
-        openerKnown: followFlow,
+        started: followFlow,
         authChanged: followFlow,
         continueAsked: followFlow,
         anotherAsked: followFlow,
@@ -712,6 +696,8 @@ export function createWindowFlow({
   const stopFollowingAuth = auth.listen(() => {
     machine.update({ kind: 'authChanged', auth: auth.get() });
   });
+  // After the responder was heard, so a window that already refused its opener starts nothing.
+  machine.update({ kind: 'started' });
 
   /** Sends `event`, and resolves once the flow's work it started settled. */
   function ask(event: Event): Promise<void> {
@@ -767,19 +753,19 @@ export function createWindowFlow({
   };
 
   /**
-   * The first view once the opener is known, and Retry's after a step that failed. A page that knows a sign-in exists
-   * elsewhere asked to take it, so the window sends it without offering Continue first.
+   * The first view, and Retry's after a step that failed. A page that knows a sign-in exists elsewhere asked to take it,
+   * so the window sends it without offering Continue first.
    */
   function decide(step: Step, transition: Transition<FlowMachine>): void {
-    const { round, shown } = step;
-    switch (round.intent) {
+    const { shown } = step;
+    switch (intent) {
       case 'phrase':
-        transition.emitState({ kind: 'loadingPhrase', round, shown });
+        transition.emitState({ kind: 'loadingPhrase', shown });
         transition.update(loadPhrase().then(check => ({ kind: 'phraseLoaded', check }), mapWorkFailure));
         return;
       case 'resume':
         transition.emitSideEffect({ kind: 'logged', line: 'sign-in window resumes the stored sign-in' });
-        transition.emitState({ kind: 'readingToSend', round, shown });
+        transition.emitState({ kind: 'readingToSend', shown });
         transition.update(toStoredRead(reads.readStored()));
         return;
       case 'signin':
@@ -788,19 +774,19 @@ export function createWindowFlow({
     }
   }
 
-  function readToOffer({ round, shown }: Step, { emitState, update }: Transition<FlowMachine>): void {
-    emitState({ kind: 'readingToOffer', round, shown });
+  function readToOffer({ shown }: Step, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'readingToOffer', shown });
     update(toStoredRead(reads.readStored()));
   }
 
   /** Retry over a failed pairing shows the spinner while the store decides again what to offer. */
-  function retryPairing(round: Round, transition: Transition<FlowMachine>): void {
-    readToOffer({ round, shown: { view: 'pairing', pairing: SPINNER } }, transition);
+  function retryPairing(transition: Transition<FlowMachine>): void {
+    readToOffer({ shown: { view: 'pairing', pairing: SPINNER } }, transition);
   }
 
   /** Shows the pairing and logs in. The login waits on the phone, so it answers outside `await()`. */
-  function pair(round: Round, { emitState, update }: Transition<FlowMachine>): void {
-    emitState({ kind: 'loggingIn', round, shown: { view: 'pairing', pairing: SPINNER } });
+  function pair({ emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'loggingIn', shown: { view: 'pairing', pairing: SPINNER } });
     void commands
       .login()
       .then(
@@ -819,18 +805,18 @@ export function createWindowFlow({
    * once it was, or the user chooses to.
    */
   function logOut(
-    { round, shown }: Continued,
+    { shown }: Continued,
     startSignOut: () => Promise<LogoutOutcome>,
     { emitState, emitSideEffect, update }: Transition<FlowMachine>,
   ): void {
     emitSideEffect({ kind: 'logged', line: 'sign-in window uses another account' });
-    emitState({ kind: 'loggingOut', round, shown });
+    emitState({ kind: 'loggingOut', shown });
     update(startSignOut().then(told => ({ kind: 'loggedOut', outcome: told }), mapWorkFailure));
   }
 
   /** Forgets the wallet through the flag keeper, which drops the flag once the store holds no sign-in. */
-  function forgetWallet({ round, shown }: Continued, { emitState, update }: Transition<FlowMachine>): void {
-    emitState({ kind: 'forgettingWallet', round, shown });
+  function forgetWallet({ shown }: Continued, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'forgettingWallet', shown });
     update(
       signIns
         .clear({ drop: () => wallet.forget().then(() => true) })
@@ -839,21 +825,21 @@ export function createWindowFlow({
   }
 
   /** The rest of Use another account once the paired session ended: forget the wallet and pair. */
-  function leaveForAnother({ round, shown }: Continued, { emitState, update }: Transition<FlowMachine>): void {
-    emitState({ kind: 'checkingSignedOut', round, shown });
+  function leaveForAnother({ shown }: Continued, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'checkingSignedOut', shown });
     // A store that cannot be read may still hold the session, so the window does not go on over it.
     update(reads.isSessionGone().then(gone => ({ kind: gone ? 'sessionGone' : 'sessionHeld' }), mapWorkFailure));
   }
-}
 
-function getScreen(state: State): SignInScreen {
-  switch (state.kind) {
-    case 'live':
-      return getSignInScreen(state.flow);
-    case 'refused':
-    case 'ended':
-    case 'disposed':
-      return state.screen;
+  function getScreen(state: State): SignInScreen {
+    switch (state.kind) {
+      case 'live':
+        return getSignInScreen(state.flow.shown, page);
+      case 'refused':
+      case 'ended':
+      case 'disposed':
+        return state.screen;
+    }
   }
 }
 

@@ -73,6 +73,8 @@ function pageFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
 type OpenFlowParams = {
   responder: Responder<unknown>;
   intent: SignInIntent;
+  /** The vetted origin of dot.li's own page that opened the window, or null when no page did. */
+  origin: string | null;
   bridge: HostBridge;
 };
 
@@ -202,12 +204,12 @@ async function runSignOut({ taken, enabled, notified, read, firstParty }: RunSig
 }
 
 /**
- * Starts the sign-in flow for `flow.intent`, whose views name the page by `flow.pageLabel` and which hands what the
- * store holds to `flow.deliver`, on the window's own store and core.
+ * Starts the sign-in flow for `flow.intent`, whose views name the page `flow.page` and which hands what the store
+ * holds to `flow.deliver`, on the window's own store and core.
  */
 function startFlow(
   bridge: HostBridge,
-  flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>,
+  flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'page' | 'deliver' | 'close'>,
 ): WindowFlow {
   const started = createWindowFlow({
     auth: authState.store,
@@ -222,13 +224,13 @@ function startFlow(
 }
 
 /** Shows the sign-in flow for `intent`, which delivers to the responder's opener. */
-function openFlow({ responder, intent, bridge }: OpenFlowParams): void {
+function openFlow({ responder, intent, origin, bridge }: OpenFlowParams): void {
   // The flow lives as long as the window's page, so nothing disposes it.
   const { screen } = startFlow(bridge, {
     responder,
     intent,
     // dot.li's own pages are named by their host.
-    pageLabel: origin => new URL(origin).host,
+    page: origin === null ? null : new URL(origin).host,
     deliver(result: SessionResult) {
       // Now, or with the next vetting of a window restored from the back-forward cache meanwhile.
       responder.send(result);
@@ -426,7 +428,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
     const stopShowingResponder = showResponder(responder);
     const bridge = await bootSignIn(taken, enabled);
     stopShowingResponder();
-    openFlow({ responder, intent: request.intent, bridge });
+    openFlow({ responder, intent: request.intent, origin: null, bridge });
     return;
   }
 
@@ -443,7 +445,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
   }
   stopShowingResponder();
   if (round.party === 'first') {
-    openFlow({ responder, intent: round.intent, bridge: round.booted });
+    openFlow({ responder, intent: round.intent, origin: round.origin, bridge: round.booted });
   } else {
     openSiteFlow({ responder, round, close: closeWindow });
   }

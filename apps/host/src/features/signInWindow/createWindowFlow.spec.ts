@@ -33,7 +33,7 @@ type Stored = {
 type OpenWindowParams = {
   /** The request's intent, `signin` by default. */
   intent?: SignInIntent;
-  /** Whether the opener is vetted before the flow starts. Without it the window still waits for its hello. */
+  /** Whether the opener is vetted before the flow starts. Without it the responder still waits for its hello. */
   vetted?: boolean;
   /** Whether a page opened the window, false for a window no page opened. */
   opener?: boolean;
@@ -45,8 +45,10 @@ type OpenWindowParams = {
   loadPhrase?: WindowFlowParams['loadPhrase'];
   /** Whether what the flow delivers goes on to the opener, as the window's own delivery sends it. True by default. */
   forward?: boolean;
-  /** How the views name the vetted page, by its host as for dot.li's own page by default. */
-  pageLabel?: WindowFlowParams['pageLabel'];
+  /** How the views name the page that opened the window, by its host as for dot.li's own page by default. */
+  page?: string;
+  /** What the main store's session read fails with from the window's start, none by default. */
+  readFailure?: Error;
   /** Runs on each flag write once the flag is up, and the write lands when it resolves. Lands at once by default. */
   onFlagSet?: () => Promise<void>;
 };
@@ -111,7 +113,7 @@ function openWindow(options: OpenWindowParams = {}) {
     phone: false,
     save: null,
     forget: null,
-    read: null,
+    read: options.readFailure ?? null,
     walletRead: null,
   };
   const signIns = createOwnerSignInFlag({
@@ -200,7 +202,7 @@ function openWindow(options: OpenWindowParams = {}) {
     },
     loadPhrase: options.loadPhrase ?? (() => Promise.resolve(PHRASE_CHECK)),
     intent: options.intent ?? 'signin',
-    pageLabel: options.pageLabel ?? (origin => new URL(origin).host),
+    page: opener === null ? null : (options.page ?? new URL(PAGE).host),
     deliver(result) {
       delivered.push(result);
       if (options.forward !== false) {
@@ -297,20 +299,6 @@ function waitForPairing(flow: WindowFlow, kind: PairingView['kind']): Promise<Si
 }
 
 describe('session window flow', () => {
-  it('As a user in the sign-in window, I see nothing to press and nothing starts before the opener is vetted', () => {
-    // Given an empty main store, and an opener that has not said hello
-    const stored: Stored = {};
-
-    // When the window opens and no hello arrives
-    const { flow, calls, presence } = openWindow({ stored });
-
-    // Then it connects with no page named, and nothing started or flagged
-    expect(flow.screen.get().view).toBe('connecting');
-    expect(flow.screen.get().pageHost).toBeNull();
-    expect(calls).toEqual([]);
-    expect(presence.calls).toEqual([]);
-  });
-
   it('As a user in a sign-in window that refused its opener, I see the refused view and nothing starts', () => {
     // Given a window not yet vetted
     const { flow, refuse, calls } = openWindow();
@@ -418,16 +406,15 @@ describe('session window flow', () => {
     expect(getOffer(flow)).toEqual({ wallet: 'local', account: null });
   });
 
-  it('As a user in the sign-in window, I see the vetted page and it is named as the window is told to name it', async () => {
-    // Given an empty main store and a window that names a page by its full origin
-    const { flow, vet } = openWindow({ pageLabel: origin => `named ${origin}` });
+  it('As a user in the sign-in window, I see the page named as the window is told to name it', async () => {
+    // Given an empty main store and a window that names its page by its full origin
+    const { flow } = openWindow({ page: PAGE });
 
-    // When the opener is vetted
-    vet();
+    // When the window pairs
     await waitForView(flow, 'pairing');
 
-    // Then the pairing names the page by the label made from its vetted origin
-    expect(flow.screen.get().pageHost).toBe(`named ${PAGE}`);
+    // Then the pairing names the page as told
+    expect(flow.screen.get().pageHost).toBe(PAGE);
   });
 
   it('As a user in the sign-in window, I pair and the cookie is left to the core while the session it stored is sent', async () => {
@@ -702,12 +689,12 @@ describe('session window flow', () => {
   });
 
   it('As a user in the sign-in window whose first step failed, I am told so instead of waiting and Retry decides again', async () => {
-    // Given a window over a store that cannot be read
-    const { flow, vet, failures, metrics } = openWindow({ stored: { session: BLOB } });
-    failures.read = new Error('store down');
+    // Given a store that cannot be read
+    const stored: Stored = { session: BLOB };
+    const readFailure = new Error('store down');
 
-    // When the opener is vetted
-    vet();
+    // When the window opens over it and its first step settles
+    const { flow, failures, metrics } = openWindow({ stored, readFailure });
     await flow.await();
 
     // Then the failed view shows, counted
@@ -1337,8 +1324,8 @@ describe('session window flow', () => {
       const { flow, readSent, vet, failures, closed } = openWindow({
         intent: 'resume',
         stored: { session: BLOB, uiState: UI_STATE },
+        readFailure: new Error('frame unavailable'),
       });
-      failures.read = new Error('frame unavailable');
       vet();
       await waitForView(flow, 'failed');
 
@@ -1350,22 +1337,6 @@ describe('session window flow', () => {
       // Then the stored session is sent
       expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
     });
-  });
-
-  it('As a dotli integrator, I dispose a flow waiting for its opener and it shows nothing of a hello or a pairing after it, while its responder still hears the hello', () => {
-    // Given a window flow whose opener has not said hello
-    const { flow, responder, auth, vet, calls } = openWindow({ stored: { session: BLOB, uiState: UI_STATE } });
-    const shown = flow.screen.get();
-
-    // When it is disposed, then the opener is vetted and the core starts pairing
-    flow.dispose();
-    vet();
-    auth.set(PAIRING);
-
-    // Then the flow shows what it showed and started nothing, while the responder it does not own was vetted
-    expect(flow.screen.get()).toBe(shown);
-    expect(calls).toEqual([]);
-    expect(responder.state.get()).toMatchObject({ kind: 'vetted', origin: PAGE });
   });
 
   it("As a dotli integrator, I dispose a flow while a step reads the store and the step's answer changes nothing", async () => {
@@ -1402,25 +1373,6 @@ describe('session window flow', () => {
     // Then the window was not closed by the flow
     expect(responder.state.get()).toEqual({ kind: 'answered' });
     expect(calls).toEqual([]);
-  });
-
-  it("As the session window, I vet the opener and read the flow's new screen at once in the responder's delivery", () => {
-    // Given a reader of the flow's screen that the responder runs after the flow's own follower, in the same delivery
-    const { flow, responder, vet } = openWindow();
-    let readHost: string | null | undefined;
-    onTestFinished(
-      responder.state.listen(state => {
-        if (state.kind === 'vetted') {
-          readHost = flow.screen.get().pageHost;
-        }
-      }),
-    );
-
-    // When the opener is vetted
-    vet();
-
-    // Then the reader inside the responder's delivery already saw the page it names
-    expect(readHost).toBe('browse.dot.li');
   });
 
   it('As a user in the sign-in window, I hear my core move past its code while my login runs and see the step it moved on to', async () => {

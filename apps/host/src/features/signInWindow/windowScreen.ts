@@ -25,12 +25,10 @@ export type Shown =
   | { view: 'pairing'; pairing: PairingView }
   | { view: 'continue'; offered: Offered; failure: WindowFailure | null };
 
-/** A step of a round with the view it shows. Every view carries the page the round signs in for, null with no opener. */
-type ShownStep = { round: { page: string | null }; shown: Shown };
-
 export const SPINNER: PairingView = { kind: 'spinner' };
 
-export function getSignInScreen({ round: { page }, shown }: ShownStep): SignInScreen {
+/** The screen of `shown`, which names `page`, the page the window signs in for, null when no page opened it. */
+export function getSignInScreen(shown: Shown, page: string | null): SignInScreen {
   switch (shown.view) {
     case 'continue':
       return { view: 'continue', offer: shown.offered.offer, pageHost: page, failure: shown.failure };
@@ -43,9 +41,9 @@ export function getSignInScreen({ round: { page }, shown }: ShownStep): SignInSc
   }
 }
 
-/** The view the window stops on, which keeps the page the step showed. */
-export function getStopScreen({ round }: ShownStep, view: 'refused' | 'done-no-opener'): SignInScreen {
-  return { view, pageHost: round.page, failure: null };
+/** The view the window stops on, which still names `page`. */
+export function getStopScreen(view: 'refused' | 'done-no-opener', page: string | null): SignInScreen {
+  return { view, pageHost: page, failure: null };
 }
 
 /** What the window shows before its flow decides anything: it waits on its opener, or turned it away. */

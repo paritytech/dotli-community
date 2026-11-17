@@ -27,7 +27,7 @@ import { createSiteTransaction } from '../siteSignIn/index.js';
 import type { SiteTxSigner } from '../siteSignIn/index.js';
 
 /** What the site's round decides for its window flow, which the caller completes with the window's own parts. */
-type CreateWindowFlowParams = Pick<WindowFlowParams, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>;
+type CreateWindowFlowParams = Pick<WindowFlowParams, 'responder' | 'intent' | 'page' | 'deliver' | 'close'>;
 
 export type SiteWindowParams = {
   request: SiteRequest;
@@ -134,7 +134,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
       responder,
       intent: 'resume',
       // A site is named by its full origin, so two sites on one host never read the same.
-      pageLabel: pageOrigin => pageOrigin,
+      page: origin,
       // The flow is done once it stored a sign-in, so a flow the round starts after it shows alone. The result stays
       // here, so nothing of the session reaches the round.
       deliver() {
