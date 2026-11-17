@@ -49,8 +49,8 @@ export type ScheduledNotificationsParams = {
   show: ShowNotification;
   /** Undefined where the browser has no Web Locks. */
   locks: Pick<LockManager, 'request'> | undefined;
-  /** Null where the browser has no BroadcastChannel. */
-  openChannel: (name: string) => BroadcastChannel | null;
+  /** Opens a channel to the other tabs of this origin. */
+  openChannel: (name: string) => WakeChannel;
   /** The document, whose visibility sets how late a due notification may show. */
   visibility: VisibilitySource;
   /** The window, whose `pagehide` stops the poller and whose restoring `pageshow` starts it again. */
@@ -62,6 +62,9 @@ export type ScheduledNotificationsParams = {
 };
 
 export type ScheduledNotifications = ReturnType<typeof createScheduledNotifications>;
+
+/** The scheduler's channel to the other tabs. A `BroadcastChannel` is one. */
+type WakeChannel = Pick<BroadcastChannel, 'postMessage' | 'close' | 'onmessage'>;
 
 type FireSource = 'realtime' | 'rehydrate';
 
@@ -83,13 +86,13 @@ type Page = { stopListening: () => void; lifetime: AbortController };
 /** `rehydrating` fires what fell due as `rehydrate`, and `ticking` as `realtime`. A shown page holds the channel. */
 type SchedulerState =
   | { kind: 'uninitialized' }
-  | { kind: 'idle'; page: Page; channel: BroadcastChannel | null }
-  | { kind: 'polling'; page: Page; channel: BroadcastChannel | null; stopPoll: () => void }
-  | { kind: 'rehydrating'; page: Page; channel: BroadcastChannel | null; round: Round }
+  | { kind: 'idle'; page: Page; channel: WakeChannel }
+  | { kind: 'polling'; page: Page; channel: WakeChannel; stopPoll: () => void }
+  | { kind: 'rehydrating'; page: Page; channel: WakeChannel; round: Round }
   | {
       kind: 'ticking';
       page: Page;
-      channel: BroadcastChannel | null;
+      channel: WakeChannel;
       stopPoll: () => void;
       round: Round;
       /**
@@ -128,8 +131,8 @@ type SchedulerEffect =
   | { kind: 'stepFailed'; step: PollStep; error: unknown }
   | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource }
   /** Wakes the other tabs, since a notification was scheduled. A cancel or a fire only shrinks the store. */
-  | { kind: 'posted'; channel: BroadcastChannel | null }
-  | { kind: 'channelClosed'; channel: BroadcastChannel | null }
+  | { kind: 'posted'; channel: WakeChannel }
+  | { kind: 'channelClosed'; channel: WakeChannel }
   /** The poller or the page listeners let go of. */
   | { kind: 'stopped'; stop: () => void }
   | { kind: 'lifetimeEnded'; lifetime: AbortController };
@@ -383,10 +386,10 @@ export function createScheduledNotifications({
           return;
         }
         case 'posted':
-          effect.channel?.postMessage({ kind: 'scheduled' });
+          effect.channel.postMessage({ kind: 'scheduled' });
           return;
         case 'channelClosed':
-          effect.channel?.close();
+          effect.channel.close();
           return;
         case 'stopped':
           effect.stop();
@@ -541,13 +544,11 @@ export function createScheduledNotifications({
   }
 
   /** Opens the channel to the other tabs, whose every message wakes the poller. */
-  function openWakeChannel(update: Transition<SchedulerMachine>['update']): BroadcastChannel | null {
+  function openWakeChannel(update: Transition<SchedulerMachine>['update']): WakeChannel {
     const channel = openChannel('dotli:scheduled-notifications');
-    if (channel !== null) {
-      channel.onmessage = () => {
-        update({ kind: 'woken' });
-      };
-    }
+    channel.onmessage = () => {
+      update({ kind: 'woken' });
+    };
     return channel;
   }
 

@@ -16,7 +16,7 @@ export function pageNotifications(): ScheduledNotifications {
     store: scheduledNotifications,
     show: showNotification,
     locks: 'locks' in navigator ? navigator.locks : undefined,
-    openChannel: name => (typeof BroadcastChannel === 'function' ? new BroadcastChannel(name) : null),
+    openChannel: name => new BroadcastChannel(name),
     visibility: document,
     lifecycle: window,
   });

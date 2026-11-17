@@ -76,7 +76,7 @@ function createPollerHarness() {
         request: ((_name: string, _options: unknown, run: (lock: object) => unknown) =>
           run({})) as LockManager['request'],
       },
-      openChannel: () => null,
+      openChannel: createQuietChannel,
       visibility,
       lifecycle,
       timers,
@@ -436,7 +436,7 @@ describe('scheduled notifications poller', () => {
       overrides: {
         openChannel: name => {
           opened.push(name);
-          return null;
+          return createQuietChannel();
         },
       },
     });
@@ -589,7 +589,7 @@ describe('scheduled notifications disposed', () => {
       overrides: {
         openChannel: name => {
           opened.push(name);
-          return null;
+          return createQuietChannel();
         },
       },
     });
@@ -640,3 +640,8 @@ describe('scheduled notifications disposed', () => {
     expect(thrown).toBeUndefined();
   });
 });
+
+/** A channel no other tab is on. */
+function createQuietChannel(): ReturnType<ScheduledNotificationsParams['openChannel']> {
+  return { postMessage: () => undefined, close: () => undefined, onmessage: null };
+}
