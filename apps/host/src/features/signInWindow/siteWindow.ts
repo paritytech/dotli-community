@@ -65,7 +65,7 @@ type OpenSiteTransactionParams = Omit<SiteWindowParams, 'request'> & {
 
 /** Runs a site's sign-in for the vetted origin with the window flow it reuses. */
 export function openSiteSignIn({ origin, responder, createWindowFlow, ...round }: SiteWindowParams): SiteRound {
-  const startWindowFlow = getWindowFlowStart({ origin, responder, createWindowFlow });
+  const startWindowFlow = createWindowFlowStart({ origin, responder, createWindowFlow });
   return createSiteSignIn({ ...round, origin, responder, startWindowFlow });
 }
 
@@ -76,12 +76,12 @@ export function openSiteTransaction({
   createWindowFlow,
   ...round
 }: OpenSiteTransactionParams): SiteRound {
-  const startWindowFlow = getWindowFlowStart({ origin, responder, createWindowFlow });
+  const startWindowFlow = createWindowFlowStart({ origin, responder, createWindowFlow });
   return createSiteTransaction({ ...round, origin, responder, startWindowFlow });
 }
 
 /** Starts the window flow a site's round reuses, which resumes the stored sign-in for the site. */
-function getWindowFlowStart({
+function createWindowFlowStart({
   origin,
   responder,
   createWindowFlow,
