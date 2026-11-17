@@ -63,8 +63,6 @@ export type ScheduledNotificationsParams = {
 
 export type ScheduledNotifications = ReturnType<typeof createScheduledNotifications>;
 
-type WakeMessage = { kind: 'scheduled' } | { kind: 'cancelled' } | { kind: 'fired'; hostId: number };
-
 type FireSource = 'realtime' | 'rehydrate';
 
 /** A round's step. A step's events carry the `Round` value they were started for. */
@@ -114,7 +112,6 @@ type SchedulerEvent =
   | { kind: 'ticked' }
   | { kind: 'woken' }
   | { kind: 'scheduled' }
-  | { kind: 'cancelled' }
   | { kind: 'pageHidden' }
   | { kind: 'pageRestored' }
   | { kind: 'disposed' }
@@ -130,7 +127,8 @@ type SchedulerEffect =
   | { kind: 'stepSucceeded'; step: PollStep }
   | { kind: 'stepFailed'; step: PollStep; error: unknown }
   | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource }
-  | { kind: 'posted'; channel: BroadcastChannel | null; message: WakeMessage }
+  /** Wakes the other tabs, since a notification was scheduled. A cancel or a fire only shrinks the store. */
+  | { kind: 'posted'; channel: BroadcastChannel | null }
   | { kind: 'channelClosed'; channel: BroadcastChannel | null }
   /** The poller or the page listeners let go of. */
   | { kind: 'stopped'; stop: () => void }
@@ -228,7 +226,7 @@ export function createScheduledNotifications({
    * delete is what claims it and the store no longer holds it for anyone else.
    */
   const fireClaimed: HandlerOf<SchedulerMachine, AwakeState['kind'] | 'hidden' | 'disposed', 'claimed'> = (
-    state,
+    _state,
     { record, removed, source },
     { emitSideEffect },
   ) => {
@@ -236,10 +234,6 @@ export function createScheduledNotifications({
       return;
     }
     emitSideEffect({ kind: 'fired', record, source });
-    // A hidden or disposed page's channel closed as it hid or was disposed.
-    if (state.kind !== 'hidden' && state.kind !== 'disposed') {
-      emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'fired', hostId: record.hostId } });
-    }
   };
   /** Shows the claimed record, then claims the next due one when the claim is this round's. */
   const settleClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimed'> = (state, event, transition) => {
@@ -269,14 +263,7 @@ export function createScheduledNotifications({
     _event,
     { emitSideEffect },
   ) => {
-    emitSideEffect({ kind: 'posted', channel, message: { kind: 'scheduled' } });
-  };
-  const announceCancelled: HandlerOf<SchedulerMachine, AwakeState['kind'], 'cancelled'> = (
-    { channel },
-    _event,
-    { emitSideEffect },
-  ) => {
-    emitSideEffect({ kind: 'posted', channel, message: { kind: 'cancelled' } });
+    emitSideEffect({ kind: 'posted', channel });
   };
   /** Stops the poller, since IDB starts closing as the page unloads, and closes the channel, which a restore reopens. */
   const hide: HandlerOf<SchedulerMachine, AwakeState['kind'], 'pageHidden'> = (state, _event, transition) => {
@@ -317,9 +304,8 @@ export function createScheduledNotifications({
         },
         scheduled(state, _event, transition) {
           startPolling(state, transition);
-          transition.emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'scheduled' } });
+          transition.emitSideEffect({ kind: 'posted', channel: state.channel });
         },
-        cancelled: announceCancelled,
         claimed: fireClaimed,
         pageHidden: hide,
         disposed: shutDown,
@@ -329,7 +315,6 @@ export function createScheduledNotifications({
           runStep({ ...state, kind: 'ticking', round: { kind: 'removingStale' }, rescan: false }, transition);
         },
         scheduled: announceScheduled,
-        cancelled: announceCancelled,
         claimed: fireClaimed,
         pageHidden: hide,
         disposed: shutDown,
@@ -342,7 +327,6 @@ export function createScheduledNotifications({
         claimed: settleClaim,
         claimFailed: skipFailedClaim,
         scheduled: announceScheduled,
-        cancelled: announceCancelled,
         pageHidden: hide,
         disposed: shutDown,
       },
@@ -359,9 +343,8 @@ export function createScheduledNotifications({
         },
         scheduled(state, _event, { emitState, emitSideEffect }) {
           emitState({ ...state, rescan: true });
-          emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'scheduled' } });
+          emitSideEffect({ kind: 'posted', channel: state.channel });
         },
-        cancelled: announceCancelled,
         pageHidden: hide,
         disposed: shutDown,
       },
@@ -400,7 +383,7 @@ export function createScheduledNotifications({
           return;
         }
         case 'posted':
-          effect.channel?.postMessage(effect.message);
+          effect.channel?.postMessage({ kind: 'scheduled' });
           return;
         case 'channelClosed':
           effect.channel?.close();
@@ -478,12 +461,8 @@ export function createScheduledNotifications({
     return { ok: true, id: result.id, immediate: false };
   }
 
-  async function cancel(productId: ProductId, perProductId: number): Promise<boolean> {
-    const removed = await store.cancel(productId, perProductId);
-    if (removed) {
-      machine.update({ kind: 'cancelled' });
-    }
-    return removed;
+  function cancel(productId: ProductId, perProductId: number): Promise<boolean> {
+    return store.cancel(productId, perProductId);
   }
 
   function dispose(): void {
