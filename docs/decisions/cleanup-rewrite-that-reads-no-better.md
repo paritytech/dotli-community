@@ -1,7 +1,7 @@
 # A cleanup rewrite that reads no better
 
 A developer runs a simplification pass over code that already works. A rule from the style guide or the
-reducing-complexity skill matches the shape in front of them, such as a helper used only once, a few functions that
+reduce-complexity skill matches the shape in front of them, such as a helper used only once, a few functions that
 each branch over the same union, or an optional parameter that only the spec passes. The rewrite the rule describes is
 possible, and the question is whether a match is reason enough to make it.
 
