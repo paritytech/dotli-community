@@ -116,8 +116,7 @@ type Failed = Live & { error: Error };
  * connect a close would drop. `awaitingHeard` is flushed and waits for every served port to subscribe to its status.
  */
 type LifecycleState =
-  | ({ kind: 'syncing' } & Starting)
-  | ({ kind: 'ready' } & Starting)
+  | ({ kind: 'running' } & Starting)
   | ({ kind: 'failedAtStart' } & Failed)
   | ({ kind: 'awaitingTab' } & Failed)
   | ({ kind: 'closeScheduled'; timer: unknown } & Failed)
@@ -143,7 +142,6 @@ type LifecycleEvent =
   | ({ kind: 'scopeOpened'; scope: EngineScope } & PortEvent)
   | { kind: 'portsChanged' }
   | { kind: 'beat' }
-  | { kind: 'markedReady' }
   | { kind: 'failed'; error: Error }
   | { kind: 'closeDue' }
   | { kind: 'flushed' }
@@ -152,14 +150,13 @@ type LifecycleEvent =
 
 /** Each call-out is an effect of its own, so one that throws skips none of the others. */
 type LifecycleEffect =
-  | { kind: 'portConnected'; engine: 'syncing' | 'ready' | 'failed' }
+  | { kind: 'portConnected'; engine: 'running' | 'failed' }
   | { kind: 'portReleased' }
   | { kind: 'portClosed' }
   | { kind: 'releasedPortClosed' }
   | { kind: 'workerClosing'; ports: number }
   | { kind: 'flushFailed'; error: unknown }
   | { kind: 'everyTabPausedChanged'; paused: boolean }
-  | { kind: 'statusReady' }
   | { kind: 'statusFailed'; error: Error }
   | { kind: 'statusEnded'; sink: FrameStatusSink; reason: Error }
   | { kind: 'transportDisposed'; transport: ProtocolTransport; reason: Error }
@@ -181,7 +178,7 @@ type Params = {
   /** The worker global, closed once a dead worker's ports all heard why. */
   scope: Pick<WorkerScope, 'close'>;
   /** What every port hears through its `frame.status` subscription. */
-  status: Pick<FrameStatus, 'markReady' | 'fail'>;
+  status: Pick<FrameStatus, 'fail'>;
   /**
    * Sends buffered telemetry before the worker closes. May reject. A rejection is captured, logged and counted, and the
    * close goes on.
@@ -235,8 +232,7 @@ export function createWorkerLifecycle({
       heard: false,
     });
     switch (state.kind) {
-      case 'syncing':
-      case 'ready':
+      case 'running':
         transition.emitState({ ...state, ports, reached: true });
         transition.emitSideEffect({ kind: 'portConnected', engine: state.kind });
         break;
@@ -255,7 +251,7 @@ export function createWorkerLifecycle({
     transition.update({ kind: 'portsChanged' });
   };
   /** Latches the first failure. A later failure is only its symptom, and finds no handler. */
-  const failWorker: HandlerOf<LifecycleMachine, 'syncing' | 'ready', 'failed'> = (
+  const failWorker: HandlerOf<LifecycleMachine, 'running', 'failed'> = (
     { reached, ports, everyTabPaused },
     { error },
     transition,
@@ -437,30 +433,10 @@ export function createWorkerLifecycle({
   const machine = createStateMachine<LifecycleMachine>({
     initial:
       initialFailure === null
-        ? { kind: 'syncing', ports: new Map(), everyTabPaused: false, reached: false }
+        ? { kind: 'running', ports: new Map(), everyTabPaused: false, reached: false }
         : { kind: 'failedAtStart', ports: new Map(), everyTabPaused: false, error: initialFailure },
     handlers: {
-      syncing: {
-        markedReady(state, _event, { emitState, emitSideEffect }) {
-          emitState({ ...state, kind: 'ready' });
-          emitSideEffect({ kind: 'statusReady' });
-        },
-        failed: failWorker,
-        portConnected: connectPort,
-        heard: handlePort,
-        spoke: handlePort,
-        portClosed: handlePort,
-        statusSinkAdded: handlePort,
-        statusSinkRemoved: handlePort,
-        beatSinkAdded: handlePort,
-        beatSinkRemoved: handlePort,
-        pauseAsked: handlePort,
-        scopeOpened: handlePort,
-        portsChanged: updateEveryTabPaused,
-        beat: beatPorts,
-        disposed: disposeLifecycle,
-      },
-      ready: {
+      running: {
         failed: failWorker,
         portConnected: connectPort,
         heard: handlePort,
@@ -612,9 +588,6 @@ export function createWorkerLifecycle({
         case 'everyTabPausedChanged':
           onEveryTabPausedChange(effect.paused);
           break;
-        case 'statusReady':
-          status.markReady();
-          break;
         case 'statusFailed':
           status.fail(effect.error);
           break;
@@ -666,8 +639,6 @@ export function createWorkerLifecycle({
   return {
     /** How many ports the worker serves. Never throws. */
     countPorts: (): number => countHeld(machine.state.get(), 'served'),
-    /** Whether the worker is marked ready and has not failed, closed or been disposed since. */
-    isReady: (): boolean => machine.state.get().kind === 'ready',
     /**
      * Serves a newly connected port until its tab goes silent or its end closes, and schedules the close of a dead
      * worker that waited for its first tab. Never throws.
@@ -715,10 +686,6 @@ export function createWorkerLifecycle({
       return () => {
         machine.update({ kind: 'beatSinkRemoved', port, sink });
       };
-    },
-    /** Marks the worker ready and tells every port. A failed worker stays failed. Never throws. */
-    markReady(): void {
-      machine.update({ kind: 'markedReady' });
     },
     /** Latches the first failure, tells every port and closes the worker. A later failure does nothing. Never throws. */
     fail(error: Error): void {
@@ -858,8 +825,7 @@ function toSetWithout<T>(set: ReadonlySet<T>, item: T): ReadonlySet<T> {
 /** The ports and pause of a worker still open, or `null` once it closed or was disposed. */
 function readLive(state: LifecycleState): Live | null {
   switch (state.kind) {
-    case 'syncing':
-    case 'ready':
+    case 'running':
     case 'failedAtStart':
     case 'awaitingTab':
     case 'closeScheduled':

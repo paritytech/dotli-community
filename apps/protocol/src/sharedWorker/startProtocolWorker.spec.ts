@@ -1569,21 +1569,6 @@ describe('protocol SharedWorker', () => {
 });
 
 describe('worker lifecycle', () => {
-  it('As a dead shared worker that is then marked ready, I stay failed and still close once my port heard why', async () => {
-    // Given a lifecycle serving one port that subscribed to its status
-    const { lifecycle, timers, close } = startLifecycle();
-    const session = openSession(lifecycle);
-    lifecycle.hear(session);
-
-    // When the worker fails, is then marked ready, and its queued close runs
-    lifecycle.fail(new Error(FATAL));
-    lifecycle.markReady();
-    await timers.advance(0);
-
-    // Then it stayed failed and closed once
-    expect(close).toHaveBeenCalledTimes(1);
-  });
-
   it('As the shared worker, I dispose my lifecycle twice and its heartbeat stops', () => {
     // Given a lifecycle beating a served port
     const { lifecycle, heartbeat } = startLifecycle();

@@ -163,7 +163,7 @@ export function startProtocolWorker({
       // Only this worker can meter the light client every tab shares, so every tab hears its total from one meter.
       onNetBytes: netBytes === undefined ? () => (): void => undefined : shareNetBytes(netBytes),
       // A tab that subscribes once the chains are synced paid no sync cost, so the reads before it are hits.
-      hasJoinedSynced: lifecycle.isReady,
+      hasJoinedSynced: () => machine.state.get().kind === 'serving',
     }),
     openSpan,
     requireEngine,
@@ -291,7 +291,7 @@ export function startProtocolWorker({
           break;
         case 'presyncComplete':
           report.log.event('Pre-sync complete', { ms: effect.ms });
-          lifecycle.markReady();
+          status.markReady();
           // Warmed in the background, so a later People read does not wait on a cold warp sync. Ready never waits on it.
           effect.service.warmPeople(WORKER_LOG_TAG);
           break;
