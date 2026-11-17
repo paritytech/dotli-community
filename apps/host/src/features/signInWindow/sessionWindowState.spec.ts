@@ -6,7 +6,7 @@ import { atom } from 'nanostores';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { sessionWindowState, type WindowScreen } from './sessionWindowState.js';
 
-const CONNECTING: WindowScreen = { view: 'connecting', pageHost: null, failure: null, pairing: { kind: 'spinner' } };
+const CONNECTING: WindowScreen = { view: 'connecting', pageHost: null, failure: null };
 
 afterEach(() => {
   resetAllStoresForTests();

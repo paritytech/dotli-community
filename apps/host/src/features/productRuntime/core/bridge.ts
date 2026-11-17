@@ -87,7 +87,6 @@ const bootRuntime = createCoreRuntimeBoot({
   createCallbacks: options =>
     createHostCallbacks({
       ...options,
-      prompts: hostPrompts,
       notifications: pageNotifications(),
       createAsks:
         pageRole.get() === 'signin-window'

@@ -46,7 +46,7 @@ describe('site sign request', () => {
     {
       name: 'a call and a token',
       extra: { call: '0x0a03', site_token: createSiteToken(32) },
-      read: { siteToken: createSiteToken(32), call: '0x0a03' },
+      read: { siteToken: createSiteToken(32), call: Uint8Array.of(0x0a, 0x03) },
     },
     { name: 'no call and no token, as the call follows as a payload,', extra: {}, read: {} },
     {

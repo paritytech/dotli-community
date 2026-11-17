@@ -19,6 +19,7 @@ import { consentAndStore } from '../../testing/consentAndStore.js';
 import { createGrant } from '../../testing/createGrant.js';
 import { getResult } from '../../testing/getResult.js';
 import {
+  FLOW_SCREEN,
   MAIN_ACCOUNT,
   MAIN_OWNER,
   NEW_SITE_TOKEN,
@@ -76,8 +77,6 @@ type StartRoundParams = {
   saveGate?: Promise<void>;
   /** Whether saving a grant fails. */
   saveFails?: boolean;
-  /** Whether the first start of the window flow fails. */
-  windowFlowFails?: boolean;
   /** Whether reading a grant fails. */
   readFails?: boolean;
   /** Whether closing the window throws. */
@@ -186,8 +185,8 @@ async function startRound(options: StartRoundParams = {}) {
     },
     await: () => Promise.resolve(),
   };
-  let windowFlowFails = options.windowFlowFails === true;
-  const windowFlows: { stored: () => void; close: () => void; failed: (error: unknown) => void }[] = [];
+  // Each window flow the round started, with how many times the round disposed it.
+  const windowFlows: { stored: () => void; close: () => void; disposes: number }[] = [];
   const closed = createDeferred<undefined>();
   let closes = 0;
   const flow = createSiteRound({
@@ -206,13 +205,15 @@ async function startRound(options: StartRoundParams = {}) {
       changes.notify();
       return readMain(signal);
     },
-    startWindowFlow(storedSignIn, close, failed) {
-      if (windowFlowFails) {
-        windowFlowFails = false;
-        failed(new Error('The window flow could not start'));
-        return;
-      }
-      windowFlows.push({ stored: storedSignIn, close, failed });
+    startWindowFlow(storedSignIn, close) {
+      const started = { stored: storedSignIn, close, disposes: 0 };
+      windowFlows.push(started);
+      return {
+        screen: atom(FLOW_SCREEN),
+        dispose() {
+          started.disposes += 1;
+        },
+      };
     },
     now: () => ROUND_NOW,
     randomToken: () => options.newToken ?? NEW_SITE_TOKEN,
@@ -245,8 +246,6 @@ async function startRound(options: StartRoundParams = {}) {
     errors,
     closed: closed.promise,
     countCloses: () => closes,
-    /** The window flow the round started, which the test says stored a sign-in through. */
-    getWindowFlow: () => must(windowFlows[0], 'a started window flow'),
     /** The window flow the round started says a sign-in is stored. */
     storeSignIn(): void {
       must(windowFlows[0], 'a started window flow').stored();
@@ -291,20 +290,20 @@ describe('site round', () => {
     expect(round.screens).toEqual([
       { view: 'site-signing', origin: SITE_ORIGIN, route: 'sign' },
       { view: 'consent', origin: SITE_ORIGIN, group: null },
-      { view: 'window' },
+      FLOW_SCREEN,
       { view: 'site-signing', origin: SITE_ORIGIN, route: 'sign' },
     ]);
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'granted', reason: 'new' }]);
   });
 
-  it('As a site that got its result, I see the window flow close the window and hear nothing more', async () => {
+  it('As a site that got its result, I see the user close the window again and hear nothing more', async () => {
     // Given a round that sent its result
     const round = await startRound();
     await consentAndStore(round);
     await round.closed;
 
-    // When the window flow closes the window, as it does once the round was answered
-    round.getWindowFlow().close();
+    // When the user closes the window again
+    round.flow.cancel();
 
     // Then the site heard only its result, and the window closed again
     expect(round.posts.map(post => post.type)).toEqual(['dotli:s:result']);
@@ -428,7 +427,7 @@ describe('site round', () => {
     const round = await startRound({ siteToken: SITE_TOKEN, grants: [createGrant()] });
 
     // When the window flow says a sign-in is stored
-    await round.waitForView('window');
+    await round.waitForView('connecting');
     round.storeSignIn();
     await round.closed;
 
@@ -459,7 +458,7 @@ describe('site round', () => {
   it('As a user signed in with another main account, I forget the old grant, consent and the site gets a new token', async () => {
     // Given a grant for this site that another main account made
     const round = await startRound({ siteToken: SITE_TOKEN, grants: [createGrant({ owner: '0xother' })] });
-    await round.waitForView('window');
+    await round.waitForView('connecting');
 
     // When the window flow says a sign-in is stored, the user consents and the round goes on
     round.storeSignIn();
@@ -526,6 +525,24 @@ describe('site round', () => {
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
+  it('As a dotli integrator, I dispose a round while its grant is kept and no grant is left for a token the site never got, while the window stays open', async () => {
+    // Given a round whose new grant is being saved
+    const gate = createDeferred<undefined>();
+    const round = await startRound({ saveGate: gate.promise });
+    await consentAndStore(round);
+    await round.waitForSaving();
+
+    // When the round is disposed and the save then commits
+    round.flow.dispose();
+    gate.resolve(undefined);
+    await round.waitForForgotten();
+
+    // Then the site heard nothing, the main store keeps no grant and the window was not closed
+    expect(round.posts).toEqual([]);
+    expect(await round.stored.list()).toEqual([]);
+    expect(round.countCloses()).toBe(0);
+  });
+
   it('As a user, I cancel while the grant is kept and see no failure when the save then fails, which is still reported', async () => {
     // Given a round whose new grant is being saved to a store that will fail it
     const gate = createDeferred<undefined>();
@@ -581,25 +598,6 @@ describe('site round', () => {
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(await round.stored.list()).toEqual([]);
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
-  });
-
-  it('As a user whose window flow failed to start, I retry and the window flow starts and the site gets its result', async () => {
-    // Given a site granted before, whose window flow fails to start
-    const round = await startRound({ siteToken: SITE_TOKEN, grants: [createGrant()], windowFlowFails: true });
-    await round.waitForView('site-failed');
-
-    // When the user retries and the started window flow says a sign-in is stored
-    await round.flow.retry();
-    round.storeSignIn();
-    await round.closed;
-
-    // Then the retry started the window flow, and the site got its result
-    expect(round.windowFlows).toHaveLength(1);
-    expect(getResult(round.posts).site_token).toBeUndefined();
-    expect(round.metrics.counted('test.site_round')).toEqual([
-      { outcome: 'error', reason: 'action' },
-      { outcome: 'granted', reason: 'known' },
-    ]);
   });
 
   it('As a user whose site grants cannot be read, I sign in to a site I used before and am asked for consent as for a new site', async () => {
@@ -754,7 +752,7 @@ describe('site round', () => {
     expect(round.countCalls('confirm')).toBe(1);
   });
 
-  it('As a user who pressed Try again, I see the earlier window flow store its sign-in late and the round goes on only for the new flow', async () => {
+  it('As a user, I see the round dispose each window flow once it stored my sign-in or I cancelled', async () => {
     // Given a round whose stored session was gone after its first window flow, and a Try again that started a second
     let reads = 0;
     const round = await startRound({
@@ -769,42 +767,12 @@ describe('site round', () => {
     await round.waitForView('site-failed');
     await round.flow.retry();
 
-    // When the first window flow delivers again, and then the second one stores its own
-    round.storeSignIn();
-    const late = { view: round.flow.screen.get().view, reads: round.mainReads.length };
-    must(round.windowFlows[1], 'a second window flow').stored();
+    // When the user cancels while the second flow signs in
+    round.flow.cancel();
     await round.closed;
 
-    // Then the late sign-in left the round on the window flow, and only the second flow's read the main account
-    expect(late).toEqual({ view: 'window', reads: 1 });
-    expect(round.mainReads).toHaveLength(2);
-    expect(getResult(round.posts).result).toEqual(RESULT);
-  });
-
-  it('As a user who pressed Try again, I see the earlier window flow fail and the round goes on for the new flow', async () => {
-    // Given a round whose stored session was gone after its first window flow, and a Try again that started a second
-    let reads = 0;
-    const round = await startRound({
-      mainAccount() {
-        reads += 1;
-        return reads === 1
-          ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
-          : Promise.resolve(MAIN_ACCOUNT);
-      },
-    });
-    await consentAndStore(round);
-    await round.waitForView('site-failed');
-    await round.flow.retry();
-
-    // When the first window flow fails late, and then the second one stores its own
-    must(round.windowFlows[0], 'a first window flow').failed(new Error('The first window flow failed'));
-    const afterFailure = round.flow.screen.get().view;
-    must(round.windowFlows[1], 'a second window flow').stored();
-    await round.closed;
-
-    // Then the late failure left the round on the window flow, and the site got its result
-    expect(afterFailure).toBe('window');
-    expect(getResult(round.posts).result).toEqual(RESULT);
+    // Then each flow was disposed once
+    expect(round.windowFlows.map(started => started.disposes)).toEqual([1, 1]);
   });
 
   it('As an operator, I see a site round whose window close throws reported as a defect', async () => {
@@ -862,7 +830,7 @@ describe('site round of a group', () => {
     });
 
     // When the window flow says a sign-in is stored
-    await round.waitForView('window');
+    await round.waitForView('connecting');
     round.storeSignIn();
     await round.closed;
 

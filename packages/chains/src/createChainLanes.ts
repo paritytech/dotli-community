@@ -37,6 +37,9 @@ type Params = {
   onHalt: (error?: unknown) => void;
 };
 
+/** Serving, halted with the first halt's error, or closed. A halt or a close is final. */
+type LanesPhase = { kind: 'open' } | { kind: 'halted'; error: unknown } | { kind: 'closed' };
+
 /** Whether a session is a consumer's own, on its home lane, or one the consumer's router opened for a follow. */
 type SessionRole = 'home' | 'follow';
 
@@ -61,8 +64,7 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   let nextLaneId = 0;
   let nextSessionNumber = 0;
   let paused = initiallyPaused;
-  let halted = false;
-  let closed = false;
+  let phase: LanesPhase = { kind: 'open' };
 
   const firstId = takeLaneId();
   const firstTransport = createTransport(createHooks(firstId));
@@ -84,7 +86,7 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     return {
       onStatus: status => {
         const lane = findLane(id);
-        if (lane === undefined || halted) {
+        if (lane === undefined || phase.kind === 'halted') {
           return;
         }
         setLaneStatus(lane, status);
@@ -174,7 +176,7 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
 
   function pickFollowLane(home: Lane): LaneHandle | null {
     // A consumer whose home lane closed has no session left to follow for.
-    if (halted || !lanes.includes(home)) {
+    if (phase.kind === 'halted' || !lanes.includes(home)) {
       return null;
     }
     const roomy = hasRoom(home) ? home : lanes.find(hasRoom);
@@ -281,19 +283,16 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   }
 
   function reportHalt(error: unknown): void {
-    if (halted) {
+    if (phase.kind !== 'open') {
       return;
     }
-    halted = true;
+    phase = { kind: 'halted', error };
     onHalt(error);
   }
 
   function connect(params: LaneConnectParams): BrokerConnection {
-    if (halted) {
-      throw new Error(`${label} halted, so ${params.sessionId} cannot connect`);
-    }
-    if (closed) {
-      throw new Error(`${label} closed, so ${params.sessionId} cannot connect`);
+    if (phase.kind !== 'open') {
+      throw new Error(`${label} ${phase.kind}, so ${params.sessionId} cannot connect`);
     }
     if (hasConsumer(params.sessionId)) {
       throw new Error(`Duplicate ${label} consumer: ${params.sessionId}`);
@@ -310,22 +309,24 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   function pause(): void {
     paused = true;
     const pausing = [...lanes];
-    try {
-      runEvery(
-        [
-          ...pausing.map(lane => () => {
-            lane.pausable.pause();
-          }),
-          // A consumer may leave while it hears the pause, which closes its lane.
-          ...pausing.map(lane => () => {
-            setLaneStatus(lane, 'disconnected');
-          }),
-        ],
-        `${label} lanes: pausing every lane failed`,
-      );
-    } finally {
-      reportStatus();
-    }
+    haltOnFailure({ step: 'chain_pool_pause', doing: 'pausing' }, () => {
+      try {
+        runEvery(
+          [
+            ...pausing.map(lane => () => {
+              lane.pausable.pause();
+            }),
+            // A consumer may leave while it hears the pause, which closes its lane.
+            ...pausing.map(lane => () => {
+              setLaneStatus(lane, 'disconnected');
+            }),
+          ],
+          `${label} lanes: pausing every lane failed`,
+        );
+      } finally {
+        reportStatus();
+      }
+    });
   }
 
   function resume(): void {
@@ -333,16 +334,20 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
       return;
     }
     paused = false;
-    runEvery(
-      lanes.map(lane => () => {
-        lane.pausable.resume();
-      }),
-      `${label} lanes: resuming every lane failed`,
-    );
+    haltOnFailure({ step: 'chain_pool_resume', doing: 'resuming' }, () => {
+      runEvery(
+        lanes.map(lane => () => {
+          lane.pausable.resume();
+        }),
+        `${label} lanes: resuming every lane failed`,
+      );
+    });
   }
 
   function disconnectAll(): void {
-    closed = true;
+    if (phase.kind === 'open') {
+      phase = { kind: 'closed' };
+    }
     const closing = lanes.splice(0);
     try {
       runEvery(
@@ -357,17 +362,39 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   }
 
   function halt(error?: unknown): void {
-    halted = true;
+    if (phase.kind === 'open') {
+      phase = { kind: 'halted', error };
+    }
     const halting = lanes.splice(0);
+    // The chain already halted, so a failure here is only reported.
+    haltOnFailure({ step: 'chain_pool_close', doing: 'halting' }, () => {
+      try {
+        runEvery(
+          halting.map(lane => () => {
+            lane.broker.halt(error);
+          }),
+          `${label} lanes: halting every lane failed`,
+        );
+      } finally {
+        reportStatus();
+      }
+    });
+  }
+
+  /** Runs `work`, and reports what it throws as a defect and as the chain's halt, so the chain's leases recover. */
+  function haltOnFailure(
+    { step, doing }: { step: 'chain_pool_pause' | 'chain_pool_resume' | 'chain_pool_close'; doing: string },
+    work: () => void,
+  ): void {
     try {
-      runEvery(
-        halting.map(lane => () => {
-          lane.broker.halt(error);
-        }),
-        `${label} lanes: halting every lane failed`,
-      );
-    } finally {
-      reportStatus();
+      work();
+    } catch (error) {
+      report.defect(error, {
+        step,
+        metric: chainPoolCloseMetric,
+        message: `${LANES_TAG} ${doing} ${label} failed:`,
+      });
+      reportHalt(error);
     }
   }
 
@@ -381,19 +408,21 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     connect,
     /** The combined status of the open lanes. Never throws. */
     status: getStatus,
+    /** Whether the lanes serve, halted with the first halt's error, or closed. */
+    phase: () => phase,
     /**
-     * Closes every lane's connection under its sessions, and gives each lane `disconnected`. Tries every lane, then
-     * throws what any threw: the one `Error`, or an AggregateError otherwise.
+     * Closes every lane's connection under its sessions, and gives each lane `disconnected`. Tries every lane, and halts
+     * the chain through `onHalt` with what any threw, after reporting it.
      */
     pause,
-    /** Opens every lane's connection again. A call while not paused does nothing. Tries every lane, then throws as `pause` does. */
+    /** Opens every lane's connection again. A call while not paused does nothing. Tries every lane, and halts as `pause` does. */
     resume,
     /**
-     * Ends every lane's sessions and closes its connection, lane 0 included. Tries every lane, then throws as `pause`
-     * does. The lanes stay closed, so a later `connect` throws.
+     * Ends every lane's sessions and closes its connection, lane 0 included. Tries every lane, then throws what any
+     * threw: the one `Error`, or an AggregateError otherwise. The lanes stay closed, so a later `connect` throws.
      */
     disconnectAll,
-    /** Halts every lane's broker with `error`, so each session hears it. Tries every lane, then throws as `pause` does. */
+    /** Halts every lane's broker with `error`, so each session hears it. Tries every lane, and reports what any threw. */
     halt,
   };
 }

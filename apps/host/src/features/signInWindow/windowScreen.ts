@@ -16,34 +16,39 @@ import type { SessionResult } from './parseSessionResult.js';
 /** What Continue offers, with the stored sign-in it was read from. */
 export type Offered = { stored: SessionResult; offer: ContinueOffer };
 
-/** The view on show: one of a round's, or Continue's with what it offers and the failure on it. */
-export type Shown =
-  | { view: 'connecting' | 'phrase' | 'pairing' | 'failed' }
-  | { view: 'continue'; offered: Offered; failure: WindowFailure | null };
-
 /**
- * A step of a round with the view it shows. Every view carries the page the round signs in for, null with no opener,
- * and how far its pairing got.
+ * The view on show: one of a round's, the pairing's with how far it got, or Continue's with what it offers and the
+ * failure on it.
  */
-type ShownStep = { round: { page: string | null; pairing: PairingView }; shown: Shown };
+export type Shown =
+  | { view: 'connecting' | 'phrase' | 'failed' }
+  | { view: 'pairing'; pairing: PairingView }
+  | { view: 'continue'; offered: Offered; failure: WindowFailure | null };
 
 export const SPINNER: PairingView = { kind: 'spinner' };
 
-export function getSignInScreen({ round: { page, pairing }, shown }: ShownStep): SignInScreen {
-  if (shown.view === 'continue') {
-    return { view: 'continue', offer: shown.offered.offer, pageHost: page, failure: shown.failure, pairing };
+/** The screen of `shown`, which names `page`, the page the window signs in for, null when no page opened it. */
+export function getSignInScreen(shown: Shown, page: string | null): SignInScreen {
+  switch (shown.view) {
+    case 'continue':
+      return { view: 'continue', offer: shown.offered.offer, pageHost: page, failure: shown.failure };
+    case 'pairing':
+      return { view: 'pairing', pageHost: page, failure: null, pairing: shown.pairing };
+    case 'connecting':
+    case 'phrase':
+    case 'failed':
+      return { view: shown.view, pageHost: page, failure: null };
   }
-  return { view: shown.view, pageHost: page, failure: null, pairing };
 }
 
-/** The view the window stops on, which keeps the page and the pairing the step showed. */
-export function getStopScreen({ round }: ShownStep, view: 'refused' | 'done-no-opener'): SignInScreen {
-  return { view, pageHost: round.page, failure: null, pairing: round.pairing };
+/** The view the window stops on, which still names `page`. */
+export function getStopScreen(view: 'refused' | 'done-no-opener', page: string | null): SignInScreen {
+  return { view, pageHost: page, failure: null };
 }
 
 /** What the window shows before its flow decides anything: it waits on its opener, or turned it away. */
 export function getResponderScreen(state: ResponderState): SignInScreen {
-  return { view: state.kind === 'refused' ? 'refused' : 'connecting', pageHost: null, failure: null, pairing: SPINNER };
+  return { view: state.kind === 'refused' ? 'refused' : 'connecting', pageHost: null, failure: null };
 }
 
 /** What Continue offers from `stored`: the local wallet when one is stored, since a page boots on it, else the session. */

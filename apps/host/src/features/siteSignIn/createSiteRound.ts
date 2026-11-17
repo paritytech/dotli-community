@@ -12,7 +12,7 @@ import { createReporter, defineCount, type CountAttributes } from '@dotli/metric
 import { computed, type ReadableAtom } from 'nanostores';
 import { createStateMachine, isShallowEqual, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
-import type { Responder, ResponderState } from '../signInWindow/index.js';
+import type { Responder, ResponderState, SignInScreen, WindowFlow } from '../signInWindow/index.js';
 import type { RefusalReason } from '../../kit/sessionMessages.js';
 import { reportWalletFailure } from '../account/index.js';
 import { MainAccountError, type MainAccount } from './mainAccount.js';
@@ -65,7 +65,7 @@ export type SiteActionScreen =
   | { view: 'site-sharing'; origin: string }
   | { view: 'site-approving'; origin: string };
 
-/** What the window shows for a site. `window` while the reused window flow shows its own views. */
+/** What the window shows for a site, or the reused window flow's own view while it signs in. */
 export type SiteScreen =
   | {
       view: 'consent';
@@ -74,7 +74,7 @@ export type SiteScreen =
       group: string | null;
     }
   | { view: 'site-failed'; origin: string; route: SiteRoute; retry: boolean }
-  | { view: 'window' }
+  | SignInScreen
   | SiteActionScreen;
 
 /** An action's metric as the round counts on it: the action's result outcomes and the round's own words. */
@@ -141,10 +141,10 @@ export type SiteRoundParams<Result, Outcome extends string> = {
   mainAccount: (signal: AbortSignal) => Promise<MainAccount>;
   /**
    * Starts the window flow that signs in or resumes the stored sign-in, and calls `stored` once one is stored. `close`
-   * is the round's own, so a window flow that closes the window cancels a round still open. Calls `failed` when the
-   * flow cannot start.
+   * is the round's own, so a window flow that closes the window cancels a round still open. The round shows the flow's
+   * screen while it signs in, and disposes it once it stored or the round ends.
    */
-  startWindowFlow: (stored: () => void, close: () => void, failed: (error: unknown) => void) => void;
+  startWindowFlow: (stored: () => void, close: () => void) => Pick<WindowFlow, 'screen' | 'dispose'>;
   /** The time a grant's first and last use are stamped with. */
   now: () => number;
   /** A new grant's site token. */
@@ -166,19 +166,17 @@ type Facts = {
   known: SiteGrant | null;
 };
 
-/** The window flow signing in. Each start is its own value, so a flow an earlier Try again started is told apart. */
-type SigningIn = Facts & { kind: 'signingIn' };
-
 /**
  * Where the round is. It judges the site's group while it reads the grant, asks consent, has the window flow sign in,
  * reads the main account, runs the action, keeps the grant and answers the site once. `abandoning` and
- * `forgettingUnsent` wait out the grant of a round the user left while it was kept.
+ * `forgettingUnsent` wait out the grant of a round the user left while it was kept, and `disposing` that of a round
+ * disposed then.
  */
 type RoundState<Result> =
   | { kind: 'starting' }
   | { kind: 'lookingUp' }
   | (Facts & { kind: 'consenting'; account: MainAccount | null })
-  | SigningIn
+  | (Facts & { kind: 'signingIn'; screen: SignInScreen; stop: () => void })
   | (Facts & { kind: 'readingAccount'; reading: AbortController })
   | { kind: 'forgettingStale'; group: SiteGroup | null; main: MainAccount }
   | (Facts & { kind: 'acting'; main: MainAccount; stop: () => void; screen: SiteScreen })
@@ -187,7 +185,9 @@ type RoundState<Result> =
   | { kind: 'forgettingUnsent'; screen: SiteScreen }
   | { kind: 'sent'; stop: () => void; screen: SiteScreen }
   | (Facts & { kind: 'failed'; failure: SiteRoundFailure; retry: 'resume' | 'signIn' })
-  | { kind: 'ended'; screen: SiteScreen };
+  | { kind: 'ended'; screen: SiteScreen }
+  | { kind: 'disposing'; screen: SiteScreen }
+  | { kind: 'disposed'; screen: SiteScreen };
 
 /** The states of a round that has not ended yet, which a cancel ends. */
 type OpenKind =
@@ -200,13 +200,16 @@ type OpenKind =
   | 'keepingGrant'
   | 'failed';
 
+/** The states a dispose stops: every state but the start and the dispose's own. */
+type DisposableKind = Exclude<RoundState<unknown>['kind'], 'starting' | 'disposing' | 'disposed'>;
+
 type RoundEvent<Result> =
   | { kind: 'started' }
   | { kind: 'lookedUp'; group: GroupLookup; grant: GrantLookup }
   | { kind: 'consented' }
   | { kind: 'declined' }
-  | { kind: 'stored'; signingIn: SigningIn }
-  | { kind: 'flowFailed'; signingIn: SigningIn; error: unknown }
+  | { kind: 'flowMoved'; screen: SignInScreen }
+  | { kind: 'stored' }
   | { kind: 'accountRead'; main: MainAccount }
   | { kind: 'accountFailed'; error: unknown }
   | { kind: 'staleForgotten' }
@@ -219,7 +222,8 @@ type RoundEvent<Result> =
   | { kind: 'unsentForgetFailed'; error: unknown }
   | { kind: 'responderMoved'; state: ResponderState }
   | { kind: 'retried' }
-  | { kind: 'cancelled' };
+  | { kind: 'cancelled' }
+  | { kind: 'disposed' };
 
 /** How a round that sends no result answers the site: refused, or told the user left on the page or on the phone. */
 type RoundAnswer = { kind: 'refused'; reason: RefusalReason } | { kind: 'cancelled'; by: 'page' | 'phone' };
@@ -275,6 +279,22 @@ export function createSiteRound<Result, Outcome extends string>({
   ) => {
     emitSideEffect({ kind: 'closed' });
   };
+  /**
+   * Stops what the round holds and ends its action, and answers nothing and closes nothing. A grant being kept is
+   * waited out, so a grant the site never got is still forgotten.
+   */
+  const disposeRound: HandlerOf<Machine, DisposableKind, 'disposed'> = (
+    state,
+    _event,
+    { emitState, emitSideEffect },
+  ) => {
+    const screen = toScreen(state);
+    const grantPending =
+      state.kind === 'keepingGrant' || state.kind === 'abandoning' || state.kind === 'forgettingUnsent';
+    emitState(grantPending ? { kind: 'disposing', screen } : { kind: 'disposed', screen });
+    release(state);
+    emitSideEffect({ kind: 'actionEnded' });
+  };
 
   const machine = createStateMachine<Machine>({
     initial: { kind: 'starting' },
@@ -314,6 +334,7 @@ export function createSiteRound<Result, Outcome extends string>({
           }
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       consenting: {
         consented({ group, known, account }, _event, transition) {
@@ -327,29 +348,18 @@ export function createSiteRound<Result, Outcome extends string>({
           endRound(state, { kind: 'refused', reason: 'declined' }, transition);
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       signingIn: {
-        stored(state, { signingIn }, transition) {
-          if (signingIn !== state) {
-            return;
-          }
-          readAccount(state, transition);
+        flowMoved(state, { screen }, { emitState }) {
+          emitState({ ...state, screen });
         },
-        flowFailed(state, { signingIn, error }, { emitState, emitSideEffect }) {
-          if (signingIn !== state) {
-            return;
-          }
-          const { group, known } = state;
-          const failure = new SiteRoundFailure({
-            step: 'action',
-            retry: true,
-            message: 'The site round failed',
-            cause: error,
-          });
-          emitState({ kind: 'failed', group, known, failure, retry: 'signIn' });
-          emitSideEffect({ kind: 'failed', failure });
+        stored(state, _event, transition) {
+          readAccount(state, transition);
+          state.stop();
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       readingAccount: {
         accountRead({ group, known }, { main }, transition) {
@@ -379,6 +389,7 @@ export function createSiteRound<Result, Outcome extends string>({
           emitSideEffect({ kind: 'failed', failure });
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       forgettingStale: {
         staleForgotten({ group, main }, _event, { emitState }) {
@@ -389,6 +400,7 @@ export function createSiteRound<Result, Outcome extends string>({
           emitSideEffect({ kind: 'grantMissed', error, reason: 'grant_forget' });
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       acting: {
         actionMoved(state, { state: moved }, transition) {
@@ -429,6 +441,7 @@ export function createSiteRound<Result, Outcome extends string>({
           emitSideEffect({ kind: 'actionConfirmed' });
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       keepingGrant: {
         grantKept(state, { kept }, transition) {
@@ -440,18 +453,14 @@ export function createSiteRound<Result, Outcome extends string>({
           sendResult(state, undefined, transition);
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       abandoning: {
         grantKept({ screen }, { kept }, { emitState, emitSideEffect, update }) {
           // The round ended while the grant was kept, so this site holds no token for it.
           if (kept !== null && isUnsentGrantForgotten(kept)) {
             emitState({ kind: 'forgettingUnsent', screen });
-            update(
-              grants.forget(kept.token).then(
-                () => ({ kind: 'unsentForgotten' }),
-                (error: unknown) => ({ kind: 'unsentForgetFailed', error }),
-              ),
-            );
+            update(forgetUnsent(kept.token));
             return;
           }
           emitState({ kind: 'ended', screen });
@@ -464,6 +473,7 @@ export function createSiteRound<Result, Outcome extends string>({
           emitSideEffect({ kind: 'closed' });
         },
         cancelled: closeAgain,
+        disposed: disposeRound,
       },
       forgettingUnsent: {
         unsentForgotten({ screen }, _event, { emitState, emitSideEffect }) {
@@ -476,6 +486,7 @@ export function createSiteRound<Result, Outcome extends string>({
           emitSideEffect({ kind: 'closed' });
         },
         cancelled: closeAgain,
+        disposed: disposeRound,
       },
       sent: {
         responderMoved({ stop, screen }, { state }, { emitState, emitSideEffect }) {
@@ -492,6 +503,7 @@ export function createSiteRound<Result, Outcome extends string>({
           stop();
           emitSideEffect({ kind: 'closed' });
         },
+        disposed: disposeRound,
       },
       failed: {
         retried({ group, known, failure, retry }, _event, transition) {
@@ -508,10 +520,35 @@ export function createSiteRound<Result, Outcome extends string>({
           }
         },
         cancelled: cancelRound,
+        disposed: disposeRound,
       },
       ended: {
         cancelled: closeAgain,
+        disposed: disposeRound,
       },
+      // The round's grant work is waited out, and nothing is answered or closed.
+      disposing: {
+        grantKept(state, { kept }, { emitState, update }) {
+          // The round was disposed while the grant was kept, so this site holds no token for it.
+          if (kept !== null && isUnsentGrantForgotten(kept)) {
+            update(forgetUnsent(kept.token));
+            return;
+          }
+          emitState({ kind: 'disposed', screen: state.screen });
+        },
+        grantKeepFailed({ screen }, { error, reason }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'disposed', screen });
+          emitSideEffect({ kind: 'grantMissed', error, reason });
+        },
+        unsentForgotten({ screen }, _event, { emitState }) {
+          emitState({ kind: 'disposed', screen });
+        },
+        unsentForgetFailed({ screen }, { error }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'disposed', screen });
+          emitSideEffect({ kind: 'grantMissed', error, reason: 'grant_forget' });
+        },
+      },
+      disposed: null,
     },
     onEffect(effect) {
       switch (effect.kind) {
@@ -605,6 +642,14 @@ export function createSiteRound<Result, Outcome extends string>({
     cancel(): void {
       machine.update({ kind: 'cancelled' });
     },
+    /**
+     * Stops the round where it stands: it answers the site nothing more, closes nothing, and disposes its window flow and
+     * ends its action and its reads. A grant being kept is still waited out, so a grant the site never got is forgotten.
+     * Never disposes the responder, which is its caller's. Safe to call twice.
+     */
+    dispose(): void {
+      machine.update({ kind: 'disposed' });
+    },
   };
 
   function toScreen(state: RoundState<Result>): SiteScreen {
@@ -616,16 +661,17 @@ export function createSiteRound<Result, Outcome extends string>({
         return signing;
       case 'consenting':
         return { view: 'consent', origin, group: state.group?.registrable ?? null };
-      case 'signingIn':
-        return { view: 'window' };
       case 'failed':
         return { view: 'site-failed', origin, route, retry: state.failure.retry };
+      case 'signingIn':
       case 'acting':
       case 'keepingGrant':
       case 'abandoning':
       case 'forgettingUnsent':
       case 'sent':
       case 'ended':
+      case 'disposing':
+      case 'disposed':
         return state.screen;
     }
   }
@@ -641,21 +687,7 @@ export function createSiteRound<Result, Outcome extends string>({
   ): void {
     const screen = toScreen(state);
     emitState(state.kind === 'keepingGrant' ? { kind: 'abandoning', screen } : { kind: 'ended', screen });
-    switch (state.kind) {
-      case 'readingAccount':
-        state.reading.abort();
-        break;
-      case 'acting':
-        state.stop();
-        break;
-      case 'lookingUp':
-      case 'consenting':
-      case 'signingIn':
-      case 'forgettingStale':
-      case 'keepingGrant':
-      case 'failed':
-        break;
-    }
+    release(state);
     emitSideEffect(answer);
     emitSideEffect({ kind: 'actionEnded' });
     // The window closes at once, so it shows the site no view of how the round ended.
@@ -676,20 +708,57 @@ export function createSiteRound<Result, Outcome extends string>({
     emitSideEffect({ kind: 'actionEnded' });
   }
 
-  /** Has the window flow sign in or resume the stored sign-in. */
+  /** Stops what `state` holds: its window flow, its account read, or its listener of the action or the responder. */
+  function release(state: Extract<RoundState<Result>, { kind: DisposableKind }>): void {
+    switch (state.kind) {
+      case 'signingIn':
+      case 'acting':
+      case 'sent':
+        state.stop();
+        return;
+      case 'readingAccount':
+        state.reading.abort();
+        return;
+      case 'lookingUp':
+      case 'consenting':
+      case 'forgettingStale':
+      case 'keepingGrant':
+      case 'abandoning':
+      case 'forgettingUnsent':
+      case 'failed':
+      case 'ended':
+        return;
+    }
+  }
+
+  /**
+   * Has the window flow sign in or resume the stored sign-in, and shows its screen until it stored one. A flow that
+   * stores or closes as it starts is heard once the round is signing in.
+   */
   function startFlow({ group, known }: Facts, { emitState, update }: Transition<Machine>): void {
-    const signingIn: SigningIn = { kind: 'signingIn', group, known };
-    emitState(signingIn);
-    startWindowFlow(
+    const flow = startWindowFlow(
       () => {
-        update({ kind: 'stored', signingIn });
+        update({ kind: 'stored' });
       },
       () => {
         update({ kind: 'cancelled' });
       },
-      error => {
-        update({ kind: 'flowFailed', signingIn, error });
-      },
+    );
+    const stopFollowing = flow.screen.listen(screen => {
+      update({ kind: 'flowMoved', screen });
+    });
+    function stop(): void {
+      stopFollowing();
+      flow.dispose();
+    }
+    emitState({ kind: 'signingIn', group, known, screen: flow.screen.get(), stop });
+  }
+
+  /** Forgets the grant of `token`, which the site never got. */
+  function forgetUnsent(token: string): Promise<RoundEvent<Result>> {
+    return grants.forget(token).then(
+      () => ({ kind: 'unsentForgotten' }),
+      (error: unknown) => ({ kind: 'unsentForgetFailed', error }),
     );
   }
 

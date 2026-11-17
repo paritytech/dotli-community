@@ -30,7 +30,7 @@ import {
 import { SITE_ROUTE_METRICS } from './siteRouteMetrics.js';
 import { reportSiteFailure } from './reportSiteFailure.js';
 import { SiteRoundFailure, SiteRoundRefusal } from './siteRoundErrors.js';
-import type { SiteSignRequest } from './parseSiteSignRequest.js';
+import type { SiteTransactionRequest } from './parseSiteSignRequest.js';
 import { SiteAccountRejectedError, type SiteAccountReader } from './createSiteAccountReader.js';
 import { SiteTxError, type SiteTxSigner } from './createSiteTxSigner.js';
 
@@ -45,9 +45,7 @@ export type SiteTransactionResult = {
 };
 
 type CreateSiteTransactionParams = Omit<SiteRoundParams<SiteTransactionResult, 'signed'>, 'action' | 'request'> & {
-  request: SiteSignRequest;
-  /** The site's call, from its request or its payload. */
-  call: Uint8Array;
+  request: SiteTransactionRequest;
   /** Asset Hub, which decodes the call and builds its transaction. */
   chain: SiteChain;
   /** Signs the call as the account the site names. */
@@ -58,10 +56,10 @@ type CreateSiteTransactionParams = Omit<SiteRoundParams<SiteTransactionResult, '
 
 type CreateSiteTransactionActionParams = Pick<
   CreateSiteTransactionParams,
-  'origin' | 'call' | 'chain' | 'txSigner' | 'accountReader'
+  'origin' | 'chain' | 'txSigner' | 'accountReader'
 > & {
-  /** The product account that signs the call, and the genesis of the Asset Hub the site asked for. */
-  request: Pick<SiteSignRequest, 'account' | 'chain'>;
+  /** The site's call, the product account that signs it, and the genesis of the Asset Hub the site asked for. */
+  request: Pick<SiteTransactionRequest, 'call' | 'account' | 'chain'>;
 };
 
 /**
@@ -135,7 +133,6 @@ type TransactionMachine = MachineTypes<TransactionState, TransactionEvent, Trans
 /** A site's transaction in the session window: the site's round with the transaction as its action. */
 export function createSiteTransaction({
   request,
-  call,
   chain,
   txSigner,
   accountReader,
@@ -144,15 +141,14 @@ export function createSiteTransaction({
   return createSiteRound({
     ...round,
     request,
-    action: createSiteTransactionAction({ origin: round.origin, request, call, chain, txSigner, accountReader }),
+    action: createSiteTransactionAction({ origin: round.origin, request, chain, txSigner, accountReader }),
   });
 }
 
 /** Has the account the site names sign the site's call, and gives the signed transaction without sending it. */
 export function createSiteTransactionAction({
   origin,
-  request: { account, chain: genesis },
-  call,
+  request: { call, account, chain: genesis },
   chain,
   txSigner,
   accountReader,

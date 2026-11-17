@@ -157,6 +157,8 @@ export function openWatchFollow({ sessionId, connect, onFollowing, onRefused, on
         follow();
       }
     },
+    /** Whether the follow is established. */
+    isFollowing: () => state.kind === 'following',
     /** Ends the session and stops a follow the chain stops from starting again. Repeating it does nothing. */
     disconnect() {
       if (state.kind === 'closed') {

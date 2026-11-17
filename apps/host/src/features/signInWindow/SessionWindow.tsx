@@ -32,8 +32,8 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
 
   // Read apart from the step, which keeps the pairing screen it built while the code to scan comes and changes.
   const payload = createMemo(() => {
-    const shown = signInOf(props.screen);
-    return shown === null ? null : pairingPayload(shown.pairing);
+    const screen = props.screen;
+    return screen.view === 'pairing' ? pairingPayload(screen.pairing) : null;
   });
 
   // The phrase form is debug only, so its chunk loads the first time the phrase view is on show.

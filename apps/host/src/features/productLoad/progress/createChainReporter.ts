@@ -27,6 +27,10 @@ type Params = {
 
 // Sampled rather than emitted per step, or a long warp crowds the debug panel's ring buffer.
 const CHAIN_WARP_DEBUG_MS = 1000;
+// Every other 500ms byte total, which still resolves the peak.
+const CHAIN_BYTES_DEBUG_MS = 1000;
+/** For a load that never hands off. */
+const CHAIN_BYTES_DEBUG_MAX = 300;
 
 const report = createReporter({ flow: 'chain' });
 
@@ -43,10 +47,18 @@ type Reported = {
   warpEmittedAt: number;
 };
 
+/**
+ * The sampled report of the load's byte totals, with `latest` the last total heard. It closes once the load hands off,
+ * or it pushes the load's own events out of the debug panel's ring buffer.
+ */
+type ByteTotals =
+  { kind: 'open'; sampled: { at: number; total: number } | null; samples: number; latest: number } | { kind: 'closed' };
+
 /** Builds the report of each chain's phase and peers, and of the load's byte totals. */
 export function createChainReporter({ flowId, timers, debugBus, monitor = networkMonitorState }: Params) {
   const reported = new Map<ChainRole, Reported>();
   const trackPhase = createChainPhaseTracker();
+  let byteTotals: ByteTotals = { kind: 'open', sampled: null, samples: 0, latest: 0 };
 
   return {
     /** Reports the phase `event` leaves its chain in, and its peer count. */
@@ -72,11 +84,46 @@ export function createChainReporter({ flowId, timers, debugBus, monitor = networ
         payload: { chain: detail.chain, dbCache: detail.dbCache },
       });
     },
-    /** Reports `received`, the load's byte total so far. */
+    /**
+     * Reports `received`, the load's byte total so far, when it is new a second after the last total reported, up to a
+     * cap. The load starts at zero bytes, so a zero total before any report is not new. Nothing once the totals closed.
+     */
     recordBytes(received: number): void {
-      debugBus.emit({ layer: 'chain', event: 'bytes', flowId, timestamp: timers.now(), payload: { received } });
+      if (byteTotals.kind === 'closed') {
+        return;
+      }
+      const { sampled, samples } = byteTotals;
+      const now = timers.now();
+      const due =
+        samples < CHAIN_BYTES_DEBUG_MAX &&
+        received !== (sampled?.total ?? 0) &&
+        (sampled === null || now - sampled.at >= CHAIN_BYTES_DEBUG_MS);
+      if (!due) {
+        byteTotals = { ...byteTotals, latest: received };
+        return;
+      }
+      byteTotals = { kind: 'open', sampled: { at: now, total: received }, samples: samples + 1, latest: received };
+      emitBytes(received);
+    },
+    /**
+     * Ends the byte totals, once the load hands off, with the last total heard when it was not reported. A load that
+     * reported none leaves nothing out. Safe to repeat.
+     */
+    closeBytes(): void {
+      if (byteTotals.kind === 'closed') {
+        return;
+      }
+      const { sampled, latest } = byteTotals;
+      byteTotals = { kind: 'closed' };
+      if (sampled !== null && latest !== sampled.total) {
+        emitBytes(latest);
+      }
     },
   };
+
+  function emitBytes(received: number): void {
+    debugBus.emit({ layer: 'chain', event: 'bytes', flowId, timestamp: timers.now(), payload: { received } });
+  }
 
   function getReported(role: ChainRole): Reported {
     let chain = reported.get(role);

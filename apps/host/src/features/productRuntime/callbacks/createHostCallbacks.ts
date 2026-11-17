@@ -19,7 +19,6 @@ import { createAuthStateChanged } from '../../account/index.js';
 import { createChatPlatform } from './createChatPlatform.js';
 import { coreStorage } from '../../account/index.js';
 import type { CoreContext } from '../core/createPageCore.js';
-import type { HostPrompts } from '../../permissions/index.js';
 
 /** What one core's callbacks are built for. */
 export type CoreCallbacksParams = {
@@ -45,8 +44,6 @@ export type HostAsks = (core: CoreContext) => {
 
 /** One core's params, plus what the callbacks ask the page for. */
 type Params = CoreCallbacksParams & {
-  /** The page's prompts, which show the user's notifications. */
-  prompts: HostPrompts;
   /** Where push notifications wait until due. */
   notifications: NotificationScheduler;
   /** Builds the callbacks that answer the core's permission and confirmation asks. */
@@ -58,7 +55,6 @@ export function createHostCallbacks({
   core,
   getProductId,
   sessionInMemory,
-  prompts,
   notifications,
   createAsks,
 }: Params): RequiredHostCallbacks {
@@ -70,7 +66,6 @@ export function createHostCallbacks({
       label,
       getProductId,
       scheduler: notifications,
-      notify: prompts.notify,
     }),
     permissions,
     features: { featureSupported: getFeatureSupport },

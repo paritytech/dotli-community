@@ -73,6 +73,8 @@ function pageFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
 type OpenFlowParams = {
   responder: Responder<unknown>;
   intent: SignInIntent;
+  /** The vetted origin of dot.li's own page that opened the window, or null when no page did. */
+  origin: string | null;
   bridge: HostBridge;
 };
 
@@ -92,8 +94,6 @@ type OpenSiteFlowParams = {
 type OpenSiteTransactionFlowParams = {
   responder: Responder<unknown>;
   round: Extract<SignInRound<HostBridge>, { party: 'third-sign' }>;
-  /** Ends the responder's view once the window has the site's call. */
-  stopShowingResponder: () => void;
 };
 
 type RedirectSignInParams = {
@@ -202,12 +202,12 @@ async function runSignOut({ taken, enabled, notified, read, firstParty }: RunSig
 }
 
 /**
- * Starts the sign-in flow for `flow.intent`, whose views name the page by `flow.pageLabel` and which hands what the
- * store holds to `flow.deliver`, on the window's own store and core.
+ * Starts the sign-in flow for `flow.intent`, whose views name the page `flow.page` and which hands that page what the
+ * store holds, on the window's own store and core.
  */
 function startFlow(
   bridge: HostBridge,
-  flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>,
+  flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'page' | 'close'>,
 ): WindowFlow {
   const started = createWindowFlow({
     auth: authState.store,
@@ -222,17 +222,22 @@ function startFlow(
 }
 
 /** Shows the sign-in flow for `intent`, which delivers to the responder's opener. */
-function openFlow({ responder, intent, bridge }: OpenFlowParams): void {
+function openFlow({ responder, intent, origin, bridge }: OpenFlowParams): void {
   // The flow lives as long as the window's page, so nothing disposes it.
   const { screen } = startFlow(bridge, {
     responder,
     intent,
-    // dot.li's own pages are named by their host.
-    pageLabel: origin => new URL(origin).host,
-    deliver(result: SessionResult) {
-      // Now, or with the next vetting of a window restored from the back-forward cache meanwhile.
-      responder.send(result);
-    },
+    page:
+      origin === null
+        ? null
+        : {
+            // dot.li's own pages are named by their host.
+            name: new URL(origin).host,
+            deliver(result: SessionResult) {
+              // Now, or with the next vetting of a window restored from the back-forward cache meanwhile.
+              responder.send(result);
+            },
+          },
     close: closeWindow,
   });
   sessionWindowState.showScreen(screen);
@@ -270,42 +275,30 @@ function openSiteFlow({ responder, round, close }: OpenSiteFlowParams): () => vo
   // Before the round starts, so the first core the window boots runs as dot.li's own product: a sign-in names no
   // account.
   round.booted.serveSite(null);
-  // The site window lives as long as the window's page, so nothing disposes it.
-  const { site, screen } = openSiteSignIn({
+  // The site's round lives as long as the window's page, so nothing disposes it.
+  const site = openSiteSignIn({
     ...getSiteWindowParams({ responder, round, close }),
     request: round.request,
   });
   sessionWindowState.setSiteIntents(site);
-  return sessionWindowState.showScreen(screen);
+  return sessionWindowState.showScreen(site.screen);
 }
 
-/**
- * Runs a site's transaction for the vetted origin the round carries, and shows its views once the window has the
- * site's call. Until then the responder's view stays, which `stopShowingResponder` ends.
- */
-async function openSiteTransactionFlow({
-  responder,
-  round,
-  stopShowingResponder,
-}: OpenSiteTransactionFlowParams): Promise<void> {
+/** Runs a site's transaction of the call for the vetted origin the round carries, and shows its views. */
+function openSiteTransactionFlow({ responder, round }: OpenSiteTransactionFlowParams): void {
   const { booted: bridge } = round;
   // Before the round starts, so the first core the window boots runs as the product account the transaction names.
   bridge.serveSite(round.request.account);
-  // The site window lives as long as the window's page, so nothing disposes it.
-  const opened = await openSiteTransaction({
+  // The site's round lives as long as the window's page, so nothing disposes it.
+  const site = openSiteTransaction({
     ...getSiteWindowParams({ responder, round, close: closeWindow }),
     request: round.request,
     chain: bridge.siteChain,
     txSigner: bridge.siteTxSigner,
     accountReader: bridge.siteAccountReader,
   });
-  // A refused round keeps showing the responder, which says it refused, while the window closes.
-  if (opened === null) {
-    return;
-  }
-  stopShowingResponder();
-  sessionWindowState.setSiteIntents(opened.site);
-  sessionWindowState.showScreen(opened.screen);
+  sessionWindowState.setSiteIntents(site);
+  sessionWindowState.showScreen(site.screen);
 }
 
 /** Shows where the responder stands until the returned function stops it. */
@@ -426,26 +419,28 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
     const stopShowingResponder = showResponder(responder);
     const bridge = await bootSignIn(taken, enabled);
     stopShowingResponder();
-    openFlow({ responder, intent: request.intent, bridge });
+    openFlow({ responder, intent: request.intent, origin: null, bridge });
     return;
   }
 
+  // Until the round is known, which for a site's transaction waits for its call, Connecting shows, whose Close closes
+  // the window. A refused round keeps showing the responder, which says it refused.
   const stopShowingResponder = showResponder(responder);
-  // A refused round keeps showing the responder, which says it refused.
   const round = await answerSignIn({ responder, request: taken, enabled, booted: bootSignIn(taken, enabled) });
   if (round === null) {
     return;
   }
-  if (round.party === 'third-sign') {
-    // Waiting for the site's call shows Connecting, whose Close closes the window.
-    await openSiteTransactionFlow({ responder, round, stopShowingResponder });
-    return;
-  }
   stopShowingResponder();
-  if (round.party === 'first') {
-    openFlow({ responder, intent: round.intent, bridge: round.booted });
-  } else {
-    openSiteFlow({ responder, round, close: closeWindow });
+  switch (round.party) {
+    case 'first':
+      openFlow({ responder, intent: round.intent, origin: round.origin, bridge: round.booted });
+      return;
+    case 'third':
+      openSiteFlow({ responder, round, close: closeWindow });
+      return;
+    case 'third-sign':
+      openSiteTransactionFlow({ responder, round });
+      return;
   }
 }
 

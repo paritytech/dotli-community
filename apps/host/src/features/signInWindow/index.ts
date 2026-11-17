@@ -19,7 +19,7 @@ export type { SIGNED_OUT_RESULT, SignInRound } from './roundAnswer.js';
 export { answerSignIn, answerSignOut } from './roundAnswer.js';
 export { closeWindow } from './sessionWindowPage.js';
 export { sessionWindowSignoutResultMetric } from './sessionWindowSignoutResultMetric.js';
-export type { ContinueOffer } from './sessionWindowState.js';
+export type { ContinueOffer, SignInScreen } from './sessionWindowState.js';
 export { sessionWindowState } from './sessionWindowState.js';
 export type { WindowSignOutParams } from './signOutInWindow.js';
 export { signOutInWindow } from './signOutInWindow.js';

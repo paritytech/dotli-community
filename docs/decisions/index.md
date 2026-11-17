@@ -26,8 +26,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one
   variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
-- [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass finds a style or
-  skill rule that matches the code's shape, and the rewrite it describes would read no better than the code it replaces.
+- [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
+  finds a style or skill rule that matches the code's shape, such as one event that carries a collaborator's state, and
+  the rewrite it describes would read no better than the code it replaces.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
   protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
   unreachable.
@@ -38,6 +39,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
   much structure.
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
+- [parameters-only-valid-together](parameters-only-valid-together.md): a function takes a nullable parameter and a
+  second one, often a callback, used only when the first is set, so a caller without the first passes a stand-in.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
   callbacks each serve a different feature.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a

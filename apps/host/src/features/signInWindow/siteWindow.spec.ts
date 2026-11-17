@@ -22,9 +22,10 @@ import { MainAccountError, getMainAccount, type MainAccount } from '../siteSignI
 import type { SignInScreen } from './sessionWindowState.js';
 import type { DisplayCall } from '../siteSignIn/index.js';
 import type { SiteChain } from '../siteSignIn/index.js';
-import type { SiteSignRequest } from '../siteSignIn/index.js';
 import type { SiteAccountReader } from '../siteSignIn/index.js';
-import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowParams } from './siteWindow.js';
+import type { SiteRound, SiteScreen } from '../siteSignIn/index.js';
+import type { SiteTransactionRequest } from '../siteSignIn/index.js';
+import { openSiteSignIn, openSiteTransaction, type SiteWindowParams } from './siteWindow.js';
 
 type CreateWindowPartsParams = {
   /** How the window's core reports the main account, as `MAIN` by default. */
@@ -35,8 +36,6 @@ type CreateWindowPartsParams = {
   sessionReadHeld?: Promise<void>;
   /** Shows this screen source in place of each window flow's own, which the window flow keeps running behind it. */
   flowScreen?: ReadableAtom<SignInScreen>;
-  /** Makes the first window flow throw as it starts. */
-  firstFlowStartFails?: boolean;
 };
 
 type OpenTransactionWindowParams = {
@@ -45,7 +44,7 @@ type OpenTransactionWindowParams = {
 };
 
 /** What a site's window flow calls once it stored a sign-in. */
-type SiteWindowFlowDeliver = Parameters<SiteWindowParams['createWindowFlow']>[0]['deliver'];
+type SiteWindowFlowDeliver = Parameters<SiteWindowParams['createWindowFlow']>[0]['page']['deliver'];
 
 /** One view the window showed, with the page or route it names. */
 type ShownView = { view: string; pageHost?: string | null; route?: string };
@@ -74,7 +73,6 @@ const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true
 const PAIRING: DotliAuthState = { tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' };
 
 const CALL = '0x0a0300010203';
-const PAYLOAD_CALL = '0x0a0300040506';
 const DISPLAY: DisplayCall = { name: 'Balances.transfer_keep_alive', args: [{ name: 'value', value: '1' }] };
 /** The signed transaction the fake chain builds. */
 const SIGNED_TX = `0x${'5e'.repeat(80)}`;
@@ -95,7 +93,6 @@ function createWindowParts({
   leaveFlowsRunning = false,
   sessionReadHeld = Promise.resolve(),
   flowScreen,
-  firstFlowStartFails = false,
 }: CreateWindowPartsParams = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   recordLog({ onFinished: onTestFinished, level: 'error' });
@@ -117,16 +114,11 @@ function createWindowParts({
   const flows: WindowFlow[] = [];
   // What each window flow was told to do once it stored a sign-in.
   const deliveries: SiteWindowFlowDeliver[] = [];
-  let starts = 0;
   const params: Omit<SiteWindowParams, 'request'> = {
     origin: ORIGIN,
     self: SELF,
     responder,
     createWindowFlow(flow) {
-      starts += 1;
-      if (firstFlowStartFails && starts === 1) {
-        throw new Error('The window flow could not start');
-      }
       const started = createWindowFlow({
         signIns,
         auth,
@@ -155,7 +147,7 @@ function createWindowParts({
         ...flow,
       });
       flows.push(started);
-      deliveries.push(flow.deliver);
+      deliveries.push(flow.page.deliver);
       return {
         ...started,
         screen: flowScreen ?? started.screen,
@@ -196,26 +188,24 @@ function createWindowParts({
   };
 }
 
-/** What the window showed of `window`, each view with the page or route it names, from now on. */
-function watchWindow({ site, screen, dispose }: SiteWindow) {
+/** What the window showed of `site`'s round, each view with the page or route it names, from now on. */
+function watchWindow(site: SiteRound) {
   const shown: ShownView[] = [];
   onTestFinished(
-    screen.subscribe(next => {
+    site.screen.subscribe(next => {
       shown.push(getShownView(next));
     }),
   );
   return {
     site,
-    screen,
-    dispose,
     shown,
     /** Resolves once the window shows `view`. */
-    waitForView: (view: string) => waitForStatus(screen, current => current.view === view),
+    waitForView: (view: string) => waitForStatus(site.screen, current => current.view === view),
   };
 }
 
 /** A view as the window showed it, with the page or route it names. */
-function getShownView(current: ReturnType<SiteWindow['screen']['get']>): ShownView {
+function getShownView(current: SiteScreen): ShownView {
   if ('pageHost' in current) {
     return { view: current.view, pageHost: current.pageHost };
   }
@@ -256,14 +246,13 @@ function createFakeChain() {
 }
 
 /**
- * A site's transaction window over the window's parts, a chain that builds it and an account reader that reads the site account,
- * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload.
+ * A site's transaction of `call` in a session window over the window's parts, a chain that builds it and an account
+ * reader that reads the site account.
  */
-function openTransactionWindow(call: string | null, { grantRead }: OpenTransactionWindowParams = {}) {
+function openTransactionWindow(call: Uint8Array, { grantRead }: OpenTransactionWindowParams = {}) {
   const parts = createWindowParts();
   const { chain, decoded } = createFakeChain();
-  const asked = createDeferred<undefined>();
-  const request: SiteSignRequest = {
+  const request: SiteTransactionRequest = {
     round: 'r1',
     account: ACCOUNT,
     siteToken: grantRead === undefined ? null : OLD_TOKEN,
@@ -271,8 +260,8 @@ function openTransactionWindow(call: string | null, { grantRead }: OpenTransacti
     chain: SERVICES.assethub.genesis,
     call,
   };
-  const { responder, grants } = parts.params;
-  const opening = openSiteTransaction({
+  const { grants } = parts.params;
+  const site = openSiteTransaction({
     ...parts.params,
     request,
     grants: {
@@ -282,18 +271,11 @@ function openTransactionWindow(call: string | null, { grantRead }: OpenTransacti
         return grants.read(token);
       },
     },
-    responder: {
-      ...responder,
-      payload() {
-        asked.resolve(undefined);
-        return responder.payload();
-      },
-    },
     chain,
     accountReader: ACCOUNT_READER,
     txSigner: { creator: () => () => Promise.reject(new Error('The fake chain signs no transaction')) },
   });
-  return { ...parts, decoded, asked: asked.promise, opening };
+  return { ...parts, decoded, ...watchWindow(site) };
 }
 
 describe('site sign-in window', () => {
@@ -356,37 +338,19 @@ describe('site sign-in window', () => {
     expect(page.readPosted().filter(message => JSON.stringify(message).includes('dotli:s:result'))).toHaveLength(1);
   });
 
-  it('As a user whose window flow throws as it starts, I see the failure with Try again', async () => {
-    // Given a site on its consent view, whose first window flow throws as it starts
-    const page = openSignInWindow({ firstFlowStartFails: true });
-    await page.waitForView('consent');
-
-    // When the user consents, then presses Try again
-    await page.site.consent();
-    const failed = page.screen.get();
-    await page.site.retry();
-    await page.closed;
-
-    // Then the window showed the failure with Try again, and the Try again started a window flow whose view showed
-    expect([failed, page.shown.filter(shown => shown.view === 'connecting')]).toMatchObject([
-      { view: 'site-failed', retry: true },
-      [{ view: 'connecting', pageHost: ORIGIN }],
-    ]);
-  });
-
-  it("As a dotli integrator, I dispose a site's sign-in window as it opens and it shows none of its round's views after it", async () => {
+  it("As a dotli integrator, I dispose a site's round as it opens and it shows none of its views after it", async () => {
     // Given a site's sign-in window that has just opened
     const page = openSignInWindow();
 
-    // When it is disposed and the round then reaches its consent view
-    page.dispose();
-    await waitForStatus(page.site.screen, current => current.view === 'consent');
+    // When its round is disposed, and a Try again then waits out the grant lookup the round started as it opened
+    page.site.dispose();
+    await page.site.retry();
 
     // Then the window still shows only what it showed as it opened
     expect(page.shown).toEqual([{ view: 'site-signing', route: 'auth' }]);
   });
 
-  it('As a dotli integrator, I dispose a site window after a Try again and neither window flow shows a pairing after it, while its responder still takes a payload', async () => {
+  it("As a dotli integrator, I dispose a site's round after a Try again and neither window flow shows a pairing after it, while its responder still takes a payload", async () => {
     // Given a window whose stored session was gone, so Try again started a second window flow, and whose round ended
     let reads = 0;
     const page = openSignInWindow({
@@ -412,8 +376,8 @@ describe('site sign-in window', () => {
       return seen;
     });
 
-    // When the window is disposed, then the core starts pairing and the site posts a payload
-    page.dispose();
+    // When the round is disposed, then the core starts pairing and the site posts a payload
+    page.site.dispose();
     page.auth.set(PAIRING);
     page.postPayload(CALL);
     const payload = await Promise.race([page.params.responder.payload(), Promise.resolve('unsettled')]);
@@ -425,7 +389,7 @@ describe('site sign-in window', () => {
     expect(payload).toBe(CALL);
   });
 
-  it('As a dotli integrator, I dispose a site window whose stored session is gone and Try again on its round starts no window flow after it', async () => {
+  it("As a dotli integrator, I dispose a site's round whose stored session is gone and its Try again starts no window flow after it", async () => {
     // Given a window whose stored session was gone after its first window flow, so its round offers Try again
     const page = openSignInWindow({
       mainAccount: () => Promise.reject(new MainAccountError('signed_out', 'The main session ended')),
@@ -435,8 +399,8 @@ describe('site sign-in window', () => {
     await page.waitForView('site-failed');
     const shown = [...page.shown];
 
-    // When the window is disposed, then the user presses Try again and the core starts pairing
-    page.dispose();
+    // When the round is disposed, then the user presses Try again and the core starts pairing
+    page.site.dispose();
     await page.site.retry();
     page.auth.set(PAIRING);
 
@@ -445,7 +409,7 @@ describe('site sign-in window', () => {
     expect(page.shown).toEqual(shown);
   });
 
-  it('As a dotli integrator, I dispose a site window whose window flow keeps running and the window listens to its screen no more', async () => {
+  it("As a dotli integrator, I dispose a site's round whose window flow keeps running and the round listens to its screen no more", async () => {
     // Given a window that started a window flow on its consent, whose own dispose does nothing and whose session read
     // is held
     const read = createDeferred<undefined>();
@@ -455,24 +419,24 @@ describe('site sign-in window', () => {
     await page.waitForView('connecting');
     const whileOpen = page.countFlowScreenListeners();
 
-    // When the window is disposed, and the flow's session read then settles
-    page.dispose();
+    // When the round is disposed, and the flow's session read then settles
+    page.site.dispose();
     read.resolve(undefined);
     await consenting;
 
-    // Then the window followed the flow while it was open, and listens to its screen no more
+    // Then the round followed the flow while it was open, and listens to its screen no more
     expect(whileOpen).toBe(1);
     expect(page.countFlowScreenListeners()).toBe(0);
   });
 
-  it("As a dotli integrator, I dispose a site's window twice and see no error", () => {
-    // Given a site's sign-in window disposed once
+  it("As a dotli integrator, I dispose a site's round twice and see no error", () => {
+    // Given a site's round disposed once
     const page = openSignInWindow();
-    page.dispose();
+    page.site.dispose();
 
     // When it is disposed again
     const thrown = catchError(() => {
-      page.dispose();
+      page.site.dispose();
     });
 
     // Then nothing threw
@@ -480,18 +444,13 @@ describe('site sign-in window', () => {
   });
 });
 
-describe('site window screen chain', () => {
-  it("As the site window, I read the current flow's latest screen at once through the chain, and keep it while the flow screen is null", async () => {
+describe('site window screen', () => {
+  it("As the site window, I read the current flow's latest screen at once, the one an earlier listener moved it on to", async () => {
     // Given a window flow that shows a connecting screen, whose earlier listener moves a pairing on to a failed one, and
     // a core that reports the stored session gone, so a Try again starts a second flow
-    const connecting: SignInScreen = {
-      view: 'connecting',
-      pageHost: ORIGIN,
-      failure: null,
-      pairing: { kind: 'spinner' },
-    };
+    const connecting: SignInScreen = { view: 'connecting', pageHost: ORIGIN, failure: null };
     const pairing: SignInScreen = { view: 'pairing', pageHost: ORIGIN, failure: null, pairing: { kind: 'spinner' } };
-    const failed: SignInScreen = { view: 'failed', pageHost: ORIGIN, failure: 'step', pairing: { kind: 'spinner' } };
+    const failed: SignInScreen = { view: 'failed', pageHost: ORIGIN, failure: 'step' };
     const flowScreen = atom<SignInScreen>(connecting);
     onTestFinished(
       flowScreen.listen(current => {
@@ -515,14 +474,10 @@ describe('site window screen chain', () => {
 
     // When the second flow shows a pairing
     flowScreen.set(pairing);
-    const shownWithFlow = page.screen.get();
-    // And the first flow stores its sign-in late, which empties the flow screen while the site's round ignores it
-    must(page.deliveries[0], 'the first delivery')(delivered);
-    const shownAfterDelivery = page.screen.get();
+    const shown = page.site.screen.get();
 
-    // Then the window shows the flow's latest screen, and keeps it while the flow screen is null
-    expect(shownWithFlow).toEqual(failed);
-    expect(shownAfterDelivery).toEqual(failed);
+    // Then the window shows the flow's latest screen
+    expect(shown).toEqual(failed);
   });
 });
 
@@ -530,32 +485,29 @@ describe('site transaction window', () => {
   it("As a user, I open a site's transaction and see it go from Signing to its consent for the site I opened the window from", async () => {
     // Given a site's request that carries its call and a token whose grant is still being read
     const grantRead = createDeferred<undefined>();
-    const page = openTransactionWindow(CALL, { grantRead: grantRead.promise });
-    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
+    const page = openTransactionWindow(fromHex(CALL), { grantRead: grantRead.promise });
 
     // When the grant read ends
     grantRead.resolve(undefined);
-    await watched.waitForView('consent');
+    await page.waitForView('consent');
 
     // Then the window started on the sign route's working view, then asked the consent of the vetted origin
-    expect(watched.shown).toEqual([{ view: 'site-signing', route: 'sign' }, { view: 'consent' }]);
-    expect(watched.screen.get()).toMatchObject({ origin: ORIGIN });
+    expect(page.shown).toEqual([{ view: 'site-signing', route: 'sign' }, { view: 'consent' }]);
+    expect(page.site.screen.get()).toMatchObject({ origin: ORIGIN });
   });
 
-  it('As a site, I send a call in my request and a payload and get my transaction signed for the call my request carries', async () => {
-    // Given a site's request that carries its call, and a payload with another call the site posted as well
-    const page = openTransactionWindow(CALL);
-    page.postPayload(PAYLOAD_CALL);
-    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
-    await watched.waitForView('consent');
+  it('As a site, I get my transaction signed for my call', async () => {
+    // Given a site's transaction on its consent view
+    const page = openTransactionWindow(fromHex(CALL));
+    await page.waitForView('consent');
 
     // When the user consents and confirms the review
-    await watched.site.consent();
-    await watched.waitForView('site-review');
-    watched.site.confirm();
+    await page.site.consent();
+    await page.waitForView('site-review');
+    page.site.confirm();
     await page.closed;
 
-    // Then the request's call was decoded, and the site got the signed transaction
+    // Then the call was decoded, and the site got the signed transaction
     expect(page.decoded).toEqual([CALL]);
     expect(page.readPosted()).toContainEqual({
       type: 'dotli:s:result',
@@ -563,40 +515,5 @@ describe('site transaction window', () => {
       result: { transaction: SIGNED_TX },
       site_token: TOKEN,
     });
-  });
-
-  it('As a site, I post my call after the window opened and the window waits for it before it starts my round', async () => {
-    // Given a site's request with no call, whose window asked for the payload
-    const page = openTransactionWindow(null);
-    await page.asked;
-
-    // When the site posts its call
-    page.postPayload(PAYLOAD_CALL);
-    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
-    await watched.waitForView('consent');
-    await watched.site.consent();
-    await watched.waitForView('site-review');
-
-    // Then the round started with the call that came, and decodes the posted call
-    expect(page.decoded).toEqual([PAYLOAD_CALL]);
-  });
-
-  it('As a site, I post a call that is not hex of two or more bytes and am refused as a bad request, counted as my transaction', async () => {
-    // Given a site's request with no call, whose window asked for the payload
-    const page = openTransactionWindow(null);
-    await page.asked;
-
-    // When the site posts a one-byte call
-    page.postPayload('0x0a');
-    const opened = await page.opening;
-    await page.closed;
-
-    // Then no round starts, the site is refused and the refusal counts as a transaction
-    expect(opened).toBeNull();
-    expect(page.decoded).toEqual([]);
-    expect(page.readPosted()).toContainEqual({ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' });
-    expect(page.metrics.counted('session_pages.site_transaction')).toEqual([
-      { outcome: 'refused', reason: 'bad_request' },
-    ]);
   });
 });

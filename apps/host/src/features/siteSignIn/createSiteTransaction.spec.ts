@@ -6,7 +6,8 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import type { TxCreator } from 'polkadot-api';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
-import { hashBlake2b, createDeferred, fromHex, toHex, waitForStatus } from '@dotli/shared';
+import { atom } from 'nanostores';
+import { hashBlake2b, createDeferred, fromHex, noop, toHex, waitForStatus } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -29,6 +30,7 @@ import { createGrant } from '../../testing/createGrant.js';
 import { findLeakedSecrets } from '../../testing/findLeakedSecrets.js';
 import { getResult } from '../../testing/getResult.js';
 import {
+  FLOW_SCREEN,
   MAIN_ACCOUNT,
   MAIN_OWNER,
   NEW_SITE_TOKEN,
@@ -272,9 +274,8 @@ async function startTransactionWith(options: StartTransactionParams, responder: 
       siteToken: options.siteToken ?? null,
       groupToken: options.groupToken ?? null,
       chain: SERVICES.assethub.genesis,
-      call: toHex(CALL),
+      call: CALL,
     },
-    call: CALL,
     origin: SITE_ORIGIN,
     self: SELF,
     responder,
@@ -286,6 +287,7 @@ async function startTransactionWith(options: StartTransactionParams, responder: 
     mainAccount: () => Promise.resolve(MAIN_ACCOUNT),
     startWindowFlow(stored) {
       windowFlows.push(stored);
+      return { screen: atom(FLOW_SCREEN), dispose: noop };
     },
     now: () => ROUND_NOW,
     randomToken() {
@@ -362,8 +364,7 @@ function createTransactionAction(
 ) {
   return createSiteTransactionAction({
     origin: SITE_ORIGIN,
-    request: { account: ACCOUNT, chain: SERVICES.assethub.genesis },
-    call: CALL,
+    request: { call: CALL, account: ACCOUNT, chain: SERVICES.assethub.genesis },
     chain,
     txSigner,
     accountReader,
@@ -461,7 +462,7 @@ describe('site transaction', () => {
     expect(round.views).toEqual([
       'site-signing',
       'consent',
-      'window',
+      'connecting',
       'site-signing',
       'site-review',
       'site-sharing',
@@ -677,7 +678,7 @@ describe('site transaction', () => {
   it('As a user whose site I used before, I sign with no consent and the account the site named is read', async () => {
     // Given a grant for this site and this main account
     const round = await startTransaction({ siteToken: SITE_TOKEN, grants: [createGrant()] });
-    await round.waitForView('window');
+    await round.waitForView('connecting');
     round.storeSignIn();
 
     // When the user signs on the review

@@ -421,10 +421,12 @@ describe('createChainLanes', () => {
     expect(halts).toEqual([]);
   });
 
-  it("As an RPC chain, I pause every lane when one lane's pause throws, and throw its error", () => {
+  it("As an RPC chain, I pause every lane when one lane's pause throws, then report it and halt with its error", () => {
     // Given lane 0 whose close throws, and lane 1 open
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport, built } = createTransports({ faults: { 0: 'disconnect' } });
-    const { lanes, statuses } = createLanes({ createTransport });
+    const { lanes, statuses, halts } = createLanes({ createTransport, haltsLanes: false });
     fillLaneZero(lanes);
     connectConsumer(lanes, 'local:e');
 
@@ -433,15 +435,20 @@ describe('createChainLanes', () => {
       lanes.pause();
     });
 
-    // Then lane 1 is paused too, the chain reads disconnected, the last status heard is disconnected, and lane 0's error is thrown
-    expect(thrown).toBe(FAULT);
+    // Then nothing is thrown, lane 1 is paused too, the chain reads disconnected, and lane 0's error is reported and
+    // halts the chain after the last status heard
+    expect(thrown).toBeUndefined();
     expect(nth(built, 1).disconnects).toBe(1);
     expect(lanes.status()).toBe('disconnected');
     expect(statuses.at(-1)).toBe('disconnected');
+    expect(captured).toMatchObject([{ step: 'chain_pool_pause' }]);
+    expect(halts).toEqual([FAULT]);
   });
 
-  it("As an RPC chain, I halt every lane when one lane's halt throws, and throw its error", () => {
+  it("As an RPC chain, I halt every lane when one lane's halt throws, and report its error", () => {
     // Given lane 0 whose close throws, and a consumer homed on lane 1
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport, built } = createTransports({ faults: { 0: 'disconnect' } });
     const { lanes, statuses } = createLanes({ createTransport });
     fillLaneZero(lanes);
@@ -453,8 +460,9 @@ describe('createChainLanes', () => {
       lanes.halt(error);
     });
 
-    // Then lane 1 halts too, the last status heard is disconnected, and lane 0's error is thrown
-    expect(thrown).toBe(FAULT);
+    // Then nothing is thrown, lane 1 halts too, the last status heard is disconnected, and lane 0's error is reported
+    expect(thrown).toBeUndefined();
+    expect(captured).toMatchObject([{ step: 'chain_pool_close' }]);
     expect(extra.halts).toEqual([error]);
     expect(nth(built, 1).disconnects).toBe(1);
     expect(statuses.at(-1)).toBe('disconnected');

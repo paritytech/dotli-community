@@ -171,7 +171,7 @@ describe('round dispatch', () => {
           siteToken: null,
           groupToken: null,
           chain: PASEO_HUB,
-          call: '0x0001',
+          call: Uint8Array.of(0x00, 0x01),
         },
       },
     },

@@ -76,7 +76,7 @@ function createPollerHarness() {
         request: ((_name: string, _options: unknown, run: (lock: object) => unknown) =>
           run({})) as LockManager['request'],
       },
-      openChannel: () => null,
+      openChannel: createQuietChannel,
       visibility,
       lifecycle,
       timers,
@@ -239,7 +239,7 @@ describe('scheduled notifications poller', () => {
     expect(counted('notifications.poll')).toEqual([{ outcome: 'error', reason: 'Error', step: 'list_pending' }]);
   });
 
-  it('As a user, I load a page with a due notification whose claim is slow to land and it shows once', async () => {
+  it('As a user, I load a page with a notification that just fell due, whose claim is slow to land, and it shows once, allowed an OS notification', async () => {
     // Given a due record whose claim at page load is slow to land, and a schedule that finds that round running
     const { timers, start, advanceTicks } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
@@ -259,13 +259,26 @@ describe('scheduled notifications poller', () => {
     landed.resolve(undefined);
     await advanceTicks(1);
 
-    // Then it shows once, as the page load found it
+    // Then it shows once, allowed an OS notification, since its claim landed seconds after it fell due
     expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ label: 'Acme', browserNotification: false }));
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ label: 'Acme', browserNotification: true }));
+  });
+
+  it('As a user, I load a page with a notification that fell due an hour ago and it shows once without an OS notification', async () => {
+    // Given a notification that fell due an hour before the page loads
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() - 3_600_000 }] });
+
+    // When the page loads and its scheduler starts
+    const { show } = start({ store });
+    await advanceTicks(1);
+
+    // Then it shows once, with no OS notification, since the user missed it
+    expect(show).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ browserNotification: false }));
   });
 
   it('As a user, I keep a page open while a round is slow and a tick that comes meanwhile starts no second round', async () => {
-    // Given an initialized scheduler whose rehydrate round ended, and a read held from the next call on
+    // Given an initialized scheduler whose page-load round ended, and a read held from the next call on
     const { timers, start, advanceTicks } = createPollerHarness();
     const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 3_600_000 }] });
     start({ store });
@@ -356,7 +369,7 @@ describe('scheduled notifications poller', () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 
-  it('As a user who leaves a page while its scheduler claims a due notification, I come back and the notification still shows once', async () => {
+  it('As a user who leaves a page while its scheduler claims a notification that just fell due, I come back and it still shows once, allowed an OS notification', async () => {
     // Given a due record whose claim at page load removes it at once and is slow to answer
     const { timers, page, start } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
@@ -377,12 +390,12 @@ describe('scheduled notifications poller', () => {
     page.window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
     await timers.advance(0);
 
-    // Then it shows once, as the page load found it
+    // Then it shows once, allowed an OS notification, since it was claimed as it fell due
     expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: false }));
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: true }));
   });
 
-  it('As a user who comes back to a page whose claim was still running when it left, I see the notification once', async () => {
+  it('As a user who comes back to a page whose claim of a notification that just fell due was still running when it left, I see it once, allowed an OS notification', async () => {
     // Given a due record whose claim at page load removes it at once and is slow to answer
     const { timers, page, start } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
@@ -403,9 +416,9 @@ describe('scheduled notifications poller', () => {
     landed.resolve(undefined);
     await timers.advance(0);
 
-    // Then it shows once, as the page load found it
+    // Then it shows once, allowed an OS notification, since it was claimed as it fell due
     expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: false }));
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: true }));
   });
 
   it('As a user back on a page from the back-forward cache, I come back and a notification that fell due meanwhile still shows', async () => {
@@ -427,6 +440,22 @@ describe('scheduled notifications poller', () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dApp user, I push a notification that is due now and it shows at once, under a new id, without being stored', async () => {
+    // Given
+    const { start } = createPollerHarness();
+    const store = createRecordStore({ records: [] });
+    store.allocateId.mockResolvedValue(3);
+    const { notifications, show } = start({ store });
+
+    // When
+    const result = await notifications.schedule({ ...DUE, deeplink: 'https://acme.dot/inbox', scheduledAt: null });
+
+    // Then
+    expect(result).toEqual({ ok: true, id: 3 });
+    expect(show).toHaveBeenCalledExactlyOnceWith({ label: 'Acme', text: 'x', deeplink: 'https://acme.dot/inbox' });
+    expect(store.schedule).not.toHaveBeenCalled();
+  });
+
   it('As a user, I load a page and its first pageshow opens no second channel', () => {
     // Given
     const { page, start } = createPollerHarness();
@@ -436,7 +465,7 @@ describe('scheduled notifications poller', () => {
       overrides: {
         openChannel: name => {
           opened.push(name);
-          return null;
+          return createQuietChannel();
         },
       },
     });
@@ -589,7 +618,7 @@ describe('scheduled notifications disposed', () => {
       overrides: {
         openChannel: name => {
           opened.push(name);
-          return null;
+          return createQuietChannel();
         },
       },
     });
@@ -621,7 +650,7 @@ describe('scheduled notifications disposed', () => {
     await advanceTicks(3);
 
     // Then the store holds it, and no poller starts to show either
-    expect(result).toEqual({ ok: true, id: 2, immediate: false });
+    expect(result).toEqual({ ok: true, id: 2 });
     expect(store.schedule).toHaveBeenCalledTimes(1);
     expect(show).not.toHaveBeenCalled();
     expect(timers.countPending()).toBe(0);
@@ -640,3 +669,8 @@ describe('scheduled notifications disposed', () => {
     expect(thrown).toBeUndefined();
   });
 });
+
+/** A channel no other tab is on. */
+function createQuietChannel(): ReturnType<ScheduledNotificationsParams['openChannel']> {
+  return { postMessage: () => undefined, close: () => undefined, onmessage: null };
+}

@@ -11,7 +11,7 @@ import type { ProductAccountId } from '@parity/truapi';
 import { hex } from '@scure/base';
 import type { SessionRequest } from '../signInWindow/index.js';
 import { parseSiteAccount } from './parseSiteAccount.js';
-import { readOptionalString, readSiteTokens, REFUSED_KEYS } from './parseSiteRequest.js';
+import { readSiteTokens, REFUSED_KEYS } from './parseSiteRequest.js';
 
 export type SiteSignRequest = {
   round: string;
@@ -22,8 +22,13 @@ export type SiteSignRequest = {
   groupToken: string | null;
   /** The genesis of the request network's Asset Hub, which the request named. */
   chain: string;
-  /** The call as `0x` hex, or null when it follows in a payload. */
-  call: string | null;
+  /** The call's bytes, or null when it follows in a payload. */
+  call: Uint8Array | null;
+};
+
+/** A site's transaction request whose call is known, the request's own or the one its payload brought. */
+export type SiteTransactionRequest = Omit<SiteSignRequest, 'call'> & {
+  call: Uint8Array;
 };
 
 const CALL_MIN_BYTES = 2;
@@ -46,7 +51,7 @@ export function parseSiteSignRequest(request: SessionRequest, network: Network):
     return null;
   }
   const account = parseSiteAccount(params['account'], network);
-  const call = readOptionalString(params['call'], value => parseSiteCall(value) !== null);
+  const call = readSiteCall(params['call']);
   const tokens = readSiteTokens(params);
   if (account === null || call === undefined || tokens === null) {
     return null;
@@ -62,4 +67,15 @@ export function parseSiteCall(call: string): Uint8Array | null {
     return null;
   }
   return hex.decode(call.slice(2));
+}
+
+/** The call field's bytes: `null` when absent, `undefined` when present and not a call. */
+function readSiteCall(value: unknown): Uint8Array | null | undefined {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  return parseSiteCall(value) ?? undefined;
 }

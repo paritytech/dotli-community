@@ -29,8 +29,7 @@ const report = createReporter({ flow: 'notifications' });
 /** Count. A transition of the scheduler threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const notificationsTransitionMetric = defineCount<'error'>('notifications.transition');
 
-export type ScheduleNotificationResult =
-  { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
+export type ScheduleNotificationResult = { ok: true; id: number } | { ok: false; error: 'ScheduleLimitReached' };
 
 type ScheduleRequest = {
   productId: ProductId;
@@ -45,12 +44,12 @@ export type ScheduledNotificationStore = typeof scheduledNotifications;
 export type ScheduledNotificationsParams = {
   /** Where scheduled notifications persist. */
   store: ScheduledNotificationStore;
-  /** Shows a notification that fell due. */
+  /** Shows a notification that is due. */
   show: ShowNotification;
   /** Undefined where the browser has no Web Locks. */
   locks: Pick<LockManager, 'request'> | undefined;
-  /** Null where the browser has no BroadcastChannel. */
-  openChannel: (name: string) => BroadcastChannel | null;
+  /** Opens a channel to the other tabs of this origin. */
+  openChannel: (name: string) => WakeChannel;
   /** The document, whose visibility sets how late a due notification may show. */
   visibility: VisibilitySource;
   /** The window, whose `pagehide` stops the poller and whose restoring `pageshow` starts it again. */
@@ -63,9 +62,8 @@ export type ScheduledNotificationsParams = {
 
 export type ScheduledNotifications = ReturnType<typeof createScheduledNotifications>;
 
-type WakeMessage = { kind: 'scheduled' } | { kind: 'cancelled' } | { kind: 'fired'; hostId: number };
-
-type FireSource = 'realtime' | 'rehydrate';
+/** The scheduler's channel to the other tabs. A `BroadcastChannel` is one. */
+type WakeChannel = Pick<BroadcastChannel, 'postMessage' | 'close' | 'onmessage'>;
 
 /** A round's step. A step's events carry the `Round` value they were started for. */
 type Round =
@@ -82,16 +80,15 @@ type ClaimingRound = Extract<Round, { kind: 'claiming' }>;
  */
 type Page = { stopListening: () => void; lifetime: AbortController };
 
-/** `rehydrating` fires what fell due as `rehydrate`, and `ticking` as `realtime`. A shown page holds the channel. */
+/** A shown page holds the channel. */
 type SchedulerState =
   | { kind: 'uninitialized' }
-  | { kind: 'idle'; page: Page; channel: BroadcastChannel | null }
-  | { kind: 'polling'; page: Page; channel: BroadcastChannel | null; stopPoll: () => void }
-  | { kind: 'rehydrating'; page: Page; channel: BroadcastChannel | null; round: Round }
+  | { kind: 'idle'; page: Page; channel: WakeChannel }
+  | { kind: 'polling'; page: Page; channel: WakeChannel; stopPoll: () => void }
   | {
       kind: 'ticking';
       page: Page;
-      channel: BroadcastChannel | null;
+      channel: WakeChannel;
       stopPoll: () => void;
       round: Round;
       /**
@@ -103,18 +100,16 @@ type SchedulerState =
   | { kind: 'hidden'; page: Page }
   | { kind: 'disposed' };
 
-/** The kinds that run a round. */
-type RoundState = Extract<SchedulerState, { kind: 'rehydrating' | 'ticking' }>;
+type TickingState = Extract<SchedulerState, { kind: 'ticking' }>;
 
 /** The kinds of a shown page. */
-type AwakeState = Extract<SchedulerState, { kind: 'idle' | 'polling' | 'rehydrating' | 'ticking' }>;
+type AwakeState = Extract<SchedulerState, { kind: 'idle' | 'polling' | 'ticking' }>;
 
 type SchedulerEvent =
   | { kind: 'initialized' }
   | { kind: 'ticked' }
   | { kind: 'woken' }
   | { kind: 'scheduled' }
-  | { kind: 'cancelled' }
   | { kind: 'pageHidden' }
   | { kind: 'pageRestored' }
   | { kind: 'disposed' }
@@ -122,16 +117,24 @@ type SchedulerEvent =
   | { kind: 'staleRemoveFailed'; round: Round; error: unknown }
   | { kind: 'listed'; round: Round; records: readonly ScheduledNotificationRecord[] }
   | { kind: 'listFailed'; round: Round; error: unknown }
-  | { kind: 'claimed'; round: ClaimingRound; record: ScheduledNotificationRecord; removed: boolean; source: FireSource }
+  | {
+      kind: 'claimed';
+      round: ClaimingRound;
+      record: ScheduledNotificationRecord;
+      removed: boolean;
+      claimedAt: number;
+    }
   | { kind: 'claimFailed'; round: ClaimingRound; error: unknown };
 
 type SchedulerEffect =
-  | { kind: 'initialized' }
+  | { kind: 'started' }
   | { kind: 'stepSucceeded'; step: PollStep }
   | { kind: 'stepFailed'; step: PollStep; error: unknown }
-  | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource }
-  | { kind: 'posted'; channel: BroadcastChannel | null; message: WakeMessage }
-  | { kind: 'channelClosed'; channel: BroadcastChannel | null }
+  /** Shows `record`, with no OS notification when the user `missed` it. */
+  | { kind: 'fired'; record: ScheduledNotificationRecord; missed: boolean }
+  /** Wakes the other tabs, since a notification was scheduled. A cancel or a fire only shrinks the store. */
+  | { kind: 'posted'; channel: WakeChannel }
+  | { kind: 'channelClosed'; channel: WakeChannel }
   /** The poller or the page listeners let go of. */
   | { kind: 'stopped'; stop: () => void }
   | { kind: 'lifetimeEnded'; lifetime: AbortController };
@@ -152,19 +155,15 @@ export function createScheduledNotifications({
   poll = pagePoll,
 }: ScheduledNotificationsParams) {
   /** Moves the round on to listing once the stale records are gone. */
-  const listAfterStale: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'staleRemoved'> = (
-    state,
-    { round },
-    transition,
-  ) => {
+  const listAfterStale: HandlerOf<SchedulerMachine, 'ticking', 'staleRemoved'> = (state, { round }, transition) => {
     if (round !== state.round) {
       return;
     }
     transition.emitSideEffect({ kind: 'stepSucceeded', step: 'remove_stale' });
     runStep({ ...state, round: { kind: 'listing' } }, transition);
   };
-  /** Moves the round on to listing, since a stale record left behind is only a record not yet due. */
-  const listAfterStaleFailed: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'staleRemoveFailed'> = (
+  /** Moves the round on to listing anyway, so a failing delete never holds back the records that are due. */
+  const listAfterStaleFailed: HandlerOf<SchedulerMachine, 'ticking', 'staleRemoveFailed'> = (
     state,
     { round, error },
     transition,
@@ -176,47 +175,25 @@ export function createScheduledNotifications({
     runStep({ ...state, round: { kind: 'listing' } }, transition);
   };
   /** Claims the listed records that fell due. A tick that lists none stops the poller. */
-  const claimListed: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'listed'> = (
-    state,
-    { round, records },
-    transition,
-  ) => {
+  const claimListed: HandlerOf<SchedulerMachine, 'ticking', 'listed'> = (state, { round, records }, transition) => {
     if (round !== state.round) {
       return;
     }
     transition.emitSideEffect({ kind: 'stepSucceeded', step: 'list_pending' });
-    switch (state.kind) {
-      case 'rehydrating': {
-        const now = timers.now();
-        claimNext(
-          state,
-          records.filter(r => r.scheduledAt <= now),
-          transition,
-        );
-        return;
-      }
-      case 'ticking': {
-        if (records.length === 0 && !state.rescan) {
-          transition.emitState({ kind: 'idle', page: state.page, channel: state.channel });
-          transition.emitSideEffect({ kind: 'stopped', stop: state.stopPoll });
-          return;
-        }
-        // A hidden tab fires only records 300 ms past due, giving a visible tab first crack at the lock.
-        const cutoff = timers.now() - (visibility.visibilityState === 'visible' ? 0 : 300);
-        claimNext(
-          state,
-          records.filter(r => r.scheduledAt <= cutoff),
-          transition,
-        );
-        return;
-      }
+    if (records.length === 0 && !state.rescan) {
+      transition.emitState({ kind: 'idle', page: state.page, channel: state.channel });
+      transition.emitSideEffect({ kind: 'stopped', stop: state.stopPoll });
+      return;
     }
+    // A hidden tab fires only records 300 ms past due, giving a visible tab first crack at the lock.
+    const cutoff = timers.now() - (visibility.visibilityState === 'visible' ? 0 : 300);
+    claimNext(
+      state,
+      records.filter(r => r.scheduledAt <= cutoff),
+      transition,
+    );
   };
-  const endFailedList: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'listFailed'> = (
-    state,
-    { round, error },
-    transition,
-  ) => {
+  const endFailedList: HandlerOf<SchedulerMachine, 'ticking', 'listFailed'> = (state, { round, error }, transition) => {
     if (round !== state.round) {
       return;
     }
@@ -228,21 +205,19 @@ export function createScheduledNotifications({
    * delete is what claims it and the store no longer holds it for anyone else.
    */
   const fireClaimed: HandlerOf<SchedulerMachine, AwakeState['kind'] | 'hidden' | 'disposed', 'claimed'> = (
-    state,
-    { record, removed, source },
+    _state,
+    { record, removed, claimedAt },
     { emitSideEffect },
   ) => {
     if (!removed) {
       return;
     }
-    emitSideEffect({ kind: 'fired', record, source });
-    // A hidden or disposed page's channel closed as it hid or was disposed.
-    if (state.kind !== 'hidden' && state.kind !== 'disposed') {
-      emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'fired', hostId: record.hostId } });
-    }
+    // A hidden tab's throttled poller may wake only once a minute, so a record claimed within that minute counts as on
+    // time, and one claimed later is one the user missed.
+    emitSideEffect({ kind: 'fired', record, missed: claimedAt - record.scheduledAt > 60_000 });
   };
   /** Shows the claimed record, then claims the next due one when the claim is this round's. */
-  const settleClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimed'> = (state, event, transition) => {
+  const settleClaim: HandlerOf<SchedulerMachine, 'ticking', 'claimed'> = (state, event, transition) => {
     fireClaimed(state, event, transition);
     if (event.round !== state.round) {
       return;
@@ -252,7 +227,7 @@ export function createScheduledNotifications({
     claimNext(state, rest, transition);
   };
   /** Claims the next due record, leaving the one whose claim failed for a later round. */
-  const skipFailedClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimFailed'> = (
+  const skipFailedClaim: HandlerOf<SchedulerMachine, 'ticking', 'claimFailed'> = (
     state,
     { round, error },
     transition,
@@ -263,20 +238,6 @@ export function createScheduledNotifications({
     const [, ...rest] = round.due;
     transition.emitSideEffect({ kind: 'stepFailed', step: 'claim', error });
     claimNext(state, rest, transition);
-  };
-  const announceScheduled: HandlerOf<SchedulerMachine, 'polling' | 'rehydrating', 'scheduled'> = (
-    { channel },
-    _event,
-    { emitSideEffect },
-  ) => {
-    emitSideEffect({ kind: 'posted', channel, message: { kind: 'scheduled' } });
-  };
-  const announceCancelled: HandlerOf<SchedulerMachine, AwakeState['kind'], 'cancelled'> = (
-    { channel },
-    _event,
-    { emitSideEffect },
-  ) => {
-    emitSideEffect({ kind: 'posted', channel, message: { kind: 'cancelled' } });
   };
   /** Stops the poller, since IDB starts closing as the page unloads, and closes the channel, which a restore reopens. */
   const hide: HandlerOf<SchedulerMachine, AwakeState['kind'], 'pageHidden'> = (state, _event, transition) => {
@@ -304,8 +265,8 @@ export function createScheduledNotifications({
         initialized(_state, _event, transition) {
           const page = { stopListening: listenForPage(transition.update), lifetime: new AbortController() };
           const channel = openWakeChannel(transition.update);
-          transition.emitSideEffect({ kind: 'initialized' });
-          runStep({ kind: 'rehydrating', round: { kind: 'removingStale' }, page, channel }, transition);
+          transition.emitSideEffect({ kind: 'started' });
+          startRound({ page, channel, stopPoll: startPoll(transition.update) }, transition);
         },
         disposed(_state, _event, { emitState }) {
           emitState({ kind: 'disposed' });
@@ -317,32 +278,20 @@ export function createScheduledNotifications({
         },
         scheduled(state, _event, transition) {
           startPolling(state, transition);
-          transition.emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'scheduled' } });
+          transition.emitSideEffect({ kind: 'posted', channel: state.channel });
         },
-        cancelled: announceCancelled,
         claimed: fireClaimed,
         pageHidden: hide,
         disposed: shutDown,
       },
       polling: {
         ticked(state, _event, transition) {
-          runStep({ ...state, kind: 'ticking', round: { kind: 'removingStale' }, rescan: false }, transition);
+          startRound(state, transition);
         },
-        scheduled: announceScheduled,
-        cancelled: announceCancelled,
+        scheduled({ channel }, _event, { emitSideEffect }) {
+          emitSideEffect({ kind: 'posted', channel });
+        },
         claimed: fireClaimed,
-        pageHidden: hide,
-        disposed: shutDown,
-      },
-      rehydrating: {
-        staleRemoved: listAfterStale,
-        staleRemoveFailed: listAfterStaleFailed,
-        listed: claimListed,
-        listFailed: endFailedList,
-        claimed: settleClaim,
-        claimFailed: skipFailedClaim,
-        scheduled: announceScheduled,
-        cancelled: announceCancelled,
         pageHidden: hide,
         disposed: shutDown,
       },
@@ -359,9 +308,8 @@ export function createScheduledNotifications({
         },
         scheduled(state, _event, { emitState, emitSideEffect }) {
           emitState({ ...state, rescan: true });
-          emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'scheduled' } });
+          emitSideEffect({ kind: 'posted', channel: state.channel });
         },
-        cancelled: announceCancelled,
         pageHidden: hide,
         disposed: shutDown,
       },
@@ -370,7 +318,7 @@ export function createScheduledNotifications({
         claimed: fireClaimed,
         pageRestored({ page }, _event, transition) {
           const channel = openWakeChannel(transition.update);
-          runStep({ kind: 'rehydrating', round: { kind: 'removingStale' }, page, channel }, transition);
+          startRound({ page, channel, stopPoll: startPoll(transition.update) }, transition);
         },
         disposed: shutDown,
       },
@@ -379,7 +327,7 @@ export function createScheduledNotifications({
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'initialized':
+        case 'started':
           log.debug('Scheduled notifications: init');
           return;
         case 'stepSucceeded':
@@ -389,21 +337,21 @@ export function createScheduledNotifications({
           pollReport.failed(effect.step, effect.error);
           return;
         case 'fired': {
-          const { record, source } = effect;
+          const { record, missed } = effect;
           show({
             label: record.title,
             text: record.text,
             deeplink: record.deeplink ?? undefined,
             // An OS toast for an event the user was not around for is intrusive.
-            browserNotification: source === 'realtime',
+            browserNotification: !missed,
           });
           return;
         }
         case 'posted':
-          effect.channel?.postMessage(effect.message);
+          effect.channel.postMessage({ kind: 'scheduled' });
           return;
         case 'channelClosed':
-          effect.channel?.close();
+          effect.channel.close();
           return;
         case 'stopped':
           effect.stop();
@@ -429,10 +377,10 @@ export function createScheduledNotifications({
      */
     init,
     /**
-     * Schedules a notification. An immediate fire (null or past `scheduledAt`) only allocates an id and is not
-     * persisted. Before `init` it starts no poller, and `init` fires it once due. After `dispose` it still persists the
-     * notification for another tab or the next load to fire, but starts no poller. Rejects when the store cannot
-     * allocate or write it.
+     * Schedules a notification. One due now (null or past `scheduledAt`) shows at once under a newly allocated id and
+     * is not persisted, also before `init` and after `dispose`. Before `init` a later one starts no poller, and `init`
+     * fires it once due. After `dispose` it still persists the notification for another tab or the next load to fire,
+     * but starts no poller. Rejects when the store cannot allocate or write it, or when showing it throws.
      */
     schedule,
     /**
@@ -458,7 +406,8 @@ export function createScheduledNotifications({
 
     if (request.scheduledAt === null || request.scheduledAt <= now) {
       const id = await store.allocateId(request.productId);
-      return { ok: true, id, immediate: true };
+      show({ label: request.title, text: request.text, deeplink: request.deeplink ?? undefined });
+      return { ok: true, id };
     }
 
     const result = await store.schedule({
@@ -469,29 +418,30 @@ export function createScheduledNotifications({
       scheduledAt: request.scheduledAt,
     });
 
-    if (!result.ok) {
-      return result;
+    if (result.ok) {
+      machine.update({ kind: 'scheduled' });
     }
-
-    machine.update({ kind: 'scheduled' });
-
-    return { ok: true, id: result.id, immediate: false };
+    return result;
   }
 
-  async function cancel(productId: ProductId, perProductId: number): Promise<boolean> {
-    const removed = await store.cancel(productId, perProductId);
-    if (removed) {
-      machine.update({ kind: 'cancelled' });
-    }
-    return removed;
+  function cancel(productId: ProductId, perProductId: number): Promise<boolean> {
+    return store.cancel(productId, perProductId);
   }
 
   function dispose(): void {
     machine.update({ kind: 'disposed' });
   }
 
+  /** Starts a round, which removes the stale records first. */
+  function startRound(
+    { page, channel, stopPoll }: Pick<TickingState, 'page' | 'channel' | 'stopPoll'>,
+    transition: Transition<SchedulerMachine>,
+  ): void {
+    runStep({ kind: 'ticking', page, channel, stopPoll, round: { kind: 'removingStale' }, rescan: false }, transition);
+  }
+
   /** Moves to `state`, then starts the work of its round's step. */
-  function runStep(state: RoundState, { emitState, update }: Transition<SchedulerMachine>): void {
+  function runStep(state: TickingState, { emitState, update }: Transition<SchedulerMachine>): void {
     emitState(state);
     const { round } = state;
     switch (round.kind) {
@@ -513,10 +463,9 @@ export function createScheduledNotifications({
         return;
       case 'claiming': {
         const [record] = round.due;
-        const source = state.kind === 'rehydrating' ? 'rehydrate' : 'realtime';
         update(
           claimScheduledNotification({ store, locks, record, signal: state.page.lifetime.signal }).then(
-            removed => ({ kind: 'claimed', round, record, removed, source }),
+            removed => ({ kind: 'claimed', round, record, removed, claimedAt: timers.now() }),
             (error: unknown) => ({ kind: 'claimFailed', round, error }),
           ),
         );
@@ -527,7 +476,7 @@ export function createScheduledNotifications({
 
   /** Claims the first of `due`, or ends the round when none is left. */
   function claimNext(
-    state: RoundState,
+    state: TickingState,
     due: readonly ScheduledNotificationRecord[],
     transition: Transition<SchedulerMachine>,
   ): void {
@@ -539,36 +488,30 @@ export function createScheduledNotifications({
     runStep({ ...state, round: { kind: 'claiming', due: [record, ...rest] } }, transition);
   }
 
-  /** Ends the round in `polling`, with the poller kept or started. */
-  function endRound(state: RoundState, transition: Transition<SchedulerMachine>): void {
-    switch (state.kind) {
-      case 'rehydrating':
-        startPolling(state, transition);
-        return;
-      case 'ticking':
-        transition.emitState({ kind: 'polling', page: state.page, channel: state.channel, stopPoll: state.stopPoll });
-        return;
-    }
-  }
-
-  function startPolling(
-    { page, channel }: Extract<SchedulerState, { kind: 'idle' | 'rehydrating' }>,
-    { emitState, update }: Transition<SchedulerMachine>,
-  ): void {
-    const stopPoll = poll.start(() => {
-      update({ kind: 'ticked' });
-    }, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
+  /** Ends the round in `polling`, with the poller kept. */
+  function endRound({ page, channel, stopPoll }: TickingState, { emitState }: Transition<SchedulerMachine>): void {
     emitState({ kind: 'polling', page, channel, stopPoll });
   }
 
+  function startPolling(
+    { page, channel }: Extract<SchedulerState, { kind: 'idle' }>,
+    { emitState, update }: Transition<SchedulerMachine>,
+  ): void {
+    emitState({ kind: 'polling', page, channel, stopPoll: startPoll(update) });
+  }
+
+  function startPoll(update: Transition<SchedulerMachine>['update']): () => void {
+    return poll.start(() => {
+      update({ kind: 'ticked' });
+    }, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
+  }
+
   /** Opens the channel to the other tabs, whose every message wakes the poller. */
-  function openWakeChannel(update: Transition<SchedulerMachine>['update']): BroadcastChannel | null {
+  function openWakeChannel(update: Transition<SchedulerMachine>['update']): WakeChannel {
     const channel = openChannel('dotli:scheduled-notifications');
-    if (channel !== null) {
-      channel.onmessage = () => {
-        update({ kind: 'woken' });
-      };
-    }
+    channel.onmessage = () => {
+      update({ kind: 'woken' });
+    };
     return channel;
   }
 
@@ -619,7 +562,6 @@ function stopWaking(state: AwakeState, { emitSideEffect }: Transition<SchedulerM
       emitSideEffect({ kind: 'stopped', stop: state.stopPoll });
       break;
     case 'idle':
-    case 'rehydrating':
       break;
   }
   emitSideEffect({ kind: 'channelClosed', channel: state.channel });
