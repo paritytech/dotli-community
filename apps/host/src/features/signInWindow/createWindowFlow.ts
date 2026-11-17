@@ -21,7 +21,6 @@ import {
   type Transition,
 } from '@dotli/shared';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
-import type { PairingView } from '../account/index.js';
 import type { SignInScreen, WindowIntents } from './sessionWindowState.js';
 import type { AuthCommands } from '../account/index.js';
 import type { LogoutOutcome, PageSignOut, UntoldLogout } from '../account/index.js';
@@ -102,12 +101,11 @@ export type WindowFlowParams = {
 /** A closed set, so the metric's `reason` tag stays bounded. */
 type StepName = 'decide' | 'continue' | 'another' | 'phrase' | 'back' | 'pairing' | 'finish';
 
-/** What a round keeps from its opening, with how far its pairing got, which every view carries. */
+/** What a round keeps from its opening. */
 type Round = {
   intent: SignInIntent;
   /** The page the window signs in for, null until the opener is known and when no page opened the window. */
   page: string | null;
-  pairing: PairingView;
 };
 
 /** Every step of the round, with the view it shows. A step that waits on work keeps the view it was asked on. */
@@ -115,6 +113,9 @@ type Step = { round: Round; shown: Shown };
 
 /** A step of Continue's view. */
 type Continued = { round: Round; shown: Extract<Shown, { view: 'continue' }> };
+
+/** A step of the pairing's view. */
+type Pairing = { round: Round; shown: Extract<Shown, { view: 'pairing' }> };
 
 /**
  * The round's flow, from the hello it waits for to the end of its round. Each step that waits on work is a kind of its
@@ -141,12 +142,12 @@ type Flow =
   | (Step & { kind: 'goingBack' })
   | (Step & { kind: 'savingPhrase'; check: PhraseCheck; asker: symbol; entropy: Uint8Array })
   | (Step & { kind: 'readingAfterPhrase'; entropy: Uint8Array })
-  | (Step & { kind: 'loggingIn' })
-  | (Step & { kind: 'loginFailing' })
-  | (Step & { kind: 'loggingInThenRetry' })
-  | (Step & { kind: 'pairingIdle' })
-  | (Step & { kind: 'finishing'; account: TruapiSessionUiState })
-  | (Step & { kind: 'cachingAccount'; result: SessionResult })
+  | (Pairing & { kind: 'loggingIn' })
+  | (Pairing & { kind: 'loginFailing' })
+  | (Pairing & { kind: 'loggingInThenRetry' })
+  | (Pairing & { kind: 'pairingIdle' })
+  | (Pairing & { kind: 'finishing'; account: TruapiSessionUiState })
+  | (Pairing & { kind: 'cachingAccount'; result: SessionResult })
   | (Step & { kind: 'forgetFailed'; continued: Continued['shown'] })
   | (Step & { kind: 'failed' });
 
@@ -297,8 +298,8 @@ export function createWindowFlow({
     { auth: changed },
     { emitState },
   ) => {
-    const next = { ...round, pairing: getPairingView(round.pairing, changed) };
-    emitState({ kind: next.pairing.kind === 'error' ? 'loginFailing' : 'loggingIn', round: next, shown });
+    const pairing = getPairingView(shown.pairing, changed);
+    emitState({ kind: pairing.kind === 'error' ? 'loginFailing' : 'loggingIn', round, shown: { ...shown, pairing } });
   };
   /** A login whose retry is asked, or that already paired, only shows how far the core got. */
   const followAuth: HandlerOf<FlowMachine, 'loggingInThenRetry' | 'finishing' | 'cachingAccount', 'authChanged'> = (
@@ -306,7 +307,7 @@ export function createWindowFlow({
     { auth: changed },
     { emitState },
   ) => {
-    emitState({ ...state, round: { ...state.round, pairing: getPairingView(state.round.pairing, changed) } });
+    emitState({ ...state, shown: { ...state.shown, pairing: getPairingView(state.shown.pairing, changed) } });
   };
   /** Sends what the login paired, which the command answered only once the main store held it. */
   const finishPairing: HandlerOf<FlowMachine, 'loggingIn' | 'loginFailing' | 'loggingInThenRetry', 'loginPaired'> = (
@@ -530,7 +531,7 @@ export function createWindowFlow({
         // A login that ends without a sign-in leaves a failure on show for Retry, one that says how it ended, so no
         // dead code stays up.
         loginEnded({ round, shown }, { how }, { emitState }) {
-          emitState({ kind: 'pairingIdle', round: { ...round, pairing: getEndedLoginView(how) }, shown });
+          emitState({ kind: 'pairingIdle', round, shown: { ...shown, pairing: getEndedLoginView(how) } });
         },
         loginPaired: finishPairing,
         workFailed: failStep,
@@ -586,9 +587,8 @@ export function createWindowFlow({
         },
       },
       failed: {
-        // No login runs here, so whatever pairing is on show was left by one that ended, and gives way to the spinner.
-        retryAsked({ round, shown }, _event, transition) {
-          decide({ round: { ...round, pairing: SPINNER }, shown }, transition);
+        retryAsked(state, _event, transition) {
+          decide(state, transition);
         },
       },
     },
@@ -599,7 +599,7 @@ export function createWindowFlow({
       kind: 'live',
       flow: {
         kind: 'waiting',
-        round: { intent, page: null, pairing: getPairingView(SPINNER, auth.get()) },
+        round: { intent, page: null },
         shown: { view: 'connecting' },
       },
     },
@@ -799,12 +799,12 @@ export function createWindowFlow({
 
   /** Retry over a failed pairing shows the spinner while the store decides again what to offer. */
   function retryPairing(round: Round, transition: Transition<FlowMachine>): void {
-    readToOffer({ round: { ...round, pairing: SPINNER }, shown: { view: 'pairing' } }, transition);
+    readToOffer({ round, shown: { view: 'pairing', pairing: SPINNER } }, transition);
   }
 
   /** Shows the pairing and logs in. The login waits on the phone, so it answers outside `await()`. */
   function pair(round: Round, { emitState, update }: Transition<FlowMachine>): void {
-    emitState({ kind: 'loggingIn', round: { ...round, pairing: SPINNER }, shown: { view: 'pairing' } });
+    emitState({ kind: 'loggingIn', round, shown: { view: 'pairing', pairing: SPINNER } });
     void commands
       .login()
       .then(

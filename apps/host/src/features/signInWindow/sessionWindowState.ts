@@ -52,14 +52,16 @@ type SignInFields = {
   /** The page the window signs in for, named above the QR code. */
   pageHost: string | null;
   failure: WindowFailure | null;
-  /** How far the pairing under way got, as the window's core reports it. A view other than the pairing's keeps it. */
-  pairing: PairingView;
 };
 
-/** A view of a sign-in. Only Continue offers an account, and it always has one to offer. */
+/**
+ * A view of a sign-in. Only Continue offers an account, and it always has one to offer. Only the pairing view says how
+ * far the pairing under way got, as the window's core reports it.
+ */
 export type SignInScreen =
   | (SignInFields & { view: 'continue'; offer: ContinueOffer })
-  | (SignInFields & { view: Exclude<WindowView, 'continue' | 'signing-out' | 'signed-out'> });
+  | (SignInFields & { view: 'pairing'; pairing: PairingView })
+  | (SignInFields & { view: Exclude<WindowView, 'continue' | 'pairing' | 'signing-out' | 'signed-out'> });
 
 /** A view of a site's round, which names the site's full origin. */
 export type SiteWindowScreen = Extract<SiteScreen, { origin: string }>;
@@ -118,12 +120,7 @@ export type SiteIntents = Pick<SiteRound, 'consent' | 'decline' | 'confirm' | 'r
 export type SiteListIntents = Pick<SiteList, 'revoke' | 'retry'>;
 
 // The page renders its first paint from this, so it starts where every window starts.
-const sessionWindow = atom<WindowScreen>({
-  view: 'connecting',
-  pageHost: null,
-  failure: null,
-  pairing: { kind: 'spinner' },
-});
+const sessionWindow = atom<WindowScreen>({ view: 'connecting', pageHost: null, failure: null });
 sessionWindow.eq = isShallowEqual;
 registerAtomReset(sessionWindow);
 const store: ReadableAtom<WindowScreen> = sessionWindow;

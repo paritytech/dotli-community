@@ -8,7 +8,7 @@ import { atom, type WritableAtom } from 'nanostores';
 import { createDeferred, isRecord, waitForStatus } from '@dotli/shared';
 import { catchError, must } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from './sessionWindowState.js';
-import type { LoginOutcome } from '../account/index.js';
+import type { LoginOutcome, PairingView } from '../account/index.js';
 import type { LogoutOutcome } from '../account/index.js';
 import type { DotliAuthState } from '../account/index.js';
 import { createFakeSessionPresence } from '../account/session/createPagePresence.fake.js';
@@ -285,9 +285,15 @@ function waitForView(flow: WindowFlow, view: WindowView): Promise<SignInScreen> 
   return waitForStatus(flow.screen, current => current.view === view);
 }
 
-/** Waits until the flow's pairing is of `kind`. */
-function waitForPairing(flow: WindowFlow, kind: SignInScreen['pairing']['kind']): Promise<SignInScreen> {
-  return waitForStatus(flow.screen, current => current.pairing.kind === kind);
+/** How far the pairing on show got, null on a view other than the pairing's. */
+function getPairing(flow: WindowFlow): PairingView | null {
+  const shown = flow.screen.get();
+  return shown.view === 'pairing' ? shown.pairing : null;
+}
+
+/** Waits until the flow shows a pairing of `kind`. */
+function waitForPairing(flow: WindowFlow, kind: PairingView['kind']): Promise<SignInScreen> {
+  return waitForStatus(flow.screen, current => current.view === 'pairing' && current.pairing.kind === kind);
 }
 
 describe('session window flow', () => {
@@ -1021,7 +1027,7 @@ describe('session window flow', () => {
 
     // Then the login under way still shows its code, no step read the store and no second login started
     expect(flow.screen.get().view).toBe('pairing');
-    expect(flow.screen.get().pairing).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
+    expect(getPairing(flow)).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
     expect(metrics.counted('session_window.flow')).toEqual([]);
     expect(calls).toEqual(['login']);
   });
@@ -1077,13 +1083,13 @@ describe('session window flow', () => {
 
     // When the core shows its code, then fails, then reads signed out
     auth.set(PAIRING);
-    const shownCode = flow.screen.get().pairing;
+    const shownCode = getPairing(flow);
     auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'Login request denied' });
     auth.set({ tag: 'Disconnected' });
 
     // Then the code showed and the declined failure stays with Retry
     expect(shownCode).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
-    expect(flow.screen.get().pairing).toEqual(getLoginFailureView('Other', 'Login request denied'));
+    expect(getPairing(flow)).toEqual(getLoginFailureView('Other', 'Login request denied'));
 
     // When Retry is pressed before my login answered, and it answers that it failed
     const retried = flow.retry();
@@ -1093,7 +1099,7 @@ describe('session window flow', () => {
     await flow.await();
 
     // Then a new login started only once the failed one answered, and the failure gave way to a fresh pairing
-    expect(flow.screen.get().pairing).toEqual({ kind: 'spinner' });
+    expect(getPairing(flow)).toEqual({ kind: 'spinner' });
     expect(calls).toEqual(['login', 'login']);
   });
 
@@ -1110,13 +1116,13 @@ describe('session window flow', () => {
     await waitForPairing(flow, 'error');
 
     // Then the dead code is gone and Retry is offered
-    expect(flow.screen.get().pairing).toEqual(getEndedLoginView('cancelled'));
+    expect(getPairing(flow)).toEqual(getEndedLoginView('cancelled'));
 
     // When the user presses Retry
     await flow.retry();
 
     // Then a new login starts with the spinner
-    expect(flow.screen.get().pairing).toEqual({ kind: 'spinner' });
+    expect(getPairing(flow)).toEqual({ kind: 'spinner' });
     expect(calls).toEqual(['login', 'login']);
   });
 
@@ -1134,7 +1140,7 @@ describe('session window flow', () => {
     auth.set(CONNECTED);
 
     // Then the failure stays with Retry
-    expect(flow.screen.get().pairing).toMatchObject({ kind: 'error', retry: true });
+    expect(getPairing(flow)).toMatchObject({ kind: 'error', retry: true });
 
     // When the user presses Retry
     await flow.retry();
@@ -1189,7 +1195,7 @@ describe('session window flow', () => {
     await waitForPairing(flow, 'error');
 
     // Then the generic failure shows with Retry
-    expect(flow.screen.get().pairing).toEqual(getEndedLoginView('failed'));
+    expect(getPairing(flow)).toEqual(getEndedLoginView('failed'));
   });
 
   it('As a user in the sign-in window whose pairing could not be stored, I am told so and Retry pairs again', async () => {
@@ -1433,10 +1439,12 @@ describe('session window flow', () => {
     // And a login under way, which starts in the same turn as the pairing view
     vet();
     await waitForView(flow, 'pairing');
-    const seen: SignInScreen['pairing'][] = [];
+    const seen: PairingView[] = [];
     onTestFinished(
       flow.screen.subscribe(screen => {
-        seen.push(screen.pairing);
+        if (screen.view === 'pairing') {
+          seen.push(screen.pairing);
+        }
       }),
     );
 
@@ -1444,7 +1452,7 @@ describe('session window flow', () => {
     auth.set(PAIRING);
 
     // Then the screen shows the step the core moved on to
-    expect(flow.screen.get().pairing).toEqual({ kind: 'authenticating' });
+    expect(getPairing(flow)).toEqual({ kind: 'authenticating' });
     // And no screen in between showed the code the core moved past
     expect(seen.some(pairing => pairing.kind === 'pairing')).toBe(false);
   });

@@ -458,14 +458,9 @@ describe('site window screen chain', () => {
   it("As the site window, I read the current flow's latest screen at once through the chain, and keep it while the flow screen is null", async () => {
     // Given a window flow that shows a connecting screen, whose earlier listener moves a pairing on to a failed one, and
     // a core that reports the stored session gone, so a Try again starts a second flow
-    const connecting: SignInScreen = {
-      view: 'connecting',
-      pageHost: ORIGIN,
-      failure: null,
-      pairing: { kind: 'spinner' },
-    };
+    const connecting: SignInScreen = { view: 'connecting', pageHost: ORIGIN, failure: null };
     const pairing: SignInScreen = { view: 'pairing', pageHost: ORIGIN, failure: null, pairing: { kind: 'spinner' } };
-    const failed: SignInScreen = { view: 'failed', pageHost: ORIGIN, failure: 'step', pairing: { kind: 'spinner' } };
+    const failed: SignInScreen = { view: 'failed', pageHost: ORIGIN, failure: 'step' };
     const flowScreen = atom<SignInScreen>(connecting);
     onTestFinished(
       flowScreen.listen(current => {

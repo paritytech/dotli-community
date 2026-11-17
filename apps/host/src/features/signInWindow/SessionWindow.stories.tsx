@@ -54,12 +54,8 @@ const loadPhrase = fn<() => Promise<PhraseScreenModule>>(loadPhraseScreen);
 
 const SPINNER: PairingView = { kind: 'spinner' };
 
-/** What a sign-in view carries before anything happened: no page named, no failure and no pairing under way. */
-const SIGN_IN_START: Pick<SignInScreen, 'pageHost' | 'failure' | 'pairing'> = {
-  pageHost: null,
-  failure: null,
-  pairing: SPINNER,
-};
+/** What a sign-in view carries before anything happened: no page named and no failure. */
+const SIGN_IN_START: Pick<SignInScreen, 'pageHost' | 'failure'> = { pageHost: null, failure: null };
 
 /** The pairing a story moves step by step, for a window that renders it. */
 const [livePairing, setLivePairing] = createSignal<PairingView>(SPINNER);
