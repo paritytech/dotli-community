@@ -22,9 +22,9 @@ import {
 import { computed, type ReadableAtom } from 'nanostores';
 import type { PermissionAuthorizations } from './createPermissionAuthorizations.js';
 import {
-  ALL_PERMISSIONS,
   isBrowserConsented,
   isFrameDirectiveOn,
+  PERMISSION_NAMES,
   type EnforceablePermissionName,
   type PermissionStatus,
   type PermissionTargets,
@@ -33,8 +33,7 @@ import { toBlockingModalAbortError } from '../../../kit/throwIfModalAborted.js';
 import { getRead, type ProductPermissionsState } from './productPermissionsState.js';
 import type { ProductState } from '../../page/index.js';
 
-const uiReport = createReporter({ flow: 'ui' });
-const walletReport = createReporter({ flow: 'wallet' });
+const report = createReporter({ flow: 'permissions' });
 
 /**
  * One read of the loaded product's permissions. Tagged `outcome` and, on error, `reason`, as a failed one leaves the
@@ -183,15 +182,13 @@ type PermissionsEffect =
 
 type PermissionsMachine = MachineTypes<PermissionsState, PermissionsEvent, PermissionsEffect>;
 
-const NAMES: readonly EnforceablePermissionName[] = ALL_PERMISSIONS.map(({ name }) => name);
-
 const NONE: ProductPermissionsState = { status: 'none' };
 
 /** Builds the permissions store of the product on show, over the core's `registry`. Building one reads nothing. */
 export function createProductPermissions({ registry, product, timers = realTimers }: Params) {
   // One listener's failure must not keep the change from the others.
   const changes = createListenerSet<PermissionsChange>({
-    onListenerError: uiReport.listener('product_permissions.change'),
+    onListenerError: report.listener('product_permissions.change'),
   });
 
   const queueRefresh: HandlerOf<PermissionsMachine, BusyKind, 'refreshAsked'> = (state, { resolve }, { emitState }) => {
@@ -203,11 +200,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
   };
 
   /** Queues a change behind a run it does not supersede, in place of the change queued before it. */
-  const queueChange: HandlerOf<PermissionsMachine, 'reading' | 'stopping' | 'rereading', 'changeAsked'> = (
-    state,
-    { job },
-    transition,
-  ) => {
+  const queueChange: HandlerOf<PermissionsMachine, BusyKind, 'changeAsked'> = (state, { job }, transition) => {
     transition.emitState({ ...state, queue: replaceQueuedChange(state.queue, job, transition) });
   };
 
@@ -235,8 +228,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
     transition,
   ) => {
     transition.emitSideEffect({ kind: 'read' });
-    const statusesInOrder = NAMES.map((_, i) => statuses[i] ?? 'ask');
-    endRead(state, land(state.shown, { status: 'read', label: state.label, statuses: statusesInOrder }), transition);
+    endRead(state, land(state.shown, { status: 'read', label: state.label, statuses }), transition);
   };
 
   const landFailedRead: HandlerOf<PermissionsMachine, 'reading' | 'rereading', 'statusesFailed'> = (
@@ -276,12 +268,17 @@ export function createProductPermissions({ registry, product, timers = realTimer
         refreshAsked: queueRefresh,
         decisionAsked: queueDecision,
         productShown: followProduct,
-        changeAsked(state, { job }, transition) {
-          const queue = replaceQueuedChange(state.queue, job, transition);
+        changeAsked(state, event, transition) {
+          if (state.job.kind !== 'change') {
+            queueChange(state, event, transition);
+            return;
+          }
           // A newer change supersedes a running one, whose writes already sent still finish.
-          transition.emitState(
-            state.job.kind === 'change' ? { ...state, kind: 'stopping', queue } : { ...state, queue },
-          );
+          transition.emitState({
+            ...state,
+            kind: 'stopping',
+            queue: replaceQueuedChange(state.queue, event.job, transition),
+          });
         },
         promptClosed(state, _event, { emitState }) {
           const { job } = state;
@@ -316,14 +313,13 @@ export function createProductPermissions({ registry, product, timers = realTimer
         refreshAsked: queueRefresh,
         decisionAsked: queueDecision,
         productShown: followProduct,
-        changeAsked(state, { job }, transition) {
-          const queue = replaceQueuedChange(state.queue, job, transition);
+        changeAsked(state, event, transition) {
           if (state.job.kind !== 'change') {
-            transition.emitState({ ...state, queue });
+            queueChange(state, event, transition);
             return;
           }
           // A newer change supersedes a running one, which makes no more attempts.
-          finishWrite({ ...state, queue }, transition);
+          finishWrite({ ...state, queue: replaceQueuedChange(state.queue, event.job, transition) }, transition);
           transition.emitSideEffect({ kind: 'retryCancelled', timer: state.timer });
         },
         promptClosed(state, _event, transition) {
@@ -354,7 +350,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
           permissionsReadMetric.count({ outcome: 'ok' });
           return;
         case 'readFailed':
-          walletReport.defect(effect.error, {
+          report.defect(effect.error, {
             step: 'permissions_read',
             metric: permissionsReadMetric,
             message: '[dot.li] permissions read failed:',
@@ -365,7 +361,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
           permissionsChangeMetric.count({ outcome: 'ok' });
           return;
         case 'changeFailed':
-          walletReport.defect(combineErrors(effect.errors, 'some permissions kept their status'), {
+          report.defect(combineErrors(effect.errors, 'some permissions kept their status'), {
             step: 'permissions_change',
             metric: permissionsChangeMetric,
             message: '[dot.li] permissions change failed:',
@@ -392,7 +388,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
       }
     },
     onError: error => {
-      walletReport.defect(error, {
+      report.defect(error, {
         step: 'permissions_transition',
         metric: permissionsTransitionMetric,
         message: '[dot.li] A transition of the permissions store threw:',
@@ -447,7 +443,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
     recordPromptDecision,
     /**
      * Reads on every load, a reload of the same product included. Each call returns its own stop, a call while
-     * following joins the follow, and the follow ends with the last stop. Never throws.
+     * following joins the follow, and the follow ends with the last stop.
      */
     start: following.join,
   };
@@ -506,7 +502,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   function readStatuses(label: string, update: Transition<PermissionsMachine>['update']): void {
     update(
-      registry.getStatuses(label, NAMES).then(
+      registry.getStatuses(label, PERMISSION_NAMES).then(
         (statuses): PermissionsEvent => ({ kind: 'statusesRead', statuses }),
         (error: unknown): PermissionsEvent => ({ kind: 'statusesFailed', error }),
       ),
@@ -533,9 +529,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
   /** Starts a write run, or settles a job with nothing to write or whose prompt already closed. */
   function startWrite(store: Store, job: ChangeJob | DecisionJob, transition: Transition<PermissionsMachine>): void {
     const targets = getTargets(job);
-    const names = NAMES.filter(name => targets[name] !== undefined);
-    const read = getRead(store.shown);
-    const before = read?.label === job.label ? read.statuses : null;
+    const names = PERMISSION_NAMES.filter(name => targets[name] !== undefined);
+    const before = getStatusesRead(store.shown, job.label);
     switch (job.kind) {
       case 'change':
         // With the statuses unread nothing is known to match, so every target is written.
@@ -596,9 +591,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
       emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
     }
     const targets = getTargets(job);
-    const landed = NAMES.filter(name => targets[name] !== undefined && !failing.includes(name));
-    const read = getRead(shownBefore);
-    const current = read?.label === job.label ? read.statuses : null;
+    const landed = PERMISSION_NAMES.filter(name => targets[name] !== undefined && !failing.includes(name));
+    const current = getStatusesRead(shownBefore, job.label);
     const shown = current === null ? shownBefore : patchStatuses(job, current, landed);
     const change = getLandedChange(job, landed, before);
     if (change !== null) {
@@ -625,6 +619,12 @@ function getShownLabel(shown: ProductPermissionsState): string | null {
   return shown.status === 'none' ? null : shown.label;
 }
 
+/** The statuses `shown` read of the product `label`, or null where it holds none of them. */
+function getStatusesRead(shown: ProductPermissionsState, label: string): readonly PermissionStatus[] | null {
+  const read = getRead(shown);
+  return read?.label === label ? read.statuses : null;
+}
+
 /** A read lands only for the product still on show. */
 function land(
   shown: ProductPermissionsState,
@@ -643,7 +643,9 @@ function patchStatuses(
   return {
     status: 'read',
     label: job.label,
-    statuses: NAMES.map((name, i) => (landed.includes(name) ? (targets[name] ?? 'ask') : (current[i] ?? 'ask'))),
+    statuses: PERMISSION_NAMES.map((name, i) =>
+      landed.includes(name) ? (targets[name] ?? 'ask') : (current[i] ?? 'ask'),
+    ),
   };
 }
 
@@ -676,10 +678,7 @@ function getLandedChange(
 
 /** `current` is undefined on a computed store's first run. */
 function isSameState(current: ProductPermissionsState | undefined, next: ProductPermissionsState): boolean {
-  if (
-    current?.status !== next.status ||
-    (current.status !== 'none' && next.status !== 'none' && current.label !== next.label)
-  ) {
+  if (current?.status !== next.status || getShownLabel(current) !== getShownLabel(next)) {
     return false;
   }
   if (current.status === 'read' && next.status === 'read') {
@@ -692,7 +691,7 @@ function isSameState(current: ProductPermissionsState | undefined, next: Product
 }
 
 function getPermissionStatus(statuses: readonly PermissionStatus[], name: EnforceablePermissionName): PermissionStatus {
-  return statuses[NAMES.indexOf(name)] ?? 'ask';
+  return statuses[PERMISSION_NAMES.indexOf(name)] ?? 'ask';
 }
 
 /** Settles a write run's job with what still failed. A decision whose prompt closed rejects with the prompt's abort. */

@@ -3,7 +3,7 @@
 
 import type { Browser, BrowserContext, ConsoleMessage, Page } from '@playwright/test';
 import { IFRAME_FORWARDER, SHARED_WORKER_FORWARDER, WORKER_FORWARDER } from '../../iframeLogsForwarder.js';
-import { BROWSER_PERMISSIONS, seedPermissions } from '../fixtures/permissions.js';
+import { BROWSER_PERMISSIONS } from '../../browserPermissions.js';
 import { seedSettings, type SettingsSeed } from '../fixtures/settings.js';
 import { PROTOCOL_SHARED_WORKER, prependToWorker } from './workerPrelude.js';
 
@@ -15,7 +15,6 @@ export type TestSetup = {
 /** The caller closes the returned context. */
 export async function setupTest(browser: Browser, settings: SettingsSeed): Promise<TestSetup> {
   const context = await setupContext(browser);
-  await seedPermissions(context);
   await seedSettings(context, settings);
   const page = await newLoggedPage(context);
   return { context, page };

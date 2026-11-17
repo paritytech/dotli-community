@@ -29,7 +29,7 @@ export type ServedReview = Exclude<UserConfirmationReview, { tag: 'NftPurseDrain
 /** What this browser core serves, as the questions the code that prompts and confirms asks. */
 export const servedRequests = { getDeviceRule, getRemoteRule, isServed };
 
-/** How the host answers a device permission `tag`. Never throws. */
+/** How the host answers a device permission `tag`. */
 function getDeviceRule(tag: HostDevicePermissionRequest): ServeRule {
   if (isAutoGrantPermission(tag)) {
     return { kind: 'grant' };
@@ -43,7 +43,7 @@ function getDeviceRule(tag: HostDevicePermissionRequest): ServeRule {
   return { kind: 'prompt', name: tag };
 }
 
-/** How the host answers a remote permission `tag`. Never throws. */
+/** How the host answers a remote permission `tag`. */
 function getRemoteRule(tag: RemotePermission['tag']): ServeRule {
   // The host cannot enforce `Remote` (HTTP/WS) or `WebRtc`, since the sandbox cannot reliably intercept either. A prompt
   // would offer a choice the host could not keep, so both are auto-granted. The browser core serves no balances and no
@@ -62,7 +62,7 @@ function getRemoteRule(tag: RemotePermission['tag']): ServeRule {
   }
 }
 
-/** True when the host shows `review`, false for an NFT purse drain. Never throws. */
+/** True when the host shows `review`, false for an NFT purse drain. */
 function isServed(review: UserConfirmationReview): review is ServedReview {
   return review.tag !== 'NftPurseDrain';
 }

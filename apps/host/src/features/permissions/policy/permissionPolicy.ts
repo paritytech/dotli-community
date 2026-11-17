@@ -7,10 +7,8 @@ import { getKeys } from '@dotli/shared';
 import type { HostDevicePermissionRequest } from '@parity/truapi';
 import type { PermissionAuthorizationRequest } from '@parity/truapi-host';
 
-export type DevicePermissionName = HostDevicePermissionRequest;
-
 export type PermissionName =
-  DevicePermissionName | 'ChainSubmit' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
+  HostDevicePermissionRequest | 'ChainSubmit' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
 
 /**
  * The permissions dot.li does not support. They stay out of the menu, the presets and the frame, and a product that asks
@@ -195,12 +193,15 @@ export const PERMISSION_GROUPS = {
   app: { label: 'Account and chain' },
 } satisfies Record<PermissionGroup, { label: string }>;
 
+/** Every permission a user can be asked for, in menu order. */
+export const PERMISSION_NAMES: readonly EnforceablePermissionName[] = getKeys(PERMISSION_CATALOG);
+
 /** In menu display order. */
 export const ALL_PERMISSIONS: readonly {
   name: EnforceablePermissionName;
   label: string;
   group: PermissionGroup;
-}[] = getKeys(PERMISSION_CATALOG).map(name => ({
+}[] = PERMISSION_NAMES.map(name => ({
   name,
   label: PERMISSION_CATALOG[name].label,
   group: PERMISSION_CATALOG[name].group,
@@ -216,10 +217,7 @@ export function getBrowserCheck(name: EnforceablePermissionName): BrowserCheck |
   return PERMISSION_CATALOG[name].browserCheck;
 }
 
-/**
- * True when `name` has an iframe `allow` directive, whose consent is the browser's own prompt, so dot.li only blocks it
- * and a change to it may rebuild the frame.
- */
+/** True when `name` has an iframe `allow` directive, whose consent is the browser's own prompt, so dot.li only blocks it. */
 export function isBrowserConsented(name: EnforceablePermissionName): boolean {
   return getFrameDirective(name) !== null;
 }
@@ -229,7 +227,7 @@ export function isFrameDirectiveOn(name: EnforceablePermissionName, status: Perm
   return isBrowserConsented(name) && status !== 'denied';
 }
 
-/** The core's request for `name`. Never throws. */
+/** The core's request for `name`. */
 export function getAuthorizationRequest(name: EnforceablePermissionName): PermissionAuthorizationRequest {
   switch (name) {
     case 'ChainSubmit':
@@ -251,4 +249,9 @@ export function getAuthorizationRequest(name: EnforceablePermissionName): Permis
     case 'Biometrics':
       return { tag: 'Device', value: name };
   }
+}
+
+/** True when the core asks for `name` as a remote permission, one for what the app does on the network. */
+export function isRemotePermission(name: EnforceablePermissionName): boolean {
+  return getAuthorizationRequest(name).tag === 'Remote';
 }

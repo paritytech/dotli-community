@@ -36,10 +36,12 @@ test('As a user moving from Secure to Trusted to Restricted, only Restricted rel
     await expect(list).not.toHaveAttribute('data-pending');
   };
 
+  const settledNavigations: number[] = [];
+
   // When
   await page.getByTestId('permissions-preset-stop-trusted').click();
   await settled('trusted');
-  expect(navigations).toBe(0);
+  settledNavigations.push(navigations);
   const reloaded = page.waitForEvent('framenavigated', {
     predicate: frame => isSandboxUrl(frame.url()),
     timeout: 15_000,
@@ -47,8 +49,9 @@ test('As a user moving from Secure to Trusted to Restricted, only Restricted rel
   await page.getByTestId('permissions-preset-stop-restricted').click();
   await settled('restricted');
   await reloaded;
+  settledNavigations.push(navigations);
 
   // Then
-  expect(navigations).toBe(1);
+  expect(settledNavigations).toEqual([0, 1]);
   expect(first.isDetached()).toBe(true);
 });

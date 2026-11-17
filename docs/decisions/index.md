@@ -26,6 +26,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one
   variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
+- [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass finds a style or
+  skill rule that matches the code's shape, and the rewrite it describes would read no better than the code it replaces.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
   protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
   unreachable.

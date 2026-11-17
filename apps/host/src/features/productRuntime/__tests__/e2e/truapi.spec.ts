@@ -316,18 +316,13 @@ test.describe('dot.li > host-playground.dot', () => {
   });
 
   // The browser's own prompt is the consent to a device it asks for, so the host answers at once and the frame already
-  // allows it. The other browser-gated devices take the same path with another directive, which the permissions spec
-  // maps.
+  // allows it. The other browser-gated devices take the same path with another directive.
 
   test.describe('Device permissions', () => {
     test('As a product on dot.li, I ask for the camera and get it with no host dialog, in a frame that already allows it', async ({
       productFrame,
     }) => {
       // Given
-      test.setTimeout(120_000);
-      await expect(productFrame.locator('[data-testid="run-device-permission-camera"]')).toBeEnabled({
-        timeout: 15_000,
-      });
       const iframe = await productFrame.frameElement();
 
       // When

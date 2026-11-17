@@ -7,12 +7,8 @@ import { servedRequests, type ServeRule } from './servedRequests.js';
 
 const REMOTE_RULES: [RemotePermission['tag'], ServeRule][] = [
   ['ChainSubmit', { kind: 'prompt', name: 'ChainSubmit' }],
-  ['PreimageSubmit', { kind: 'prompt', name: 'PreimageSubmit' }],
-  ['StatementSubmit', { kind: 'prompt', name: 'StatementSubmit' }],
   ['Remote', { kind: 'grant' }],
-  ['WebRtc', { kind: 'grant' }],
   ['BalanceAccess', { kind: 'refuse' }],
-  ['NftPurseRead', { kind: 'refuse' }],
 ];
 
 describe('servedRequests', () => {
@@ -26,8 +22,8 @@ describe('servedRequests', () => {
   });
 
   it('As the host, I grant OpenUrl at once, deny NFC at once, leave the camera to the browser and ask for notifications', () => {
-    // Given the device permission the host cannot enforce, the one it no longer offers, one the browser asks for itself,
-    // and one the host asks for
+    // Given the device permission the host cannot enforce, the one dot.li does not support, one the browser asks for
+    // itself, and one the host asks for
     // When the host looks up each rule
     const openUrl = servedRequests.getDeviceRule('OpenUrl');
     const nfc = servedRequests.getDeviceRule('NFC');

@@ -5,7 +5,7 @@
 // it is read from the statuses each time.
 
 import {
-  ALL_PERMISSIONS,
+  PERMISSION_NAMES,
   PERMISSION_CATALOG,
   type EnforceablePermissionName,
   type PermissionStatus,
@@ -50,8 +50,8 @@ const RANK: Readonly<Record<PermissionStatus, number>> = { denied: 0, ask: 1, gr
 
 /** The steps from `statuses`, in menu order, to `preset`. */
 function distance(statuses: readonly PermissionStatus[], preset: Preset): number {
-  return ALL_PERMISSIONS.reduce(
-    (sum, { name }, i) => sum + Math.abs(RANK[statuses[i] ?? 'ask'] - RANK[preset.statuses[name]]),
+  return PERMISSION_NAMES.reduce(
+    (sum, name, i) => sum + Math.abs(RANK[statuses[i] ?? 'ask'] - RANK[preset.statuses[name]]),
     0,
   );
 }
@@ -64,23 +64,16 @@ export type ShownPreset = {
 
 /** The preset closest to `statuses`, in menu order, the safer one on a tie. */
 export function presetOf(statuses: readonly PermissionStatus[]): ShownPreset {
-  let closest: Preset = RESTRICTED;
-  let least = distance(statuses, RESTRICTED);
-  for (const preset of PRESETS) {
-    const steps = distance(statuses, preset);
-    // Only a strictly closer preset wins, so a tie keeps the safer one found first.
-    if (steps < least) {
-      closest = preset;
-      least = steps;
-    }
-  }
-  return { preset: closest, modified: least > 0 };
+  const measured = PRESETS.map(preset => ({ preset, steps: distance(statuses, preset) }));
+  // Only a strictly closer preset wins, so a tie keeps the safer one found first.
+  const closest = measured.reduce((best, next) => (next.steps < best.steps ? next : best));
+  return { preset: closest.preset, modified: closest.steps > 0 };
 }
 
 function mapStatuses(
   read: (name: EnforceablePermissionName) => PermissionStatus,
 ): Record<EnforceablePermissionName, PermissionStatus> {
-  return Object.fromEntries(ALL_PERMISSIONS.map(({ name }) => [name, read(name)])) as Record<
+  return Object.fromEntries(PERMISSION_NAMES.map(name => [name, read(name)])) as Record<
     EnforceablePermissionName,
     PermissionStatus
   >;

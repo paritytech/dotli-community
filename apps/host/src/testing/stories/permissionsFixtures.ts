@@ -7,7 +7,7 @@
 import { createSignal, flush } from 'solid-js';
 import { fn } from 'storybook/test';
 import {
-  ALL_PERMISSIONS,
+  PERMISSION_NAMES,
   type EnforceablePermissionName,
   type PermissionStatus,
   type PermissionTargets,
@@ -38,14 +38,13 @@ function write(next: readonly PermissionStatus[] | undefined): void {
 
 function laidOver(base: readonly PermissionStatus[], targets: PermissionTargets): PermissionStatus[] {
   return base.map((was, i) => {
-    const name = ALL_PERMISSIONS[i]?.name;
+    const name = PERMISSION_NAMES[i];
     return name === undefined ? was : (targets[name] ?? was);
   });
 }
 
 /** The props a page gives the permissions button. */
 export const storyPermissions: PermissionsItemProps = {
-  permissions: ALL_PERMISSIONS,
   notice,
   statuses,
   pending,
@@ -76,14 +75,10 @@ async function applyChange(targets: PermissionTargets): Promise<EnforceablePermi
     setPending(false);
     flush();
   }
-  const failed = ALL_PERMISSIONS.map(({ name }) => name).filter(
-    name => refusing.includes(name) && targets[name] !== undefined,
-  );
+  const failed = PERMISSION_NAMES.filter(name => refusing.includes(name) && targets[name] !== undefined);
   if (failed.length > 0) {
     // A refused write leaves the status the core had before.
-    const kept = Object.fromEntries(
-      failed.map(name => [name, before[ALL_PERMISSIONS.findIndex(perm => perm.name === name)] ?? 'ask']),
-    );
+    const kept = Object.fromEntries(failed.map(name => [name, before[PERMISSION_NAMES.indexOf(name)] ?? 'ask']));
     write(laidOver(statuses() ?? before, kept));
   }
   return failed;
@@ -101,7 +96,7 @@ export async function changesSettled(): Promise<void> {
 /** A loaded app on `app.dot` whose statuses read as `granted` says, Ask for the rest. */
 export function givenApp(granted: Partial<Record<EnforceablePermissionName, PermissionStatus>> = {}): void {
   setNotice(undefined);
-  write(ALL_PERMISSIONS.map(({ name }) => granted[name] ?? 'ask'));
+  write(PERMISSION_NAMES.map(name => granted[name] ?? 'ask'));
 }
 
 /** The browser itself blocks `names`, as the panel last read it. */
@@ -118,7 +113,7 @@ export function givenNotice(next: PermissionsNotice): void {
 
 /** Every permission read as `status`, as a newer read lands. */
 export function readAll(status: PermissionStatus): void {
-  write(ALL_PERMISSIONS.map(() => status));
+  write(PERMISSION_NAMES.map(() => status));
 }
 
 /** Holds every change asked for from now on pending until the returned release, or until a newer hold takes over. */

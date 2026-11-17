@@ -19,7 +19,9 @@ export {
   ALL_PERMISSIONS,
   isAutoGrantPermission,
   isBrowserConsented,
+  isRemotePermission,
   isUnsupportedPermission,
+  PERMISSION_NAMES,
 } from './policy/permissionPolicy.js';
 export type { PermissionsChange, ProductPermissions } from './policy/productPermissions.js';
 export { createProductPermissions } from './policy/productPermissions.js';

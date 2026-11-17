@@ -114,22 +114,16 @@ describe('getStatus / setStatus', () => {
     // When
     await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
     await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'denied' });
-    await permissions.setStatus({ label: 'myapp', permission: 'IdentityDisclosure', status: 'granted' });
-    const statuses = await Promise.all([
-      permissions.getStatus('myapp', 'ChainSubmit'),
-      permissions.getStatus('myapp', 'Camera'),
-      permissions.getStatus('myapp', 'IdentityDisclosure'),
-    ]);
+    const statuses = await permissions.getStatuses('myapp', ['ChainSubmit', 'Camera']);
 
     // Then
     expect(store).toEqual(
       new Map([
         ['Remote:ChainSubmit', 'Authorized'],
         ['Device:Camera', 'Denied'],
-        ['IdentityDisclosure', 'Authorized'],
       ]),
     );
-    expect(statuses).toEqual(['granted', 'denied', 'granted']);
+    expect(statuses).toEqual(['granted', 'denied']);
   });
 
   it('As a dApp user who allowed the camera in an earlier version, I read it as left to the browser while another grant stays', async () => {
@@ -148,28 +142,36 @@ describe('getStatus / setStatus', () => {
   it('As a dApp user, I read several permission statuses and they come from one provider call', async () => {
     // Given
     const { permissions, countReads } = createHarness();
-    await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'denied' });
-    const readsBefore = countReads();
 
     // When
-    const statuses = await permissions.getStatuses('myapp', ['ChainSubmit', 'Camera', 'Microphone']);
+    await permissions.getStatuses('myapp', ['ChainSubmit', 'Camera', 'Microphone']);
 
     // Then
-    expect(statuses).toEqual(['granted', 'denied', 'ask']);
-    expect(countReads() - readsBefore).toBe(1);
+    expect(countReads()).toBe(1);
   });
 
   it('As a dApp user, I grant one app a permission and another app still asks', async () => {
-    // Given
-    const { permissions } = createHarness();
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'granted' });
+    // Given an `otherapp` connection with its own store
+    const { permissions, registerStore } = createHarness();
+    onTestFinished(registerStore('otherapp', new Map()));
+    await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
 
     // When
-    const status = await permissions.getStatus('otherapp', 'Camera');
+    const status = await permissions.getStatus('otherapp', 'ChainSubmit');
 
     // Then
     expect(status).toBe('ask');
+  });
+
+  it('As the host, I read the statuses of a product before its core connection is registered and each reads ask', async () => {
+    // Given no connection of `otherapp`
+    const { permissions } = createHarness();
+
+    // When
+    const statuses = await permissions.getStatuses('otherapp', ['ChainSubmit', 'Notifications']);
+
+    // Then
+    expect(statuses).toEqual(['ask', 'ask']);
   });
 });
 

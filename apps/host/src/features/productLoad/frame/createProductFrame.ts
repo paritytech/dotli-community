@@ -105,15 +105,15 @@ export type TitledProduct = {
 
 /** What the page shows around the frame. The runtime asks through this seam so its specs run under Node. */
 export type ProductFrameView = {
-  /** The page gives its viewport to this frame and lays it out from now on. Never throws. */
+  /** The page gives its viewport to this frame and lays it out from now on. */
   attachFrame: (iframe: HTMLIFrameElement) => void;
-  /** The tab title for the product on screen. Never throws. */
+  /** The tab title for the product on screen. */
   showTitle: (product: TitledProduct) => void;
-  /** Takes down the page's own screens over the frame, the loading screen too when `loading`. Never throws. */
+  /** Takes down the page's own screens over the frame, the loading screen too when `loading`. */
   clearScreens: (options: { loading: boolean }) => void;
-  /** The frame's status on the page, as state that browser tests read. Never throws. */
+  /** The frame's status on the page, as state that browser tests read. */
   showStatus: (status: ProductFrameStatus) => void;
-  /** Empties the frame's mount, for a direct iframe, which has no loading screen to keep. Never throws. */
+  /** Empties the frame's mount, for a direct iframe, which has no loading screen to keep. */
   clearMount: () => void;
   /**
    * Only in sandbox checker builds: loads the panel that watches the frame, as a mount that returns its dispose.
@@ -124,9 +124,9 @@ export type ProductFrameView = {
 
 /** What the frame reads and writes of the browser page. */
 export type ProductFramePage = {
-  /** Where the host page is, which the app's origin and deep path follow. Never throws. */
+  /** Where the host page is, which the app's origin and deep path follow. */
   location: () => Pick<Location, 'href' | 'protocol' | 'hostname' | 'port' | 'pathname' | 'search' | 'hash'>;
-  /** Reloads the host page. Never throws. */
+  /** Reloads the host page. */
   reload: () => void;
   /** Opens the landing page. */
   goHome: () => void;
@@ -281,7 +281,7 @@ const BROWSER_PAGE: ProductFramePage = {
   goHome: openLanding,
 };
 
-/** Builds the frame that shows the product. Building it never throws. */
+/** Builds the frame that shows the product. */
 export function createProductFrame({
   core,
   createIframeHost,
@@ -499,6 +499,18 @@ export function createProductFrame({
     moveTo(state, { ...state, replacement: { kind: 'ready' } }, transition);
   };
 
+  const renderOnSpacedReplacement: HandlerOf<FrameMachine, 'lost', 'replacementSpaced'> = (
+    state,
+    { timer },
+    transition,
+  ) => {
+    const { replacement } = state;
+    if (replacement.kind !== 'spacing' || replacement.timer !== timer) {
+      return;
+    }
+    renderOnReplacement(state, transition);
+  };
+
   // A frame that still hears its core while failed keeps a product whose last render failed, so it is rendered again as
   // a connected one is. A replacement that cannot boot fails the render that asked for it, and cores that keep dying use
   // up a budget, so this never loops.
@@ -640,13 +652,7 @@ export function createProductFrame({
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
-        replacementSpaced(state, { timer }, transition) {
-          const { replacement } = state;
-          if (replacement.kind !== 'spacing' || replacement.timer !== timer) {
-            return;
-          }
-          renderOnReplacement(state, transition);
-        },
+        replacementSpaced: renderOnSpacedReplacement,
         halted: stopRendering,
         disposed: endFrame,
       },
@@ -785,7 +791,7 @@ export function createProductFrame({
     /**
      * Takes the product down for good under a failure screen the page shows: a render in flight is dropped, and the
      * frame starts no render of its own again, so nothing it does clears that screen. The product stays mounted under
-     * it without its core, and a render asked from above starts afresh. Never throws.
+     * it without its core, and a render asked from above starts afresh.
      */
     halt,
     /**

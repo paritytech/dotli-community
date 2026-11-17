@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The runtime's questions to the user, answered with the page's dialogs and notifications. Only the bridge chunk imports
-// this, so the dialogs stay out of boot.
+// The runtime's questions to the user, answered with the page's dialogs and notifications. Import it only from lazy
+// code, so the dialogs stay out of boot.
 
 import { withActiveTld } from '@dotli/config';
 import { isGranted, isRetry, type BrowserBlockAnswer, type GrantAnswer, type HostPrompts } from './hostPrompts.js';
@@ -35,7 +35,7 @@ export function createHostPrompts({ present = modals.open, notify = showNotifica
       // In the handoff, not after the await, so the hook still runs inside the user's click.
       function handoff(outcome: ModalOutcome<GrantAnswer>): undefined {
         if (isGranted(outcome.result)) {
-          onApprove?.();
+          onApprove();
         }
         return undefined;
       }

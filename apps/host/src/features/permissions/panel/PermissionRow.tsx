@@ -6,11 +6,7 @@ import { dynamic, type JSX } from '@solidjs/web';
 import { Row, RowNote, SegmentedControl, type SegmentOption } from '@dotli/ui';
 import { BanIcon } from '@dotli/ui/icons';
 import { permissionIcon } from './permissionIcons.js';
-import {
-  isBrowserConsented,
-  type EnforceablePermissionName,
-  type PermissionStatus,
-} from '../policy/permissionPolicy.js';
+import { isBrowserConsented, type PermissionStatus } from '../policy/permissionPolicy.js';
 import type { PermissionEntry } from './permissions.js';
 import s from './PermissionRow.module.css';
 
@@ -31,13 +27,13 @@ export type PermissionRowProps = {
   perm: PermissionEntry;
   status: PermissionStatus;
   /** A segment other than the current status was pressed. */
-  choose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
+  choose: (status: PermissionStatus) => void;
   /** A change is pending, so the row shows its status but takes no press. */
-  disabled?: boolean;
+  disabled: boolean;
   /** The shown preset's name, when the status differs from that preset's. */
-  changedFrom?: string | undefined;
+  changedFrom: string | undefined;
   /** The browser itself blocks the permission, whatever dot.li allows. */
-  blockedInBrowser?: boolean;
+  blockedInBrowser: boolean;
 };
 
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
@@ -50,11 +46,7 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
       <Row
         testId="permissions-popover-row"
         label={
-          <span
-            class={s['label']}
-            data-modified={props.changedFrom === undefined ? undefined : ''}
-            title={modifiedText()}
-          >
+          <span class={s['label']} title={modifiedText()}>
             <Icon class={s['icon']} />
             <span class={s['name']} id={`permissions-popover-name-${props.perm.name}`}>
               {props.perm.label}
@@ -76,13 +68,13 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
           label={props.perm.label}
           options={isBrowserConsented(props.perm.name) ? BROWSER_OPTIONS : STATUS_OPTIONS}
           value={props.status}
-          disabled={props.disabled === true}
+          disabled={props.disabled}
           onChange={status => {
-            props.choose(props.perm.name, status);
+            props.choose(status);
           }}
         />
       </Row>
-      <Show when={props.blockedInBrowser === true}>
+      <Show when={props.blockedInBrowser}>
         <RowNote icon={BanIcon} id={`permissions-popover-browser-blocked-${props.perm.name}`}>
           Blocked in browser
         </RowNote>

@@ -4,23 +4,30 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom } from 'nanostores';
+import { asProductId } from '@parity/truapi';
+import type { ProductState } from '../../page/index.js';
 import type { BrowserPermissionStatus } from '../policy/createBrowserPermissions.js';
-import type { EnforceablePermissionName, PermissionStatus, PermissionTargets } from '../policy/permissionPolicy.js';
+import {
+  PERMISSION_NAMES,
+  type EnforceablePermissionName,
+  type PermissionStatus,
+  type PermissionTargets,
+} from '../policy/permissionPolicy.js';
 import type { ChangeOutcome, PendingPermissions } from '../policy/productPermissions.js';
 import type { ProductPermissionsState } from '../policy/productPermissionsState.js';
-import type { MenuPermission } from './permissions.js';
-import { type ShownProduct, usePermissionsPanel } from './usePermissionsPanel.js';
+import { usePermissionsPanel } from './usePermissionsPanel.js';
 
-const PERMISSIONS: readonly MenuPermission[] = [
-  { name: 'Camera', label: 'Camera', group: 'device' },
-  { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
-];
-
-const LOADED: ShownProduct = { status: 'loaded', label: 'app' };
+const LOADED: ProductState = {
+  status: 'loaded',
+  loadId: 1,
+  label: 'app',
+  productId: asProductId('app.dot'),
+  facts: {},
+};
 
 /** The page's product and permissions, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
-  const product = atom<ShownProduct>({ status: 'none' });
+  const product = atom<ProductState>({ status: 'none', loadId: 0 });
   const state = atom<ProductPermissionsState>({ status: 'none' });
   const pending = atom<PendingPermissions>(null);
   const intents = {
@@ -36,7 +43,6 @@ function mount() {
   };
   const { panel, dispose } = createRoot(d => ({
     panel: usePermissionsPanel({
-      permissions: PERMISSIONS,
       product,
       store: { state, pending, ...intents },
       browser,
@@ -44,7 +50,7 @@ function mount() {
     dispose: d,
   }));
   flush();
-  const given = (shown: ShownProduct, read: ProductPermissionsState): void => {
+  const given = (shown: ProductState, read: ProductPermissionsState): void => {
     product.set(shown);
     state.set(read);
     flush();
@@ -52,18 +58,23 @@ function mount() {
   return { panel, dispose, intents, given, pending, browser };
 }
 
-function read(statuses: readonly PermissionStatus[], label = 'app'): ProductPermissionsState {
-  return {
-    status: 'read',
-    label,
-    statuses,
-  };
+/** Every permission at Ask, with `changes` laid over them, in menu order. */
+function statusesOf(changes: Partial<Record<EnforceablePermissionName, PermissionStatus>> = {}): PermissionStatus[] {
+  return PERMISSION_NAMES.map(name => changes[name] ?? 'ask');
+}
+
+/** The statuses of `label`, read as `changes` over Ask. */
+function read(
+  changes: Partial<Record<EnforceablePermissionName, PermissionStatus>> = {},
+  label = 'app',
+): ProductPermissionsState {
+  return { status: 'read', label, statuses: statusesOf(changes) };
 }
 
 describe('usePermissionsPanel', () => {
-  it.each<[string, ShownProduct, ProductPermissionsState, string | undefined]>([
-    ['the product is still loading', { status: 'none' }, { status: 'none' }, 'loading'],
-    ['there is no app', { status: 'error' }, { status: 'none' }, 'no-app'],
+  it.each<[string, ProductState, ProductPermissionsState, string | undefined]>([
+    ['the product is still loading', { status: 'none', loadId: 0 }, { status: 'none' }, 'loading'],
+    ['there is no app', { status: 'error', loadId: 1 }, { status: 'none' }, 'no-app'],
     ['the permissions are unreadable', LOADED, { status: 'failed', label: 'app' }, 'unavailable'],
     ['the failure was for the app shown before', LOADED, { status: 'failed', label: 'other' }, undefined],
   ])('As the permissions panel, when %s, I say why there is nothing to change', (_case, shown, permissions, notice) => {
@@ -89,16 +100,16 @@ describe('usePermissionsPanel', () => {
     expect(panel.statuses()).toBeUndefined();
 
     // When
-    given(LOADED, read(['granted', 'ask'], 'other'));
+    given(LOADED, read({ Camera: 'granted' }, 'other'));
 
     // Then
     expect(panel.statuses()).toBeUndefined();
 
     // When
-    given(LOADED, read(['granted', 'ask']));
+    given(LOADED, read({ Camera: 'granted' }));
 
     // Then
-    expect(panel.statuses()).toEqual(['granted', 'ask']);
+    expect(panel.statuses()).toEqual(statusesOf({ Camera: 'granted' }));
     expect(panel.notice()).toBeUndefined();
     dispose();
   });
@@ -119,7 +130,7 @@ describe('usePermissionsPanel', () => {
     // Given
     const { panel, dispose, intents, given } = mount();
     intents.change.mockResolvedValueOnce({ failed: ['Camera'] });
-    given(LOADED, read(['ask', 'ask']));
+    given(LOADED, read());
 
     // When
     const failed = await panel.onChange({ Camera: 'granted' });
@@ -133,7 +144,7 @@ describe('usePermissionsPanel', () => {
   it('As a user, I grant Notifications in the menu and the browser is asked inside my click', () => {
     // Given
     const { panel, dispose, given, browser } = mount();
-    given(LOADED, read(['ask', 'ask']));
+    given(LOADED, read());
 
     // When
     void panel.onChange({ Notifications: 'granted' });
@@ -146,7 +157,7 @@ describe('usePermissionsPanel', () => {
   it('As a user, I deny a permission in the menu and the browser is not asked', () => {
     // Given
     const { panel, dispose, given, browser } = mount();
-    given(LOADED, read(['ask', 'ask']));
+    given(LOADED, read());
 
     // When
     void panel.onChange({ Notifications: 'denied' });
@@ -156,43 +167,32 @@ describe('usePermissionsPanel', () => {
     dispose();
   });
 
-  it('As a user, I grant a permission while no permissions are read and the browser is not asked', () => {
+  it('As a user, I grant a permission while no permissions are read, and nothing is changed or asked of the browser', async () => {
     // Given
-    const { panel, dispose, browser } = mount();
-
-    // When
-    void panel.onChange({ Notifications: 'granted' });
-
-    // Then
-    expect(browser.request).not.toHaveBeenCalled();
-    dispose();
-  });
-
-  it('As a user, nothing is changed while no permissions are read', async () => {
-    // Given
-    const { panel, dispose, intents, given } = mount();
+    const { panel, dispose, intents, given, browser } = mount();
     given(LOADED, { status: 'reading', label: 'app' });
 
     // When
-    const failed = await panel.onChange({ Camera: 'granted' });
+    const failed = await panel.onChange({ Notifications: 'granted' });
 
     // Then
     expect(failed).toEqual([]);
     expect(intents.change).not.toHaveBeenCalled();
+    expect(browser.request).not.toHaveBeenCalled();
     dispose();
   });
 
   it('As the permissions panel, a pending change shows its targets over the statuses read and marks the panel pending', () => {
     // Given
     const { panel, dispose, given, pending } = mount();
-    given(LOADED, read(['ask', 'denied']));
+    given(LOADED, read({ ChainSubmit: 'denied' }));
 
     // When
     pending.set({ label: 'app', targets: { Camera: 'granted' } });
     flush();
 
     // Then
-    expect(panel.statuses()).toEqual(['granted', 'denied']);
+    expect(panel.statuses()).toEqual(statusesOf({ Camera: 'granted', ChainSubmit: 'denied' }));
     expect(panel.pending()).toBe(true);
 
     // When
@@ -200,7 +200,7 @@ describe('usePermissionsPanel', () => {
     flush();
 
     // Then
-    expect(panel.statuses()).toEqual(['ask', 'denied']);
+    expect(panel.statuses()).toEqual(statusesOf({ ChainSubmit: 'denied' }));
     expect(panel.pending()).toBe(false);
     dispose();
   });
@@ -211,10 +211,10 @@ describe('usePermissionsPanel', () => {
     pending.set({ label: 'other', targets: { Camera: 'granted' } });
 
     // When
-    given(LOADED, read(['ask', 'ask']));
+    given(LOADED, read());
 
     // Then
-    expect(panel.statuses()).toEqual(['ask', 'ask']);
+    expect(panel.statuses()).toEqual(statusesOf());
     expect(panel.pending()).toBe(false);
     dispose();
   });
@@ -222,7 +222,7 @@ describe('usePermissionsPanel', () => {
   it('As the permissions panel, I open and say which browser-gated devices the browser itself blocks', async () => {
     // Given the browser blocks the camera
     const { panel, dispose, given } = mount();
-    given(LOADED, read(['ask', 'ask']));
+    given(LOADED, read());
 
     // When
     panel.onOpen();

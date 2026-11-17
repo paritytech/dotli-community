@@ -20,7 +20,7 @@ import type { DiagnosticsRow, DiagnosticsSnapshot, DiagnosticsSource, PackageVer
 import { queryFinalizedBlock } from './createFinalizedBlockQuery.js';
 import { pagePermissions } from '../permissions/index.js';
 import type { PermissionAuthorizations } from '../permissions/index.js';
-import { ALL_PERMISSIONS, type PermissionStatus } from '../permissions/index.js';
+import { ALL_PERMISSIONS, PERMISSION_NAMES, type PermissionStatus } from '../permissions/index.js';
 import { getDotliVersion } from '../../kit/getDotliVersion.js';
 import { getOperatingSystem } from '../../kit/getOperatingSystem.js';
 import { productState, type ProductState } from '../page/index.js';
@@ -66,10 +66,7 @@ type FormatDiagnosticsReportParams = {
   blocks: FinalizedBlocks | null;
 };
 
-/**
- * Returns the debug panel's diagnostics over its params. Building it never throws, and its report rejects only when the
- * permission statuses do.
- */
+/** Returns the debug panel's diagnostics over its params. Its report rejects only when the permission statuses do. */
 export function createPageDiagnostics({
   connectedAssetHubNode,
   finalizedBlock,
@@ -90,12 +87,7 @@ export function createPageDiagnostics({
     async report({ rows, productLabel, lightClientVersion, polkadotApi, parityTruapi }): Promise<string> {
       const [blocks, statuses] = await Promise.all([
         readFinalizedBlocks(finalizedBlock),
-        productLabel === null
-          ? null
-          : permissionStatuses(
-              productLabel,
-              ALL_PERMISSIONS.map(({ name }) => name),
-            ),
+        productLabel === null ? null : permissionStatuses(productLabel, PERMISSION_NAMES),
       ]);
       return formatDiagnosticsReport({
         base: rows,

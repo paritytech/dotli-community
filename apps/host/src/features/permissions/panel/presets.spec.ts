@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { ALL_PERMISSIONS, type EnforceablePermissionName, type PermissionStatus } from '../policy/permissionPolicy.js';
-import { PRESETS, presetOf, RESTRICTED, SECURE, TRUSTED, type Preset } from './presets.js';
+import { PERMISSION_NAMES, type EnforceablePermissionName, type PermissionStatus } from '../policy/permissionPolicy.js';
+import { PRESETS, presetOf, RESTRICTED, SECURE, type Preset } from './presets.js';
 
 /** A preset's statuses in menu order, with `changes` laid over them. */
 function from(
   base: Preset,
   changes: Partial<Record<EnforceablePermissionName, PermissionStatus>> = {},
 ): PermissionStatus[] {
-  return ALL_PERMISSIONS.map(({ name }) => changes[name] ?? base.statuses[name]);
+  return PERMISSION_NAMES.map(name => changes[name] ?? base.statuses[name]);
 }
 
 describe('permission presets', () => {
@@ -28,14 +28,18 @@ describe('permission presets', () => {
   it.each<[string, Preset, Partial<Record<EnforceablePermissionName, PermissionStatus>>, Preset]>([
     ['Secure with Location blocked', SECURE, { Location: 'denied' }, SECURE],
     [
-      'Secure with Notifications and identity allowed',
+      'Secure with six device permissions denied, as far from Restricted as from Secure',
       SECURE,
-      { Notifications: 'granted', IdentityDisclosure: 'granted' },
-      SECURE,
+      {
+        Camera: 'denied',
+        Microphone: 'denied',
+        Location: 'denied',
+        Motion: 'denied',
+        Bluetooth: 'denied',
+        Clipboard: 'denied',
+      },
+      RESTRICTED,
     ],
-    ['Trusted with Sign transactions at Ask', TRUSTED, { ChainSubmit: 'ask' }, TRUSTED],
-    ['Trusted with Camera blocked', TRUSTED, { Camera: 'denied' }, TRUSTED],
-    ['Restricted with Camera left to the browser', RESTRICTED, { Camera: 'ask' }, RESTRICTED],
     [
       'Secure with seven device permissions denied',
       SECURE,

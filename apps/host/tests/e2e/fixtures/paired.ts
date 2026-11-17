@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { STATE_FILE } from './paths.js';
 import { E2E_CHAIN_BACKEND, initializeChainBackend } from '../helpers/chainBackend.js';
 import { answerAccountDialog } from '../helpers/signing.js';
-import { BROWSER_PERMISSIONS } from '../../functional/fixtures/permissions.js';
+import { BROWSER_PERMISSIONS } from '../../browserPermissions.js';
 
 const PORT = process.env['PORT'] ?? '5173';
 const HOST = process.env['E2E_HOST'] ?? 'host-playground';
@@ -94,8 +94,8 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
         );
       }
 
-      // The host asks the browser when the user allows a permission, and a browser that denies shows a dialog these
-      // steps do not answer.
+      // The host asks or reads the browser's own permissions, and a browser that denies either shows a dialog these
+      // steps do not answer or makes the product's device ask reject.
       const ctx = await browser.newContext({ storageState: STATE_FILE, permissions: [...BROWSER_PERMISSIONS] });
       const page = await ctx.newPage();
 

@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { asProductId } from '@parity/truapi';
 import { recordReports } from '@dotli/metrics/testing';
 import { atom, type WritableAtom } from 'nanostores';
@@ -46,6 +47,10 @@ beforeEach(() => {
   };
   scope = createBlockingModalCoordinator().createScope();
   record = vi.fn<ProductPermissions['recordPromptDecision']>(() => Promise.resolve());
+});
+
+afterEach(() => {
+  resetAllStoresForTests();
 });
 
 describe('createBrowserBlockCheck', () => {

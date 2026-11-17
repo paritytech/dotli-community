@@ -6,7 +6,7 @@ import { permissionIcon } from '../panel/permissionIcons.js';
 import { PERMISSION_CATALOG, type EnforceablePermissionName } from '../policy/permissionPolicy.js';
 import type { GrantAnswer } from './hostPrompts.js';
 
-export type PermissionRequest = {
+type PermissionRequest = {
   /** The app's name as the user reads it. */
   app: string;
   permission: EnforceablePermissionName;
@@ -38,7 +38,7 @@ export function permissionRequestDialog(request: PermissionRequest): ModalView<G
 
 /**
  * The answer buttons of a grant dialog: Deny, then Allow, or Always allow and Allow once when a one-time grant is
- * offered. Never throws.
+ * offered.
  */
 export function getGrantButtons({
   allowOnce,

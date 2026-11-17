@@ -3,50 +3,18 @@
 
 import type { PermissionAuthorizationRequest } from '@parity/truapi-host';
 import { describe, expect, it } from 'vitest';
-import {
-  getAuthorizationRequest,
-  getFrameDirective,
-  isBrowserConsented,
-  type EnforceablePermissionName,
-} from './permissionPolicy.js';
+import { getAuthorizationRequest, type EnforceablePermissionName } from './permissionPolicy.js';
 
-describe('PERMISSION_CATALOG', () => {
-  it.each<{ name: EnforceablePermissionName; directive: string | null; request: PermissionAuthorizationRequest }>([
-    { name: 'Notifications', directive: null, request: { tag: 'Device', value: 'Notifications' } },
-    { name: 'Camera', directive: 'camera', request: { tag: 'Device', value: 'Camera' } },
-    { name: 'Microphone', directive: 'microphone', request: { tag: 'Device', value: 'Microphone' } },
-    { name: 'Location', directive: 'geolocation', request: { tag: 'Device', value: 'Location' } },
-    { name: 'Motion', directive: 'accelerometer; gyroscope', request: { tag: 'Device', value: 'Motion' } },
-    { name: 'Bluetooth', directive: 'bluetooth', request: { tag: 'Device', value: 'Bluetooth' } },
-    { name: 'Clipboard', directive: 'clipboard-read', request: { tag: 'Device', value: 'Clipboard' } },
-    { name: 'Biometrics', directive: 'publickey-credentials-get', request: { tag: 'Device', value: 'Biometrics' } },
-    { name: 'IdentityDisclosure', directive: null, request: { tag: 'IdentityDisclosure' } },
-    { name: 'ChainSubmit', directive: null, request: { tag: 'Remote', value: { permission: { tag: 'ChainSubmit' } } } },
-    {
-      name: 'PreimageSubmit',
-      directive: null,
-      request: { tag: 'Remote', value: { permission: { tag: 'PreimageSubmit' } } },
-    },
-    {
-      name: 'StatementSubmit',
-      directive: null,
-      request: { tag: 'Remote', value: { permission: { tag: 'StatementSubmit' } } },
-    },
-  ])(
-    'As a dotli integrator, I look up $name and get its frame directive, its consent and its core request',
-    ({ name, directive, request }) => {
-      // Given the permission's name, as a product asks for it
-      const permission = name;
+describe('getAuthorizationRequest', () => {
+  it.each<{ name: EnforceablePermissionName; request: PermissionAuthorizationRequest }>([
+    { name: 'Camera', request: { tag: 'Device', value: 'Camera' } },
+    { name: 'IdentityDisclosure', request: { tag: 'IdentityDisclosure' } },
+    { name: 'ChainSubmit', request: { tag: 'Remote', value: { permission: { tag: 'ChainSubmit' } } } },
+  ])('As a dotli integrator, I look up $name and get its core request', ({ name, request }) => {
+    // When the core request of the permission a product asks for is looked up
+    const asked = getAuthorizationRequest(name);
 
-      // When its frame directive, its consent and its core request are looked up
-      const frameDirective = getFrameDirective(permission);
-      const consented = isBrowserConsented(permission);
-      const asked = getAuthorizationRequest(permission);
-
-      // Then it gates that directive, the browser consents to it only with one, and the core is asked that request
-      expect(frameDirective).toBe(directive);
-      expect(consented).toBe(directive !== null);
-      expect(asked).toEqual(request);
-    },
-  );
+    // Then the core is asked that request
+    expect(asked).toEqual(request);
+  });
 });

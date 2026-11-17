@@ -14,7 +14,7 @@ import {
 } from '../../../../../tests/functional/helpers/wireRecorder.js';
 import { waitForResolutionOutcome } from '../../../../../tests/productFrame.js';
 import { BACKENDS, seedSettings } from '../../../../../tests/functional/fixtures/settings.js';
-import { BROWSER_PERMISSIONS, seedPermissions } from '../../../../../tests/functional/fixtures/permissions.js';
+import { BROWSER_PERMISSIONS } from '../../../../../tests/browserPermissions.js';
 import { test } from '../../../../../tests/functional/helpers/sharedModeReset.js';
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -140,7 +140,6 @@ async function withWarmSession<T>(
     permissions: [...BROWSER_PERMISSIONS],
   });
   try {
-    await seedPermissions(context);
     await seedSettings(context, { backend: 'smoldot-shared-worker' });
     const page = await context.newPage();
     await page.goto(url, { waitUntil: 'commit' });

@@ -14,8 +14,13 @@ export type Placement = 'topbar-end' | 'trigger-start';
 
 export type LayerCloseReason = Exclude<CloseReason, 'sheet' | 'released'>;
 
-/** Matches the surface's exit, `--dur`. */
 const EXIT_MS = 220;
+
+/** Each placement's class, and whether it sits against its trigger's anchor. */
+const PLACEMENTS = {
+  'topbar-end': { class: s['topbarEnd'], anchored: false },
+  'trigger-start': { class: s['triggerStart'], anchored: true },
+} satisfies Record<Placement, { class: string | undefined; anchored: boolean }>;
 
 export type FloatingLayerProps = {
   id: string;
@@ -50,8 +55,6 @@ export type FloatingLayerProps = {
  */
 export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   let surface: HTMLDivElement | undefined;
-  /** As the browser last announced it. Not `:popover-open`, which happy-dom does not support. */
-  let shown = false;
   const presence = createPresence({ open: () => props.open, exitMs: EXIT_MS });
   /** Set by the listener that saw the next close's cause. */
   let reason: LayerCloseReason = 'programmatic';
@@ -68,17 +71,13 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
       if (element === undefined) {
         return;
       }
+      // Each is a no-op when the layer is already in that state, as after the browser closed it.
       if (open) {
-        if (!shown) {
-          element.showPopover();
-        }
-        reason = 'programmatic';
+        element.showPopover();
         props.onOpened?.(element);
         return;
       }
-      if (shown) {
-        element.hidePopover();
-      }
+      element.hidePopover();
     },
   );
 
@@ -94,10 +93,8 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   );
 
   function handleBeforeToggle(event: ToggleEvent): void {
-    shown = event.newState === 'open';
-    if (!shown && untrack(() => props.open)) {
+    if (event.newState === 'closed' && untrack(() => props.open)) {
       props.onClose(reason);
-      reason = 'programmatic';
     }
   }
 
@@ -106,13 +103,15 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   }
 
   function listenForCloses(): () => void {
+    reason = 'programmatic';
+
     function handlePointerDown(event: PointerEvent): void {
       // A pointerdown on the page targets a node, or nothing.
       const target = event.target as Node | null;
       if (props.trigger()?.contains(target) === true) {
         reason = 'trigger';
       } else {
-        reason = isInside(target) ? 'programmatic' : 'outside';
+        reason = surface?.contains(target) === true ? 'programmatic' : 'outside';
       }
     }
 
@@ -156,16 +155,18 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
     return stopListening;
   }
 
-  function handleKeyDown(event: KeyboardEvent): void {
-    if (surface === undefined || event.defaultPrevented) {
+  function handleKeyDown(event: KeyboardEvent & { currentTarget: HTMLDivElement }): void {
+    if (event.defaultPrevented) {
       return;
     }
     if (event.key === 'Tab' && props.trapFocus === true) {
-      containTab(event, surface);
+      containTab(event, event.currentTarget);
       return;
     }
-    props.onKeyDown?.(event, surface);
+    props.onKeyDown?.(event, event.currentTarget);
   }
+
+  const placement = () => PLACEMENTS[props.placement ?? 'topbar-end'];
 
   return (
     <Portal>
@@ -176,8 +177,8 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         }}
         popover={props.kind}
         id={props.id}
-        class={[s['layer'], getPlacementClass(props.placement ?? 'topbar-end'), props.class]}
-        style={props.placement === 'trigger-start' ? { 'position-anchor': anchorName(props.id) } : undefined}
+        class={[s['layer'], placement().class, props.class]}
+        style={placement().anchored ? { 'position-anchor': anchorName(props.id) } : undefined}
         data-chrome=""
         data-open={props.open ? '' : undefined}
         data-testid={props.testId}
@@ -197,13 +198,4 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
       </div>
     </Portal>
   );
-}
-
-function getPlacementClass(placement: Placement): string | undefined {
-  switch (placement) {
-    case 'topbar-end':
-      return s['topbarEnd'];
-    case 'trigger-start':
-      return s['triggerStart'];
-  }
 }

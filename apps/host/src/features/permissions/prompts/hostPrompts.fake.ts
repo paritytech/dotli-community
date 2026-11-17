@@ -1,30 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The page's side of HostPrompts for specs: each ask waits in a queue until the spec answers it as the user would, and
-// notices are recorded. A review is the page's own dialog in the modal store, so it hands off as the page does.
+// The page's side of HostPrompts for specs: each ask is a dialog in the page's modal store, which the spec answers as
+// the user would, and notices are recorded. A spec that uses it resets the stores after each case, as the store
+// outlives the fake.
 
-import { toAbortError } from '@dotli/shared';
 import type { EnforceablePermissionName } from '../policy/permissionPolicy.js';
-import { modals, type ModalView, type NotificationParams } from '@dotli/ui';
+import { modals, type ModalEntry, type ModalView, type NotificationParams } from '@dotli/ui';
 import { isGranted, isRetry, type BrowserBlockAnswer, type GrantAnswer, type HostPrompts } from './hostPrompts.js';
 
 export type FakePrompt =
   | { kind: 'permission'; label: string; permission: EnforceablePermissionName }
   | { kind: 'browserBlock'; label: string; permission: EnforceablePermissionName; retried: boolean }
   | { kind: 'review'; dialog: ModalView<string> };
-
-type Pending = {
-  /** The ask as it is now, or undefined once it is gone. A review reads its dialog from the store, which a handoff swaps. */
-  prompt: () => FakePrompt | undefined;
-  /** Answers the ask with `answer` and takes it off the queue. Never throws. */
-  settle: (answer: string) => void;
-};
-
-type ShownPrompt = {
-  entry: Pending;
-  prompt: FakePrompt;
-};
 
 type WaitForPromptParams = {
   /** Which ask on screen to wait for, any by default. */
@@ -33,42 +21,32 @@ type WaitForPromptParams = {
 
 export type FakePrompts = ReturnType<typeof createFakePrompts>;
 
-/** The page's prompts for a spec, which the spec answers as the user would. Building it never throws. */
+/** The page's prompts for a spec, which the spec answers as the user would. */
 export function createFakePrompts() {
-  const queue: Pending[] = [];
+  // The ask each stand-in dialog shows. Any other dialog is a review, the view a review handed off to included.
+  const asks = new WeakMap<ModalView<string>, FakePrompt>();
   const waiters = new Set<() => void>();
   const notices: NotificationParams[] = [];
 
   const prompts: HostPrompts = {
     askPermission: ({ label, permission, signal, onApprove }) =>
-      ask<GrantAnswer>({ kind: 'permission', label, permission }, signal, answer => {
+      ask(present<GrantAnswer>({ kind: 'permission', label, permission }, 'dismissed'), signal, answer => {
         if (isGranted(answer)) {
-          onApprove?.();
+          onApprove();
         }
       }),
     askBrowserBlock: ({ label, permission, signal, retried, onRetry }) =>
-      ask<BrowserBlockAnswer>({ kind: 'browserBlock', label, permission, retried }, signal, answer => {
-        if (isRetry(answer)) {
-          onRetry();
-        }
-      }),
-    async confirmReview({ dialog, signal, handoff }) {
-      const opened = modals.open(dialog, { signal, handoff: outcome => handoff?.(outcome.result) });
-      const id = modals.store.get().at(-1)?.id;
-      if (id !== undefined && !signal.aborted) {
-        queue.push({
-          prompt() {
-            const entry = modals.store.get().find(e => e.id === id);
-            return entry === undefined ? undefined : { kind: 'review', dialog: entry.view };
-          },
-          settle(answer) {
-            modals.settle(id, answer);
-          },
-        });
-        wake();
-      }
-      return (await opened).result;
-    },
+      ask(
+        present<BrowserBlockAnswer>({ kind: 'browserBlock', label, permission, retried }, 'dismissed'),
+        signal,
+        answer => {
+          if (isRetry(answer)) {
+            onRetry();
+          }
+        },
+      ),
+    confirmReview: async ({ dialog, signal, handoff }) =>
+      (await modals.open(dialog, { signal, handoff: outcome => handoff?.(outcome.result) })).result,
     notify(notice) {
       notices.push(notice);
       wake();
@@ -81,15 +59,12 @@ export function createFakePrompts() {
     /** Every notice shown, in order. */
     notices,
     /** The asks still waiting for an answer, oldest first. */
-    listPending: (): readonly FakePrompt[] => getLivePrompts().map(({ prompt }) => prompt),
+    listPending: (): readonly FakePrompt[] => modals.store.get().map(toPrompt),
     /** The ask on screen, which is the oldest one. Throws when no ask is on screen. */
-    getShown: (): FakePrompt => getShownPrompt().prompt,
+    getShown: (): FakePrompt => toPrompt(getShownEntry()),
     /** The review dialog on screen. Throws when no review is on screen. */
     getShownReview,
-    /**
-     * Resolves with the ask on screen once one that `matches` is up, woken by each ask rather than polling. Never
-     * rejects.
-     */
+    /** Resolves with the ask on screen once one that `matches` is up, woken by each ask rather than polling. */
     waitForPrompt,
     /** Resolves once no ask is on screen, woken by each change rather than polling. */
     waitForClearedScreen,
@@ -119,14 +94,46 @@ export function createFakePrompts() {
     dismiss,
   };
 
-  // Every change of the queue, the modal store and the notices, so a waiter also sees a queued ask that became the one
-  // on screen.
+  /** A stand-in dialog for `prompt`, which a backdrop click answers with `dismissResult`. */
+  function present<Answer extends string>(prompt: FakePrompt, dismissResult: Answer): ModalView<Answer> {
+    const view: ModalView<Answer> = {
+      title: prompt.kind,
+      fields: [],
+      buttons: [],
+      dismissOnBackdrop: true,
+      dismissResult,
+    };
+    asks.set(view, prompt);
+    return view;
+  }
+
+  /** Queues `view` and resolves with its answer. `heard` sees the answer in the handoff, as a click's handoff does. */
+  async function ask<Answer extends string>(
+    view: ModalView<Answer>,
+    signal: AbortSignal,
+    heard: (answer: Answer) => void,
+  ): Promise<Answer> {
+    const { result } = await modals.open(view, {
+      signal,
+      handoff: outcome => {
+        heard(outcome.result);
+        return undefined;
+      },
+    });
+    return result;
+  }
+
+  function toPrompt(entry: ModalEntry): FakePrompt {
+    return asks.get(entry.view) ?? { kind: 'review', dialog: entry.view };
+  }
+
   function wake(): void {
     for (const check of [...waiters]) {
       check();
     }
   }
 
+  // Woken by each change of the modal store and each notice.
   function waitUntil<T>(ready: () => T | undefined): Promise<T> {
     return new Promise(resolve => {
       let unsubscribe = (): void => undefined;
@@ -144,76 +151,40 @@ export function createFakePrompts() {
     });
   }
 
-  /** The asks still up, oldest first, dropping those that are gone. */
-  function getLivePrompts(): ShownPrompt[] {
-    const up: ShownPrompt[] = [];
-    for (const entry of [...queue]) {
-      const prompt = entry.prompt();
-      if (prompt === undefined) {
-        queue.splice(queue.indexOf(entry), 1);
-      } else {
-        up.push({ entry, prompt });
-      }
-    }
-    return up;
-  }
-
-  /** Queues `prompt` until the spec answers it. `heard` sees the answer before it resolves, as a click's handoff does. */
-  function ask<T extends string>(prompt: FakePrompt, signal: AbortSignal, heard: (answer: T) => void): Promise<T> {
-    if (signal.aborted) {
-      return Promise.reject(toAbortError(signal.reason, 'Prompt aborted'));
-    }
-    return new Promise<T>((resolve, reject) => {
-      let gone = false;
-      function take(): void {
-        gone = true;
-        signal.removeEventListener('abort', onAbort);
-        wake();
-      }
-      function onAbort(): void {
-        take();
-        reject(toAbortError(signal.reason, 'Prompt aborted'));
-      }
-      queue.push({
-        prompt: () => (gone ? undefined : prompt),
-        settle(answer) {
-          take();
-          // The spec answers each ask with the value its prompt's kind resolves with.
-          const typed = answer as T;
-          heard(typed);
-          resolve(typed);
-        },
-      });
-      signal.addEventListener('abort', onAbort, { once: true });
-      wake();
-    });
-  }
-
-  function getShownPrompt(): ShownPrompt {
-    const shown = getLivePrompts()[0];
+  function getShownEntry(): ModalEntry {
+    const shown = modals.store.get()[0];
     if (shown === undefined) {
       throw new Error('expected a prompt on screen, none is');
     }
     return shown;
   }
 
-  function getShownReview(): ModalView<string> {
-    const { prompt } = getShownPrompt();
-    if (prompt.kind !== 'review') {
-      throw new Error(`expected a review on screen, a ${prompt.kind} prompt is`);
+  function getShownOf(kind: FakePrompt['kind']): ModalEntry {
+    const shown = getShownEntry();
+    const prompt = toPrompt(shown);
+    if (prompt.kind !== kind) {
+      throw new Error(`expected a ${kind} prompt on screen, a ${prompt.kind} prompt is`);
     }
-    return prompt.dialog;
+    return shown;
+  }
+
+  function getShownReview(): ModalView<string> {
+    return getShownOf('review').view;
   }
 
   function waitForPrompt({ matches = () => true }: WaitForPromptParams = {}): Promise<FakePrompt> {
     return waitUntil(() => {
-      const shown = getLivePrompts()[0];
-      return shown !== undefined && matches(shown.prompt) ? shown.prompt : undefined;
+      const shown = modals.store.get()[0];
+      if (shown === undefined) {
+        return undefined;
+      }
+      const prompt = toPrompt(shown);
+      return matches(prompt) ? prompt : undefined;
     });
   }
 
   function waitForClearedScreen(): Promise<void> {
-    return waitUntil(() => (getLivePrompts().length === 0 ? true : undefined)).then(() => undefined);
+    return waitUntil(() => (modals.store.get().length === 0 ? true : undefined)).then(() => undefined);
   }
 
   function waitForNotices(count: number): Promise<readonly NotificationParams[]> {
@@ -221,47 +192,30 @@ export function createFakePrompts() {
   }
 
   function decide(decision: GrantAnswer): void {
-    const { entry, prompt } = getShownPrompt();
-    if (prompt.kind !== 'permission') {
-      throw new Error(`expected a permission prompt on screen, a ${prompt.kind} prompt is`);
-    }
-    entry.settle(decision);
+    modals.settle(getShownOf('permission').id, decision);
   }
 
   function answerBrowserBlock(answer: BrowserBlockAnswer): void {
-    const { entry, prompt } = getShownPrompt();
-    if (prompt.kind !== 'browserBlock') {
-      throw new Error(`expected a browser block on screen, a ${prompt.kind} prompt is`);
-    }
-    entry.settle(answer);
+    modals.settle(getShownOf('browserBlock').id, answer);
   }
 
   function settleReview(result: string): void {
-    getShownReview();
-    getShownPrompt().entry.settle(result);
+    modals.settle(getShownOf('review').id, result);
   }
 
   function chooseReviewButton(label: string): void {
-    const dialog = getShownReview();
-    const button = dialog.buttons.find(b => b.label === label);
+    const { id, view } = getShownOf('review');
+    const button = view.buttons.find(b => b.label === label);
     if (button === undefined) {
-      throw new Error(`expected a "${label}" button, the dialog has ${dialog.buttons.map(b => b.label).join(', ')}`);
+      throw new Error(`expected a "${label}" button, the dialog has ${view.buttons.map(b => b.label).join(', ')}`);
     }
-    getShownPrompt().entry.settle(button.result);
+    modals.settle(id, button.result);
   }
 
   function dismiss(): void {
-    const { entry, prompt } = getShownPrompt();
-    switch (prompt.kind) {
-      case 'permission':
-      case 'browserBlock':
-        entry.settle('dismissed');
-        return;
-      case 'review':
-        if (prompt.dialog.dismissOnBackdrop && prompt.dialog.dismissResult !== undefined) {
-          entry.settle(prompt.dialog.dismissResult);
-        }
-        return;
+    const { id, view } = getShownEntry();
+    if (view.dismissOnBackdrop && view.dismissResult !== undefined) {
+      modals.settle(id, view.dismissResult);
     }
   }
 }
