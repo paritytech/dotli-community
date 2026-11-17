@@ -184,6 +184,8 @@ request in session storage, so a reload answers the same round.
 - The panel shows four presets on a slider, with every permission under Advanced. The preset is derived, never stored.
 - Every change goes through one retrying write. The frame reloads only when its `allow` attribute changes.
 - Each permission's facts are one table in the runtime.
+- One list names the permissions dot.li does not support, such as NFC, whose browser API cannot run in a frame. The
+  panel, the presets and the frame leave them out, and a product's request for one is denied with no dialog.
 - A device the browser asks for itself, such as the camera, is left to the browser's own prompt. Its directive is in the
   frame unless the user blocks it in the panel, and a product's request for it is allowed once with no dialog. The panel
   says when the browser itself blocks it.

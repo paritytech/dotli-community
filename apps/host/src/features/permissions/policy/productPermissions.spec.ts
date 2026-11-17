@@ -209,8 +209,8 @@ describe('product permissions store', () => {
       statuses: buildStatuses({ Notifications: 'granted', Camera: 'denied' }),
     });
     expect(changes).toEqual([
-      { label: LABEL, permissions: ['Notifications'], allowChanged: false, fromPrompt: false },
-      { label: LABEL, permissions: ['Camera'], allowChanged: true, fromPrompt: false },
+      { label: LABEL, permissions: ['Notifications'], allowChanged: false },
+      { label: LABEL, permissions: ['Camera'], allowChanged: true },
     ]);
   });
 
@@ -235,7 +235,7 @@ describe('product permissions store', () => {
       await permissions.change(LABEL, { [name]: target });
 
       // Then
-      expect(changes).toEqual([{ label: LABEL, permissions: [name], allowChanged: rebuilds, fromPrompt: false }]);
+      expect(changes).toEqual([{ label: LABEL, permissions: [name], allowChanged: rebuilds }]);
     },
   );
 
@@ -269,9 +269,7 @@ describe('product permissions store', () => {
       { name: 'IdentityDisclosure', status: 'Authorized' },
       { name: 'ChainSubmit', status: 'Denied' },
     ]);
-    expect(changes).toEqual([
-      { label: LABEL, permissions: ['Notifications', 'ChainSubmit'], allowChanged: false, fromPrompt: false },
-    ]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications', 'ChainSubmit'], allowChanged: false }]);
   });
 
   it('As a user, I make a change the core refuses once and the write is retried alone after 300 ms and announced once', async () => {
@@ -300,9 +298,7 @@ describe('product permissions store', () => {
       { name: 'Notifications', status: 'Authorized' },
       { name: 'Camera', status: 'Denied' },
     ]);
-    expect(changes).toEqual([
-      { label: LABEL, permissions: ['Notifications', 'Camera'], allowChanged: true, fromPrompt: false },
-    ]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications', 'Camera'], allowChanged: true }]);
     expect(captures.exception).not.toHaveBeenCalled();
   });
 
@@ -336,9 +332,7 @@ describe('product permissions store', () => {
     // Then
     await expect(outcome).resolves.toEqual({ failed: ['IdentityDisclosure'] });
     expect(attempts).toBe(3);
-    expect(changes).toEqual([
-      { label: LABEL, permissions: ['Notifications', 'ChainSubmit'], allowChanged: false, fromPrompt: false },
-    ]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications', 'ChainSubmit'], allowChanged: false }]);
     expect(captures.exception).toHaveBeenCalledExactlyOnceWith(
       new Error('core down'),
       expect.objectContaining({ step: 'permissions_change' }),
@@ -440,7 +434,7 @@ describe('product permissions store', () => {
     expect(core.writes).toEqual([{ name: 'Notifications', status: 'Authorized' }]);
   });
 
-  it("As a user, I grant a product's prompt and the grant is stored, shown and announced as a prompt answer", async () => {
+  it("As a user, I grant a product's prompt and the grant is stored, shown and announced", async () => {
     // Given
     createFakeCore();
     const changes = recordChanges();
@@ -460,7 +454,7 @@ describe('product permissions store', () => {
       label: LABEL,
       statuses: buildStatuses({ Notifications: 'granted' }),
     });
-    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications'], allowChanged: false, fromPrompt: true }]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications'], allowChanged: false }]);
   });
 
   it("As a user, I answer a product's prompt the core cannot store after three attempts and the answer fails, is reported once and changes nothing", async () => {
@@ -577,7 +571,6 @@ describe('product permissions store', () => {
       label: LABEL,
       permissions: ['Notifications'],
       allowChanged: false,
-      fromPrompt: true,
     });
   });
 
@@ -637,7 +630,7 @@ describe('product permissions store', () => {
       label: LABEL,
       statuses: buildStatuses({ Notifications: 'granted' }),
     });
-    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications'], allowChanged: false, fromPrompt: true }]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications'], allowChanged: false }]);
   });
 
   it("As a user, I close a product's prompt while the core refuses its answer and the failure is still reported once", async () => {
@@ -724,7 +717,7 @@ describe('product permissions store', () => {
 
     // Then the store shows what the core holds and the change asks for a rebuild
     expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: buildStatuses() });
-    expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: true, fromPrompt: false }]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: true }]);
   });
 
   it("As a user, I grant a product's prompt while a read fails before it and the store reads again", async () => {

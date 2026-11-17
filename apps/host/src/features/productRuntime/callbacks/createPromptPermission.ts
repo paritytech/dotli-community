@@ -24,7 +24,7 @@ import { isRestricted, resolveBrowserBlock } from '../../permissions/index.js';
 export type PromptPermissionStores = {
   /** The core's permission store, whose status decides whether the user is asked at all. */
   registry: Pick<PermissionAuthorizations, 'getStatus'>;
-  /** The product's permissions, which show the answer in the menu and rebuild the frame for a device grant. */
+  /** The product's permissions, which store the answer and show it in the menu. */
   product: Pick<ProductPermissions, 'recordPromptDecision'>;
 };
 

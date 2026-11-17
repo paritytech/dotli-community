@@ -15,7 +15,12 @@ export { getLastingStatus, isDismissed, isGranted, toPermissionDecision } from '
 export { pagePermissions, productPermissions } from './policy/pagePermissions.js';
 export { getGrantButtons } from './prompts/permissionDialog.js';
 export type { EnforceablePermissionName, PermissionStatus } from './policy/permissionPolicy.js';
-export { ALL_PERMISSIONS, isBrowserConsented, isUnsupportedPermission } from './policy/permissionPolicy.js';
+export {
+  ALL_PERMISSIONS,
+  isAutoGrantPermission,
+  isBrowserConsented,
+  isUnsupportedPermission,
+} from './policy/permissionPolicy.js';
 export type { PermissionsChange, ProductPermissions } from './policy/productPermissions.js';
 export { createProductPermissions } from './policy/productPermissions.js';
 export { isRestricted, resolveBrowserBlock } from './prompts/resolveBrowserBlock.js';

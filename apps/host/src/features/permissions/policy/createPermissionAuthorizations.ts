@@ -9,7 +9,6 @@ import {
   ALL_PERMISSIONS,
   getAuthorizationRequest,
   getFrameDirective,
-  hasFrameDirective,
   isBrowserConsented,
   isFrameDirectiveOn,
   type EnforceablePermissionName,
@@ -95,7 +94,7 @@ export function createPermissionAuthorizations() {
     if (getProvider(label) === null) {
       return [];
     }
-    const names = ALL_PERMISSIONS.map(({ name }) => name).filter(hasFrameDirective);
+    const names = ALL_PERMISSIONS.map(({ name }) => name).filter(isBrowserConsented);
     const answered = await getStatuses(label, names);
     return names.filter((name, index) => isFrameDirectiveOn(name, answered[index] ?? 'ask'));
   }

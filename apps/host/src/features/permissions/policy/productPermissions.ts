@@ -23,7 +23,7 @@ import { computed, type ReadableAtom } from 'nanostores';
 import type { PermissionAuthorizations } from './createPermissionAuthorizations.js';
 import {
   ALL_PERMISSIONS,
-  hasFrameDirective,
+  isBrowserConsented,
   isFrameDirectiveOn,
   type EnforceablePermissionName,
   type PermissionStatus,
@@ -60,8 +60,6 @@ export type PermissionsChange = {
   permissions: readonly EnforceablePermissionName[];
   /** The frame's `allow` attribute changed, and the frame must be rebuilt, as the attribute is fixed at load. */
   allowChanged: boolean;
-  /** The change answers the product's own prompt, whose response has not reached the product yet. */
-  fromPrompt: boolean;
 };
 
 /** A lasting answer from the product's prompt. A one-time grant is the core's own and never reaches the store. */
@@ -669,11 +667,10 @@ function getLandedChange(
     allowChanged: changed.some(name => {
       const statusBefore = getStatusBefore(name);
       if (statusBefore === undefined) {
-        return hasFrameDirective(name);
+        return isBrowserConsented(name);
       }
       return isFrameDirectiveOn(name, statusBefore) !== isFrameDirectiveOn(name, targets[name] ?? 'ask');
     }),
-    fromPrompt: job.kind === 'decision',
   };
 }
 

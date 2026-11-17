@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getAuthorizationRequest,
   getFrameDirective,
-  hasFrameDirective,
+  isBrowserConsented,
   type EnforceablePermissionName,
 } from './permissionPolicy.js';
 
@@ -33,19 +33,19 @@ describe('PERMISSION_CATALOG', () => {
       request: { tag: 'Remote', value: { permission: { tag: 'StatementSubmit' } } },
     },
   ])(
-    'As a dotli integrator, I look up $name and get its frame directive and its core request',
+    'As a dotli integrator, I look up $name and get its frame directive, its consent and its core request',
     ({ name, directive, request }) => {
       // Given the permission's name, as a product asks for it
       const permission = name;
 
-      // When its frame directive, its reload and its core request are looked up
+      // When its frame directive, its consent and its core request are looked up
       const frameDirective = getFrameDirective(permission);
-      const reloads = hasFrameDirective(permission);
+      const consented = isBrowserConsented(permission);
       const asked = getAuthorizationRequest(permission);
 
-      // Then it gates that directive, a change reloads only with one, and the core is asked that request
+      // Then it gates that directive, the browser consents to it only with one, and the core is asked that request
       expect(frameDirective).toBe(directive);
-      expect(reloads).toBe(directive !== null);
+      expect(consented).toBe(directive !== null);
       expect(asked).toEqual(request);
     },
   );

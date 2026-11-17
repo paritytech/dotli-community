@@ -11,8 +11,6 @@ type Params = {
   flowId: string;
   label: string;
   productId: string;
-  /** Is shown each core frame once it was forwarded to the product. */
-  noteForwarded: (message: Uint8Array) => void;
   /** The clock the debug events are stamped with. */
   timers: Pick<Timers, 'now'>;
 };
@@ -21,7 +19,7 @@ type Params = {
  * Forwards every frame between the product and the core, and closes each side with the other. The debug bus hears the
  * first frame each way. Returns the unpipe, which never throws.
  */
-export function pipeProviders({ product, core, flowId, label, productId, noteForwarded, timers }: Params): () => void {
+export function pipeProviders({ product, core, flowId, label, productId, timers }: Params): () => void {
   let sawInbound = false;
   let sawOutbound = false;
   function emitFirst(event: 'first_inbound' | 'first_outbound'): void {
@@ -41,7 +39,6 @@ export function pipeProviders({ product, core, flowId, label, productId, noteFor
         emitFirst('first_outbound');
       }
       product.postMessage(message);
-      noteForwarded(message);
     }),
     product.subscribeClose?.(() => {
       core.dispose();

@@ -6,6 +6,7 @@
 import type { HostDevicePermissionRequest, RemotePermission } from '@parity/truapi';
 import type { UserConfirmationReview } from '@parity/truapi-host';
 import {
+  isAutoGrantPermission,
   isBrowserConsented,
   isUnsupportedPermission,
   type EnforceablePermissionName,
@@ -30,8 +31,7 @@ export const servedRequests = { getDeviceRule, getRemoteRule, isServed };
 
 /** How the host answers a device permission `tag`. Never throws. */
 function getDeviceRule(tag: HostDevicePermissionRequest): ServeRule {
-  // OpenUrl has no host-side enforcement point, so a deny button could not block it.
-  if (tag === 'OpenUrl') {
+  if (isAutoGrantPermission(tag)) {
     return { kind: 'grant' };
   }
   if (isUnsupportedPermission(tag)) {

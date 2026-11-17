@@ -33,6 +33,11 @@ export function isUnsupportedPermission(name: PermissionName): name is Unsupport
   return UNSUPPORTED_PERMISSIONS.has(name);
 }
 
+/** True when dot.li grants `name` at once, with no menu control and no dialog. */
+export function isAutoGrantPermission(name: PermissionName): name is AutoGrantDevicePermission {
+  return name === 'OpenUrl';
+}
+
 export type PermissionStatus = 'ask' | 'granted' | 'denied';
 
 /** True when dot.li grants the permission, so the app may use it without asking. */
@@ -211,19 +216,17 @@ export function getBrowserCheck(name: EnforceablePermissionName): BrowserCheck |
   return PERMISSION_CATALOG[name].browserCheck;
 }
 
-/** True when `name` has an iframe `allow` directive, so a change to it may rebuild the frame. */
-export function hasFrameDirective(name: EnforceablePermissionName): boolean {
-  return getFrameDirective(name) !== null;
-}
-
-/** True when the browser's own prompt is the consent to `name`, and dot.li only blocks it. Every directive is so. */
+/**
+ * True when `name` has an iframe `allow` directive, whose consent is the browser's own prompt, so dot.li only blocks it
+ * and a change to it may rebuild the frame.
+ */
 export function isBrowserConsented(name: EnforceablePermissionName): boolean {
-  return hasFrameDirective(name);
+  return getFrameDirective(name) !== null;
 }
 
 /** True when `name` at `status` puts its directive in the frame's `allow` attribute, which is unless it is blocked. */
 export function isFrameDirectiveOn(name: EnforceablePermissionName, status: PermissionStatus): boolean {
-  return hasFrameDirective(name) && status !== 'denied';
+  return isBrowserConsented(name) && status !== 'denied';
 }
 
 /** The core's request for `name`. Never throws. */

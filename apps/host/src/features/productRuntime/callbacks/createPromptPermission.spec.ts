@@ -141,13 +141,13 @@ describe('three-way permission prompts', () => {
       button: 'Always allow',
       answer: 'AllowAlways',
       status: 'granted',
-      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true }],
+      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false }],
     },
     {
       button: 'Deny',
       answer: 'Deny',
       status: 'denied',
-      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true }],
+      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false }],
     },
   ])(
     'As a user, I press $button on a transaction prompt and the product hears $answer while the stored status is $status',

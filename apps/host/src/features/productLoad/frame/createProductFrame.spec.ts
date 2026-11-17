@@ -3,7 +3,6 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { asProductId } from '@parity/truapi';
-import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
 import {
   startSandboxChannel,
@@ -14,7 +13,6 @@ import {
 import { createDeferred, realTimers, type Timers } from '@dotli/shared';
 import { atom } from 'nanostores';
 import { catchError, catchRejection, createManualTimers, nth, readOutcome } from '@dotli/shared/testing';
-import { encodeResponseFrame } from '../../../testing/encodeResponseFrame.js';
 import { bindReports } from '../../../testing/bindReports.js';
 import { rethrow } from '../../../testing/rethrow.js';
 import { createCoreAuthCommands } from '../../account/index.js';
@@ -271,7 +269,7 @@ function createHarness({
 
   function announce(change: Partial<PermissionsChange> & { label: string }): void {
     for (const listener of [...permissionListeners]) {
-      listener({ permissions: [], allowChanged: true, fromPrompt: false, ...change });
+      listener({ permissions: [], allowChanged: true, ...change });
     }
   }
 
@@ -1308,82 +1306,6 @@ describe('product frame rebuilds', () => {
     expect(fakes.readLastStatus()).toBe('connected');
     expect(fakes.connections).toHaveLength(1);
   });
-
-  it("As a user, I grant a device permission in the app's own prompt and the app is rebuilt only once my answer has reached it", async () => {
-    // Given a product whose frame is piped to a core the test speaks for
-    const fakes = createHarness();
-    const port = new MessageChannel();
-    onTestFinished(() => {
-      port.port2.close();
-    });
-    const toProduct: unknown[] = [];
-    port.port2.onmessage = event => {
-      toProduct.push(event.data);
-      fakes.changes.notify();
-    };
-    const rendered = fakes.frame.render(buildSubdomainProduct('prompted'));
-    const core = await answerConnection(fakes, 0);
-    await rendered;
-    void nth(fakes.hosts, 0).options.onPort(port.port1);
-    const answer = encodeResponseFrame({
-      requestId: 'camera-prompt',
-      method: PERMISSIONS_REQUEST_DEVICE_PERMISSION,
-      value: new Uint8Array(),
-    });
-
-    // When the user grants the camera, other core traffic reaches the product first, and then the answer
-    fakes.announce({ label: 'prompted', permissions: ['Camera'], fromPrompt: true });
-    core.listener?.(buildLoginResponseFrame('unrelated', { kind: 'success', value: 'Success' }));
-    await fakes.changes.until(() => toProduct.length === 1);
-    const connectionsBeforeAnswer = fakes.connections.length;
-    core.listener?.(answer);
-    await answerConnection(fakes, 1);
-    await fakes.changes.until(() => (fakes.hosts[0]?.dispose.mock.calls.length ?? 0) > 0 && toProduct.length === 2);
-
-    // Then nothing was rebuilt before the answer, and the app is rebuilt in a new frame after it
-    expect(connectionsBeforeAnswer).toBe(1);
-    expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalled();
-    expect(toProduct).toHaveLength(2);
-  });
-
-  it('As a dApp user, I open another app while my device grant is on its way and I am told that app failed, not that it was replaced', async () => {
-    // Given a product on screen, piped to a core the test speaks for, whose device grant still waits for its answer
-    const fakes = createHarness();
-    const port = new MessageChannel();
-    onTestFinished(() => {
-      port.port2.close();
-    });
-    const toProduct: unknown[] = [];
-    port.port2.onmessage = event => {
-      toProduct.push(event.data);
-      fakes.changes.notify();
-    };
-    const rendered = fakes.frame.render(buildSubdomainProduct('prompted'));
-    const core = await answerConnection(fakes, 0);
-    await rendered;
-    void nth(fakes.hosts, 0).options.onPort(port.port1);
-    fakes.announce({ label: 'prompted', permissions: ['Camera'], fromPrompt: true });
-    // And a render of another app asked for, whose frame is held
-    const release = fakes.holdNextFrame();
-    const opened = fakes.frame.render(buildSubdomainProduct('next'));
-    await answerConnection(fakes, 1);
-    await fakes.changes.until(() => fakes.countFramesAsked() === 2);
-    const failure = new Error('The frame could not be built');
-
-    // When the grant's answer reaches the product on screen, and then the other app's frame fails
-    core.listener?.(
-      encodeResponseFrame({
-        requestId: 'camera-prompt',
-        method: PERMISSIONS_REQUEST_DEVICE_PERMISSION,
-        value: new Uint8Array(),
-      }),
-    );
-    await fakes.changes.until(() => toProduct.length === 1);
-    release(failure);
-
-    // Then the render I asked for fails with that failure
-    expect(await catchRejection(opened)).toBe(failure);
-  });
 });
 
 describe('product frame navigates the page', () => {
@@ -1422,8 +1344,8 @@ describe('product frame navigates the page', () => {
   });
 });
 
-describe('product frame and a device grant during a rebuild', () => {
-  it("As a user, I grant a device permission in the app's own prompt while its frame is rebuilt and the new frame gets the grant", async () => {
+describe('product frame and a permission change during a rebuild', () => {
+  it('As a user, I change a device permission in the menu while the app is rebuilt and the new frame gets the change', async () => {
     // Given a product whose frame is being rebuilt, past the point where the new frame read its policy
     const fakes = createHarness();
     await fakes.settle(buildSubdomainProduct('regrant'), 0);
@@ -1432,19 +1354,19 @@ describe('product frame and a device grant during a rebuild', () => {
     await answerConnection(fakes, 1);
     await fakes.changes.until(() => fakes.countFramesAsked() === 2);
 
-    // When the user grants the camera in the app's own prompt
-    fakes.announce({ label: 'regrant', permissions: ['Camera'], fromPrompt: true });
+    // When the user changes the camera in the menu
+    fakes.announce({ label: 'regrant', permissions: ['Camera'] });
     release();
     await answerConnection(fakes, 2);
     await fakes.changes.until(() => fakes.readLastStatus() === 'connected' && fakes.countFramesAsked() === 3);
 
-    // Then the frame is built once more, so its policy is read after the grant
+    // Then the frame is built once more, so its policy is read after the change
     expect(fakes.listOnScreen()).toHaveLength(1);
     expect(fakes.listOnScreen()[0]).toBe(fakes.hosts.at(-1));
     expect(fakes.hosts[1]?.dispose).toHaveBeenCalled();
   });
 
-  it("As a user, I grant a device permission for another app while this app's frame is rebuilt and this frame is left alone", async () => {
+  it("As a user, I change a device permission of another app while this app's frame is rebuilt and this frame is left alone", async () => {
     // Given a product whose frame is being rebuilt
     const fakes = createHarness();
     await fakes.settle(buildSubdomainProduct('mine'), 0);
@@ -1453,8 +1375,8 @@ describe('product frame and a device grant during a rebuild', () => {
     await answerConnection(fakes, 1);
     await fakes.changes.until(() => fakes.countFramesAsked() === 2);
 
-    // When a prompt grant arrives for another product
-    fakes.announce({ label: 'other', permissions: ['Camera'], fromPrompt: true });
+    // When a permission change arrives for another product
+    fakes.announce({ label: 'other', permissions: ['Camera'] });
     release();
     await fakes.changes.until(() => fakes.readLastStatus() === 'connected');
 
@@ -1801,38 +1723,6 @@ describe('product frame and the page core', () => {
     // Then the frame reports failed, the product stays, and the dead core goes with its last lease
     expect(fakes.readLastStatus()).toBe('failed');
     expect(fakes.listOnScreen()).toHaveLength(1);
-    expect(fakes.runtimes[2]?.dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it("As a dApp user whose frame gave up on its cores, I grant a device permission in the app's own prompt and the app is rebuilt", async () => {
-    // Given a product left on screen by a frame that gave up on its dying cores
-    const timers = createManualTimers();
-    const fakes = createHarness({ timers });
-    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
-    const first = await answerConnection(fakes, 0);
-    await rendered;
-    crash(first);
-    const second = await fakes.reconnect(1);
-    crash(second);
-    await timers.advance(5_000);
-    crash(await fakes.reconnect(2));
-    await timers.advance(60_000);
-    const statusBeforeGrant = fakes.readLastStatus();
-    const pendingBeforeGrant = timers.countPending();
-
-    // When the user grants the camera in the app's prompt, whose answer can no longer reach the product
-    fakes.announce({ label: 'product', permissions: ['Camera'], fromPrompt: true });
-    const pendingAfterGrant = timers.countPending();
-    await timers.advance(3_000);
-    await fakes.reconnect(3);
-
-    // Then the wait for the answer ran on the frame's timers, the app is rebuilt in a new frame once it is over, and the
-    // frame it replaced goes alone
-    expect(statusBeforeGrant).toBe('failed');
-    expect(pendingAfterGrant).toBe(pendingBeforeGrant + 1);
-    expect(fakes.listOnScreen()).toHaveLength(1);
-    expect(fakes.listOnScreen()[0]).toBe(fakes.hosts.at(-1));
-    expect(nth(fakes.hosts, 2).dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[2]?.dispose).toHaveBeenCalledTimes(1);
   });
 

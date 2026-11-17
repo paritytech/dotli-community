@@ -23,7 +23,6 @@ import {
 import type { CoreProvider } from '../../productRuntime/index.js';
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
 import type { CoreConnection, CoreLease, PageCore, PageProduct } from '../../productRuntime/index.js';
-import { createPermissionResponseGate } from './createPermissionResponseGate.js';
 import type { PermissionAuthorizations } from '../../permissions/index.js';
 import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
@@ -93,10 +92,7 @@ export type ProductFrameParams = {
   notify: ShowNotification;
   /** The host page around the frame. Without one, the browser's. */
   page?: ProductFramePage | undefined;
-  /**
-   * The clock and timers the frame stamps its events with, spaces its renders on and waits for a permission answer on.
-   * The page's own by default.
-   */
+  /** The clock and timers the frame stamps its events with and spaces its renders on. The page's own by default. */
   timers?: Timers;
 };
 
@@ -146,8 +142,8 @@ type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void 
 
 /**
  * One try at leasing and connecting. Ending `core` lets go of the pipe, the routes, the connection and the lease, in
- * that order. Ending `frame` ends the wait for a permission answer and removes the panel and the iframe, which outlive a
- * released core, so a device grant still waiting for its answer when the frame gives up on its core still rebuilds it.
+ * that order. Ending `frame` removes the panel and the iframe, which outlive a released core, so the product stays on
+ * screen once the frame gives up on its core.
  */
 type Attempt = { n: 1 | 2; core: Side; frame: Side };
 
@@ -158,8 +154,6 @@ type Link = {
   productId: ProductId;
   /** Whether the product declares chat, as its connection was opened. */
   chat: boolean;
-  /** Holds a rebuild back until the product's pending permission answer has reached it. */
-  responses: ReturnType<typeof createPermissionResponseGate>;
 };
 
 /** Whether the core under an attempt reported itself down, refused or stale. */
@@ -241,8 +235,6 @@ type FrameEvent =
   | { kind: 'panelMounted'; attempt: Attempt }
   | { kind: 'stepFailed'; attempt: Attempt; error: unknown }
   | { kind: 'renderAsked'; product: FrameProduct; reply: Reply<void> }
-  /** The answer to a device grant reached the product, on the frame of `asking`. */
-  | { kind: 'permissionAnswered'; asking: Attempt }
   | { kind: 'permissionsChanged'; change: PermissionsChange }
   | { kind: 'recoverAsked'; asking: Attempt }
   | { kind: 'recoverSpaced'; timer: unknown }
@@ -365,15 +357,7 @@ export function createProductFrame({
       connecting: {
         opened(run, { connection, coreProvider }, { emitState, emitSideEffect, update }) {
           const { attempt, product, chat, core: coreSide } = run;
-          const link: Link = {
-            coreProvider,
-            productId: connection.productId,
-            chat,
-            responses: createPermissionResponseGate({
-              signal: attempt.frame.signal,
-              timers,
-            }),
-          };
+          const link: Link = { coreProvider, productId: connection.productId, chat };
           emitState({ ...getRunParts(run), kind: 'readingAllow', attempt, link, core: coreSide });
           emitSideEffect({ kind: 'walletConnected', chat });
           // Only the run's own connection, since a chat view waiting for the product takes the first one registered.
@@ -454,34 +438,14 @@ export function createProductFrame({
     );
   };
 
-  // A render begun since the grant reads the new policy itself, so only the frame the grant was heard on is rebuilt, and
-  // only while no render is in flight. One asked for from above is never taken over.
-  const rebuildForPermission: HandlerOf<FrameMachine, 'connected' | 'lost' | 'failed', 'permissionAnswered'> = (
-    state,
-    { asking },
-    transition,
-  ) => {
-    if (state.shown?.attempt !== asking) {
-      return;
-    }
-    startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
-  };
-
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
-  // before the change, so it is built again at once rather than after an answer for the frame it replaces.
+  // before the change, so it is built again too.
   const changePermissions: HandlerOf<FrameMachine, LivelyKind, 'permissionsChanged'> = (
     state,
     { change },
     transition,
   ) => {
     if (!change.allowChanged || change.label !== state.target.label) {
-      return;
-    }
-    if (change.fromPrompt && state.shown !== null && state.kind !== 'connecting') {
-      const asking = state.shown.attempt;
-      state.shown.link.responses.runAfterResponse(() => {
-        transition.update({ kind: 'permissionAnswered', asking });
-      });
       return;
     }
     startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
@@ -659,7 +623,6 @@ export function createProductFrame({
       },
       connected: {
         renderAsked: renderAgain,
-        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -670,7 +633,6 @@ export function createProductFrame({
       },
       lost: {
         renderAsked: renderAgain,
-        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -680,7 +642,6 @@ export function createProductFrame({
       },
       failed: {
         renderAsked: renderAgain,
-        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -1187,7 +1148,6 @@ function pipeProductPort(
       flowId,
       label,
       productId: link.productId,
-      noteForwarded: link.responses.noteForwarded,
       timers,
     }),
   );
