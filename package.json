@@ -24,6 +24,7 @@
     "test:vrt": "VRT=1 vitest run --config vitest.storybook.config.ts",
     "test": "turbo run test test:root",
     "test:root": "node --test scripts/*.test.ts",
+    "test:functional": "npm run build:test && npm run --workspace apps/host test:functional",
     "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} npm run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build && npm run --workspace apps/host test:e2e:local",
     "lint": "turbo run lint lint:root",
     "lint:root": "eslint . && node scripts/checkProse.ts",

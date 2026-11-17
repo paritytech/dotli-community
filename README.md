@@ -134,6 +134,7 @@ HOST=0.0.0.0 npm run preview   # The same, reachable from a phone on the LAN
 | `npm run unlink:truapi`                  | Back to the versions in `package-lock.json`                                       |
 | `npm run preview:debug`                  | Preview with `VITE_APP_DEBUG=true`                                                |
 | `npm run build:prod`                     | Production build of both apps                                                     |
+| `npm run test:functional`                | Build with the test env, then run the host functional suite                       |
 | `node scripts/updatePublicSuffixList.ts` | Refresh the Public Suffix List shipped with each release                          |
 
 ### Host-playground E2E
