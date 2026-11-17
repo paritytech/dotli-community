@@ -236,7 +236,7 @@ export function startLoadProgress({
             stops,
             warning: { kind: 'early', parked: null },
             watches: new Map(),
-            // Seeded with page start, so the first report already has a reading to measure against.
+            // Seeded with page start, so a first report within the window has a reading to measure against.
             throughput: { samples: [{ at: 0, total: 0 }], bytesPerSecond: null },
           });
           timers.setTimeout(() => {
