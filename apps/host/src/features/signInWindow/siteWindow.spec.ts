@@ -22,9 +22,9 @@ import { MainAccountError, getMainAccount, type MainAccount } from '../siteSignI
 import type { SignInScreen } from './sessionWindowState.js';
 import type { DisplayCall } from '../siteSignIn/index.js';
 import type { SiteChain } from '../siteSignIn/index.js';
-import type { SiteSignRequest } from '../siteSignIn/index.js';
 import type { SiteAccountReader } from '../siteSignIn/index.js';
 import type { SiteRound, SiteScreen } from '../siteSignIn/index.js';
+import type { SiteTransactionRequest } from '../siteSignIn/index.js';
 import { openSiteSignIn, openSiteTransaction, type SiteWindowParams } from './siteWindow.js';
 
 type CreateWindowPartsParams = {
@@ -252,7 +252,7 @@ function createFakeChain() {
 function openTransactionWindow(call: Uint8Array, { grantRead }: OpenTransactionWindowParams = {}) {
   const parts = createWindowParts();
   const { chain, decoded } = createFakeChain();
-  const request: SiteSignRequest = {
+  const request: SiteTransactionRequest = {
     round: 'r1',
     account: ACCOUNT,
     siteToken: grantRead === undefined ? null : OLD_TOKEN,
@@ -264,7 +264,6 @@ function openTransactionWindow(call: Uint8Array, { grantRead }: OpenTransactionW
   const site = openSiteTransaction({
     ...parts.params,
     request,
-    call,
     grants: {
       ...grants,
       async read(token) {

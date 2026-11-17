@@ -26,6 +26,11 @@ export type SiteSignRequest = {
   call: Uint8Array | null;
 };
 
+/** A site's transaction request whose call is known, the request's own or the one its payload brought. */
+export type SiteTransactionRequest = Omit<SiteSignRequest, 'call'> & {
+  call: Uint8Array;
+};
+
 const CALL_MIN_BYTES = 2;
 // Far above any call a site sends, and a bound on what a payload makes the window decode.
 const CALL_MAX_BYTES = 1_000_000;

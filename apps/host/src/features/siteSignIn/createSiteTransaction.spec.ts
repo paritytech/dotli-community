@@ -276,7 +276,6 @@ async function startTransactionWith(options: StartTransactionParams, responder: 
       chain: SERVICES.assethub.genesis,
       call: CALL,
     },
-    call: CALL,
     origin: SITE_ORIGIN,
     self: SELF,
     responder,
@@ -365,8 +364,7 @@ function createTransactionAction(
 ) {
   return createSiteTransactionAction({
     origin: SITE_ORIGIN,
-    request: { account: ACCOUNT, chain: SERVICES.assethub.genesis },
-    call: CALL,
+    request: { call: CALL, account: ACCOUNT, chain: SERVICES.assethub.genesis },
     chain,
     txSigner,
     accountReader,

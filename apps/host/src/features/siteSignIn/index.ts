@@ -22,7 +22,7 @@ export type { MainAccount } from './mainAccount.js';
 export { MainAccountError, getMainAccount } from './mainAccount.js';
 export type { SiteRequest } from './parseSiteRequest.js';
 export { SITE_TOKEN_BYTES, parseSiteRequest } from './parseSiteRequest.js';
-export type { SiteSignRequest } from './parseSiteSignRequest.js';
+export type { SiteSignRequest, SiteTransactionRequest } from './parseSiteSignRequest.js';
 export { parseSiteCall, parseSiteSignRequest } from './parseSiteSignRequest.js';
 export type { RedirectFields } from './readRedirectFields.js';
 export { readRedirectFields } from './readRedirectFields.js';

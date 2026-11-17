@@ -288,7 +288,6 @@ function openSiteTransactionFlow({ responder, round }: OpenSiteTransactionFlowPa
   const site = openSiteTransaction({
     ...getSiteWindowParams({ responder, round, close: closeWindow }),
     request: round.request,
-    call: round.call,
     chain: bridge.siteChain,
     txSigner: bridge.siteTxSigner,
     accountReader: bridge.siteAccountReader,

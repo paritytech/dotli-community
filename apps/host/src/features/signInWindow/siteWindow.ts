@@ -15,9 +15,9 @@ import type { SiteGroups } from '../siteSignIn/index.js';
 import type { SiteRequest } from '../siteSignIn/index.js';
 import type { SiteRound } from '../siteSignIn/index.js';
 import { createSiteSignIn } from '../siteSignIn/index.js';
-import type { SiteSignRequest } from '../siteSignIn/index.js';
 import type { SiteAccountReader } from '../siteSignIn/index.js';
 import { createSiteTransaction } from '../siteSignIn/index.js';
+import type { SiteTransactionRequest } from '../siteSignIn/index.js';
 import type { SiteTxSigner } from '../siteSignIn/index.js';
 
 /** What the site's round decides for its window flow, which the caller completes with the window's own parts. */
@@ -50,13 +50,11 @@ export type SiteWindowParams = {
 };
 
 /**
- * What a site's transaction window runs on: a sign-in window's parts, with the site's call, the chain, the transaction
- * signer and the account reader that reads the site account.
+ * What a site's transaction window runs on: a sign-in window's parts for a request whose call is known, with the chain,
+ * the transaction signer and the account reader that reads the site account.
  */
 type OpenSiteTransactionParams = Omit<SiteWindowParams, 'request'> & {
-  request: SiteSignRequest;
-  /** The call the site's request carried, else the one it posted. */
-  call: Uint8Array;
+  request: SiteTransactionRequest;
   chain: SiteChain;
   txSigner: SiteTxSigner;
   accountReader: SiteAccountReader;
@@ -68,7 +66,7 @@ export function openSiteSignIn({ origin, responder, createWindowFlow, ...round }
   return createSiteSignIn({ ...round, origin, responder, startWindowFlow });
 }
 
-/** Runs a site's transaction of `call` for the vetted origin with the window flow it reuses. */
+/** Runs a site's transaction of the request's call for the vetted origin with the window flow it reuses. */
 export function openSiteTransaction({
   origin,
   responder,

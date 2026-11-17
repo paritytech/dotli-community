@@ -389,7 +389,6 @@ describe('session window round answer', () => {
         chain: HUB,
         call: fromHex(CALL),
       },
-      call: fromHex(CALL),
       booted: 'bridge',
     });
     expect(readAnswers()).toEqual([]);
@@ -412,7 +411,7 @@ describe('session window round answer', () => {
     const round = await answered;
 
     // Then the round carries the request's call
-    expect(round).toMatchObject({ party: 'third-sign', call: fromHex(CALL) });
+    expect(round).toMatchObject({ party: 'third-sign', request: { call: fromHex(CALL) } });
   });
 
   it('As a site, I post my call after the sign window opened and the window waits for it before it answers my transaction round', async () => {
@@ -439,7 +438,7 @@ describe('session window round answer', () => {
     const round = await answered;
 
     // Then the round carries the call that came
-    expect(round).toMatchObject({ party: 'third-sign', call: fromHex(PAYLOAD_CALL) });
+    expect(round).toMatchObject({ party: 'third-sign', request: { call: fromHex(PAYLOAD_CALL) } });
   });
 
   it('As a site, I post a call that is not hex of two or more bytes and am refused as a bad request, counted as my transaction', async () => {

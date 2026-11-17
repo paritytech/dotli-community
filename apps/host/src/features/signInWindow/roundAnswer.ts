@@ -9,7 +9,7 @@ import type { Network } from '@dotli/config';
 import { createReporter } from '@dotli/metrics';
 import { waitForStatus } from '@dotli/shared';
 import type { SiteRequest } from '../siteSignIn/index.js';
-import type { SiteSignRequest } from '../siteSignIn/index.js';
+import type { SiteTransactionRequest } from '../siteSignIn/index.js';
 import type { SignInIntent } from './parseWindowRequest.js';
 import type { Responder, ResponderState } from './createResponder.js';
 import { dispatchRound, type Round } from './dispatchRound.js';
@@ -30,7 +30,7 @@ const report = createReporter({ flow: 'wallet' });
 export type SignInRound<Booted> =
   | { party: 'first'; origin: string; intent: SignInIntent; booted: Booted }
   | { party: 'third'; origin: string; request: SiteRequest; booted: Booted }
-  | { party: 'third-sign'; origin: string; request: SiteSignRequest; call: Uint8Array; booted: Booted };
+  | { party: 'third-sign'; origin: string; request: SiteTransactionRequest; booted: Booted };
 
 /** How the sign-out window answers its round. */
 export type SignOutAnswer = {
@@ -130,7 +130,7 @@ export async function answerSignIn<Booted>({
         refuseRound({ responder, party: 'third', reason: 'bad_request', route: request.route });
         return null;
       }
-      return { party: 'third-sign', origin, request: round.request, call, booted: bootedValue };
+      return { party: 'third-sign', origin, request: { ...round.request, call }, booted: bootedValue };
     }
   }
 }
