@@ -81,11 +81,11 @@ type Params = {
     'recordChainSync' | 'recordChainDetail' | 'recordBytes' | 'recordContent' | 'markWarningShown'
   >;
   /** Where the load's chain events and byte totals go. */
-  chainReporter: Pick<ChainReporter, 'record' | 'recordDetail' | 'recordBytes'>;
+  chainReporter: Pick<ChainReporter, 'record' | 'recordDetail' | 'recordBytes' | 'closeBytes'>;
   loading?: LoadingScreen;
   /** The timers the warnings wait on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout'>;
-  /** The monotonic clock byte totals are stamped on, for the rate and the debug samples, in milliseconds. */
+  /** The monotonic clock byte totals are stamped on, for the rate, in milliseconds. */
   now?: () => number;
 };
 
@@ -114,12 +114,6 @@ type StallWatch = ({ kind: 'quiet' } | { kind: 'watching'; timer: unknown }) & P
 /** A byte total and when it was taken, on the load's clock. */
 type ByteSample = { at: number; total: number };
 
-/**
- * The sampled report of the load's byte totals to the debug panel. It closes once the product is on screen, or it
- * pushes the load's own events out of the panel's ring buffer.
- */
-type ByteTotals = { kind: 'open'; sampled: ByteSample | null; samples: number } | { kind: 'closed' };
-
 /** The whole load's throughput over a trailing window. */
 type Throughput = { samples: readonly ByteSample[]; bytesPerSecond: number | null };
 
@@ -134,11 +128,8 @@ type ProgressState =
       kind: 'lightClient';
       stops: readonly (() => void)[];
       warning: Warning;
-      /** The load's byte total so far. */
-      received: number;
       // Per chain, since one figure would blank to zero at every handover.
       watches: ReadonlyMap<CriticalChain, StallWatch>;
-      byteTotals: ByteTotals;
       throughput: Throughput;
     }
   | { kind: 'disposed' };
@@ -167,7 +158,8 @@ type ProgressEffect =
   | { kind: 'chainSyncShown'; sync: ChainSyncEvent }
   | { kind: 'chainDetailRecorded'; detail: ChainDetail }
   | { kind: 'bytesRecorded'; received: number }
-  | { kind: 'byteTotalSampled'; received: number }
+  | { kind: 'chainBytesRecorded'; received: number }
+  | { kind: 'byteTotalsClosed' }
   | { kind: 'rateMeasured'; bytesPerSecond: number }
   | ({ kind: 'contentRecorded' } & ContentFacts)
   | ({ kind: 'contentShown' } & ContentFacts)
@@ -179,10 +171,6 @@ type ProgressEffect =
 
 type ProgressMachine = MachineTypes<ProgressState, ProgressEvent, ProgressEffect>;
 
-// Every other 500ms byte total, which still resolves the peak.
-const CHAIN_BYTES_DEBUG_MS = 1000;
-/** For a load that never renders. */
-const CHAIN_BYTES_DEBUG_MAX = 300;
 const SPEED_WINDOW_MS = 3_000;
 
 /** How long a chain may sit in one lifecycle state before it owes an explanation. */
@@ -256,9 +244,7 @@ export function startLoadProgress({
             kind: 'lightClient',
             stops,
             warning: { kind: 'early', parked: null },
-            received: 0,
             watches: new Map(),
-            byteTotals: { kind: 'open', sampled: null, samples: 0 },
             // Seeded with page start, so the first report already has a reading to measure against.
             throughput: { samples: [{ at: 0, total: 0 }], bytesPerSecond: null },
           });
@@ -326,11 +312,8 @@ export function startLoadProgress({
           const { emitSideEffect } = transition;
           emitSideEffect({ kind: 'bytesRecorded', received });
           const throughput = measureThroughput(state.throughput, received, at);
-          const sampled = sampleByteTotal(state.byteTotals, received, at);
-          rewordWarning({ ...state, received, throughput, byteTotals: sampled ?? state.byteTotals }, transition);
-          if (sampled !== null) {
-            emitSideEffect({ kind: 'byteTotalSampled', received });
-          }
+          rewordWarning({ ...state, throughput }, transition);
+          emitSideEffect({ kind: 'chainBytesRecorded', received });
           if (throughput.bytesPerSecond !== null) {
             emitSideEffect({ kind: 'rateMeasured', bytesPerSecond: throughput.bytesPerSecond });
           }
@@ -349,16 +332,8 @@ export function startLoadProgress({
           }
           raiseWarning(state, line, transition);
         },
-        productLoaded(state, _event, { emitState, emitSideEffect }) {
-          const { byteTotals, received } = state;
-          if (byteTotals.kind === 'closed') {
-            return;
-          }
-          emitState({ ...state, byteTotals: { kind: 'closed' } });
-          // A load that never got a byte leaves nothing unsampled.
-          if (byteTotals.sampled !== null && received !== byteTotals.sampled.total) {
-            emitSideEffect({ kind: 'byteTotalSampled', received });
-          }
+        productLoaded(_state, _event, { emitSideEffect }) {
+          emitSideEffect({ kind: 'byteTotalsClosed' });
         },
         phaseResolved(_state, { phase }, { emitSideEffect }) {
           emitSideEffect({ kind: 'barMovedToPhase', phase });
@@ -414,8 +389,11 @@ export function startLoadProgress({
         case 'bytesRecorded':
           trace.recordBytes(effect.received);
           return;
-        case 'byteTotalSampled':
+        case 'chainBytesRecorded':
           chainReporter.recordBytes(effect.received);
+          return;
+        case 'byteTotalsClosed':
+          chainReporter.closeBytes();
           return;
         case 'rateMeasured':
           networkMonitorState.recordTransfer({ bytesPerSecond: effect.bytesPerSecond });
@@ -660,23 +638,6 @@ function stopEach(stops: readonly (() => void)[]): void {
 /** `state` with `chain`'s stall watch replaced by `watch`. */
 function withWatch(state: LightClientState, chain: CriticalChain, watch: StallWatch): LightClientState {
   return { ...state, watches: new Map(state.watches).set(chain, watch) };
-}
-
-/**
- * The open report with `received`, the load's byte total, sampled at `at`, or `null` when the report is closed or the
- * total is not due. A total is due when it is new a second after the last one, up to the cap. The load starts at zero
- * bytes, so a zero total before any sample is not new.
- */
-function sampleByteTotal(byteTotals: ByteTotals, received: number, at: number): ByteTotals | null {
-  if (byteTotals.kind === 'closed') {
-    return null;
-  }
-  const { sampled, samples } = byteTotals;
-  const due =
-    samples < CHAIN_BYTES_DEBUG_MAX &&
-    received !== (sampled?.total ?? 0) &&
-    (sampled === null || at - sampled.at >= CHAIN_BYTES_DEBUG_MS);
-  return due ? { kind: 'open', sampled: { at, total: received }, samples: samples + 1 } : null;
 }
 
 /**

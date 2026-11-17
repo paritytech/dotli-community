@@ -575,32 +575,6 @@ describe('startLoadProgress', () => {
     ]);
   });
 
-  it('As a developer with the debug panel, I see a load whose byte counter only reads zero reach the screen and hear no total', async () => {
-    // Given a byte counter that reports its zero baseline and nothing more
-    const { netBytes, debug, timers } = setupLoad({ backend: 'smoldot-direct' });
-    netBytes.send({ received: 0 });
-    await timers.advance(1_000);
-    netBytes.send({ received: 0 });
-
-    // When
-    productState.setLoaded({ label: 'doom', productId: asProductId('doom.dot') });
-
-    // Then
-    expect(debug.filter(event => event.event === 'bytes')).toEqual([]);
-  });
-
-  it('As a developer with the debug panel, I see the product on screen before any byte total and hear no total', async () => {
-    // Given
-    const { debug, timers } = setupLoad({ backend: 'smoldot-direct' });
-
-    // When
-    productState.setLoaded({ label: 'doom', productId: asProductId('doom.dot') });
-    await timers.advance(5_000);
-
-    // Then
-    expect(debug.filter(event => event.event === 'bytes')).toEqual([]);
-  });
-
   it('As a developer, I dispose the load progress and hear no more of its byte totals or its chain warnings', async () => {
     // Given a relay that finds no peers, and a first byte total
     const { progress, chainSync, netBytes, debug, trace, timers } = setupLoad({ backend: 'smoldot-direct' });

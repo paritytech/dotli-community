@@ -37,6 +37,48 @@ describe('createChainReporter', () => {
       { chain: 'relay', phase: 'syncing', warpAt: 30, warpTarget: 100 },
     ]);
   });
+
+  it("As a developer with the debug panel, I see the load's byte totals sampled at most once a second", () => {
+    // Given a reporter
+    const { reporter, timers, readBytes } = setupReporter();
+
+    // When three totals arrive, the second within a second of the first
+    reporter.recordBytes(100);
+    timers.freeze(500);
+    reporter.recordBytes(200);
+    timers.freeze(500);
+    reporter.recordBytes(300);
+
+    // Then the first and the third go out
+    expect(readBytes()).toEqual([{ received: 100 }, { received: 300 }]);
+  });
+
+  it('As a developer with the debug panel, I see a load whose byte counter only reads zero reach the screen and hear no total', () => {
+    // Given a byte counter that reports its zero baseline and nothing more
+    const { reporter, timers, readBytes } = setupReporter();
+    reporter.recordBytes(0);
+    timers.freeze(1_000);
+    reporter.recordBytes(0);
+
+    // When the product is on screen
+    reporter.closeBytes();
+
+    // Then
+    expect(readBytes()).toEqual([]);
+  });
+
+  it('As a developer with the debug panel, I see the product on screen before any byte total and hear no total', () => {
+    // Given a reporter that heard no total
+    const { reporter, timers, readBytes } = setupReporter();
+
+    // When the product is on screen, and a total arrives later
+    reporter.closeBytes();
+    timers.freeze(5_000);
+    reporter.recordBytes(100);
+
+    // Then
+    expect(readBytes()).toEqual([]);
+  });
 });
 
 /** Builds a reporter over a fresh debug bus, a manual clock and a monitor that keeps nothing. */
@@ -58,9 +100,13 @@ function setupReporter() {
     debugBus,
     monitor: { recordPeerCount: () => undefined, recordChainPhase: () => undefined },
   });
-  return { reporter, timers, readPhases };
+  return { reporter, timers, readPhases, readBytes };
 
   function readPhases(): unknown[] {
     return events.flatMap(event => (event.layer === 'chain' && event.event === 'phase' ? [event.payload] : []));
+  }
+
+  function readBytes(): unknown[] {
+    return events.flatMap(event => (event.layer === 'chain' && event.event === 'bytes' ? [event.payload] : []));
   }
 }
