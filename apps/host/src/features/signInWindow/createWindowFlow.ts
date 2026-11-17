@@ -255,8 +255,15 @@ export function createWindowFlow({
     event,
     { emitSideEffect },
   ) => {
-    if (event.state.kind === 'answered') {
-      emitSideEffect({ kind: 'closed' });
+    switch (event.state.kind) {
+      case 'answered':
+        emitSideEffect({ kind: 'closed' });
+        return;
+      case 'connecting':
+      case 'vetted':
+      case 'refused':
+      case 'no-opener':
+        return;
     }
   };
   const disposeWindow: HandlerOf<WindowMachine, 'live' | 'refused' | 'ended', 'disposed'> = (
