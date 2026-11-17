@@ -316,23 +316,18 @@ export function createWindowFlow({
     emitState({ kind: 'finishing', shown, account });
     update(reads.readPaired().then(paired => ({ kind: 'pairedRead', ...paired }), mapWorkFailure));
   };
-  /**
-   * Offers what the store holds, else pairs. With nothing stored, a flag left set claims a sign-in that is gone, and
-   * the keeper drops it only while the store is still empty, so a pairing under way that stores meanwhile keeps it.
-   */
-  const offerOrPair: HandlerOf<
-    FlowMachine,
-    'readingToOffer' | 'goingBack' | 'readingToSend' | 'readingForContinue',
-    'storedRead'
-  > = ({ shown }, { stored }, { emitState, update }) => {
+  /** Offers what the store holds, else pairs. */
+  const offerOrPair: HandlerOf<FlowMachine, 'readingToOffer' | 'goingBack', 'storedRead'> = (
+    state,
+    { stored },
+    transition,
+  ) => {
     const offered = getOffered(stored);
-    if (offered !== null) {
-      emitState({ kind: 'continue', shown: { view: 'continue', offered, failure: null } });
+    if (offered === null) {
+      clearFlagToPair(state, transition);
       return;
     }
-    emitState({ kind: 'clearingFlag', shown });
-    // Never rejects, since no drop runs.
-    update(signIns.clear().then(() => ({ kind: 'flagLanded' })));
+    transition.emitState({ kind: 'continue', shown: { view: 'continue', offered, failure: null } });
   };
   /**
    * Sends what the store holds, with the flag landed first, since the page reads it as it takes the result. A store
@@ -340,14 +335,14 @@ export function createWindowFlow({
    */
   const send: HandlerOf<FlowMachine, 'readingToSend' | 'readingForContinue', 'storedRead'> = (
     state,
-    event,
+    { stored },
     transition,
   ) => {
-    if (getOffered(event.stored) === null) {
-      offerOrPair(state, event, transition);
+    if (getOffered(stored) === null) {
+      clearFlagToPair(state, transition);
       return;
     }
-    transition.emitState({ kind: 'storingFlag', shown: state.shown, stored: event.stored });
+    transition.emitState({ kind: 'storingFlag', shown: state.shown, stored });
     // Never rejects, since the write does nothing.
     transition.update(signIns.store(noop).then(() => ({ kind: 'flagLanded' })));
   };
@@ -782,6 +777,16 @@ export function createWindowFlow({
   /** Retry over a failed pairing shows the spinner while the store decides again what to offer. */
   function retryPairing(transition: Transition<FlowMachine>): void {
     readToOffer({ shown: { view: 'pairing', pairing: SPINNER } }, transition);
+  }
+
+  /**
+   * Drops the flag over a store with nothing stored, where it claims a sign-in that is gone, and pairs once it landed.
+   * The keeper drops it only while the store is still empty, so a pairing under way that stores meanwhile keeps it.
+   */
+  function clearFlagToPair({ shown }: Step, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'clearingFlag', shown });
+    // Never rejects, since no drop runs.
+    update(signIns.clear().then(() => ({ kind: 'flagLanded' })));
   }
 
   /** Shows the pairing and logs in. The login waits on the phone, so it answers outside `await()`. */
