@@ -65,7 +65,10 @@ type FastPath = { kind: 'fast' };
 /** A load that missed or skipped the CID cache, so it goes through the name from `coldStart` on. */
 type SlowPath = { kind: 'slow'; coldStart: number; cidCache: 'miss' | 'skipped' };
 
-/** What a traced load holds. Its trace and its progress are collaborators with their own machines. */
+/**
+ * What a traced load holds. Its trace and its progress run their own machines, and its chain reporter closes the byte
+ * totals at the handoff.
+ */
 type Traced = { label: string; trace: ResolutionTrace; progress: LoadProgress; chainReporter: ChainReporter };
 
 /**

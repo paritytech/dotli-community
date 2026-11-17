@@ -29,7 +29,7 @@ type Params = {
 const CHAIN_WARP_DEBUG_MS = 1000;
 // Every other 500ms byte total, which still resolves the peak.
 const CHAIN_BYTES_DEBUG_MS = 1000;
-/** For a load that never renders. */
+/** For a load that never hands off. */
 const CHAIN_BYTES_DEBUG_MAX = 300;
 
 const report = createReporter({ flow: 'chain' });
