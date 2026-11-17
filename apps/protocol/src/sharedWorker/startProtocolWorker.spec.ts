@@ -1573,7 +1573,7 @@ describe('worker lifecycle', () => {
     // Given a lifecycle serving one port that subscribed to its status
     const { lifecycle, timers, close } = startLifecycle();
     const session = openSession(lifecycle);
-    lifecycle.hear(session);
+    lifecycle.addStatusSink(session, { send: () => undefined, interrupt: () => undefined });
 
     // When the worker fails, is then marked ready, and its queued close runs
     lifecycle.fail(new Error(FATAL));

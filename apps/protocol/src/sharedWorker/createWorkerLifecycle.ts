@@ -87,7 +87,9 @@ type ServedPort = {
 
 /**
  * A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop it.
- * So a released port stays open until the beat after its tab speaks again, or until the worker closes.
+ * So a released port stays open until the beat after its tab speaks again, or until the worker closes. An engine that
+ * never fires the port's `close` holds the port of a tab that left for good until the worker closes, which keeps a
+ * tab frozen for any time able to hear why it was released.
  */
 type ReleasedPort = {
   kind: 'released';
@@ -132,7 +134,6 @@ type PortEvent = { port: WorkerPort };
 
 type LifecycleEvent =
   | ({ kind: 'portConnected'; transport: ProtocolTransport } & PortEvent)
-  | ({ kind: 'heard' } & PortEvent)
   | ({ kind: 'spoke' } & PortEvent)
   | ({ kind: 'portClosed' } & PortEvent)
   | ({ kind: 'statusSinkAdded'; sink: FrameStatusSink } & PortEvent)
@@ -348,7 +349,6 @@ export function createWorkerLifecycle({
     LifecycleMachine,
     LiveKind,
     PortMachine,
-    | 'heard'
     | 'spoke'
     | 'portClosed'
     | 'statusSinkAdded'
@@ -374,13 +374,6 @@ export function createWorkerLifecycle({
     },
     handlers: {
       served: {
-        heard(served, _event, { emitState, update }) {
-          if (served.heard) {
-            return;
-          }
-          emitState({ ...served, heard: true });
-          update({ kind: 'portsChanged' });
-        },
         spoke(served, _event, { emitState }) {
           if (served.missed === 0) {
             return;
@@ -395,8 +388,11 @@ export function createWorkerLifecycle({
           disposeServing(served, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED), emitSideEffect);
           shutPort(port, served, emitSideEffect);
         },
-        statusSinkAdded(served, { sink }, { emitState }) {
-          emitState({ ...served, statuses: new Set(served.statuses).add(sink) });
+        statusSinkAdded(served, { sink }, { emitState, update }) {
+          emitState({ ...served, statuses: new Set(served.statuses).add(sink), heard: true });
+          if (!served.heard) {
+            update({ kind: 'portsChanged' });
+          }
         },
         statusSinkRemoved(served, { sink }, { emitState }) {
           emitState({ ...served, statuses: toSetWithout(served.statuses, sink) });
@@ -447,7 +443,6 @@ export function createWorkerLifecycle({
         },
         failed: failWorker,
         portConnected: connectPort,
-        heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
         statusSinkAdded: handlePort,
@@ -463,7 +458,6 @@ export function createWorkerLifecycle({
       ready: {
         failed: failWorker,
         portConnected: connectPort,
-        heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
         statusSinkAdded: handlePort,
@@ -478,7 +472,6 @@ export function createWorkerLifecycle({
       },
       failedAtStart: {
         portConnected: connectPort,
-        heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
         statusSinkAdded: handlePort,
@@ -493,7 +486,6 @@ export function createWorkerLifecycle({
       },
       awaitingTab: {
         portConnected: connectPort,
-        heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
         statusSinkAdded: handlePort,
@@ -518,7 +510,6 @@ export function createWorkerLifecycle({
           );
         },
         portConnected: connectPort,
-        heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
         statusSinkAdded: handlePort,
@@ -544,7 +535,6 @@ export function createWorkerLifecycle({
           closeOnceHeard(state, transition);
         },
         portConnected: connectPort,
-        heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
         statusSinkAdded: handlePort,
@@ -559,7 +549,6 @@ export function createWorkerLifecycle({
       },
       awaitingHeard: {
         portConnected: connectPort,
-        heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
         statusSinkAdded: handlePort,
@@ -675,10 +664,6 @@ export function createWorkerLifecycle({
     admit({ port, transport }: PortSession): void {
       machine.update({ kind: 'portConnected', port, transport });
     },
-    /** The port subscribed to its status, so a dead worker no longer waits for it to hear why. Never throws. */
-    hear({ port }: PortSession): void {
-      machine.update({ kind: 'heard', port });
-    },
     /**
      * Notes whether the port's tab asks for a pause, and tells `onEveryTabPausedChange` when that changes whether every
      * served tab asks for one. Safe to repeat. Never throws.
@@ -702,7 +687,10 @@ export function createWorkerLifecycle({
       machine.update({ kind: 'scopeOpened', port, scope: opened });
       return opened;
     },
-    /** Adds a `frame.status` subscription a release ends, and returns its removal. Never throws. */
+    /**
+     * Adds a `frame.status` subscription a release ends, and returns its removal. The port heard its status once the
+     * subscription's start ran, so a dead worker no longer waits for it. Never throws.
+     */
     addStatusSink({ port }: PortSession, sink: FrameStatusSink): () => void {
       machine.update({ kind: 'statusSinkAdded', port, sink });
       return () => {

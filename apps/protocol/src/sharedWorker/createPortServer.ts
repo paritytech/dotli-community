@@ -57,10 +57,10 @@ export function createPortServer({ lifecycle, status, handleTelemetry, openSpan,
     });
     const session: PortSession = { port, transport };
     transport.handleSubscription(frame.status, (start, context, sink) => {
-      const removeSink = lifecycle.addStatusSink(session, sink);
       // Ended at once if the worker already failed, and told of a later failure the moment it happens.
       const stop = status.handler(start, context, sink);
-      lifecycle.hear(session);
+      // Only after the tab heard why, since a dead worker closes once every port did.
+      const removeSink = lifecycle.addStatusSink(session, sink);
       return stopStatus;
 
       function stopStatus(): void {
