@@ -770,12 +770,12 @@ export function createChainPool({
         // A chain an earlier one's consumer closed is left alone. A resume reopens only a chain a lease holds now, and
         // another opens under its next lease.
         if (entry?.chain.lanes === effect.lanes && (effect.action === 'pause' || entry.kind === 'held')) {
-          runOnLanes(effect.key, effect.lanes, effect.action);
+          effect.lanes[effect.action]();
         }
         return;
       }
       case 'haltLanes':
-        haltLanes(effect);
+        effect.lanes.halt(effect.error);
         return;
     }
   }
@@ -896,33 +896,6 @@ export function createChainPool({
     }
   }
 
-  /** Halts a closed chain's lanes, so each of its sessions hears the halt. Reports a halt that throws. */
-  function haltLanes({ key, lanes, error: haltError }: Extract<PoolEffect, { kind: 'haltLanes' }>): void {
-    try {
-      lanes.halt(haltError);
-    } catch (error) {
-      protocolReport.defect(error, {
-        step: 'chain_pool_close',
-        metric: chainPoolCloseMetric,
-        message: `${POOL_TAG} closing ${getShortKey(key)} (on a halt) failed:`,
-      });
-    }
-  }
-
-  /** Pauses or resumes one chain's lanes, and halts the chain when that throws so its leases recover. */
-  function runOnLanes(key: string, lanes: ChainLanes, action: 'pause' | 'resume'): void {
-    try {
-      lanes[action]();
-    } catch (error) {
-      protocolReport.defect(error, {
-        step: `chain_pool_${action}`,
-        metric: chainPoolCloseMetric,
-        message: `${POOL_TAG} ${action} of ${getShortKey(key)} failed:`,
-      });
-      machine.update({ kind: 'laneHalted', key, lanes, error });
-    }
-  }
-
   /**
    * Leases the chain at `key` for one session on its lanes, as the pool holds it once the chain is asked for. Answers
    * `halted` when the chain halted while the session opened, and gives the session's `onHalt` only a later halt.
@@ -937,7 +910,7 @@ export function createChainPool({
     // are not paused ignore the resume.
     const live = findLive(key);
     if (machine.state.get().kind === 'running' && live !== null) {
-      runOnLanes(key, live.chain.lanes, 'resume');
+      live.chain.lanes.resume();
     }
     machine.update({ kind: 'chainAsked', key });
     const entry = findLive(key);
