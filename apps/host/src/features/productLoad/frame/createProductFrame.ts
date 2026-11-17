@@ -12,7 +12,6 @@ import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createRandomId,
   createStateMachine,
-  log,
   nest,
   realTimers,
   type HandlerOf,
@@ -1153,14 +1152,18 @@ function pipeProductPort(port: MessagePort, attempt: Attempt, pipe: Omit<PipePro
 
 /** Nobody asked for a render the frame starts on its own, so the frame is the one to report it. */
 function reportRerenderFailure(error: unknown, reason: RerenderReason | 'core_deaths'): void {
-  log.error('[dot.li] Product iframe reload failed:', error);
   if (error instanceof CoreRedialError) {
-    // A redial failure is captured where it happens, so the frame only records that its render fell with it.
+    // A redial failure is reported where it happens, so the frame only records that its render fell with it.
     uiReport.expected(error, { step: 'product_rerender', metric: productRerenderMetric, reason });
     return;
   }
-  uiReport.capture(error, { step: 'product_rerender', tags: { reason } });
-  productRerenderMetric.count({ outcome: 'error', reason });
+  uiReport.defect(error, {
+    step: 'product_rerender',
+    tags: { reason },
+    metric: productRerenderMetric,
+    reason,
+    message: '[dot.li] Product iframe reload failed:',
+  });
 }
 
 function showReloadNotice(notify: ShowNotification, page: ProductFramePage): void {

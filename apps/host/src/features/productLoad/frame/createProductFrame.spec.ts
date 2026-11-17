@@ -10,7 +10,7 @@ import {
   type SandboxMessageType,
   type SandboxNavigateMessage,
 } from '@dotli/sandbox-wire';
-import { createDeferred, realTimers, type Timers } from '@dotli/shared';
+import { bindLogSink, createDeferred, realTimers, type Timers } from '@dotli/shared';
 import { atom } from 'nanostores';
 import { catchError, catchRejection, createManualTimers, nth, readOutcome } from '@dotli/shared/testing';
 import { bindReports } from '../../../testing/bindReports.js';
@@ -1546,10 +1546,20 @@ describe('product frame and the page core', () => {
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('As an operator, I watch a replacement core that cannot boot and see it reported once, as the redial', async () => {
+  it('As an operator, I watch a replacement core that cannot boot and see it reported and logged once, as the redial', async () => {
     // Given
     const fakes = createHarness();
     const { captures, counted } = bindReports({ onReport: fakes.changes.notify });
+    const errorLines: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit({ level, message }) {
+          if (level === 'error') {
+            errorLines.push(message);
+          }
+        },
+      }),
+    );
     const rendered = fakes.frame.render(buildSubdomainProduct('product'));
     const dead = await answerConnection(fakes, 0);
     await rendered;
@@ -1562,6 +1572,7 @@ describe('product frame and the page core', () => {
     // Then
     expect(counted('product.rerender')).toEqual([{ outcome: 'error', reason: 'replacement' }]);
     expect(captures.exception.mock.calls.map(([, context]) => context.step)).toEqual(['core_redial']);
+    expect(errorLines).toHaveLength(1);
   });
 
   it('As a dApp user, I name another product after a redial failed and the new product is not reported lost', async () => {
