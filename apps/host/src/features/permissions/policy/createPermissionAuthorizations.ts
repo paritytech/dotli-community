@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The Rust core owns and persists permission authorization. This side routes each product's reads and writes to the
-// newest open connection of that product, and maps its granted device permissions to the iframe `allow` attribute.
+// newest open connection of that product, and maps its device permissions to the iframe `allow` attribute.
 
 import type { PermissionAuthorizationStatus, TrUApiProductProvider } from '@parity/truapi-host';
 import {
-  ALL_PERMISSIONS,
   getAuthorizationRequest,
   getFrameDirective,
-  hasFrameDirective,
+  isBrowserConsented,
+  isFrameDirectiveOn,
+  PERMISSION_NAMES,
   type EnforceablePermissionName,
   type PermissionStatus,
 } from './permissionPolicy.js';
@@ -70,9 +71,9 @@ export function createPermissionAuthorizations() {
       return permissions.map(() => 'ask');
     }
     const answered = await provider.getPermissionAuthorizationStatuses(permissions.map(getAuthorizationRequest));
-    return permissions.map((_, index) => {
+    return permissions.map((name, index) => {
       const status = answered.at(index);
-      return status === undefined ? 'ask' : fromAuthorizationStatus(status);
+      return status === undefined ? 'ask' : fromAuthorizationStatus(name, status);
     });
   }
 
@@ -88,41 +89,52 @@ export function createPermissionAuthorizations() {
     await provider.setPermissionAuthorizationStatus(getAuthorizationRequest(permission), toAuthorizationStatus(status));
   }
 
-  async function getGrantedFramePermissions(label: string): Promise<EnforceablePermissionName[]> {
-    const names = ALL_PERMISSIONS.map(({ name }) => name).filter(hasFrameDirective);
+  async function getFramePermissions(label: string): Promise<EnforceablePermissionName[]> {
+    // A gate with nothing to read lets no device in, although an unread status shows as `ask`.
+    if (getProvider(label) === null) {
+      return [];
+    }
+    const names = PERMISSION_NAMES.filter(isBrowserConsented);
     const answered = await getStatuses(label, names);
-    return names.filter((_, index) => answered[index] === 'granted');
+    return names.filter((name, index) => isFrameDirectiveOn(name, answered[index] ?? 'ask'));
   }
 
   async function getAllowAttribute(label: string): Promise<string> {
     // TrUAPI has no screen capture permission, and the browser's picker asks on every capture anyway.
-    const granted = (await getGrantedFramePermissions(label)).flatMap(name => getFrameDirective(name) ?? []);
-    return ['clipboard-write', 'display-capture', ...granted].join('; ');
+    const directives = (await getFramePermissions(label)).flatMap(name => getFrameDirective(name) ?? []);
+    return ['clipboard-write', 'display-capture', ...directives].join('; ');
   }
 
   return {
     /**
      * Routes `label`'s permissions through `provider` until the returned unregister. The newest connection answers, as
-     * a render on a replacement core registers last. Never throws, and the unregister is idempotent.
+     * a render on a replacement core registers last. The unregister is idempotent.
      */
     register,
-    /** `label`'s status of each of `permissions`, `ask` for each while no connection of `label` is open. */
+    /**
+     * `label`'s status of each of `permissions`, `ask` for each while no connection of `label` is open. A
+     * browser-consented permission an earlier version granted reads `ask`, which is what that grant means now.
+     */
     getStatuses,
     /** `label`'s status of `permission`, `ask` while no connection of `label` is open. */
     getStatus,
     /** Sets `label`'s status of `permission`. A no-op while no connection of `label` is open. */
     setStatus,
-    /** The permissions `label` was granted whose grant adds a frame directive, none while no connection is open. */
-    getGrantedFramePermissions,
-    /** The iframe `allow` attribute for `label`'s granted device permissions, plus those every product gets. */
+    /**
+     * The iframe `allow` attribute for `label`'s device permissions, plus the directives every product gets, which are
+     * all it holds while no connection of `label` is open.
+     */
     getAllowAttribute,
   };
 }
 
-function fromAuthorizationStatus(status: PermissionAuthorizationStatus): PermissionStatus {
+function fromAuthorizationStatus(
+  name: EnforceablePermissionName,
+  status: PermissionAuthorizationStatus,
+): PermissionStatus {
   switch (status) {
     case 'Authorized':
-      return 'granted';
+      return isBrowserConsented(name) ? 'ask' : 'granted';
     case 'Denied':
       return 'denied';
     case 'NotDetermined':

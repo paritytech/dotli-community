@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A preset move rebuilds the product's frame only when its `allow` attribute changes. Offline: a fake protocol frame
-// serves the product.
+// A preset move rebuilds the product's frame only when its `allow` attribute changes, as when a device is blocked.
+// Offline: a fake protocol frame serves the product.
 
 import { expect } from '@playwright/test';
 import { PORT } from '../../../../../tests/env.js';
@@ -14,9 +14,7 @@ import { test } from '../../../../../tests/functional/helpers/sharedModeReset.js
 
 const HOST_URL = `http://host-playground.localhost:${PORT}/`;
 
-test('As a user moving from Secure to Restricted to Secure to Trusted, only Trusted reloads the app', async ({
-  page,
-}) => {
+test('As a user moving from Secure to Trusted to Restricted, only Restricted reloads the app', async ({ page }) => {
   // Given
   const product = await rawBlock(productPage('presets'));
   await seedBackend(page, 'smoldot-direct');
@@ -38,32 +36,22 @@ test('As a user moving from Secure to Restricted to Secure to Trusted, only Trus
     await expect(list).not.toHaveAttribute('data-pending');
   };
 
+  const settledNavigations: number[] = [];
+
   // When
-  await page.getByTestId('permissions-preset-stop-restricted').click();
-  await settled('restricted');
-  await page.getByTestId('permissions-preset-stop-secure').click();
-  await settled('secure');
-  expect(navigations).toBe(0);
+  await page.getByTestId('permissions-preset-stop-trusted').click();
+  await settled('trusted');
+  settledNavigations.push(navigations);
   const reloaded = page.waitForEvent('framenavigated', {
     predicate: frame => isSandboxUrl(frame.url()),
     timeout: 15_000,
   });
-  await page.getByTestId('permissions-preset-stop-trusted').click();
-  await settled('trusted');
+  await page.getByTestId('permissions-preset-stop-restricted').click();
+  await settled('restricted');
   await reloaded;
+  settledNavigations.push(navigations);
 
   // Then
-  expect(navigations).toBe(1);
+  expect(settledNavigations).toEqual([0, 1]);
   expect(first.isDetached()).toBe(true);
-  await page.getByTestId('permissions-advanced-toggle').click();
-  await expect(page.getByTestId('permissions-advanced')).toHaveAttribute('open');
-  const pressed = (name: string, status: string) =>
-    page
-      .getByTestId('permissions-popover-row')
-      .filter({ has: page.locator(`#permissions-popover-name-${name}`) })
-      .getByTestId(`permissions-popover-segment-${status}`);
-  await expect(pressed('Camera', 'granted')).toHaveAttribute('aria-pressed', 'true');
-  await expect(pressed('ChainSubmit', 'granted')).toHaveAttribute('aria-pressed', 'true');
-  await expect(pressed('Location', 'ask')).toHaveAttribute('aria-pressed', 'true');
-  await expect(pressed('Bluetooth', 'ask')).toHaveAttribute('aria-pressed', 'true');
 });

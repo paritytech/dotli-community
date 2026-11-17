@@ -19,22 +19,18 @@ import {
   Well,
 } from '@dotli/ui';
 import {
+  ALL_PERMISSIONS,
+  PERMISSION_CATALOG,
   PERMISSION_GROUPS,
   type EnforceablePermissionName,
-  type PermissionGroup,
   type PermissionStatus,
   type PermissionTargets,
 } from '../policy/permissionPolicy.js';
 import { PermissionRow } from './PermissionRow.js';
 import { PresetPicker } from './PresetPicker.js';
-import { presetOf, SECURE } from './presets.js';
+import { presetOf, SECURE, type ShownPreset } from './presets.js';
 import type { MenuPermission, PermissionsNotice } from './permissions.js';
 import s from './PermissionsContent.module.css';
-
-const MENU_GROUPS: readonly { id: PermissionGroup; label: string }[] = getKeys(PERMISSION_GROUPS).map(id => ({
-  id,
-  label: PERMISSION_GROUPS[id].label,
-}));
 
 type Notice = {
   title: string;
@@ -42,6 +38,9 @@ type Notice = {
   /** A failure rather than a wait, so its title carries an error mark. */
   failed?: true;
 };
+
+/** The statuses shown, in the order of `ALL_PERMISSIONS`, and the preset they read as. */
+type Shown = ShownPreset & { statuses: readonly PermissionStatus[] };
 
 const NOTICES: Record<PermissionsNotice, Notice> = {
   loading: { title: 'App still loading', detail: 'Wait for it to finish loading to change its permissions.' },
@@ -54,13 +53,13 @@ const NOTICES: Record<PermissionsNotice, Notice> = {
 };
 
 export type PermissionsContentProps = {
-  /** Every permission the menu offers, in the order `statuses` follows. */
-  permissions: readonly MenuPermission[];
   notice: Accessor<PermissionsNotice | undefined>;
-  /** What the panel shows once read: a pending change's targets over the statuses read, in the order of `permissions`. */
+  /** What the panel shows once read: a pending change's targets over the statuses read, in the order of `ALL_PERMISSIONS`. */
   statuses: Accessor<readonly PermissionStatus[] | undefined>;
   /** A change made in the panel is pending, so the rows wait. */
   pending: Accessor<boolean>;
+  /** The permissions the browser itself blocks, as last read, which their rows say. */
+  browserBlocked: Accessor<readonly EnforceablePermissionName[]>;
   /** The panel opened. Another tab of the same app may have changed them since the last read. */
   onOpen: () => void;
   /** Writes `targets` for the app. Resolves with the permissions that still failed, and never rejects. */
@@ -88,12 +87,16 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
     },
   );
 
-  const groups = createMemo(() =>
-    MENU_GROUPS.map(group => ({
-      ...group,
-      permissions: props.permissions.filter(perm => perm.group === group.id),
-    })),
-  );
+  const groups = getKeys(PERMISSION_GROUPS).map(id => ({
+    id,
+    label: PERMISSION_GROUPS[id].label,
+    permissions: ALL_PERMISSIONS.filter(perm => perm.group === id),
+  }));
+
+  const shown = createMemo((): Shown | undefined => {
+    const statuses = props.statuses();
+    return statuses === undefined ? undefined : { statuses, ...presetOf(statuses) };
+  });
 
   const notice = (): Notice | undefined => {
     const current = props.notice();
@@ -101,7 +104,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
   };
 
   const statusOf = (list: readonly PermissionStatus[], perm: MenuPermission): PermissionStatus =>
-    list[props.permissions.indexOf(perm)] ?? 'ask';
+    list[ALL_PERMISSIONS.indexOf(perm)] ?? 'ask';
 
   const apply = (targets: PermissionTargets): void => {
     latest += 1;
@@ -114,27 +117,22 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
     });
   };
 
-  const changedFrom = (list: readonly PermissionStatus[], perm: MenuPermission): string | undefined => {
-    const { preset } = presetOf(list);
-    return statusOf(list, perm) === preset.statuses[perm.name] ? undefined : preset.label;
-  };
+  const changedFrom = ({ statuses, preset }: Shown, perm: MenuPermission): string | undefined =>
+    statusOf(statuses, perm) === preset.statuses[perm.name] ? undefined : preset.label;
 
   const failedText = (): string | undefined => {
     const names = failed();
     if (names.length === 0) {
       return undefined;
     }
-    const labels = names.map(name => props.permissions.find(perm => perm.name === name)?.label ?? name);
+    const labels = names.map(name => PERMISSION_CATALOG[name].label);
     return `Couldn't change ${labels.join(', ')}.`;
   };
 
   let resetButton: HTMLButtonElement | undefined;
 
   // Reset writes nothing on Secure itself, so it is off there.
-  const atSecure = (list: readonly PermissionStatus[]): boolean => {
-    const shown = presetOf(list);
-    return shown.preset === SECURE && !shown.modified;
-  };
+  const atSecure = ({ preset, modified }: Shown): boolean => preset === SECURE && !modified;
 
   const resetToSecure = (): void => {
     // Disabling the focused button would drop focus to the body, closing the popover.
@@ -151,23 +149,21 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
         <Show when={notice()}>
           {text => (
             <Well class={s['notice']} testId="permissions-popover-hint">
-              <p class={s['noticeTitle']} data-testid="permissions-popover-hint-title">
+              <p class={s['noticeTitle']}>
                 <Show when={text().failed}>
                   <CircleAlertIcon class={s['noticeIcon']} testId="permissions-popover-hint-failed" />
                 </Show>
                 {text().title}
               </p>
-              <p class={s['noticeDetail']} data-testid="permissions-popover-hint-detail">
-                {text().detail}
-              </p>
+              <p class={s['noticeDetail']}>{text().detail}</p>
             </Well>
           )}
         </Show>
-        <Show when={props.statuses()}>
-          {list => (
+        <Show when={shown()}>
+          {view => (
             <>
               <PresetPicker
-                statuses={list()}
+                shown={view()}
                 pending={props.pending()}
                 onPick={preset => {
                   apply(preset.statuses);
@@ -183,7 +179,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                 summaryTestId="permissions-advanced-toggle"
               >
                 <div class={s['groups']}>
-                  <For each={groups()}>
+                  <For each={groups}>
                     {group => (
                       <Stack
                         role="group"
@@ -201,11 +197,12 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                             {perm => (
                               <PermissionRow
                                 perm={perm}
-                                status={statusOf(list(), perm)}
-                                changedFrom={changedFrom(list(), perm)}
+                                status={statusOf(view().statuses, perm)}
+                                changedFrom={changedFrom(view(), perm)}
+                                blockedInBrowser={props.browserBlocked().includes(perm.name)}
                                 disabled={props.pending()}
-                                choose={(name, status) => {
-                                  apply({ [name]: status });
+                                choose={status => {
+                                  apply({ [perm.name]: status });
                                 }}
                               />
                             )}
@@ -220,15 +217,15 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
           )}
         </Show>
       </div>
-      <Show when={props.statuses()}>
-        {list => (
+      <Show when={shown()}>
+        {view => (
           <SurfaceFoot testId="permissions-popover-foot" hint={<Hint icon={ReloadIcon}>Changes reload the app</Hint>}>
             <Button
               ref={el => {
                 resetButton = el;
               }}
               size="sm"
-              disabled={atSecure(list())}
+              disabled={atSecure(view())}
               onClick={resetToSecure}
               testId="permissions-popover-reset"
             >

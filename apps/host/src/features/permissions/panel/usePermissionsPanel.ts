@@ -1,42 +1,41 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from 'solid-js';
 import type { ReadableAtom } from 'nanostores';
 import { getKeys } from '@dotli/shared';
 import { useStore } from '@dotli/stores-solid';
-import { isPermissionGranted, type PermissionTargets } from '../policy/permissionPolicy.js';
-import type { BrowserPermissions } from '../policy/createBrowserPermissions.js';
-import type { ProductPermissions } from '../policy/productPermissions.js';
 import {
-  getRead,
-  isUnreadable,
-  type PermissionsRead,
-  type ProductPermissionsState,
-} from '../policy/productPermissionsState.js';
+  PERMISSION_NAMES,
+  isBrowserConsented,
+  isPermissionGranted,
+  type EnforceablePermissionName,
+  type PermissionTargets,
+} from '../policy/permissionPolicy.js';
+import { isBrowserBlocked, type BrowserPermissions } from '../policy/createBrowserPermissions.js';
+import type { ProductPermissions } from '../policy/productPermissions.js';
+import { getRead, isUnreadable, type PermissionsRead } from '../policy/productPermissionsState.js';
+import type { ProductState } from '../../page/index.js';
 import type { PermissionsNotice } from './permissions.js';
-import type { PermissionsContentProps } from './PermissionsContent.js';
 import type { PermissionsItemProps } from './PermissionsItem.js';
-
-const INITIAL_STATE: ProductPermissionsState = { status: 'none' };
-
-/** The product on show, as the panel reads it. */
-export type ShownProduct = { status: 'none' } | { status: 'error' } | { status: 'loaded'; label: string };
 
 /** The page's product and permissions, and the intents that change them. */
 export type PermissionsBinding = {
-  permissions: PermissionsContentProps['permissions'];
-  product: ReadableAtom<ShownProduct>;
+  product: ReadableAtom<ProductState>;
   /** The product's permissions as last read or written, and the intents that change them. */
   store: Pick<ProductPermissions, 'state' | 'pending' | 'refresh' | 'change'>;
-  /** The browser's own permissions, asked inside the user's click. */
-  browser: Pick<BrowserPermissions, 'request'>;
+  /** The browser's own permissions, asked inside the user's click and read when the panel opens. */
+  browser: Pick<BrowserPermissions, 'request' | 'read'>;
 };
 
 /** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
 export function usePermissionsPanel(binding: PermissionsBinding): PermissionsItemProps {
   const product = useStore(binding.product);
-  const state = useStore(binding.store.state, { initial: INITIAL_STATE });
+  const state = useStore(binding.store.state, { initial: { status: 'none' } });
   const pendingChange = useStore(binding.store.pending, { initial: null });
+  // Read on each opening, as the browser tells no page when its user changes a block.
+  const [browserBlocked, setBrowserBlocked] = createSignal<readonly EnforceablePermissionName[]>([]);
+  const consented = PERMISSION_NAMES.filter(isBrowserConsented);
 
   const notice = (): PermissionsNotice | undefined => {
     const current = product();
@@ -63,7 +62,6 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
   };
 
   return {
-    permissions: binding.permissions,
     notice,
     statuses: () => {
       const read = shownRead();
@@ -72,13 +70,17 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
         return read?.statuses;
       }
       return read.statuses.map((status, i) => {
-        const name = binding.permissions[i]?.name;
+        const name = PERMISSION_NAMES[i];
         return name === undefined ? status : (targets[name] ?? status);
       });
     },
     pending: () => pendingTargets() !== undefined,
+    browserBlocked,
     onOpen: () => {
       void binding.store.refresh();
+      void Promise.all(consented.map(name => binding.browser.read(name))).then(read => {
+        setBrowserBlocked(consented.filter((_, i) => isBrowserBlocked(read[i] ?? 'unknown')));
+      });
     },
     onChange: async targets => {
       const read = getRead(binding.store.state.get());

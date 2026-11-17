@@ -11,7 +11,6 @@ import { IdentityIcon } from './IdentityIcon.js';
 import { LocationIcon } from './LocationIcon.js';
 import { MicrophoneIcon } from './MicrophoneIcon.js';
 import { MotionIcon } from './MotionIcon.js';
-import { NfcIcon } from './NfcIcon.js';
 import { SignIcon } from './SignIcon.js';
 import { StatementIcon } from './StatementIcon.js';
 import { UploadIcon } from './UploadIcon.js';
@@ -24,7 +23,6 @@ const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, Component<Ico
   Location: LocationIcon,
   Motion: MotionIcon,
   Bluetooth: BluetoothIcon,
-  NFC: NfcIcon,
   Clipboard: ClipboardIcon,
   Biometrics: BiometricsIcon,
   IdentityDisclosure: IdentityIcon,
@@ -33,7 +31,7 @@ const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, Component<Ico
   StatementSubmit: StatementIcon,
 };
 
-/** A permission's icon. Unsized, as a dialog's icon tile or the row's stylesheet sizes it. */
+/** A permission's icon. Unsized, so each caller sizes it. */
 export function permissionIcon(name: EnforceablePermissionName): Component<IconProps> {
   return PERMISSION_ICONS[name];
 }

@@ -5,23 +5,21 @@ import type { WireProvider as Provider } from '@parity/truapi';
 import type { Timers } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
 
-type Params = {
+export type PipeProvidersParams = {
   product: Provider;
   core: Provider;
   flowId: string;
   label: string;
   productId: string;
-  /** Is shown each core frame once it was forwarded to the product. */
-  noteForwarded: (message: Uint8Array) => void;
   /** The clock the debug events are stamped with. */
   timers: Pick<Timers, 'now'>;
 };
 
 /**
  * Forwards every frame between the product and the core, and closes each side with the other. The debug bus hears the
- * first frame each way. Returns the unpipe, which never throws.
+ * first frame each way. Returns the unpipe.
  */
-export function pipeProviders({ product, core, flowId, label, productId, noteForwarded, timers }: Params): () => void {
+export function pipeProviders({ product, core, flowId, label, productId, timers }: PipeProvidersParams): () => void {
   let sawInbound = false;
   let sawOutbound = false;
   function emitFirst(event: 'first_inbound' | 'first_outbound'): void {
@@ -41,7 +39,6 @@ export function pipeProviders({ product, core, flowId, label, productId, noteFor
         emitFirst('first_outbound');
       }
       product.postMessage(message);
-      noteForwarded(message);
     }),
     product.subscribeClose?.(() => {
       core.dispose();
@@ -53,12 +50,7 @@ export function pipeProviders({ product, core, flowId, label, productId, noteFor
 
   function disposePipe(): void {
     for (const unsubscribe of unsubscribes) {
-      try {
-        unsubscribe();
-        // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort. Stale MessagePorts can already be closed while the next cleanup still must run.
-      } catch {
-        // Teardown race.
-      }
+      unsubscribe();
     }
   }
 

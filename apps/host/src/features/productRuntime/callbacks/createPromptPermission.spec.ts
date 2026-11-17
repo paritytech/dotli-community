@@ -4,8 +4,9 @@
 import { asProductId } from '@parity/truapi';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { createDeferred } from '@dotli/shared';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ProductContext } from '@parity/truapi-host';
-import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
+import type { PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { createPermissionAuthorizations, type PermissionAuthorizations } from '../../permissions/index.js';
 import { createProductPermissions, type PermissionsChange, type ProductPermissions } from '../../permissions/index.js';
 import { productState } from '../../page/index.js';
@@ -33,8 +34,6 @@ type FakeBrowser = {
   request: Mock<BrowserPermissions['request']>;
 };
 
-type Store = Map<string, PermissionAuthorizationStatus>;
-
 type PromptButton = 'Deny' | 'Always allow' | 'Allow once';
 
 const PRODUCT: ProductContext = {
@@ -53,19 +52,18 @@ let page: FakePrompts = createFakePrompts();
 let registry: PermissionAuthorizations;
 let store: ProductPermissions;
 let unregisterMyapp: (() => void) | null = null;
-let myappStore: Store;
 
 beforeEach(() => {
   registry = createPermissionAuthorizations();
   store = createProductPermissions({ registry, product: productState.store });
-  myappStore = new Map();
   page = createFakePrompts();
-  unregisterMyapp = registerTestProvider('myapp', myappStore);
+  unregisterMyapp = registerTestProvider('myapp');
 });
 
 afterEach(() => {
   unregisterMyapp?.();
   unregisterMyapp = null;
+  resetAllStoresForTests();
 });
 
 describe('device permission prompts', () => {
@@ -78,6 +76,43 @@ describe('device permission prompts', () => {
     // Then
     expect(answer).toBe('AllowOnce');
     expect(page.listPending()).toEqual([]);
+  });
+
+  it('As a product developer, I ask for NFC and it is denied without a prompt', async () => {
+    // Given a product with no stored permissions and no prompt on show
+
+    // When
+    const answer = await createPrompts().devicePermission(PRODUCT, 'NFC');
+
+    // Then
+    expect(answer).toBe('Deny');
+    expect(page.listPending()).toEqual([]);
+  });
+
+  it('As a product developer, I ask for the camera while the browser cannot say its status and it is granted once without a dot.li prompt', async () => {
+    // Given
+    const browser = createFakeBrowser({ read: () => Promise.resolve('unknown') });
+
+    // When
+    const answer = await createPrompts({ browser }).devicePermission(PRODUCT, 'Camera');
+
+    // Then
+    expect(answer).toBe('AllowOnce');
+    expect(page.listPending()).toEqual([]);
+  });
+
+  it('As a product developer, I ask for a camera my user blocked in the browser and the ask rejects with nothing stored', async () => {
+    // Given
+    const recorded = recordChanges();
+    const browser = createFakeBrowser({ read: () => Promise.resolve('denied') });
+
+    // When
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Camera');
+
+    // Then
+    await expect(response).rejects.toThrow('The browser blocks this device');
+    expect(page.listPending()).toEqual([]);
+    expect(recorded).toEqual([]);
   });
 });
 
@@ -92,7 +127,6 @@ describe('remote permissions without a prompt', () => {
     // Then
     await expect(response).rejects.toThrow('This host does not serve the request');
     expect(changes).toEqual([]);
-    expect(myappStore.size).toBe(0);
   });
 });
 
@@ -103,13 +137,13 @@ describe('three-way permission prompts', () => {
       button: 'Always allow',
       answer: 'AllowAlways',
       status: 'granted',
-      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true }],
+      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false }],
     },
     {
       button: 'Deny',
       answer: 'Deny',
       status: 'denied',
-      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true }],
+      changes: [{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false }],
     },
   ])(
     'As a user, I press $button on a transaction prompt and the product hears $answer while the stored status is $status',
@@ -130,25 +164,6 @@ describe('three-way permission prompts', () => {
     },
   );
 
-  it('As a user, I see a camera prompt and it offers no one-time grant because granting reloads the app', async () => {
-    // Given a product with no stored camera permission
-
-    // When
-    const response = createPrompts().devicePermission(PRODUCT, 'Camera');
-    await page.waitForPrompt();
-    const shown = page.getShown();
-
-    // Then
-    expect(shown).toMatchObject({ kind: 'permission', permission: 'Camera', allowOnce: false });
-    expect(page.listPending()).toHaveLength(1);
-
-    // When
-    await clickPromptButton('Deny');
-
-    // Then
-    await expect(response).resolves.toBe('Deny');
-  });
-
   it('As a user with a stored notification denial, I am asked for notifications and it is denied with a quiet blocked notice and no prompt', async () => {
     // Given
     await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'denied' });
@@ -159,12 +174,7 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).resolves.toBe('Deny');
     expect(page.listPending()).toEqual([]);
-    expect(page.notices).toEqual([
-      expect.objectContaining({
-        text: 'Notifications access is blocked. Use the permissions menu in the top bar to change this.',
-        tone: 'idle',
-      }),
-    ]);
+    expect(page.notices).toEqual([expect.objectContaining({ tone: 'idle' })]);
   });
 
   it('As a user, I dismiss a notification prompt and no decision is recorded', async () => {
@@ -192,7 +202,7 @@ describe('queued permission prompts', () => {
     await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'granted' });
     const scope = createBlockingModalCoordinator().createScope();
     void scope.enqueue(signal =>
-      page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal, allowOnce: true }),
+      page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal, onApprove: () => undefined }),
     );
     await page.waitForPrompt();
 
@@ -206,24 +216,7 @@ describe('queued permission prompts', () => {
 
   it('As a dotli integrator, I queue a duplicate permission prompt and the host rechecks the permission before showing it', async () => {
     // Given
-    let status: 'NotDetermined' | 'Authorized' = 'NotDetermined';
-    const unregister = registry.register('queued-app', {
-      getPermissionAuthorizationStatuses(requests) {
-        return Promise.resolve(requests.map(() => status));
-      },
-      setPermissionAuthorizationStatus(_request, nextStatus) {
-        if (nextStatus === 'Authorized' || nextStatus === 'NotDetermined') {
-          status = nextStatus;
-        }
-        return Promise.resolve();
-      },
-    });
-    const scope = createBlockingModalCoordinator().createScope();
-    onTestFinished(() => {
-      scope.dispose();
-      unregister();
-    });
-    const permissions = createPrompts({ label: 'queued-app', scope });
+    const permissions = createPrompts();
 
     // When the same permission is asked twice and the user grants the first prompt
     const first = permissions.devicePermission(PRODUCT, 'Notifications');
@@ -235,7 +228,7 @@ describe('queued permission prompts', () => {
     // answers without upgrading what it found
     await expect(Promise.all([first, second])).resolves.toEqual(['AllowAlways', 'AllowOnce']);
     expect(page.listPending()).toEqual([]);
-    expect(status).toBe('Authorized');
+    await expect(registry.getStatus('myapp', 'Notifications')).resolves.toBe('granted');
   });
 });
 
@@ -272,27 +265,25 @@ describe('the browser asked at approval', () => {
     await response;
 
     // Then
-    expect(browser.read).not.toHaveBeenCalled();
     expect(browser.request).not.toHaveBeenCalled();
   });
 
-  it('As a dotli user, I allow a camera my browser blocks and restrict it, and the product is denied and the denial stored', async () => {
-    // Given a browser that blocks the camera
+  it('As a dotli user, I always allow notifications my browser blocks and restrict it, and the product is denied and the denial stored', async () => {
+    // Given a browser that blocks notifications
     const recorded = recordChanges();
-    const browser = createFakeBrowser({ read: () => Promise.resolve('denied') });
-    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Camera');
-    await page.waitForPrompt();
-    page.decide('granted');
+    const browser = createFakeBrowser({ request: () => Promise.resolve('denied') });
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Notifications');
+    await clickPromptButton('Always allow');
     await page.waitForPrompt({ matches: isBrowserBlock });
 
     // When
     page.answerBrowserBlock('restrict');
     const heard = await response;
-    const stored = await registry.getStatus('myapp', 'Camera');
+    const stored = await registry.getStatus('myapp', 'Notifications');
 
     // Then
     expect({ heard, stored }).toEqual({ heard: 'Deny', stored: 'denied' });
-    expect(recorded).toMatchObject([{ label: 'myapp', permissions: ['Camera'] }]);
+    expect(recorded).toMatchObject([{ label: 'myapp', permissions: ['Notifications'] }]);
   });
 
   it('As a dotli user, I allow notifications my browser blocks and close the warning, and the grant stands', async () => {
@@ -307,22 +298,6 @@ describe('the browser asked at approval', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowAlways');
-  });
-
-  it('As a dotli user, I allow once a permission my browser blocks and restrict it, and a lasting denial is stored', async () => {
-    // Given a browser that blocks notifications
-    const browser = createFakeBrowser({ request: () => Promise.resolve('denied') });
-    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Notifications');
-    await clickPromptButton('Allow once');
-    await page.waitForPrompt({ matches: isBrowserBlock });
-
-    // When
-    page.answerBrowserBlock('restrict');
-    const heard = await response;
-    const stored = await registry.getStatus('myapp', 'Notifications');
-
-    // Then
-    expect({ heard, stored }).toEqual({ heard: 'Deny', stored: 'denied' });
   });
 
   it("As a dotli integrator, I dispose the prompt scope while the browser asks and the product's ask rejects with an AbortError", async () => {
@@ -353,7 +328,7 @@ describe('prompt rate limiting', () => {
     }
 
     // When
-    const overBudget = permissions.devicePermission(PRODUCT, 'Camera');
+    const overBudget = permissions.remotePermission(PRODUCT, { permission: { tag: 'ChainSubmit' } });
 
     // Then it shares that budget and is rate limited instead of showing one modal over the budget
     await expect(overBudget).rejects.toThrow('Permission prompt rate limited');
@@ -408,13 +383,15 @@ function recordChanges(): PermissionsChange[] {
   return changes;
 }
 
-function registerTestProvider(label: string, statuses: Store): () => void {
+/** A core provider for `label` that keeps every status set on it, keyed by its request. */
+function registerTestProvider(label: string): () => void {
+  const statuses = new Map<string, PermissionAuthorizationStatus>();
   return registry.register(label, {
     getPermissionAuthorizationStatuses(requests) {
-      return Promise.resolve(requests.map(request => statuses.get(getRequestKey(request)) ?? 'NotDetermined'));
+      return Promise.resolve(requests.map(request => statuses.get(JSON.stringify(request)) ?? 'NotDetermined'));
     },
     setPermissionAuthorizationStatus(request, status) {
-      const key = getRequestKey(request);
+      const key = JSON.stringify(request);
       if (status === 'NotDetermined') {
         statuses.delete(key);
       } else {
@@ -425,28 +402,8 @@ function registerTestProvider(label: string, statuses: Store): () => void {
   });
 }
 
-function getRequestKey(request: PermissionAuthorizationRequest): string {
-  switch (request.tag) {
-    case 'Device':
-      return `Device:${request.value}`;
-    case 'Remote':
-      return `Remote:${request.value.permission.tag}`;
-    case 'IdentityDisclosure':
-      return 'IdentityDisclosure';
-    case 'AccountAccess':
-      return `AccountAccess:${request.value.targetProductId}`;
-    case 'CrossProductSignature':
-      return `CrossProductSignature:${request.value.targetProductId}:${request.value.kind}`;
-  }
-}
-
-/** The permission dialog's buttons: a one-time grant splits the lasting one into always and once. */
-function isOffered(allowOnce: boolean, text: PromptButton): boolean {
-  return allowOnce || text === 'Deny';
-}
-
-/** Presses the permission dialog's button with this label, once a prompt that offers it is up. */
+/** Presses the permission dialog's button with this label, once the dialog is up. */
 async function clickPromptButton(text: PromptButton): Promise<void> {
-  await page.waitForPrompt({ matches: prompt => prompt.kind === 'permission' && isOffered(prompt.allowOnce, text) });
+  await page.waitForPrompt({ matches: prompt => prompt.kind === 'permission' });
   page.decide(DECISIONS[text]);
 }

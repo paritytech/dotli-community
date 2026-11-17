@@ -120,7 +120,7 @@ export const ClickOutsideReachesTarget: Story = {
 };
 
 /** As a dotli user, I click inside the product frame and the open popover closes while focus stays in the frame. */
-export const ClosesOnWindowBlur: Story = {
+export const ClosesOnPressInProductFrame: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openPopover);
     await step('When I click inside the product iframe', async () => {
@@ -129,6 +129,20 @@ export const ClosesOnWindowBlur: Story = {
     await step('Then the popover closed and focus stayed in the iframe', async () => {
       await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await expect(document.activeElement).toBe(body.getByTestId('product'));
+    });
+  },
+};
+
+/** As a dotli user, I switch to another app or the browser's own UI and the open popover stays open. */
+export const StaysOpenWhenTheWindowLosesFocus: Story = {
+  play: async ({ step }) => {
+    await step('Given the popover is open', openPopover);
+    await step('When the window loses focus with no element of the page taking it', () => {
+      window.dispatchEvent(new FocusEvent('blur'));
+    });
+    await step('Then the popover is still open', async () => {
+      await expect(onOpenChange.mock.calls).toEqual([[true]]);
+      await expect(getSurface()).toHaveAttribute('data-open');
     });
   },
 };

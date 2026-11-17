@@ -62,13 +62,13 @@ describe('createPermissionAuthorizations', () => {
   it('As a dApp user whose app renders again on a replacement core, I read my grant and the newest connection answers until it goes', async () => {
     // Given the connection on screen, then a newer one with its own answer
     const { permissions, store, registerStore } = createHarness();
-    const unregister = registerStore('myapp', new Map([['Device:Camera', 'Denied']]));
-    store.set('Device:Camera', 'Authorized');
+    const unregister = registerStore('myapp', new Map([['Device:Notifications', 'Denied']]));
+    store.set('Device:Notifications', 'Authorized');
 
     // When the newer connection answers, then goes
-    const whileNewer = await permissions.getStatus('myapp', 'Camera');
+    const whileNewer = await permissions.getStatus('myapp', 'Notifications');
     unregister();
-    const afterNewer = await permissions.getStatus('myapp', 'Camera');
+    const afterNewer = await permissions.getStatus('myapp', 'Notifications');
 
     // Then
     expect([whileNewer, afterNewer]).toEqual(['denied', 'granted']);
@@ -100,7 +100,7 @@ describe('getStatus / setStatus', () => {
       );
 
       // When
-      const asked = await permissions.getStatuses('oddapp', ['Camera', 'Microphone']);
+      const asked = await permissions.getStatuses('oddapp', ['Notifications', 'Camera']);
 
       // Then
       expect(asked).toEqual(statuses);
@@ -114,54 +114,69 @@ describe('getStatus / setStatus', () => {
     // When
     await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
     await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'denied' });
-    await permissions.setStatus({ label: 'myapp', permission: 'IdentityDisclosure', status: 'granted' });
-    const statuses = await Promise.all([
-      permissions.getStatus('myapp', 'ChainSubmit'),
-      permissions.getStatus('myapp', 'Camera'),
-      permissions.getStatus('myapp', 'IdentityDisclosure'),
-    ]);
+    const statuses = await permissions.getStatuses('myapp', ['ChainSubmit', 'Camera']);
 
     // Then
     expect(store).toEqual(
       new Map([
         ['Remote:ChainSubmit', 'Authorized'],
         ['Device:Camera', 'Denied'],
-        ['IdentityDisclosure', 'Authorized'],
       ]),
     );
-    expect(statuses).toEqual(['granted', 'denied', 'granted']);
+    expect(statuses).toEqual(['granted', 'denied']);
+  });
+
+  it('As a dApp user who allowed the camera in an earlier version, I read it as left to the browser while another grant stays', async () => {
+    // Given
+    const { permissions, store } = createHarness();
+    store.set('Device:Camera', 'Authorized');
+    store.set('Device:Notifications', 'Authorized');
+
+    // When
+    const statuses = await permissions.getStatuses('myapp', ['Camera', 'Notifications']);
+
+    // Then
+    expect(statuses).toEqual(['ask', 'granted']);
   });
 
   it('As a dApp user, I read several permission statuses and they come from one provider call', async () => {
     // Given
     const { permissions, countReads } = createHarness();
-    await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'denied' });
-    const readsBefore = countReads();
 
     // When
-    const statuses = await permissions.getStatuses('myapp', ['ChainSubmit', 'Camera', 'Microphone']);
+    await permissions.getStatuses('myapp', ['ChainSubmit', 'Camera', 'Microphone']);
 
     // Then
-    expect(statuses).toEqual(['granted', 'denied', 'ask']);
-    expect(countReads() - readsBefore).toBe(1);
+    expect(countReads()).toBe(1);
   });
 
   it('As a dApp user, I grant one app a permission and another app still asks', async () => {
-    // Given
-    const { permissions } = createHarness();
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'granted' });
+    // Given an `otherapp` connection with its own store
+    const { permissions, registerStore } = createHarness();
+    onTestFinished(registerStore('otherapp', new Map()));
+    await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
 
     // When
-    const status = await permissions.getStatus('otherapp', 'Camera');
+    const status = await permissions.getStatus('otherapp', 'ChainSubmit');
 
     // Then
     expect(status).toBe('ask');
   });
+
+  it('As the host, I read the statuses of a product before its core connection is registered and each reads ask', async () => {
+    // Given no connection of `otherapp`
+    const { permissions } = createHarness();
+
+    // When
+    const statuses = await permissions.getStatuses('otherapp', ['ChainSubmit', 'Notifications']);
+
+    // Then
+    expect(statuses).toEqual(['ask', 'ask']);
+  });
 });
 
 describe('getAllowAttribute', () => {
-  it('As a dApp user, I open an app and its frame always receives clipboard-write and screen sharing access', async () => {
+  it('As a dApp user, I open an app I set nothing for and its frame lets the browser ask for every device it gates', async () => {
     // Given
     const { permissions } = createHarness();
 
@@ -169,23 +184,12 @@ describe('getAllowAttribute', () => {
     const allow = await permissions.getAllowAttribute('myapp');
 
     // Then
-    expect(allow).toBe('clipboard-write; display-capture');
+    expect(allow).toBe(
+      'clipboard-write; display-capture; camera; microphone; geolocation; accelerometer; gyroscope; bluetooth; clipboard-read; publickey-credentials-get',
+    );
   });
 
-  it('As a dApp user, I grant device permissions and they appear in the app frame policy', async () => {
-    // Given
-    const { permissions } = createHarness();
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'granted' });
-    await permissions.setStatus({ label: 'myapp', permission: 'Microphone', status: 'granted' });
-
-    // When
-    const allow = await permissions.getAllowAttribute('myapp');
-
-    // Then
-    expect(allow).toBe('clipboard-write; display-capture; camera; microphone');
-  });
-
-  it('As a dApp user, I deny a device permission and grant a submit one and neither enters the app frame policy', async () => {
+  it('As a dApp user, I block the camera and grant a submit permission, and the frame drops only the camera', async () => {
     // Given
     const { permissions } = createHarness();
     await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'denied' });
@@ -193,6 +197,19 @@ describe('getAllowAttribute', () => {
 
     // When
     const allow = await permissions.getAllowAttribute('myapp');
+
+    // Then
+    expect(allow).toBe(
+      'clipboard-write; display-capture; microphone; geolocation; accelerometer; gyroscope; bluetooth; clipboard-read; publickey-credentials-get',
+    );
+  });
+
+  it('As a dApp user, I open an app before its core connection is registered and its frame lets no gated device in', async () => {
+    // Given no connection of `otherapp`
+    const { permissions } = createHarness();
+
+    // When
+    const allow = await permissions.getAllowAttribute('otherapp');
 
     // Then
     expect(allow).toBe('clipboard-write; display-capture');

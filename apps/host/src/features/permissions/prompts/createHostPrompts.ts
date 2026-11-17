@@ -1,12 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The runtime's questions to the user, answered with the page's dialogs and notifications. Only the bridge chunk imports
-// this, so the dialogs stay out of boot.
+// The runtime's questions to the user, answered with the page's dialogs and notifications. Import it only from lazy
+// code, so the dialogs stay out of boot.
 
 import { withActiveTld } from '@dotli/config';
 import { isGranted, isRetry, type BrowserBlockAnswer, type GrantAnswer, type HostPrompts } from './hostPrompts.js';
-import { hasFrameDirective } from '../policy/permissionPolicy.js';
 import { modals, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
 import { permissionRequestDialog } from './permissionDialog.js';
 import { browserBlockDialog } from './browserBlockDialog.js';
@@ -31,17 +30,12 @@ export function createHostPrompts({ present = modals.open, notify = showNotifica
   const ask = <Result extends string>({ view, signal, handoff }: AskParams<Result>) =>
     present({ ...view, testId: HOST_PROMPT_TEST_ID }, { signal, handoff });
   return {
-    async askPermission({ label, permission, signal, allowOnce, onApprove }) {
-      const dialog = permissionRequestDialog({
-        app: withActiveTld(label),
-        permission,
-        allowOnce,
-        reloads: hasFrameDirective(permission),
-      });
+    async askPermission({ label, permission, signal, onApprove }) {
+      const dialog = permissionRequestDialog({ app: withActiveTld(label), permission });
       // In the handoff, not after the await, so the hook still runs inside the user's click.
       function handoff(outcome: ModalOutcome<GrantAnswer>): undefined {
         if (isGranted(outcome.result)) {
-          onApprove?.();
+          onApprove();
         }
         return undefined;
       }

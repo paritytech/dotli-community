@@ -24,6 +24,13 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## Code structure
 
+- [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one
+  variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
+- [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass finds a style or
+  skill rule that matches the code's shape, and the rewrite it describes would read no better than the code it replaces.
+- [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
+  protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
+  unreachable.
 - [existing-call-needs-a-variant](existing-call-needs-a-variant.md): a shared primitive needs a second form of a call
   that differs in one aspect.
 - [files-away-from-their-feature](files-away-from-their-feature.md): files that serve one feature sit in a top-level
@@ -33,11 +40,22 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
   callbacks each serve a different feature.
+- [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
+  value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
 
+## Product requests
+
+- [permission-request-the-host-no-longer-offers](permission-request-the-host-no-longer-offers.md): a product requests a
+  permission the host removed from its UI because the capability cannot work where products run.
+
 ## UI
 
+- [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
+  that runs edge to edge across a shared container primitive, past its inner padding.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
+- [window-blur-closes-a-popover](window-blur-closes-a-popover.md): a shared layer closes a popover on every window blur,
+  and it also closes when the browser's own UI or another app takes focus.

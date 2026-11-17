@@ -4,7 +4,7 @@
 // The browser's own status of a device permission, read without a prompt, and its prompt for Notifications.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { ALL_PERMISSIONS, getBrowserCheck, type EnforceablePermissionName } from './permissionPolicy.js';
+import { getBrowserCheck, PERMISSION_NAMES, type EnforceablePermissionName } from './permissionPolicy.js';
 
 /** What the browser says of a permission, `unknown` where it cannot say. */
 export type BrowserPermissionStatus = 'granted' | 'denied' | 'prompt' | 'unknown';
@@ -42,7 +42,7 @@ const browserRequestMetric = defineCount<'error'>('permissions.browser_request')
 export function createBrowserPermissions({ notifications, permissions }: Params) {
   return {
     /** The permissions the browser reports a status for, in menu order. */
-    checked: ALL_PERMISSIONS.map(({ name }) => name).filter(name => getBrowserCheck(name) !== null),
+    checked: PERMISSION_NAMES.filter(name => getBrowserCheck(name) !== null),
 
     /** The browser's status of `name`, `unknown` where it cannot say. Never rejects and never prompts. */
     async read(name: EnforceablePermissionName): Promise<BrowserPermissionStatus> {

@@ -5,10 +5,23 @@
 
 import type { HostDevicePermissionRequest, RemotePermission } from '@parity/truapi';
 import type { UserConfirmationReview } from '@parity/truapi-host';
-import { isEnforceableDevicePermission, type EnforceablePermissionName } from '../../permissions/index.js';
+import {
+  isAutoGrantPermission,
+  isBrowserConsented,
+  isUnsupportedPermission,
+  type EnforceablePermissionName,
+} from '../../permissions/index.js';
 
-/** How the host answers one permission: by asking the user, at once, or by refusing a request it does not serve. */
-export type ServeRule = { kind: 'prompt'; name: EnforceablePermissionName } | { kind: 'grant' } | { kind: 'refuse' };
+/**
+ * How the host answers one permission: by asking the user, by leaving it to the browser's own prompt, by granting or
+ * denying it at once, or by refusing a request it does not serve.
+ */
+export type ServeRule =
+  | { kind: 'prompt'; name: EnforceablePermissionName }
+  | { kind: 'browser'; name: EnforceablePermissionName }
+  | { kind: 'grant' }
+  | { kind: 'deny' }
+  | { kind: 'refuse' };
 
 /** A review this host shows. The browser core serves no NFT purses. */
 export type ServedReview = Exclude<UserConfirmationReview, { tag: 'NftPurseDrain' }>;
@@ -16,16 +29,21 @@ export type ServedReview = Exclude<UserConfirmationReview, { tag: 'NftPurseDrain
 /** What this browser core serves, as the questions the code that prompts and confirms asks. */
 export const servedRequests = { getDeviceRule, getRemoteRule, isServed };
 
-/** How the host answers a device permission `tag`. Never throws. */
+/** How the host answers a device permission `tag`. */
 function getDeviceRule(tag: HostDevicePermissionRequest): ServeRule {
-  // OpenUrl has no host-side enforcement point, so a deny button could not block it.
-  if (!isEnforceableDevicePermission(tag)) {
+  if (isAutoGrantPermission(tag)) {
     return { kind: 'grant' };
+  }
+  if (isUnsupportedPermission(tag)) {
+    return { kind: 'deny' };
+  }
+  if (isBrowserConsented(tag)) {
+    return { kind: 'browser', name: tag };
   }
   return { kind: 'prompt', name: tag };
 }
 
-/** How the host answers a remote permission `tag`. Never throws. */
+/** How the host answers a remote permission `tag`. */
 function getRemoteRule(tag: RemotePermission['tag']): ServeRule {
   // The host cannot enforce `Remote` (HTTP/WS) or `WebRtc`, since the sandbox cannot reliably intercept either. A prompt
   // would offer a choice the host could not keep, so both are auto-granted. The browser core serves no balances and no
@@ -44,7 +62,7 @@ function getRemoteRule(tag: RemotePermission['tag']): ServeRule {
   }
 }
 
-/** True when the host shows `review`, false for an NFT purse drain. Never throws. */
+/** True when the host shows `review`, false for an NFT purse drain. */
 function isServed(review: UserConfirmationReview): review is ServedReview {
   return review.tag !== 'NftPurseDrain';
 }

@@ -12,7 +12,6 @@ import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createRandomId,
   createStateMachine,
-  log,
   nest,
   realTimers,
   type HandlerOf,
@@ -23,11 +22,10 @@ import {
 import type { CoreProvider } from '../../productRuntime/index.js';
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
 import type { CoreConnection, CoreLease, PageCore, PageProduct } from '../../productRuntime/index.js';
-import { createPermissionResponseGate } from './createPermissionResponseGate.js';
 import type { PermissionAuthorizations } from '../../permissions/index.js';
 import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
-import { pipeProviders } from './pipeProviders.js';
+import { pipeProviders, type PipeProvidersParams } from './pipeProviders.js';
 import { buildFrameUrl, getAppOrigin, getFrameSandbox } from './productFrameUrl.js';
 import { registerProductChat } from '../../chat/index.js';
 import { traceProductRender, type RenderTrace } from './traceProductRender.js';
@@ -93,10 +91,7 @@ export type ProductFrameParams = {
   notify: ShowNotification;
   /** The host page around the frame. Without one, the browser's. */
   page?: ProductFramePage | undefined;
-  /**
-   * The clock and timers the frame stamps its events with, spaces its renders on and waits for a permission answer on.
-   * The page's own by default.
-   */
+  /** The clock and timers the frame stamps its events with and spaces its renders on. The page's own by default. */
   timers?: Timers;
 };
 
@@ -110,15 +105,15 @@ export type TitledProduct = {
 
 /** What the page shows around the frame. The runtime asks through this seam so its specs run under Node. */
 export type ProductFrameView = {
-  /** The page gives its viewport to this frame and lays it out from now on. Never throws. */
+  /** The page gives its viewport to this frame and lays it out from now on. */
   attachFrame: (iframe: HTMLIFrameElement) => void;
-  /** The tab title for the product on screen. Never throws. */
+  /** The tab title for the product on screen. */
   showTitle: (product: TitledProduct) => void;
-  /** Takes down the page's own screens over the frame, the loading screen too when `loading`. Never throws. */
+  /** Takes down the page's own screens over the frame, the loading screen too when `loading`. */
   clearScreens: (options: { loading: boolean }) => void;
-  /** The frame's status on the page, as state that browser tests read. Never throws. */
+  /** The frame's status on the page, as state that browser tests read. */
   showStatus: (status: ProductFrameStatus) => void;
-  /** Empties the frame's mount, for a direct iframe, which has no loading screen to keep. Never throws. */
+  /** Empties the frame's mount, for a direct iframe, which has no loading screen to keep. */
   clearMount: () => void;
   /**
    * Only in sandbox checker builds: loads the panel that watches the frame, as a mount that returns its dispose.
@@ -129,9 +124,9 @@ export type ProductFrameView = {
 
 /** What the frame reads and writes of the browser page. */
 export type ProductFramePage = {
-  /** Where the host page is, which the app's origin and deep path follow. Never throws. */
+  /** Where the host page is, which the app's origin and deep path follow. */
   location: () => Pick<Location, 'href' | 'protocol' | 'hostname' | 'port' | 'pathname' | 'search' | 'hash'>;
-  /** Reloads the host page. Never throws. */
+  /** Reloads the host page. */
   reload: () => void;
   /** Opens the landing page. */
   goHome: () => void;
@@ -146,8 +141,8 @@ type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void 
 
 /**
  * One try at leasing and connecting. Ending `core` lets go of the pipe, the routes, the connection and the lease, in
- * that order. Ending `frame` ends the wait for a permission answer and removes the panel and the iframe, which outlive a
- * released core, so a device grant still waiting for its answer when the frame gives up on its core still rebuilds it.
+ * that order. Ending `frame` removes the panel and the iframe, which outlive a released core, so the product stays on
+ * screen once the frame gives up on its core.
  */
 type Attempt = { n: 1 | 2; core: Side; frame: Side };
 
@@ -158,8 +153,6 @@ type Link = {
   productId: ProductId;
   /** Whether the product declares chat, as its connection was opened. */
   chat: boolean;
-  /** Holds a rebuild back until the product's pending permission answer has reached it. */
-  responses: ReturnType<typeof createPermissionResponseGate>;
 };
 
 /** Whether the core under an attempt reported itself down, refused or stale. */
@@ -241,8 +234,6 @@ type FrameEvent =
   | { kind: 'panelMounted'; attempt: Attempt }
   | { kind: 'stepFailed'; attempt: Attempt; error: unknown }
   | { kind: 'renderAsked'; product: FrameProduct; reply: Reply<void> }
-  /** The answer to a device grant reached the product, on the frame of `asking`. */
-  | { kind: 'permissionAnswered'; asking: Attempt }
   | { kind: 'permissionsChanged'; change: PermissionsChange }
   | { kind: 'recoverAsked'; asking: Attempt }
   | { kind: 'recoverSpaced'; timer: unknown }
@@ -290,7 +281,7 @@ const BROWSER_PAGE: ProductFramePage = {
   goHome: openLanding,
 };
 
-/** Builds the frame that shows the product. Building it never throws. */
+/** Builds the frame that shows the product. */
 export function createProductFrame({
   core,
   createIframeHost,
@@ -365,15 +356,7 @@ export function createProductFrame({
       connecting: {
         opened(run, { connection, coreProvider }, { emitState, emitSideEffect, update }) {
           const { attempt, product, chat, core: coreSide } = run;
-          const link: Link = {
-            coreProvider,
-            productId: connection.productId,
-            chat,
-            responses: createPermissionResponseGate({
-              signal: attempt.frame.signal,
-              timers,
-            }),
-          };
+          const link: Link = { coreProvider, productId: connection.productId, chat };
           emitState({ ...getRunParts(run), kind: 'readingAllow', attempt, link, core: coreSide });
           emitSideEffect({ kind: 'walletConnected', chat });
           // Only the run's own connection, since a chat view waiting for the product takes the first one registered.
@@ -403,9 +386,14 @@ export function createProductFrame({
                   allowedOrigin: url.origin,
                   allow: `${allow}; cross-origin-isolated`,
                   sandbox: getFrameSandbox(product),
-                  onPort: port => {
-                    pipeProductPort(port, { attempt, link, label: product.label, flowId: flows.bridge, timers });
-                  },
+                  onPort: port =>
+                    pipeProductPort(port, attempt, {
+                      core: link.coreProvider,
+                      flowId: flows.bridge,
+                      label: product.label,
+                      productId: link.productId,
+                      timers,
+                    }),
                 }),
               iframeHost => {
                 attempt.frame.hold(() => {
@@ -454,34 +442,14 @@ export function createProductFrame({
     );
   };
 
-  // A render begun since the grant reads the new policy itself, so only the frame the grant was heard on is rebuilt, and
-  // only while no render is in flight. One asked for from above is never taken over.
-  const rebuildForPermission: HandlerOf<FrameMachine, 'connected' | 'lost' | 'failed', 'permissionAnswered'> = (
-    state,
-    { asking },
-    transition,
-  ) => {
-    if (state.shown?.attempt !== asking) {
-      return;
-    }
-    startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
-  };
-
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
-  // before the change, so it is built again at once rather than after an answer for the frame it replaces.
+  // before the change, so it is built again too.
   const changePermissions: HandlerOf<FrameMachine, LivelyKind, 'permissionsChanged'> = (
     state,
     { change },
     transition,
   ) => {
     if (!change.allowChanged || change.label !== state.target.label) {
-      return;
-    }
-    if (change.fromPrompt && state.shown !== null && state.kind !== 'connecting') {
-      const asking = state.shown.attempt;
-      state.shown.link.responses.runAfterResponse(() => {
-        transition.update({ kind: 'permissionAnswered', asking });
-      });
       return;
     }
     startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
@@ -518,14 +486,26 @@ export function createProductFrame({
     );
   };
 
-  const spaceReplacement: HandlerOf<FrameMachine, LivelyKind, 'replacementSpaced'> = (state, { timer }, transition) => {
+  // A render since the death already answered it.
+  const spaceReplacement: HandlerOf<FrameMachine, 'connecting' | 'connected' | 'failed', 'replacementSpaced'> = (
+    state,
+    { timer },
+    transition,
+  ) => {
     const { replacement } = state;
     if (replacement.kind !== 'spacing' || replacement.timer !== timer) {
       return;
     }
-    // A render since the death already answered it.
-    if (state.kind !== 'lost') {
-      moveTo(state, { ...state, replacement: { kind: 'ready' } }, transition);
+    moveTo(state, { ...state, replacement: { kind: 'ready' } }, transition);
+  };
+
+  const renderOnSpacedReplacement: HandlerOf<FrameMachine, 'lost', 'replacementSpaced'> = (
+    state,
+    { timer },
+    transition,
+  ) => {
+    const { replacement } = state;
+    if (replacement.kind !== 'spacing' || replacement.timer !== timer) {
       return;
     }
     renderOnReplacement(state, transition);
@@ -659,7 +639,6 @@ export function createProductFrame({
       },
       connected: {
         renderAsked: renderAgain,
-        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -670,17 +649,15 @@ export function createProductFrame({
       },
       lost: {
         renderAsked: renderAgain,
-        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
-        replacementSpaced: spaceReplacement,
+        replacementSpaced: renderOnSpacedReplacement,
         halted: stopRendering,
         disposed: endFrame,
       },
       failed: {
         renderAsked: renderAgain,
-        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -814,7 +791,7 @@ export function createProductFrame({
     /**
      * Takes the product down for good under a failure screen the page shows: a render in flight is dropped, and the
      * frame starts no render of its own again, so nothing it does clears that screen. The product stays mounted under
-     * it without its core, and a render asked from above starts afresh. Never throws.
+     * it without its core, and a render asked from above starts afresh.
      */
     halt,
     /**
@@ -1165,44 +1142,34 @@ function runStepWork<T>(
   }).then(toEvent, (error: unknown): FrameEvent => ({ kind: 'stepFailed', attempt, error }));
 }
 
-/** Pipes the product's port to the core under `attempt` until the attempt's core side ends. */
-function pipeProductPort(
-  port: MessagePort,
-  {
-    attempt,
-    link,
-    label,
-    flowId,
-    timers,
-  }: { attempt: Attempt; link: Link; label: string; flowId: string; timers: Timers },
-): void {
-  const productProvider = createMessagePortProvider(port);
-  attempt.core.hold(() => {
-    productProvider.dispose();
+/**
+ * Pipes a product document's port to the core under `attempt`, until the attempt's core side ends or the returned stop
+ * runs as a newer document takes over.
+ */
+function pipeProductPort(port: MessagePort, attempt: Attempt, pipe: Omit<PipeProvidersParams, 'product'>): () => void {
+  const product = createMessagePortProvider(port);
+  const unpipe = pipeProviders({ ...pipe, product });
+  return attempt.core.hold(() => {
+    // Unpiped first, since the pipe disposes the core once the product closes, and a newer document's pipe shares it.
+    unpipe();
+    product.dispose();
   });
-  attempt.core.hold(
-    pipeProviders({
-      product: productProvider,
-      core: link.coreProvider,
-      flowId,
-      label,
-      productId: link.productId,
-      noteForwarded: link.responses.noteForwarded,
-      timers,
-    }),
-  );
 }
 
 /** Nobody asked for a render the frame starts on its own, so the frame is the one to report it. */
 function reportRerenderFailure(error: unknown, reason: RerenderReason | 'core_deaths'): void {
-  log.error('[dot.li] Product iframe reload failed:', error);
   if (error instanceof CoreRedialError) {
-    // A redial failure is captured where it happens, so the frame only records that its render fell with it.
+    // A redial failure is reported where it happens, so the frame only records that its render fell with it.
     uiReport.expected(error, { step: 'product_rerender', metric: productRerenderMetric, reason });
     return;
   }
-  uiReport.capture(error, { step: 'product_rerender', tags: { reason } });
-  productRerenderMetric.count({ outcome: 'error', reason });
+  uiReport.defect(error, {
+    step: 'product_rerender',
+    tags: { reason },
+    metric: productRerenderMetric,
+    reason,
+    message: '[dot.li] Product iframe reload failed:',
+  });
 }
 
 function showReloadNotice(notify: ShowNotification, page: ProductFramePage): void {

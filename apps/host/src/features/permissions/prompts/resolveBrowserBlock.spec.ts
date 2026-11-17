@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { BrowserPermissions, BrowserPermissionStatus } from '../policy/createBrowserPermissions.js';
 import { createFakePrompts, type FakePrompt, type FakePrompts } from './hostPrompts.fake.js';
 import type { EnforceablePermissionName } from '../policy/permissionPolicy.js';
@@ -30,6 +31,10 @@ beforeEach(() => {
   };
   controller = new AbortController();
   record = vi.fn<ProductPermissions['recordPromptDecision']>(() => Promise.resolve());
+});
+
+afterEach(() => {
+  resetAllStoresForTests();
 });
 
 describe('resolveBrowserBlock', () => {

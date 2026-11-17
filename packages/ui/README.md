@@ -33,7 +33,7 @@ The UI that more than one dotli app shows. It has no domain and no data source.
 | `Accordion`, `AccordionProps`, `Button`, `ButtonLink`, `ButtonVariant`, `Chip`, `IconButton`, `IconTile`                      | Primitives.                                     |
 | `Choice`, `SegmentedControl`, `SegmentOption`, `StepSlider`, `StepSliderProps`, `StepSliderStop`, `Spinner`                   | Primitives.                                     |
 | `StatusDot`, `Surface`, `SurfaceHead`, `SurfaceFoot`, `Hint`, `Switch`, `Well`, `Callout`, `Row`, `Stack`, `SectionLabel`     | Primitives.                                     |
-| `Listbox`                                                                                                                     | Primitives.                                     |
+| `Listbox`, `RowNote`                                                                                                          | Primitives.                                     |
 | `Modal`, `Popover`, `usePopover`, `Tooltip`, `LayerTracker`, `ModalFocusFallback`, `TrackedLayer`                             | Floating layers.                                |
 | `ActionGroup`, `ActionItem`, `ActionItemProps`, `ActionsContext`, `ActionGroupMorph`, `MoreIds`                               | The action group.                               |
 | `ActionAlert`, `ActionBar`, `ActionEntry`                                                                                     | The action group.                               |

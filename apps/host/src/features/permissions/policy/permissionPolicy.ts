@@ -7,16 +7,34 @@ import { getKeys } from '@dotli/shared';
 import type { HostDevicePermissionRequest } from '@parity/truapi';
 import type { PermissionAuthorizationRequest } from '@parity/truapi-host';
 
-export type DevicePermissionName = HostDevicePermissionRequest;
-
 export type PermissionName =
-  DevicePermissionName | 'ChainSubmit' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
+  HostDevicePermissionRequest | 'ChainSubmit' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
 
-export type AutoGrantDevicePermission = 'OpenUrl';
+/**
+ * The permissions dot.li does not support. They stay out of the menu, the presets and the frame, and a product that asks
+ * for one is denied. NFC's browser API cannot run in a frame.
+ */
+type UnsupportedPermission = 'NFC';
 
-export type EnforceableDevicePermission = Exclude<DevicePermissionName, AutoGrantDevicePermission>;
+const UNSUPPORTED_PERMISSIONS: ReadonlySet<PermissionName> = new Set<UnsupportedPermission>(['NFC']);
 
-export type EnforceablePermissionName = Exclude<PermissionName, AutoGrantDevicePermission>;
+/**
+ * Navigation has no host-side enforcement point, so the menu leaves it out, where a control that cannot block would
+ * mislead.
+ */
+type AutoGrantDevicePermission = 'OpenUrl';
+
+export type EnforceablePermissionName = Exclude<PermissionName, AutoGrantDevicePermission | UnsupportedPermission>;
+
+/** True when dot.li does not support `name`. */
+export function isUnsupportedPermission(name: PermissionName): name is UnsupportedPermission {
+  return UNSUPPORTED_PERMISSIONS.has(name);
+}
+
+/** True when dot.li grants `name` at once, with no menu control and no dialog. */
+export function isAutoGrantPermission(name: PermissionName): name is AutoGrantDevicePermission {
+  return name === 'OpenUrl';
+}
 
 export type PermissionStatus = 'ask' | 'granted' | 'denied';
 
@@ -46,46 +64,49 @@ type PermissionFacts = {
   group: PermissionGroup;
   /** What it lets the app do, as the permission dialog says it. */
   description: string;
-  /** The iframe `allow` directive a grant adds, null where the core alone gates it. */
-  frameDirective: string | null;
-  /** Its status under the Trusted preset. */
-  trusted: PermissionStatus;
   /** The browser permission that reports its status, null where the browser reports none. */
   browserCheck: BrowserCheck | null;
-};
+} & (
+  | {
+      /**
+       * The iframe `allow` directive it gates. The browser's own prompt is the consent, as on any website, so the
+       * directive is in unless dot.li blocks it.
+       */
+      directive: string;
+      /** Its status under the Trusted preset. dot.li never grants a browser-consented permission. */
+      trusted: Exclude<PermissionStatus, 'granted'>;
+    }
+  | {
+      /** Null, as the core alone gates it. */
+      directive: null;
+      /** Its status under the Trusted preset. */
+      trusted: PermissionStatus;
+    }
+);
 
 /** Every permission a user can be asked for, in menu order. */
 export const PERMISSION_CATALOG = {
-  Notifications: {
-    label: 'Notifications',
-    group: 'device',
-    description: 'Show in-app and system notifications',
-    // Notifications has no directive, and its own prompt gates it with no iframe reload.
-    frameDirective: null,
-    trusted: 'granted',
-    browserCheck: 'notifications',
-  },
   Camera: {
     label: 'Camera',
     group: 'device',
     description: 'Access your camera for photo and video capture',
-    frameDirective: 'camera',
-    trusted: 'granted',
+    directive: 'camera',
+    trusted: 'ask',
     browserCheck: 'camera',
   },
   Microphone: {
     label: 'Microphone',
     group: 'device',
     description: 'Access your microphone for audio input',
-    frameDirective: 'microphone',
-    trusted: 'granted',
+    directive: 'microphone',
+    trusted: 'ask',
     browserCheck: 'microphone',
   },
   Location: {
     label: 'Location',
     group: 'device',
     description: 'Access your location for geolocation services',
-    frameDirective: 'geolocation',
+    directive: 'geolocation',
     trusted: 'ask',
     browserCheck: 'geolocation',
   },
@@ -94,7 +115,7 @@ export const PERMISSION_CATALOG = {
     group: 'device',
     description: "Read your device's motion and orientation sensors",
     // Device motion and orientation events need both sensors.
-    frameDirective: 'accelerometer; gyroscope',
+    directive: 'accelerometer; gyroscope',
     trusted: 'ask',
     browserCheck: null,
   },
@@ -102,16 +123,7 @@ export const PERMISSION_CATALOG = {
     label: 'Bluetooth',
     group: 'device',
     description: 'Connect to nearby Bluetooth devices',
-    frameDirective: 'bluetooth',
-    trusted: 'ask',
-    browserCheck: null,
-  },
-  NFC: {
-    label: 'NFC',
-    group: 'device',
-    description: 'Read and write nearby NFC tags',
-    // Chromium-only, ignored elsewhere.
-    frameDirective: 'nfc',
+    directive: 'bluetooth',
     trusted: 'ask',
     browserCheck: null,
   },
@@ -120,23 +132,32 @@ export const PERMISSION_CATALOG = {
     group: 'device',
     description: 'Read text and data from your clipboard',
     // Write is always allowed, read needs consent.
-    frameDirective: 'clipboard-read',
-    trusted: 'granted',
+    directive: 'clipboard-read',
+    trusted: 'ask',
     browserCheck: null,
   },
   Biometrics: {
     label: 'Biometrics',
     group: 'device',
     description: 'Authenticate with a platform passkey or biometric prompt',
-    frameDirective: 'publickey-credentials-get',
+    directive: 'publickey-credentials-get',
     trusted: 'ask',
     browserCheck: null,
+  },
+  Notifications: {
+    label: 'Notifications',
+    group: 'device',
+    description: 'Show in-app and system notifications',
+    // Notifications has no directive, and its own prompt gates it.
+    directive: null,
+    trusted: 'granted',
+    browserCheck: 'notifications',
   },
   IdentityDisclosure: {
     label: 'Identity disclosure',
     group: 'app',
     description: 'Share your primary DotNS identity with this app',
-    frameDirective: null,
+    directive: null,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -144,7 +165,7 @@ export const PERMISSION_CATALOG = {
     label: 'Sign transactions',
     group: 'app',
     description: 'Sign and submit network transactions on your behalf',
-    frameDirective: null,
+    directive: null,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -152,7 +173,7 @@ export const PERMISSION_CATALOG = {
     label: 'Submit preimages',
     group: 'app',
     description: 'Store preimage data on the Bulletin network',
-    frameDirective: null,
+    directive: null,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -160,7 +181,7 @@ export const PERMISSION_CATALOG = {
     label: 'Submit statements',
     group: 'app',
     description: 'Submit signed statements to the statement store',
-    frameDirective: null,
+    directive: null,
     trusted: 'granted',
     browserCheck: null,
   },
@@ -172,33 +193,23 @@ export const PERMISSION_GROUPS = {
   app: { label: 'Account and chain' },
 } satisfies Record<PermissionGroup, { label: string }>;
 
-/**
- * Navigation via anchor or window.open has no host-side enforcement point, so these always resolve
- * `true` and stay out of the menu, where a control that cannot block would mislead.
- */
-const AUTO_GRANT_DEVICE_PERMISSIONS: ReadonlySet<DevicePermissionName> = new Set<AutoGrantDevicePermission>([
-  'OpenUrl',
-]);
+/** Every permission a user can be asked for, in menu order. */
+export const PERMISSION_NAMES: readonly EnforceablePermissionName[] = getKeys(PERMISSION_CATALOG);
 
 /** In menu display order. */
 export const ALL_PERMISSIONS: readonly {
   name: EnforceablePermissionName;
   label: string;
   group: PermissionGroup;
-}[] = getKeys(PERMISSION_CATALOG).map(name => ({
+}[] = PERMISSION_NAMES.map(name => ({
   name,
   label: PERMISSION_CATALOG[name].label,
   group: PERMISSION_CATALOG[name].group,
 }));
 
-/** True for a device permission a user can be asked for, false for an auto-granted one. */
-export function isEnforceableDevicePermission(name: DevicePermissionName): name is EnforceableDevicePermission {
-  return !AUTO_GRANT_DEVICE_PERMISSIONS.has(name);
-}
-
-/** The iframe `allow` directive a grant of `name` adds, null when it adds none. Never throws. */
+/** The iframe `allow` directive `name` gates, null where the core alone gates it. */
 export function getFrameDirective(name: EnforceablePermissionName): string | null {
-  return PERMISSION_CATALOG[name].frameDirective;
+  return PERMISSION_CATALOG[name].directive;
 }
 
 /** The browser permission that reports `name`'s status, null where the browser reports none. */
@@ -206,12 +217,17 @@ export function getBrowserCheck(name: EnforceablePermissionName): BrowserCheck |
   return PERMISSION_CATALOG[name].browserCheck;
 }
 
-/** True when granting `name` adds an iframe `allow` directive, so the frame reloads. Never throws. */
-export function hasFrameDirective(name: EnforceablePermissionName): boolean {
+/** True when `name` has an iframe `allow` directive, whose consent is the browser's own prompt, so dot.li only blocks it. */
+export function isBrowserConsented(name: EnforceablePermissionName): boolean {
   return getFrameDirective(name) !== null;
 }
 
-/** The core's request for `name`. Never throws. */
+/** True when `name` at `status` puts its directive in the frame's `allow` attribute, which is unless it is blocked. */
+export function isFrameDirectiveOn(name: EnforceablePermissionName, status: PermissionStatus): boolean {
+  return isBrowserConsented(name) && status !== 'denied';
+}
+
+/** The core's request for `name`. */
 export function getAuthorizationRequest(name: EnforceablePermissionName): PermissionAuthorizationRequest {
   switch (name) {
     case 'ChainSubmit':
@@ -227,11 +243,15 @@ export function getAuthorizationRequest(name: EnforceablePermissionName): Permis
     case 'Camera':
     case 'Microphone':
     case 'Bluetooth':
-    case 'NFC':
     case 'Location':
     case 'Motion':
     case 'Clipboard':
     case 'Biometrics':
       return { tag: 'Device', value: name };
   }
+}
+
+/** True when the core asks for `name` as a remote permission, one for what the app does on the network. */
+export function isRemotePermission(name: EnforceablePermissionName): boolean {
+  return getAuthorizationRequest(name).tag === 'Remote';
 }

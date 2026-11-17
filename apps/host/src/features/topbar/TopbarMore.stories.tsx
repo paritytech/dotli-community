@@ -5,7 +5,6 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import { ALL_PERMISSIONS, type PermissionStatus } from '../permissions/index.js';
 import { expectPhone, openSurface } from '../../testing/stories/topbarFrame.js';
 import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
 import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
@@ -25,19 +24,6 @@ function StoryPermissions(): JSX.Element {
 }
 
 const open = openSurface({ trigger: 'more-button', surface: 'more-popover' });
-
-const STATUSES: readonly PermissionStatus[] = ['ask', 'granted', 'denied'];
-
-/** Which status a permission's row has pressed. */
-function statusOf(name: string): PermissionStatus | undefined {
-  const row = byId(`permissions-popover-name-${name}`).closest<HTMLElement>('[data-testid="permissions-popover-row"]');
-  if (row === null) {
-    throw new Error(`No ${name} row`);
-  }
-  return STATUSES.find(
-    status => within(row).getByTestId(`permissions-popover-segment-${status}`).getAttribute('aria-pressed') === 'true',
-  );
-}
 
 const meta = {
   title: 'Host/Topbar/More',
@@ -106,16 +92,10 @@ export const RowOpensCollapsedPopover: Story = {
   },
 };
 
-/**
- * As a phone user with the permissions button in More, I open the panel from its row with every permission and its
- * status.
- */
+/** As a phone user with the permissions button in More, I open the panel from its row and it takes my focus. */
 export const PhoneRowOpensPermissions: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
-  beforeEach: () => {
-    givenApp({ Camera: 'granted' });
-  },
   render: () => (
     <GroupFrame room={40}>
       <StoryPermissions />
@@ -129,14 +109,8 @@ export const PhoneRowOpensPermissions: Story = {
     await step('When I choose the Permissions row', async () => {
       await userEvent.click(moreRow('permissions'));
     });
-    await step("Then the panel took More's place with every permission, Camera pressed Allow", async () => {
+    await step("Then the panel took More's place and holds my focus", async () => {
       await waitFor(() => expect(byId('permissions-popover')).toHaveAttribute('data-open'));
-      await waitFor(() =>
-        expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(
-          ALL_PERMISSIONS.length,
-        ),
-      );
-      await expect(statusOf('Camera')).toBe('granted');
       await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
     });
   },

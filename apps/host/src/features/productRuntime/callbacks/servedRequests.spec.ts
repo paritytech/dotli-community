@@ -7,12 +7,8 @@ import { servedRequests, type ServeRule } from './servedRequests.js';
 
 const REMOTE_RULES: [RemotePermission['tag'], ServeRule][] = [
   ['ChainSubmit', { kind: 'prompt', name: 'ChainSubmit' }],
-  ['PreimageSubmit', { kind: 'prompt', name: 'PreimageSubmit' }],
-  ['StatementSubmit', { kind: 'prompt', name: 'StatementSubmit' }],
   ['Remote', { kind: 'grant' }],
-  ['WebRtc', { kind: 'grant' }],
   ['BalanceAccess', { kind: 'refuse' }],
-  ['NftPurseRead', { kind: 'refuse' }],
 ];
 
 describe('servedRequests', () => {
@@ -25,14 +21,21 @@ describe('servedRequests', () => {
     expect(result).toEqual(rule);
   });
 
-  it('As the host, I grant OpenUrl at once and ask for every other device permission', () => {
-    // Given the one device permission the host cannot enforce, and one it can
+  it('As the host, I grant OpenUrl at once, deny NFC at once, leave the camera to the browser and ask for notifications', () => {
+    // Given the device permission the host cannot enforce, the one dot.li does not support, one the browser asks for
+    // itself, and one the host asks for
     // When the host looks up each rule
     const openUrl = servedRequests.getDeviceRule('OpenUrl');
+    const nfc = servedRequests.getDeviceRule('NFC');
     const camera = servedRequests.getDeviceRule('Camera');
+    const notifications = servedRequests.getDeviceRule('Notifications');
 
-    // Then OpenUrl is granted and Camera is asked
-    expect(openUrl).toEqual({ kind: 'grant' });
-    expect(camera).toEqual({ kind: 'prompt', name: 'Camera' });
+    // Then OpenUrl is granted, NFC is denied, the camera is the browser's, and notifications are asked
+    expect([openUrl, nfc, camera, notifications]).toEqual([
+      { kind: 'grant' },
+      { kind: 'deny' },
+      { kind: 'browser', name: 'Camera' },
+      { kind: 'prompt', name: 'Notifications' },
+    ]);
   });
 });

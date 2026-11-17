@@ -1,20 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  test,
-  expect,
-  openHostPlayground,
-  waitForHostPlaygroundFrame,
-} from '../../../../../tests/e2e/fixtures/paired.js';
+import { test, expect, openHostPlayground } from '../../../../../tests/e2e/fixtures/paired.js';
 import { runTestExpectSuccess } from '../../../../../tests/e2e/helpers/runTest.js';
-import { answerHostDialogs, runWebSignedTest, type HostDialog } from '../../../../../tests/e2e/helpers/signing.js';
+import { runWebSignedTest, type HostDialog } from '../../../../../tests/e2e/helpers/signing.js';
 
 // Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.
 
 // The host dialogs these tests expect, by the title the host draws. A once answer leaves no grant behind the test.
 const PERMISSION_ONCE: HostDialog = { title: 'Permission request', answer: 'Allow once' };
-const PERMISSION_ALLOW: HostDialog = { title: 'Permission request', answer: 'Allow' };
 const IDENTITY_ONCE: HostDialog = { title: 'Identity disclosure', answer: 'Allow once' };
 const ALLOCATION: HostDialog = { title: 'Approve an allowance', answer: 'Allow' };
 const SIGN_MESSAGE: HostDialog = { title: 'Sign message', answer: 'Sign' };
@@ -321,31 +315,21 @@ test.describe('dot.li > host-playground.dot', () => {
     );
   });
 
-  // The host asks with its own dialog, then rebuilds the frame with the new `allow` once the answer reached the product.
-  // The other device permissions take the same path with another directive, which the permissions spec maps.
+  // The browser's own prompt is the consent to a device it asks for, so the host answers at once and the frame already
+  // allows it. The other browser-gated devices take the same path with another directive.
 
   test.describe('Device permissions', () => {
-    test('As a product on dot.li, I get the camera once the user allows it, in a frame rebuilt with camera access', async ({
-      pairedPage,
+    test('As a product on dot.li, I ask for the camera and get it with no host dialog, in a frame that already allows it', async ({
       productFrame,
     }) => {
       // Given
-      test.setTimeout(120_000);
-      const run = productFrame.locator('[data-testid="run-device-permission-camera"]');
-      await expect(run).toBeEnabled({ timeout: 15_000 });
+      const iframe = await productFrame.frameElement();
 
-      // When the user allows the host's dialog, whose grant rebuilds the frame
-      await run.click();
-      await answerHostDialogs(pairedPage, [PERMISSION_ALLOW]);
-      const rebuilt = await waitForHostPlaygroundFrame(pairedPage, 60_000, productFrame);
+      // When
+      await runTestExpectSuccess(productFrame, 'device-permission-camera');
 
       // Then
-      const iframe = await rebuilt.frameElement();
       expect(await iframe.getAttribute('allow')).toContain('camera');
-      // The rebuilt product reconnects to the core before its run button comes back, and runTest allows that only 5 s.
-      await expect(rebuilt.locator('[data-testid="run-device-permission-camera"]')).toBeEnabled({ timeout: 15_000 });
-      // The grant is stored, so asking again is answered with no dialog and no rebuild.
-      await runTestExpectSuccess(rebuilt, 'device-permission-camera');
     });
   });
 });
