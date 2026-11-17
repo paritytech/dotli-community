@@ -278,7 +278,7 @@ describe('scheduled notifications poller', () => {
   });
 
   it('As a user, I keep a page open while a round is slow and a tick that comes meanwhile starts no second round', async () => {
-    // Given an initialized scheduler whose rehydrate round ended, and a read held from the next call on
+    // Given an initialized scheduler whose page-load round ended, and a read held from the next call on
     const { timers, start, advanceTicks } = createPollerHarness();
     const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 3_600_000 }] });
     start({ store });
