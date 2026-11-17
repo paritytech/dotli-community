@@ -239,7 +239,7 @@ describe('scheduled notifications poller', () => {
     expect(counted('notifications.poll')).toEqual([{ outcome: 'error', reason: 'Error', step: 'list_pending' }]);
   });
 
-  it('As a user, I load a page with a due notification whose claim is slow to land and it shows once', async () => {
+  it('As a user, I load a page with a notification that just fell due, whose claim is slow to land, and it shows once, allowed an OS notification', async () => {
     // Given a due record whose claim at page load is slow to land, and a schedule that finds that round running
     const { timers, start, advanceTicks } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
@@ -259,9 +259,22 @@ describe('scheduled notifications poller', () => {
     landed.resolve(undefined);
     await advanceTicks(1);
 
-    // Then it shows once, as the page load found it
+    // Then it shows once, allowed an OS notification, since its claim landed seconds after it fell due
     expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ label: 'Acme', browserNotification: false }));
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ label: 'Acme', browserNotification: true }));
+  });
+
+  it('As a user, I load a page with a notification that fell due an hour ago and it shows once without an OS notification', async () => {
+    // Given a notification that fell due an hour before the page loads
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() - 3_600_000 }] });
+
+    // When the page loads and its scheduler starts
+    const { show } = start({ store });
+    await advanceTicks(1);
+
+    // Then it shows once, with no OS notification, since the user missed it
+    expect(show).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ browserNotification: false }));
   });
 
   it('As a user, I keep a page open while a round is slow and a tick that comes meanwhile starts no second round', async () => {
@@ -356,7 +369,7 @@ describe('scheduled notifications poller', () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 
-  it('As a user who leaves a page while its scheduler claims a due notification, I come back and the notification still shows once', async () => {
+  it('As a user who leaves a page while its scheduler claims a notification that just fell due, I come back and it still shows once, allowed an OS notification', async () => {
     // Given a due record whose claim at page load removes it at once and is slow to answer
     const { timers, page, start } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
@@ -377,12 +390,12 @@ describe('scheduled notifications poller', () => {
     page.window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
     await timers.advance(0);
 
-    // Then it shows once, as the page load found it
+    // Then it shows once, allowed an OS notification, since it was claimed as it fell due
     expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: false }));
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: true }));
   });
 
-  it('As a user who comes back to a page whose claim was still running when it left, I see the notification once', async () => {
+  it('As a user who comes back to a page whose claim of a notification that just fell due was still running when it left, I see it once, allowed an OS notification', async () => {
     // Given a due record whose claim at page load removes it at once and is slow to answer
     const { timers, page, start } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
@@ -403,9 +416,9 @@ describe('scheduled notifications poller', () => {
     landed.resolve(undefined);
     await timers.advance(0);
 
-    // Then it shows once, as the page load found it
+    // Then it shows once, allowed an OS notification, since it was claimed as it fell due
     expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: false }));
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: true }));
   });
 
   it('As a user back on a page from the back-forward cache, I come back and a notification that fell due meanwhile still shows', async () => {
