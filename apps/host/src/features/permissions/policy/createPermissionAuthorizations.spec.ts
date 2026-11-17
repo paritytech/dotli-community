@@ -187,11 +187,10 @@ describe('getAllowAttribute', () => {
     );
   });
 
-  it('As a dApp user, I block the camera and grant NFC and a submit permission, and the frame drops the camera and adds only NFC', async () => {
+  it('As a dApp user, I block the camera and grant a submit permission, and the frame drops only the camera', async () => {
     // Given
     const { permissions } = createHarness();
     await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'denied' });
-    await permissions.setStatus({ label: 'myapp', permission: 'NFC', status: 'granted' });
     await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
 
     // When
@@ -199,7 +198,7 @@ describe('getAllowAttribute', () => {
 
     // Then
     expect(allow).toBe(
-      'clipboard-write; display-capture; microphone; geolocation; accelerometer; gyroscope; bluetooth; nfc; clipboard-read; publickey-credentials-get',
+      'clipboard-write; display-capture; microphone; geolocation; accelerometer; gyroscope; bluetooth; clipboard-read; publickey-credentials-get',
     );
   });
 

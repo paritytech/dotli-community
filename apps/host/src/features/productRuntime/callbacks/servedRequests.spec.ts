@@ -25,18 +25,21 @@ describe('servedRequests', () => {
     expect(result).toEqual(rule);
   });
 
-  it('As the host, I grant OpenUrl at once, leave the camera to the browser and ask for NFC', () => {
-    // Given the one device permission the host cannot enforce, one the browser asks for itself, and one the host asks for
+  it('As the host, I grant OpenUrl at once, deny NFC at once, leave the camera to the browser and ask for notifications', () => {
+    // Given the device permission the host cannot enforce, the one it no longer offers, one the browser asks for itself,
+    // and one the host asks for
     // When the host looks up each rule
     const openUrl = servedRequests.getDeviceRule('OpenUrl');
-    const camera = servedRequests.getDeviceRule('Camera');
     const nfc = servedRequests.getDeviceRule('NFC');
+    const camera = servedRequests.getDeviceRule('Camera');
+    const notifications = servedRequests.getDeviceRule('Notifications');
 
-    // Then OpenUrl is granted, the camera is the browser's, and NFC is asked
-    expect([openUrl, camera, nfc]).toEqual([
+    // Then OpenUrl is granted, NFC is denied, the camera is the browser's, and notifications are asked
+    expect([openUrl, nfc, camera, notifications]).toEqual([
       { kind: 'grant' },
+      { kind: 'deny' },
       { kind: 'browser', name: 'Camera' },
-      { kind: 'prompt', name: 'NFC' },
+      { kind: 'prompt', name: 'Notifications' },
     ]);
   });
 });

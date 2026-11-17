@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ALL_PERMISSIONS, type EnforceablePermissionName, type PermissionStatus } from '../policy/permissionPolicy.js';
-import { PRESETS, presetOf, RESTRICTED, SECURE, TRUSTED, UNLIMITED, type Preset } from './presets.js';
+import { presetOf, RESTRICTED, SECURE, TRUSTED, type Preset } from './presets.js';
 
 /** A preset's statuses in menu order, with `changes` laid over them. */
 function from(
@@ -14,13 +14,17 @@ function from(
 }
 
 describe('permission presets', () => {
-  it.each(PRESETS)('As the slider, statuses equal to $label read as $label, not modified', preset => {
-    // When
-    const shown = presetOf(from(preset));
+  // Unlimited sets the statuses Trusted sets, so they read as the safer Trusted.
+  it.each([RESTRICTED, SECURE, TRUSTED])(
+    'As the slider, statuses equal to $label read as $label, not modified',
+    preset => {
+      // When
+      const shown = presetOf(from(preset));
 
-    // Then
-    expect(shown).toEqual({ preset, modified: false });
-  });
+      // Then
+      expect(shown).toEqual({ preset, modified: false });
+    },
+  );
 
   it.each<[string, Preset, Partial<Record<EnforceablePermissionName, PermissionStatus>>, Preset]>([
     ['Secure with Location blocked', SECURE, { Location: 'denied' }, SECURE],
@@ -31,7 +35,7 @@ describe('permission presets', () => {
       SECURE,
     ],
     ['Trusted with Sign transactions at Ask', TRUSTED, { ChainSubmit: 'ask' }, TRUSTED],
-    ['Unlimited with Camera blocked', UNLIMITED, { Camera: 'denied' }, UNLIMITED],
+    ['Trusted with Camera blocked', TRUSTED, { Camera: 'denied' }, TRUSTED],
     ['Restricted with Camera left to the browser', RESTRICTED, { Camera: 'ask' }, RESTRICTED],
     [
       'Secure with seven device permissions denied',
@@ -42,7 +46,7 @@ describe('permission presets', () => {
         Location: 'denied',
         Motion: 'denied',
         Bluetooth: 'denied',
-        NFC: 'denied',
+        Clipboard: 'denied',
         Biometrics: 'denied',
       },
       RESTRICTED,

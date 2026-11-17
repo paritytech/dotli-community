@@ -251,7 +251,6 @@ export const KeyboardSteps: Story = {
     await ctx.step('Then Trusted and then Unlimited were asked for', async () => {
       await expect(permissionsAsked.changes).toHaveBeenNthCalledWith(1, TRUSTED.statuses);
       await expect(permissionsAsked.changes).toHaveBeenNthCalledWith(2, UNLIMITED.statuses);
-      await expectPreset('unlimited', false);
     });
   },
 };
@@ -385,7 +384,7 @@ export const FailedChangeNamesPermissions: Story = {
       release();
     });
     await ctx.step('Then the move settles with Sign transactions kept, and no error shows', async () => {
-      await expectPreset('unlimited', true);
+      await expectPreset('trusted', true);
       await waitFor(() => expect(byId('permissions-popover-list')).not.toHaveAttribute('data-pending'));
       await changesSettled();
       await expect(errorLine()).toBeNull();
@@ -471,13 +470,13 @@ export const KeyboardKeepsFocus: Story = {
 export const ReopenReadsAgain: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    givenApp(UNLIMITED.statuses);
+    givenApp(TRUSTED.statuses);
   },
   play: async ctx => {
     await open(ctx);
     await ctx.step('And closed again', async () => {
       await waitFor(() => expect(permissionsAsked.opens).toBe(1));
-      await expectPreset('unlimited', false);
+      await expectPreset('trusted', false);
       await ctx.userEvent.keyboard('{Escape}');
       await waitFor(() => expect(byId('permissions-popover')).not.toHaveAttribute('data-open'));
     });
@@ -487,7 +486,7 @@ export const ReopenReadsAgain: Story = {
     });
     await ctx.step('Then one new read is asked for while the last answer shows', async () => {
       await waitFor(() => expect(permissionsAsked.opens).toBe(2));
-      await expectPreset('unlimited', false);
+      await expectPreset('trusted', false);
     });
     await ctx.step('When it answers', () => {
       readAll('denied');

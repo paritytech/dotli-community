@@ -57,7 +57,7 @@ afterEach(() => {
 describe('product permissions store', () => {
   it('As a user on the permissions menu, I load a product and see its statuses', async () => {
     // Given
-    createFakeCore(LABEL, { NFC: 'Authorized', ChainSubmit: 'Denied' });
+    createFakeCore(LABEL, { Notifications: 'Authorized', ChainSubmit: 'Denied' });
 
     // When
     await loadProduct();
@@ -66,7 +66,7 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
-      statuses: buildStatuses({ NFC: 'granted', ChainSubmit: 'denied' }),
+      statuses: buildStatuses({ Notifications: 'granted', ChainSubmit: 'denied' }),
     });
   });
 
@@ -99,7 +99,7 @@ describe('product permissions store', () => {
 
   it("As a user on the permissions menu, I switch products before a read answers and never see the previous product's statuses", async () => {
     // Given
-    const first = createFakeCore('first', { NFC: 'Authorized' });
+    const first = createFakeCore('first', { Notifications: 'Authorized' });
     createFakeCore('second');
     first.holdReads = true;
     productState.setLoaded({ label: 'first', productId: asProductId('first.dot') });
@@ -136,10 +136,10 @@ describe('product permissions store', () => {
   });
 
   it('As a user on the permissions menu, I refresh and keep seeing the last statuses until the read lands', async () => {
-    // Given: NFC read as allowed, then denied in another tab, and every read held
-    const core = createFakeCore(LABEL, { NFC: 'Authorized' });
+    // Given: Notifications read as allowed, then denied in another tab, and every read held
+    const core = createFakeCore(LABEL, { Notifications: 'Authorized' });
     await loadProduct();
-    core.stored.set('NFC', 'Denied');
+    core.stored.set('Notifications', 'Denied');
     core.holdReads = true;
 
     // When
@@ -149,7 +149,7 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
-      statuses: buildStatuses({ NFC: 'granted' }),
+      statuses: buildStatuses({ Notifications: 'granted' }),
     });
 
     // When
@@ -162,7 +162,7 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
-      statuses: buildStatuses({ NFC: 'denied' }),
+      statuses: buildStatuses({ Notifications: 'denied' }),
     });
   });
 
@@ -196,21 +196,21 @@ describe('product permissions store', () => {
 
     // When
     await permissions.change(LABEL, { Notifications: 'granted' });
-    await permissions.change(LABEL, { NFC: 'granted' });
+    await permissions.change(LABEL, { Camera: 'denied' });
 
     // Then
     expect(core.writes).toEqual([
       { name: 'Notifications', status: 'Authorized' },
-      { name: 'NFC', status: 'Authorized' },
+      { name: 'Camera', status: 'Denied' },
     ]);
     expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
-      statuses: buildStatuses({ Notifications: 'granted', NFC: 'granted' }),
+      statuses: buildStatuses({ Notifications: 'granted', Camera: 'denied' }),
     });
     expect(changes).toEqual([
       { label: LABEL, permissions: ['Notifications'], allowChanged: false, fromPrompt: false },
-      { label: LABEL, permissions: ['NFC'], allowChanged: true, fromPrompt: false },
+      { label: LABEL, permissions: ['Camera'], allowChanged: true, fromPrompt: false },
     ]);
   });
 
@@ -222,7 +222,7 @@ describe('product permissions store', () => {
   }>([
     { name: 'Camera', stored: 'NotDetermined', target: 'denied', rebuilds: true },
     { name: 'Camera', stored: 'Denied', target: 'ask', rebuilds: true },
-    { name: 'NFC', stored: 'NotDetermined', target: 'denied', rebuilds: false },
+    { name: 'Notifications', stored: 'NotDetermined', target: 'denied', rebuilds: false },
   ])(
     'As a user, I move $name from $stored to $target and the change asks for a rebuild only when its directive comes or goes',
     async ({ name, stored, target, rebuilds }) => {
@@ -241,12 +241,12 @@ describe('product permissions store', () => {
 
   it('As a user, I make a change whose targets all equal the statuses read and nothing is written or announced', async () => {
     // Given
-    const core = createFakeCore(LABEL, { NFC: 'Authorized' });
+    const core = createFakeCore(LABEL, { Notifications: 'Authorized' });
     const changes = recordChanges();
     await loadProduct();
 
     // When
-    const outcome = await permissions.change(LABEL, { NFC: 'granted' });
+    const outcome = await permissions.change(LABEL, { Notifications: 'granted' });
 
     // Then
     expect(outcome).toEqual({ failed: [] });
@@ -256,17 +256,17 @@ describe('product permissions store', () => {
 
   it('As a user, I move to a preset and every target is written while only those that changed are announced', async () => {
     // Given
-    const core = createFakeCore(LABEL, { NFC: 'Authorized' });
+    const core = createFakeCore(LABEL, { IdentityDisclosure: 'Authorized' });
     const changes = recordChanges();
     await loadProduct();
 
     // When
-    await permissions.change(LABEL, { NFC: 'granted', Notifications: 'granted', ChainSubmit: 'denied' });
+    await permissions.change(LABEL, { IdentityDisclosure: 'granted', Notifications: 'granted', ChainSubmit: 'denied' });
 
     // Then
     expect(core.writes).toEqual([
       { name: 'Notifications', status: 'Authorized' },
-      { name: 'NFC', status: 'Authorized' },
+      { name: 'IdentityDisclosure', status: 'Authorized' },
       { name: 'ChainSubmit', status: 'Denied' },
     ]);
     expect(changes).toEqual([
@@ -280,12 +280,12 @@ describe('product permissions store', () => {
     startPermissions(timers);
     const core = createFakeCore();
     let refusals = 1;
-    core.failWrite = name => (name === 'NFC' && refusals-- > 0 ? new Error('core busy') : null);
+    core.failWrite = name => (name === 'Camera' && refusals-- > 0 ? new Error('core busy') : null);
     const changes = recordChanges();
     await loadProduct();
 
     // When
-    const outcome = permissions.change(LABEL, { NFC: 'granted', Notifications: 'granted' });
+    const outcome = permissions.change(LABEL, { Camera: 'denied', Notifications: 'granted' });
     await timers.advance(299);
 
     // Then
@@ -298,10 +298,10 @@ describe('product permissions store', () => {
     await expect(outcome).resolves.toEqual({ failed: [] });
     expect(core.writes).toEqual([
       { name: 'Notifications', status: 'Authorized' },
-      { name: 'NFC', status: 'Authorized' },
+      { name: 'Camera', status: 'Denied' },
     ]);
     expect(changes).toEqual([
-      { label: LABEL, permissions: ['Notifications', 'NFC'], allowChanged: true, fromPrompt: false },
+      { label: LABEL, permissions: ['Notifications', 'Camera'], allowChanged: true, fromPrompt: false },
     ]);
     expect(captures.exception).not.toHaveBeenCalled();
   });
@@ -311,10 +311,14 @@ describe('product permissions store', () => {
     const timers = createManualTimers();
     startPermissions(timers);
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const core = createFakeCore(LABEL, { NFC: 'Authorized', Notifications: 'Authorized', ChainSubmit: 'Denied' });
+    const core = createFakeCore(LABEL, {
+      IdentityDisclosure: 'Authorized',
+      Notifications: 'Authorized',
+      ChainSubmit: 'Denied',
+    });
     let attempts = 0;
     core.failWrite = name => {
-      if (name !== 'NFC') {
+      if (name !== 'IdentityDisclosure') {
         return null;
       }
       attempts += 1;
@@ -330,7 +334,7 @@ describe('product permissions store', () => {
     await timers.advance(300);
 
     // Then
-    await expect(outcome).resolves.toEqual({ failed: ['NFC'] });
+    await expect(outcome).resolves.toEqual({ failed: ['IdentityDisclosure'] });
     expect(attempts).toBe(3);
     expect(changes).toEqual([
       { label: LABEL, permissions: ['Notifications', 'ChainSubmit'], allowChanged: false, fromPrompt: false },
@@ -341,12 +345,12 @@ describe('product permissions store', () => {
     );
     expect(sentry.counted('permissions.change')).toEqual([{ outcome: 'error', reason: 'write' }]);
     expect(core.reads).toBe(readsBefore + 1);
-    expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ NFC: 'granted' }) });
+    expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ IdentityDisclosure: 'granted' }) });
   });
 
   it('As a user, I press Reset to Secure twice and the second finds the statuses already at Ask and writes nothing', async () => {
     // Given
-    const core = createFakeCore(LABEL, { NFC: 'Authorized' });
+    const core = createFakeCore(LABEL, { Notifications: 'Authorized' });
     const changes = recordChanges();
     await loadProduct();
 
@@ -369,10 +373,10 @@ describe('product permissions store', () => {
     core.writeGate = write.promise;
 
     // When
-    const outcome = permissions.change(LABEL, { NFC: 'granted' });
+    const outcome = permissions.change(LABEL, { Notifications: 'granted' });
 
     // Then
-    expect(permissions.pending.get()).toEqual({ label: LABEL, targets: { NFC: 'granted' } });
+    expect(permissions.pending.get()).toEqual({ label: LABEL, targets: { Notifications: 'granted' } });
 
     // When
     write.resolve(undefined);
@@ -380,7 +384,7 @@ describe('product permissions store', () => {
 
     // Then
     expect(permissions.pending.get()).toBeNull();
-    expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ NFC: 'granted' }) });
+    expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ Notifications: 'granted' }) });
   });
 
   it('As a user, I make three moves in a burst and the queued one is dropped while only the first and the last write', async () => {
@@ -391,7 +395,7 @@ describe('product permissions store', () => {
     core.writeGate = write.promise;
 
     // When
-    const first = permissions.change(LABEL, { NFC: 'granted' });
+    const first = permissions.change(LABEL, { ChainSubmit: 'granted' });
     const dropped = permissions.change(LABEL, { Notifications: 'granted' });
     const last = permissions.change(LABEL, { Location: 'granted' });
 
@@ -404,7 +408,7 @@ describe('product permissions store', () => {
 
     // Then
     expect(droppedOutcome).toEqual({ failed: [] });
-    expect(core.writes.map(({ name }) => name)).toEqual(['NFC', 'Location']);
+    expect(core.writes.map(({ name }) => name)).toEqual(['ChainSubmit', 'Location']);
     expect(permissions.pending.get()).toBeNull();
   });
 
@@ -413,16 +417,16 @@ describe('product permissions store', () => {
     const timers = createManualTimers();
     startPermissions(timers);
     const core = createFakeCore();
-    let nfcAttempts = 0;
+    let olderAttempts = 0;
     core.failWrite = name => {
-      if (name !== 'NFC') {
+      if (name !== 'ChainSubmit') {
         return null;
       }
-      nfcAttempts += 1;
+      olderAttempts += 1;
       return new Error('core down');
     };
     await loadProduct();
-    const older = permissions.change(LABEL, { NFC: 'granted' });
+    const older = permissions.change(LABEL, { ChainSubmit: 'granted' });
     await timers.advance(0);
 
     // When
@@ -430,13 +434,13 @@ describe('product permissions store', () => {
     await timers.advance(600);
 
     // Then
-    await expect(older).resolves.toEqual({ failed: ['NFC'] });
+    await expect(older).resolves.toEqual({ failed: ['ChainSubmit'] });
     await expect(newer).resolves.toEqual({ failed: [] });
-    expect(nfcAttempts).toBe(1);
+    expect(olderAttempts).toBe(1);
     expect(core.writes).toEqual([{ name: 'Notifications', status: 'Authorized' }]);
   });
 
-  it("As a user, I grant a product's prompts and each grant is stored, shown and announced as a prompt answer", async () => {
+  it("As a user, I grant a product's prompt and the grant is stored, shown and announced as a prompt answer", async () => {
     // Given
     createFakeCore();
     const changes = recordChanges();
@@ -445,13 +449,7 @@ describe('product permissions store', () => {
     // When
     await permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
-      decision: 'granted',
-      signal: new AbortController().signal,
-    });
-    await permissions.recordPromptDecision({
-      label: LABEL,
-      name: 'ChainSubmit',
+      name: 'Notifications',
       decision: 'granted',
       signal: new AbortController().signal,
     });
@@ -460,12 +458,9 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
-      statuses: buildStatuses({ NFC: 'granted', ChainSubmit: 'granted' }),
+      statuses: buildStatuses({ Notifications: 'granted' }),
     });
-    expect(changes).toEqual([
-      { label: LABEL, permissions: ['NFC'], allowChanged: true, fromPrompt: true },
-      { label: LABEL, permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true },
-    ]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications'], allowChanged: false, fromPrompt: true }]);
   });
 
   it("As a user, I answer a product's prompt the core cannot store after three attempts and the answer fails, is reported once and changes nothing", async () => {
@@ -484,7 +479,7 @@ describe('product permissions store', () => {
     // When
     const decision = permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
+      name: 'Notifications',
       decision: 'granted',
       signal: new AbortController().signal,
     });
@@ -504,22 +499,22 @@ describe('product permissions store', () => {
   });
 
   it("As a user, I answer a product's prompt Always allow while the statuses read are stale and the answer is still stored", async () => {
-    // Given: NFC read as allowed, then reset to Ask behind the store's back, so the prompt asks
-    const core = createFakeCore(LABEL, { NFC: 'Authorized' });
+    // Given: Notifications read as allowed, then reset to Ask behind the store's back, so the prompt asks
+    const core = createFakeCore(LABEL, { Notifications: 'Authorized' });
     await loadProduct();
-    core.stored.set('NFC', 'NotDetermined');
+    core.stored.set('Notifications', 'NotDetermined');
 
     // When
     await permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
+      name: 'Notifications',
       decision: 'granted',
       signal: new AbortController().signal,
     });
 
     // Then
-    expect(core.writes).toEqual([{ name: 'NFC', status: 'Authorized' }]);
-    expect(core.stored.get('NFC')).toBe('Authorized');
+    expect(core.writes).toEqual([{ name: 'Notifications', status: 'Authorized' }]);
+    expect(core.stored.get('Notifications')).toBe('Authorized');
   });
 
   it("As a user, I answer two prompts and the first one's frame closes its prompt as it hears the answer, and the second answer is still stored and announced", async () => {
@@ -530,7 +525,7 @@ describe('product permissions store', () => {
     const firstPrompt = new AbortController();
     cleanups.push(
       permissions.subscribeChanges(change => {
-        if (change.permissions.includes('NFC')) {
+        if (change.permissions.includes('ChainSubmit')) {
           firstPrompt.abort();
         }
       }),
@@ -539,7 +534,7 @@ describe('product permissions store', () => {
     // When
     const first = permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
+      name: 'ChainSubmit',
       decision: 'granted',
       signal: firstPrompt.signal,
     });
@@ -553,7 +548,7 @@ describe('product permissions store', () => {
 
     // Then
     expect(settled.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
-    expect(changes.map(({ permissions: names }) => names)).toEqual([['NFC'], ['Notifications']]);
+    expect(changes.map(({ permissions: names }) => names)).toEqual([['ChainSubmit'], ['Notifications']]);
   });
 
   it("As a user, I answer a product's prompt queued between two panel changes and the answer is never superseded and still announces", async () => {
@@ -563,7 +558,7 @@ describe('product permissions store', () => {
     await loadProduct();
     const write = Promise.withResolvers<undefined>();
     core.writeGate = write.promise;
-    const first = permissions.change(LABEL, { NFC: 'granted' });
+    const first = permissions.change(LABEL, { ChainSubmit: 'granted' });
     const decision = permissions.recordPromptDecision({
       label: LABEL,
       name: 'Notifications',
@@ -577,7 +572,7 @@ describe('product permissions store', () => {
     await Promise.all([first, decision, last]);
 
     // Then
-    expect(core.writes.map(({ name }) => name)).toEqual(['NFC', 'Notifications', 'Location']);
+    expect(core.writes.map(({ name }) => name)).toEqual(['ChainSubmit', 'Notifications', 'Location']);
     expect(changes).toContainEqual({
       label: LABEL,
       permissions: ['Notifications'],
@@ -601,7 +596,7 @@ describe('product permissions store', () => {
     const prompt = new AbortController();
     const decision = permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
+      name: 'Notifications',
       decision: 'granted',
       signal: prompt.signal,
     });
@@ -629,7 +624,7 @@ describe('product permissions store', () => {
     // When
     const decision = permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
+      name: 'Notifications',
       decision: 'granted',
       signal: prompt.signal,
     });
@@ -640,9 +635,9 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
-      statuses: buildStatuses({ NFC: 'granted' }),
+      statuses: buildStatuses({ Notifications: 'granted' }),
     });
-    expect(changes).toEqual([{ label: LABEL, permissions: ['NFC'], allowChanged: true, fromPrompt: true }]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Notifications'], allowChanged: false, fromPrompt: true }]);
   });
 
   it("As a user, I close a product's prompt while the core refuses its answer and the failure is still reported once", async () => {
@@ -656,7 +651,7 @@ describe('product permissions store', () => {
     // When
     const decision = permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
+      name: 'Notifications',
       decision: 'granted',
       signal: prompt.signal,
     });
@@ -680,7 +675,7 @@ describe('product permissions store', () => {
     const prompt = new AbortController();
     const decision = permissions.recordPromptDecision({
       label: LABEL,
-      name: 'NFC',
+      name: 'Notifications',
       decision: 'granted',
       signal: prompt.signal,
     });
@@ -696,10 +691,10 @@ describe('product permissions store', () => {
     await refresh;
 
     // Then: the refresh reads once, and the core already holds the written grant when it does
-    expect(heldAtRead.get('NFC')).toBe('Authorized');
+    expect(heldAtRead.get('Notifications')).toBe('Authorized');
     await expect(decision).rejects.toThrow('Blocking modal scope disposed');
     expect(core.reads).toBe(readsBefore + 1);
-    expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ NFC: 'granted' }) });
+    expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ Notifications: 'granted' }) });
   });
 
   it('As the last caller, I stop and the store stops following loads', async () => {
@@ -715,21 +710,21 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toEqual({ status: 'none' });
   });
 
-  it('As a user, I revoke NFC while a read fails before my change and the store reads again and the frame is rebuilt', async () => {
-    // Given a product granted NFC, and a read that fails just before the change
-    const core = createFakeCore(LABEL, { NFC: 'Authorized' });
+  it('As a user, I unblock the camera while a read fails before my change and the store reads again and the frame is rebuilt', async () => {
+    // Given a product with the camera blocked, and a read that fails just before the change
+    const core = createFakeCore(LABEL, { Camera: 'Denied' });
     const changes = recordChanges();
     await loadProduct();
     let failures = 1;
     core.failRead = () => (failures-- > 0 ? new Error('core down') : null);
     void permissions.refresh();
 
-    // When NFC is revoked
-    await permissions.change(LABEL, { NFC: 'ask' });
+    // When the camera is unblocked
+    await permissions.change(LABEL, { Camera: 'ask' });
 
     // Then the store shows what the core holds and the change asks for a rebuild
     expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: buildStatuses() });
-    expect(changes).toEqual([{ label: LABEL, permissions: ['NFC'], allowChanged: true, fromPrompt: false }]);
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: true, fromPrompt: false }]);
   });
 
   it("As a user, I grant a product's prompt while a read fails before it and the store reads again", async () => {
@@ -765,7 +760,7 @@ describe('product permissions store, as the permissions popover reads it', () =>
     await loadProduct();
     const write = Promise.withResolvers<undefined>();
     first.writeGate = write.promise;
-    const outcome = permissions.change(LABEL, { NFC: 'granted' });
+    const outcome = permissions.change(LABEL, { ChainSubmit: 'granted' });
 
     // When the app changes, its read held, and the write is released
     other.holdReads = true;
@@ -774,7 +769,7 @@ describe('product permissions store, as the permissions popover reads it', () =>
     await outcome;
 
     // Then
-    expect(first.stored.get('NFC')).toBe('Authorized');
+    expect(first.stored.get('ChainSubmit')).toBe('Authorized');
     expect(permissions.state.get()).toEqual({ status: 'reading', label: 'other' });
 
     // When
@@ -795,7 +790,7 @@ describe('product permissions store, as the permissions popover reads it', () =>
     await loadProduct();
     const write = Promise.withResolvers<undefined>();
     first.writeGate = write.promise;
-    const outcome = permissions.change(LABEL, { NFC: 'granted' });
+    const outcome = permissions.change(LABEL, { ChainSubmit: 'granted' });
 
     // When the user goes to another app and back, and the write lands
     productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
@@ -810,7 +805,7 @@ describe('product permissions store, as the permissions popover reads it', () =>
 
   it("As a user, I switch apps while the popover is open and never see the previous app's statuses for the new one", async () => {
     // Given
-    createFakeCore('first', { NFC: 'Authorized' });
+    createFakeCore('first', { Notifications: 'Authorized' });
     createFakeCore('other');
     productState.setLoaded({ label: 'first', productId: asProductId('first.dot') });
     await permissions.refresh();

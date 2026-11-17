@@ -18,7 +18,6 @@ describe('PERMISSION_CATALOG', () => {
     { name: 'Location', directive: 'geolocation', request: { tag: 'Device', value: 'Location' } },
     { name: 'Motion', directive: 'accelerometer; gyroscope', request: { tag: 'Device', value: 'Motion' } },
     { name: 'Bluetooth', directive: 'bluetooth', request: { tag: 'Device', value: 'Bluetooth' } },
-    { name: 'NFC', directive: 'nfc', request: { tag: 'Device', value: 'NFC' } },
     { name: 'Clipboard', directive: 'clipboard-read', request: { tag: 'Device', value: 'Clipboard' } },
     { name: 'Biometrics', directive: 'publickey-credentials-get', request: { tag: 'Device', value: 'Biometrics' } },
     { name: 'IdentityDisclosure', directive: null, request: { tag: 'IdentityDisclosure' } },

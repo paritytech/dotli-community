@@ -7,18 +7,19 @@ import type { HostDevicePermissionRequest, RemotePermission } from '@parity/trua
 import type { UserConfirmationReview } from '@parity/truapi-host';
 import {
   isBrowserConsented,
-  isEnforceableDevicePermission,
+  isUnsupportedPermission,
   type EnforceablePermissionName,
 } from '../../permissions/index.js';
 
 /**
- * How the host answers one permission: by asking the user, by leaving it to the browser's own prompt, at once, or by
- * refusing a request it does not serve.
+ * How the host answers one permission: by asking the user, by leaving it to the browser's own prompt, by granting or
+ * denying it at once, or by refusing a request it does not serve.
  */
 export type ServeRule =
   | { kind: 'prompt'; name: EnforceablePermissionName }
   | { kind: 'browser'; name: EnforceablePermissionName }
   | { kind: 'grant' }
+  | { kind: 'deny' }
   | { kind: 'refuse' };
 
 /** A review this host shows. The browser core serves no NFT purses. */
@@ -30,8 +31,11 @@ export const servedRequests = { getDeviceRule, getRemoteRule, isServed };
 /** How the host answers a device permission `tag`. Never throws. */
 function getDeviceRule(tag: HostDevicePermissionRequest): ServeRule {
   // OpenUrl has no host-side enforcement point, so a deny button could not block it.
-  if (!isEnforceableDevicePermission(tag)) {
+  if (tag === 'OpenUrl') {
     return { kind: 'grant' };
+  }
+  if (isUnsupportedPermission(tag)) {
+    return { kind: 'deny' };
   }
   if (isBrowserConsented(tag)) {
     return { kind: 'browser', name: tag };

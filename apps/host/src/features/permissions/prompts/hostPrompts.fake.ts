@@ -10,7 +10,7 @@ import { modals, type ModalView, type NotificationParams } from '@dotli/ui';
 import { isGranted, isRetry, type BrowserBlockAnswer, type GrantAnswer, type HostPrompts } from './hostPrompts.js';
 
 export type FakePrompt =
-  | { kind: 'permission'; label: string; permission: EnforceablePermissionName; allowOnce: boolean }
+  | { kind: 'permission'; label: string; permission: EnforceablePermissionName }
   | { kind: 'browserBlock'; label: string; permission: EnforceablePermissionName; retried: boolean }
   | { kind: 'review'; dialog: ModalView<string> };
 
@@ -40,8 +40,8 @@ export function createFakePrompts() {
   const notices: NotificationParams[] = [];
 
   const prompts: HostPrompts = {
-    askPermission: ({ label, permission, signal, allowOnce, onApprove }) =>
-      ask<GrantAnswer>({ kind: 'permission', label, permission, allowOnce }, signal, answer => {
+    askPermission: ({ label, permission, signal, onApprove }) =>
+      ask<GrantAnswer>({ kind: 'permission', label, permission }, signal, answer => {
         if (isGranted(answer)) {
           onApprove?.();
         }

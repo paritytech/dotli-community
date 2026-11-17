@@ -24,6 +24,10 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## Code structure
 
+- [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one
+  variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
+- [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
+  protocol's set is dropped, and several pieces of logic walk the catalog built on those names.
 - [existing-call-needs-a-variant](existing-call-needs-a-variant.md): a shared primitive needs a second form of a call
   that differs in one aspect.
 - [files-away-from-their-feature](files-away-from-their-feature.md): files that serve one feature sit in a top-level
@@ -37,6 +41,11 @@ The owner may change or remove any rule. A change here lands in the same commit 
   value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
+
+## Product requests
+
+- [permission-request-the-host-no-longer-offers](permission-request-the-host-no-longer-offers.md): a product requests a
+  permission the host removed from its UI because the capability cannot work where products run.
 
 ## UI
 

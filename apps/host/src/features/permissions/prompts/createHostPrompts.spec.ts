@@ -110,44 +110,33 @@ describe('permission request', () => {
   it.each<{
     story: string;
     permission: EnforceablePermissionName;
-    allowOnce: boolean;
     answer: () => void;
     expected: GrantAnswer;
   }>([
     {
-      story: 'Allow',
-      permission: 'Camera',
-      allowOnce: false,
-      answer: pressButton('Allow'),
-      expected: 'granted',
-    },
-    {
       story: 'Deny',
-      permission: 'Camera',
-      allowOnce: false,
+      permission: 'Notifications',
       answer: pressButton('Deny'),
       expected: 'denied',
     },
-    { story: 'a backdrop click', permission: 'Camera', allowOnce: false, answer: dismissModal, expected: 'dismissed' },
+    { story: 'a backdrop click', permission: 'Notifications', answer: dismissModal, expected: 'dismissed' },
     {
       story: 'Allow once',
       permission: 'ChainSubmit',
-      allowOnce: true,
       answer: pressButton('Allow once'),
       expected: 'granted-once',
     },
     {
       story: 'Always allow',
       permission: 'ChainSubmit',
-      allowOnce: true,
       answer: pressButton('Always allow'),
       expected: 'granted',
     },
   ])(
     'As a dotli user, I answer a permission prompt with $story and the app gets $expected',
-    async ({ permission, allowOnce, answer, expected }) => {
+    async ({ permission, answer, expected }) => {
       // Given
-      const decision = prompts.askPermission({ label: 'myapp', permission, signal: createLiveSignal(), allowOnce });
+      const decision = prompts.askPermission({ label: 'myapp', permission, signal: createLiveSignal() });
 
       // When
       answer();
@@ -157,27 +146,13 @@ describe('permission request', () => {
     },
   );
 
-  it('As a dotli user, I get a device permission prompt and it names the app on the active network and says granting reloads it', () => {
+  it('As a dotli user, I get a permission prompt and it names the app on the active network', () => {
     // When
-    void prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: createLiveSignal(), allowOnce: false });
+    void prompts.askPermission({ label: 'myapp', permission: 'Notifications', signal: createLiveSignal() });
     const { view } = shownModal();
 
     // Then
     expect(view.fields[0]).toEqual({ label: 'App', value: withActiveTld('myapp') });
-    expect(view.notice).toBe('Granting this permission reloads the app.');
-  });
-
-  it('As a dotli user, I get a prompt for an app permission and it says nothing of a reload', () => {
-    // When
-    void prompts.askPermission({
-      label: 'myapp',
-      permission: 'ChainSubmit',
-      signal: createLiveSignal(),
-      allowOnce: true,
-    });
-
-    // Then
-    expect(shownModal().view.notice).toBeUndefined();
   });
 
   it('As a dotli integrator, I abort a queued dialog and it goes down unanswered', async () => {
@@ -185,9 +160,8 @@ describe('permission request', () => {
     const controller = new AbortController();
     const decision = prompts.askPermission({
       label: 'myapp',
-      permission: 'Camera',
+      permission: 'Notifications',
       signal: controller.signal,
-      allowOnce: false,
     });
 
     // When
@@ -203,14 +177,13 @@ describe('permission request', () => {
     const onApprove = vi.fn();
     void prompts.askPermission({
       label: 'myapp',
-      permission: 'Camera',
+      permission: 'Notifications',
       signal: createLiveSignal(),
-      allowOnce: false,
       onApprove,
     });
 
     // When
-    chooseModalButton('Allow');
+    chooseModalButton('Always allow');
 
     // Then
     expect(onApprove).toHaveBeenCalledOnce();
@@ -226,9 +199,8 @@ describe('permission request', () => {
       const onApprove = vi.fn();
       const decision = prompts.askPermission({
         label: 'myapp',
-        permission: 'Camera',
+        permission: 'Notifications',
         signal: createLiveSignal(),
-        allowOnce: false,
         onApprove,
       });
 
@@ -248,7 +220,6 @@ describe('permission request', () => {
       label: 'myapp',
       permission: 'ChainSubmit',
       signal: createLiveSignal(),
-      allowOnce: true,
       onApprove,
     });
 
@@ -272,7 +243,7 @@ describe('browser block', () => {
       const onRetry = vi.fn();
       const decision = prompts.askBrowserBlock({
         label: 'myapp',
-        permission: 'Camera',
+        permission: 'Notifications',
         signal: createLiveSignal(),
         retried: false,
         onRetry,
@@ -291,7 +262,7 @@ describe('browser block', () => {
     // When
     void prompts.askBrowserBlock({
       label: 'myapp',
-      permission: 'Camera',
+      permission: 'Notifications',
       signal: createLiveSignal(),
       retried: false,
       onRetry: () => undefined,
@@ -305,7 +276,7 @@ describe('browser block', () => {
 describe('host prompt test id', () => {
   it("As a dotli developer, I open any host prompt and it carries the host's own test id", () => {
     // When
-    void prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: createLiveSignal(), allowOnce: false });
+    void prompts.askPermission({ label: 'myapp', permission: 'Notifications', signal: createLiveSignal() });
 
     // Then
     expect(shownModal().view.testId).toBe('host-prompt');

@@ -21,8 +21,6 @@ type AskPermissionParams = {
   permission: EnforceablePermissionName;
   /** Ends the ask. */
   signal: AbortSignal;
-  /** Whether the user may grant it for this execution only. */
-  allowOnce: boolean;
   /** Runs inside the click that grants it, so it may ask the browser for what needs a user gesture. */
   onApprove?: (() => void) | undefined;
 };

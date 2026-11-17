@@ -80,6 +80,17 @@ describe('device permission prompts', () => {
     expect(page.listPending()).toEqual([]);
   });
 
+  it('As a product developer, I ask for NFC and it is denied without a prompt', async () => {
+    // Given a product with no stored permissions and no prompt on show
+
+    // When
+    const answer = await createPrompts().devicePermission(PRODUCT, 'NFC');
+
+    // Then
+    expect(answer).toBe('Deny');
+    expect(page.listPending()).toEqual([]);
+  });
+
   it('As a product developer, I ask for the camera while the browser cannot say its status and it is granted once without a dot.li prompt', async () => {
     // Given
     const browser = createFakeBrowser({ read: () => Promise.resolve('unknown') });
@@ -157,25 +168,6 @@ describe('three-way permission prompts', () => {
     },
   );
 
-  it('As a user, I see an NFC prompt and it offers no one-time grant because granting reloads the app', async () => {
-    // Given a product with no stored NFC permission
-
-    // When
-    const response = createPrompts().devicePermission(PRODUCT, 'NFC');
-    await page.waitForPrompt();
-    const shown = page.getShown();
-
-    // Then
-    expect(shown).toMatchObject({ kind: 'permission', permission: 'NFC', allowOnce: false });
-    expect(page.listPending()).toHaveLength(1);
-
-    // When
-    await clickPromptButton('Deny');
-
-    // Then
-    await expect(response).resolves.toBe('Deny');
-  });
-
   it('As a user with a stored notification denial, I am asked for notifications and it is denied with a quiet blocked notice and no prompt', async () => {
     // Given
     await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'denied' });
@@ -218,9 +210,7 @@ describe('queued permission prompts', () => {
     // Given a dialog that holds the queue until the user answers it
     await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'granted' });
     const scope = createBlockingModalCoordinator().createScope();
-    void scope.enqueue(signal =>
-      page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal, allowOnce: true }),
-    );
+    void scope.enqueue(signal => page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal }));
     await page.waitForPrompt();
 
     // When
@@ -303,23 +293,22 @@ describe('the browser asked at approval', () => {
     expect(browser.request).not.toHaveBeenCalled();
   });
 
-  it('As a dotli user, I allow NFC my browser blocks and restrict it, and the product is denied and the denial stored', async () => {
-    // Given a browser that blocks NFC
+  it('As a dotli user, I always allow notifications my browser blocks and restrict it, and the product is denied and the denial stored', async () => {
+    // Given a browser that blocks notifications
     const recorded = recordChanges();
-    const browser = createFakeBrowser({ read: () => Promise.resolve('denied') });
-    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'NFC');
-    await page.waitForPrompt();
-    page.decide('granted');
+    const browser = createFakeBrowser({ request: () => Promise.resolve('denied') });
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Notifications');
+    await clickPromptButton('Always allow');
     await page.waitForPrompt({ matches: isBrowserBlock });
 
     // When
     page.answerBrowserBlock('restrict');
     const heard = await response;
-    const stored = await registry.getStatus('myapp', 'NFC');
+    const stored = await registry.getStatus('myapp', 'Notifications');
 
     // Then
     expect({ heard, stored }).toEqual({ heard: 'Deny', stored: 'denied' });
-    expect(recorded).toMatchObject([{ label: 'myapp', permissions: ['NFC'] }]);
+    expect(recorded).toMatchObject([{ label: 'myapp', permissions: ['Notifications'] }]);
   });
 
   it('As a dotli user, I allow notifications my browser blocks and close the warning, and the grant stands', async () => {
@@ -380,7 +369,7 @@ describe('prompt rate limiting', () => {
     }
 
     // When
-    const overBudget = permissions.devicePermission(PRODUCT, 'NFC');
+    const overBudget = permissions.remotePermission(PRODUCT, { permission: { tag: 'ChainSubmit' } });
 
     // Then it shares that budget and is rate limited instead of showing one modal over the budget
     await expect(overBudget).rejects.toThrow('Permission prompt rate limited');
@@ -467,13 +456,8 @@ function getRequestKey(request: PermissionAuthorizationRequest): string {
   }
 }
 
-/** The permission dialog's buttons: a one-time grant splits the lasting one into always and once. */
-function isOffered(allowOnce: boolean, text: PromptButton): boolean {
-  return allowOnce || text === 'Deny';
-}
-
 /** Presses the permission dialog's button with this label, once a prompt that offers it is up. */
 async function clickPromptButton(text: PromptButton): Promise<void> {
-  await page.waitForPrompt({ matches: prompt => prompt.kind === 'permission' && isOffered(prompt.allowOnce, text) });
+  await page.waitForPrompt({ matches: prompt => prompt.kind === 'permission' });
   page.decide(DECISIONS[text]);
 }

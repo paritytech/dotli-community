@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The core keeps "Allow once" for the current execution, so it is offered only where the core is the
-// gate. A grant gated by the iframe `allow` attribute reloads the product into a new execution, which
-// would drop it. Auto-grants answer `AllowOnce` so the core records nothing the user never saw, and so does a device
-// whose consent is the browser's own prompt.
+// The core keeps "Allow once" for the current execution. Auto-grants answer `AllowOnce` so the core records nothing the
+// user never saw, and so does a device whose consent is the browser's own prompt.
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
@@ -12,7 +10,7 @@ import type { HostDevicePermissionRequest, RemotePermissionRequest } from '@pari
 import type { BrowserPermissions, BrowserPermissionStatus } from '../../permissions/index.js';
 import { isBrowserBlocked } from '../../permissions/index.js';
 import type { PermissionAuthorizations } from '../../permissions/index.js';
-import { hasFrameDirective, type EnforceablePermissionName, type PermissionStatus } from '../../permissions/index.js';
+import type { EnforceablePermissionName, PermissionStatus } from '../../permissions/index.js';
 import { throwIfModalAborted } from '../../../kit/throwIfModalAborted.js';
 import { createSubmitRateLimiter } from './createSubmitRateLimiter.js';
 import type { CoreContext } from '../core/createPageCore.js';
@@ -56,7 +54,8 @@ type PromptRequest = {
 
 /**
  * Answers the core's device and remote permission asks from the stored status, or else by asking the user in the
- * page's prompt queue. A device whose consent is the browser's own prompt is allowed once with no dialog. Rejects when
+ * page's prompt queue. A device whose consent is the browser's own prompt is allowed once with no dialog, and one the
+ * host no longer offers is denied with no dialog. Rejects when
  * the prompts go past the rate limit, the user dismisses the dialog, the browser blocks such a device
  * (`ERRORS.BROWSER_BLOCKED_DEVICE`), or the permission guards a request this host does not serve.
  */
@@ -83,6 +82,8 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
     switch (rule.kind) {
       case 'grant':
         return 'AllowOnce';
+      case 'deny':
+        return 'Deny';
       case 'refuse':
         throw new Error(ERRORS.UNSERVED_REQUEST);
       case 'browser':
@@ -134,8 +135,6 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
     signal: AbortSignal,
   ): Promise<PermissionDecision> {
     const { name } = request;
-    // A grant reloads the product.
-    const gatedByIframe = hasFrameDirective(name);
     // An earlier prompt for the same permission may have answered it while this one waited.
     const status = await permissions.registry.getStatus(label, name);
     throwIfModalAborted(signal);
@@ -152,7 +151,6 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
       label,
       permission: name,
       signal,
-      allowOnce: !gatedByIframe,
       onApprove() {
         // The browser prompts only within the click, so it is asked here rather than after the answer settles.
         approval.request = browser.request(name);

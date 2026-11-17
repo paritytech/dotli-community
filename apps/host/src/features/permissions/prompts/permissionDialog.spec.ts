@@ -4,24 +4,15 @@
 import { describe, expect, it } from 'vitest';
 import { getGrantButtons, permissionRequestDialog, type PermissionRequest } from './permissionDialog.js';
 
-const CAMERA: PermissionRequest = { app: 'myapp.dot', permission: 'Camera', allowOnce: false, reloads: true };
+const NOTIFICATIONS: PermissionRequest = { app: 'myapp.dot', permission: 'Notifications' };
 
 describe('permission request dialog', () => {
-  it('As a dotli user, a device prompt says that granting reloads the app', () => {
-    // When
-    const view = permissionRequestDialog(CAMERA);
-
-    // Then
-    expect(view.notice).toBe('Granting this permission reloads the app.');
-  });
-
   it('As a dotli user, a prompt names the app, and a dismissal is no denial', () => {
     // When
-    const view = permissionRequestDialog({ ...CAMERA, reloads: false });
+    const view = permissionRequestDialog(NOTIFICATIONS);
 
     // Then
     expect(view.fields).toContainEqual({ label: 'App', value: 'myapp.dot' });
-    expect(view.notice).toBeUndefined();
     expect(view.dismissOnBackdrop).toBe(true);
     expect(view.dismissResult).toBe('dismissed');
   });

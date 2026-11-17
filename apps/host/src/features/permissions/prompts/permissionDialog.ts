@@ -10,10 +10,6 @@ export type PermissionRequest = {
   /** The app's name as the user reads it. */
   app: string;
   permission: EnforceablePermissionName;
-  /** Offers a one-time grant beside the lasting one. */
-  allowOnce: boolean;
-  /** Granting rebuilds the app's frame, so the dialog says the app reloads. */
-  reloads: boolean;
 };
 
 type GetGrantButtonsParams = {
@@ -34,8 +30,7 @@ export function permissionRequestDialog(request: PermissionRequest): ModalView<G
       { label: 'App', value: request.app },
       { label: 'Permission', value: PERMISSION_CATALOG[request.permission].description },
     ],
-    ...(request.reloads ? { notice: 'Granting this permission reloads the app.' } : {}),
-    buttons: getGrantButtons({ allowOnce: request.allowOnce }),
+    buttons: getGrantButtons({ allowOnce: true }),
     dismissOnBackdrop: true,
     dismissResult: 'dismissed',
   };

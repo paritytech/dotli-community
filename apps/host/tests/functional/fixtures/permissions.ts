@@ -22,7 +22,6 @@ const DOTLI_PERMISSIONS = [
   'Microphone',
   'Location',
   'Bluetooth',
-  'NFC',
   'Clipboard',
   'Biometrics',
   'ChainSubmit',
