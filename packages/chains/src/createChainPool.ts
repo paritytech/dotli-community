@@ -134,7 +134,7 @@ type WatchChain = {
 /** The watchers' own follow on a held chain. */
 type Watch =
   | { kind: 'off'; chain: WatchChain }
-  | { kind: 'open'; chain: WatchChain; follow: WatchFollow; following: boolean }
+  | { kind: 'open'; chain: WatchChain; follow: WatchFollow }
   | {
       kind: 'refused';
       chain: WatchChain;
@@ -188,7 +188,7 @@ type PoolEvent =
   | { kind: 'laneStatus'; key: string; lanes: ChainLanes }
   | { kind: 'laneHalted'; key: string; lanes: ChainLanes; error: unknown }
   | { kind: 'syncDue'; key: string; watched: boolean }
-  | { kind: 'followChanged'; key: string; follow: WatchFollow; following: boolean }
+  | { kind: 'followChanged'; key: string; follow: WatchFollow }
   | { kind: 'followRefused'; key: string; follow: WatchFollow }
   | { kind: 'bestBlock'; key: string; follow: WatchFollow; blockNumber: number }
   | { kind: 'retryDue'; key: string }
@@ -317,11 +317,7 @@ export function createChainPool({
       },
       open: {
         syncDue: leaveWhenUnwatched,
-        followChanged(watch, { key, following }, { emitState, emitSideEffect }) {
-          if (watch.following === following) {
-            return;
-          }
-          emitState({ ...watch, following });
+        followChanged(_watch, { key }, { emitSideEffect }) {
           emitSideEffect({ kind: 'activity', key });
         },
         followRefused(watch, { key }, transition) {
@@ -750,7 +746,8 @@ export function createChainPool({
       return { genesisHash: key, consumers: 0, status, following: false };
     }
     const { watch } = entry;
-    return { genesisHash: key, consumers: entry.leases, status, following: watch.kind === 'open' && watch.following };
+    const following = watch.kind === 'open' && watch.follow.isFollowing();
+    return { genesisHash: key, consumers: entry.leases, status, following };
   }
 
   /** Moves a live entry to closed, and tells its status and its close. */
@@ -823,8 +820,8 @@ export function createChainPool({
       follow = openWatchFollow({
         sessionId,
         connect: onMessage => chain.lanes.connect({ sessionId, onMessage, wireMode: 'object' }),
-        onFollowing: following => {
-          update({ kind: 'followChanged', key, follow, following });
+        onFollowing: () => {
+          update({ kind: 'followChanged', key, follow });
         },
         onRefused: () => {
           update({ kind: 'followRefused', key, follow });
@@ -838,7 +835,7 @@ export function createChainPool({
       update({ kind: 'followFailed', key, lanes: chain.lanes, error });
       return;
     }
-    const open: Watch = { kind: 'open', chain, follow, following: false };
+    const open: Watch = { kind: 'open', chain, follow };
     emitState(open);
     // Logged once the follow's session is open, so its end logs the stop.
     emitSideEffect({ kind: 'followed', key });
