@@ -1,6 +1,6 @@
 # A cleanup finds a shape that matches one of its rules
 
-You are running a simplification pass, by hand or through the `reducing-complexity` skill. A shape in the module matches
+You are running a simplification pass, by hand or through the `reduce-complexity` skill. A shape in the module matches
 one of the pass's rules, such as a helper left with one caller or several switches over one union. Or a rater lists it
 as an item to fix. Do you apply the rule's move because the pattern matches, or only when the code reads better after it?
 And when a pass has already made code read worse, how do you correct the pass?
