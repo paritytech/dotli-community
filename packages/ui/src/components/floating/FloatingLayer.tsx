@@ -45,7 +45,8 @@ export type FloatingLayerProps = {
 /**
  * The anchored base of Popover, DropdownMenu and Tooltip, portalled to the body because the bar's backdrop filter
  * would place a fixed surface against the bar. Browser closes and a ModalLayer showing come back as `onClose`.
- * A press in the product's iframe only blurs the window and focus can leave by script, so both close it too.
+ * A press in the product's iframe only blurs the window and focus can leave by script, so both close it too. A blur
+ * to the browser's own UI or to another app leaves it open.
  */
 export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   let surface: HTMLDivElement | undefined;
@@ -124,8 +125,13 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
       }
     }
 
+    // A press in an embedded frame reaches the page only as a blur with that frame focused. The browser's own UI or
+    // another app takes the window's focus with no element of the page, and the layer stays open, as a native one does.
     function handleBlur(): void {
-      props.onClose('blur');
+      const active = document.activeElement;
+      if (active instanceof HTMLIFrameElement && !isInside(active)) {
+        props.onClose('blur');
+      }
     }
 
     function handleFocusOut(event: FocusEvent): void {
