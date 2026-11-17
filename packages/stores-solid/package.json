@@ -17,10 +17,10 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@solidjs/vite-plugin": "3.0.0-next.57"
+    "@solidjs/vite-plugin": "3.0.0"
   },
   "dependencies": {
     "nanostores": "1.5.5",
-    "solid-js": "2.0.0-rc.22"
+    "solid-js": "2.0.0"
   }
 }
