@@ -13,8 +13,12 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [agent-runs-a-skill-that-asks](agent-runs-a-skill-that-asks.md): an agent with no direct line to the owner runs a
   skill that asks the user.
+- [cleanup-move-matches-a-rule](cleanup-move-matches-a-rule.md): a simplification pass finds a shape that matches one
+  of its rules, or a rater lists it.
 - [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md): a simple design competes with
   elaborate ones that guard a size or a setup.
+- [owner-approves-in-advance](owner-approves-in-advance.md): the owner approved a change in advance, and its gates or a
+  follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to
   need it too.
 
@@ -34,4 +38,6 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## UI
 
+- [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
+  over a body and trailing controls taller than the title's line.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.

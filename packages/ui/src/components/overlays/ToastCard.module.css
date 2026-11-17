@@ -4,15 +4,11 @@
 .card {
   /* The board's 8 px step on the narrower card. */
   --pile-step: 7px;
-  /* Two rows: the title's, which the icon, the action and the close share, centred on it, and the body's under it. */
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  grid-auto-columns: auto;
+  /* One row on a shared centre line. The text stacks in its own column, so a control taller than the title never
+     spreads the title from the body. */
+  display: flex;
   align-items: center;
-  column-gap: var(--sp-3);
-  /* Room for the link's focus ring below the title. */
-  row-gap: var(--sp-1);
+  gap: var(--sp-3);
   box-sizing: border-box;
   min-width: 0;
   margin: 0;
@@ -62,7 +58,7 @@
 }
 .icon {
   display: flex;
-  grid-area: 1 / 1;
+  flex: none;
   margin: 0;
   padding: 0;
   color: var(--tone);
@@ -73,12 +69,12 @@
   height: 20px;
 }
 
-/* The title on the card's first row and the body on its second. */
+/* The line heights' own leading spaces the title from the body. */
 .text {
-  display: grid;
-  grid-template-rows: subgrid;
-  grid-area: 1 / 2 / 3;
-  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
   box-sizing: border-box;
   min-width: 0;
   margin: 0;
@@ -101,7 +97,7 @@
 }
 
 .body {
-  align-self: start;
+  max-width: 100%;
   margin: 0;
   color: var(--chrome-text-muted);
   font-size: var(--fs-small);
@@ -109,7 +105,6 @@
 }
 /* Underlined at rest so it reads as a link. Its hover and focus ring hug the text, not the card's width. */
 a.body {
-  justify-self: start;
   border-radius: var(--r-hair);
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -117,14 +112,15 @@ a.body {
 a.body:hover {
   color: var(--chrome-text);
 }
+/* On its line box, whose leading already clears the text, so the ring stays off the title. */
 a.body:focus-visible {
   outline: var(--chrome-focus-ring);
-  outline-offset: 2px;
+  outline-offset: 0;
 }
 
 .action,
 .close {
-  grid-row: 1;
+  flex: none;
 }
 /* The action's ring, so the two read as one set of controls. */
 .close {
