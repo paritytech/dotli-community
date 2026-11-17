@@ -202,12 +202,12 @@ async function runSignOut({ taken, enabled, notified, read, firstParty }: RunSig
 }
 
 /**
- * Starts the sign-in flow for `flow.intent`, whose views name the page `flow.page` and which hands what the store
- * holds to `flow.deliver`, on the window's own store and core.
+ * Starts the sign-in flow for `flow.intent`, whose views name the page `flow.page` and which hands that page what the
+ * store holds, on the window's own store and core.
  */
 function startFlow(
   bridge: HostBridge,
-  flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'page' | 'deliver' | 'close'>,
+  flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'page' | 'close'>,
 ): WindowFlow {
   const started = createWindowFlow({
     auth: authState.store,
@@ -227,12 +227,17 @@ function openFlow({ responder, intent, origin, bridge }: OpenFlowParams): void {
   const { screen } = startFlow(bridge, {
     responder,
     intent,
-    // dot.li's own pages are named by their host.
-    page: origin === null ? null : new URL(origin).host,
-    deliver(result: SessionResult) {
-      // Now, or with the next vetting of a window restored from the back-forward cache meanwhile.
-      responder.send(result);
-    },
+    page:
+      origin === null
+        ? null
+        : {
+            // dot.li's own pages are named by their host.
+            name: new URL(origin).host,
+            deliver(result: SessionResult) {
+              // Now, or with the next vetting of a window restored from the back-forward cache meanwhile.
+              responder.send(result);
+            },
+          },
     close: closeWindow,
   });
   sessionWindowState.showScreen(screen);

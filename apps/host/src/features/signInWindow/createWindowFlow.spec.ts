@@ -199,13 +199,18 @@ function openWindow(options: OpenWindowParams = {}) {
     },
     loadPhrase: options.loadPhrase ?? (() => Promise.resolve(PHRASE_CHECK)),
     intent: options.intent ?? 'signin',
-    page: opener === null ? null : (options.page ?? new URL(PAGE).host),
-    deliver(result) {
-      delivered.push(result);
-      if (options.forward !== false) {
-        responder.send(result);
-      }
-    },
+    page:
+      opener === null
+        ? null
+        : {
+            name: options.page ?? new URL(PAGE).host,
+            deliver(result) {
+              delivered.push(result);
+              if (options.forward !== false) {
+                responder.send(result);
+              }
+            },
+          },
     close() {
       calls.push('close');
       closed.resolve(undefined);

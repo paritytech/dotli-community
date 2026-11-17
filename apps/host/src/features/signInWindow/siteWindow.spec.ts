@@ -44,7 +44,7 @@ type OpenTransactionWindowParams = {
 };
 
 /** What a site's window flow calls once it stored a sign-in. */
-type SiteWindowFlowDeliver = Parameters<SiteWindowParams['createWindowFlow']>[0]['deliver'];
+type SiteWindowFlowDeliver = Parameters<SiteWindowParams['createWindowFlow']>[0]['page']['deliver'];
 
 /** One view the window showed, with the page or route it names. */
 type ShownView = { view: string; pageHost?: string | null; route?: string };
@@ -147,7 +147,7 @@ function createWindowParts({
         ...flow,
       });
       flows.push(started);
-      deliveries.push(flow.deliver);
+      deliveries.push(flow.page.deliver);
       return {
         ...started,
         screen: flowScreen ?? started.screen,

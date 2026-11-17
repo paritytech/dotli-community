@@ -91,10 +91,13 @@ export type WindowFlowParams = {
    * send.
    */
   intent: SignInIntent;
-  /** The page the window signs in for, as the views name it, or null when no page opened the window. */
-  page: string | null;
-  /** Takes what the store holds once the flow ended its round for a page. Must not throw. */
-  deliver: (result: SessionResult) => void;
+  /** The page the window signs in for, or null when no page opened the window. */
+  page: {
+    /** The page as the views name it. */
+    name: string;
+    /** Takes what the store holds once the flow ended its round for the page. Must not throw. */
+    deliver: (result: SessionResult) => void;
+  } | null;
   /** Closes the window. */
   close: () => void;
 };
@@ -188,7 +191,7 @@ type Effect =
   | { kind: 'importRejected'; reply: ImportReply; error: Error }
   | { kind: 'phraseMissed'; error: unknown }
   | { kind: 'logged'; line: string }
-  | { kind: 'delivered'; result: SessionResult }
+  | { kind: 'delivered'; result: SessionResult; to: NonNullable<WindowFlowParams['page']> }
   | { kind: 'closed' };
 
 type WindowMachine = MachineTypes<State, Event, Effect>;
@@ -233,7 +236,6 @@ export function createWindowFlow({
   loadPhrase,
   intent: asked,
   page,
-  deliver,
   close,
 }: WindowFlowParams) {
   const reads = createMainStoreReads({ store, wallet });
@@ -582,7 +584,7 @@ export function createWindowFlow({
         responderMoved(_state, event, transition) {
           switch (event.state.kind) {
             case 'refused':
-              transition.emitState({ kind: 'refused', screen: getStopScreen('refused', page) });
+              transition.emitState({ kind: 'refused', screen: getStopScreen('refused', page?.name ?? null) });
               return;
             case 'answered':
               transition.emitSideEffect({ kind: 'closed' });
@@ -600,9 +602,9 @@ export function createWindowFlow({
             emitSideEffect({ kind: 'logged', line: 'sign-in window signed in with no opener' });
             return;
           }
-          emitState({ kind: 'ended', screen: getSignInScreen(flow.shown, page) });
+          emitState({ kind: 'ended', screen: getSignInScreen(flow.shown, page.name) });
           emitSideEffect({ kind: 'logged', line: 'sign-in window sends its result' });
-          emitSideEffect({ kind: 'delivered', result });
+          emitSideEffect({ kind: 'delivered', result, to: page });
         },
         cancelAsked: closeWindow,
         disposed: disposeWindow,
@@ -664,7 +666,7 @@ export function createWindowFlow({
           report.log.event(effect.line);
           return;
         case 'delivered':
-          deliver(effect.result);
+          effect.to.deliver(effect.result);
           return;
         case 'closed':
           close();
@@ -839,7 +841,7 @@ export function createWindowFlow({
   function getScreen(state: State): SignInScreen {
     switch (state.kind) {
       case 'live':
-        return getSignInScreen(state.flow.shown, page);
+        return getSignInScreen(state.flow.shown, page?.name ?? null);
       case 'refused':
       case 'ended':
       case 'disposed':

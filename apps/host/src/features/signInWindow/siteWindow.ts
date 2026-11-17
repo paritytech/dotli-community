@@ -21,7 +21,10 @@ import type { SiteTransactionRequest } from '../siteSignIn/index.js';
 import type { SiteTxSigner } from '../siteSignIn/index.js';
 
 /** What the site's round decides for its window flow, which the caller completes with the window's own parts. */
-type CreateWindowFlowParams = Pick<WindowFlowParams, 'responder' | 'intent' | 'page' | 'deliver' | 'close'>;
+type CreateWindowFlowParams = Pick<WindowFlowParams, 'responder' | 'intent' | 'close'> & {
+  /** The site the window signs in for, which always opened it. */
+  page: NonNullable<WindowFlowParams['page']>;
+};
 
 export type SiteWindowParams = {
   request: SiteRequest;
@@ -87,11 +90,13 @@ function getWindowFlowStart({
     createWindowFlow({
       responder,
       intent: 'resume',
-      // A site is named by its full origin, so two sites on one host never read the same.
-      page: origin,
-      // The result stays here, so nothing of the session reaches the round.
-      deliver() {
-        stored();
+      page: {
+        // A site is named by its full origin, so two sites on one host never read the same.
+        name: origin,
+        // The result stays here, so nothing of the session reaches the round.
+        deliver() {
+          stored();
+        },
       },
       close,
     });
