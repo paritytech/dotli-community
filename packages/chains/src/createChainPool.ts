@@ -33,7 +33,6 @@ import { createLaterListeners } from './createLaterListeners.js';
 import { createHealingLease, type AttachAnswer } from './createHealingLease.js';
 import { createRedialGate, type RedialGate } from './createRedialGate.js';
 import { openWatchFollow } from './openWatchFollow.js';
-import type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 
 const protocolReport = createReporter({ flow: 'protocol' });
 
@@ -72,11 +71,29 @@ type Params = {
   timers?: Timers;
 };
 
-type ConnectRemoteParams = Parameters<ChainBrokerManager['connectRemote']>[0] & {
+/** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
+export type StringJsonRpcConnection = {
+  /** Sends one JSON-RPC message as JSON text. */
+  send: (message: string) => void;
+  /** Ends the connection. A repeated call does nothing. */
+  disconnect: () => void;
+};
+
+type ConnectRemoteParams = {
+  /** The chain to open a session on. */
+  genesisHash: string;
+  /** Names the session. One id has one session at a time. */
+  connectionId: string;
+  /** Hears each message of the session as JSON text. */
+  onMessage: (message: string) => void;
   /** Hears the chain's halt once the session is open. */
   onHalt?: (error?: unknown) => void;
 };
-type GetLocalProviderParams = NonNullable<Parameters<ChainBrokerManager['getLocalProvider']>[1]>;
+
+type GetLocalProviderParams = {
+  /** Names the lease in debug logs. `local` without one. */
+  holder?: string;
+};
 
 export type ChainPool = {
   /**

@@ -30,7 +30,8 @@ pool.
 | `createCoreRpcChainTransport`, `isCoreRpcChainSupported`, `getConnectedAssetHubRpcEndpoint` | Gateway chains.                    |
 | `ChainTransport`, `ChainTransportHooks`, `ConnectionStatus`, `RPC_FOLLOW_LIMIT`             | Transport types and follow limit.  |
 | `createChainPool`, `ChainPool`, `ChainPoolControl`, `ChainPoolWatcher`, `ChainActivity`     | The chain pool.                    |
-| `requireBrokerLocalProvider`, `ChainBrokerManager`, `StringJsonRpcConnection`               | A provider leased from the broker. |
+| `StringJsonRpcConnection`                                                                   | A remote session on the pool.      |
+| `requireBrokerLocalProvider`                                                                | A provider leased from the broker. |
 | `ChainHaltError`, `getHaltReason`, `RemoteChainHalt`, `createChainHaltedError`              | Chain halts.                       |
 | `createJsonRpcError`                                                                        | Every transport's error answer.    |
 | `loadProvider`                                                                              | Lazy loader of the light client.   |
