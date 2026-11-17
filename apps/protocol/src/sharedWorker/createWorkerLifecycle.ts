@@ -110,7 +110,7 @@ type Live = {
 /** `reached` is set once a tab connected. The tab that starts the worker connects in a later task. */
 type Starting = Live & { reached: boolean };
 
-/** `error` is the first failure, which every later tab hears on subscribe. */
+/** `error` is the first failure, which the close ends each port's status and transport with. */
 type Failed = Live & { error: Error };
 
 /**
@@ -120,7 +120,7 @@ type Failed = Live & { error: Error };
 type LifecycleState =
   | ({ kind: 'syncing' } & Starting)
   | ({ kind: 'ready' } & Starting)
-  | ({ kind: 'failedAtStart' } & Failed)
+  | ({ kind: 'failedAtStart' } & Live)
   | ({ kind: 'awaitingTab' } & Failed)
   | ({ kind: 'closeScheduled'; timer: unknown } & Failed)
   | ({ kind: 'flushing' } & Failed)
@@ -434,7 +434,7 @@ export function createWorkerLifecycle({
     initial:
       initialFailure === null
         ? { kind: 'syncing', ports: new Map(), everyTabPaused: false, reached: false }
-        : { kind: 'failedAtStart', ports: new Map(), everyTabPaused: false, error: initialFailure },
+        : { kind: 'failedAtStart', ports: new Map(), everyTabPaused: false },
     handlers: {
       syncing: {
         markedReady(state, _event, { emitState, emitSideEffect }) {
