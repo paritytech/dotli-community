@@ -39,6 +39,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
   much structure.
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
+- [parameters-only-valid-together](parameters-only-valid-together.md): a function takes a nullable parameter and a
+  second one, often a callback, used only when the first is set, so a caller without the first passes a stand-in.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
   callbacks each serve a different feature.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
