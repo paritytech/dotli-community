@@ -48,8 +48,8 @@ type Reported = {
 };
 
 /**
- * The sampled report of the load's byte totals, with `latest` the last total heard. It closes once the product is on
- * screen, or it pushes the load's own events out of the debug panel's ring buffer.
+ * The sampled report of the load's byte totals, with `latest` the last total heard. It closes once the load hands off,
+ * or it pushes the load's own events out of the debug panel's ring buffer.
  */
 type ByteTotals =
   { kind: 'open'; sampled: { at: number; total: number } | null; samples: number; latest: number } | { kind: 'closed' };
@@ -106,8 +106,8 @@ export function createChainReporter({ flowId, timers, debugBus, monitor = networ
       emitBytes(received);
     },
     /**
-     * Ends the byte totals, once the product is on screen, with the last total heard when it was not reported. A load
-     * that reported none leaves nothing out. Safe to repeat.
+     * Ends the byte totals, once the load hands off, with the last total heard when it was not reported. A load that
+     * reported none leaves nothing out. Safe to repeat.
      */
     closeBytes(): void {
       if (byteTotals.kind === 'closed') {

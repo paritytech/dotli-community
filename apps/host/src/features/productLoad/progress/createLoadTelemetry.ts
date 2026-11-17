@@ -22,7 +22,7 @@ import {
 import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import type { ProductManifests } from '../resolve/cachedManifest.js';
 import { cacheReadMetric } from '../resolve/cacheReadMetric.js';
-import { createChainReporter } from './createChainReporter.js';
+import { createChainReporter, type ChainReporter } from './createChainReporter.js';
 import type { ErrorDescription } from '../failure/describeError.js';
 import { beginAttempt, endJourney, type Attempt } from './journey.js';
 import { readPageClock } from '../../../kit/readPageClock.js';
@@ -66,7 +66,7 @@ type FastPath = { kind: 'fast' };
 type SlowPath = { kind: 'slow'; coldStart: number; cidCache: 'miss' | 'skipped' };
 
 /** What a traced load holds. Its trace and its progress are collaborators with their own machines. */
-type Traced = { label: string; trace: ResolutionTrace; progress: LoadProgress };
+type Traced = { label: string; trace: ResolutionTrace; progress: LoadProgress; chainReporter: ChainReporter };
 
 /**
  * Where a load's reports are. The attempt begins at the load's start, and the trace opens at its setup. From there on
@@ -218,6 +218,7 @@ export function createLoadTelemetry({
             timers,
             now: readClock,
           });
+          const chainReporter = createChainReporter({ flowId, timers, debugBus });
           // Kept past the load, as the chain reports go on feeding the network monitor, so the cleanup goes unused.
           const progress = startLoadProgress({
             label,
@@ -225,11 +226,11 @@ export function createLoadTelemetry({
             telemetry,
             blockRelay,
             trace,
-            chainReporter: createChainReporter({ flowId, timers, debugBus }),
+            chainReporter,
             timers,
             now: readClock,
           });
-          enterStep({ kind: 'cid_cache_read', traced: { label, trace, progress } }, emitState);
+          enterStep({ kind: 'cid_cache_read', traced: { label, trace, progress, chainReporter } }, emitState);
         },
       },
       cid_cache_read: {
@@ -323,7 +324,7 @@ export function createLoadTelemetry({
       launch_gate: { rendering: render, failed: fail },
       render_handoff: {
         handedOff({ traced, path }, _event, { emitState }) {
-          const { label, trace } = traced;
+          const { label, trace, chainReporter } = traced;
           enterStep({ kind: 'content', traced, path: path.kind === 'fast' ? { kind: 'fast' } : path }, emitState);
           const now = readClock();
           switch (path.kind) {
@@ -344,6 +345,7 @@ export function createLoadTelemetry({
             total_ms: Math.round(totalMs),
           });
           trace.markHandedOff();
+          chainReporter.closeBytes();
           debugBus.emit({
             layer: 'boot',
             event: 'ready',

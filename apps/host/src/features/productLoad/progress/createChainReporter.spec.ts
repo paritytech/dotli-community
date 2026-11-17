@@ -53,31 +53,45 @@ describe('createChainReporter', () => {
     expect(readBytes()).toEqual([{ received: 100 }, { received: 300 }]);
   });
 
-  it('As a developer with the debug panel, I see a load whose byte counter only reads zero reach the screen and hear no total', () => {
+  it('As a developer with the debug panel, I see a load whose byte counter only reads zero hand off and hear no total', () => {
     // Given a byte counter that reports its zero baseline and nothing more
     const { reporter, timers, readBytes } = setupReporter();
     reporter.recordBytes(0);
     timers.freeze(1_000);
     reporter.recordBytes(0);
 
-    // When the product is on screen
+    // When the load hands off
     reporter.closeBytes();
 
     // Then
     expect(readBytes()).toEqual([]);
   });
 
-  it('As a developer with the debug panel, I see the product on screen before any byte total and hear no total', () => {
+  it('As a developer with the debug panel, I see the load hand off before any byte total and hear no total', () => {
     // Given a reporter that heard no total
     const { reporter, timers, readBytes } = setupReporter();
 
-    // When the product is on screen, and a total arrives later
+    // When the load hands off, and a total arrives later
     reporter.closeBytes();
     timers.freeze(5_000);
     reporter.recordBytes(100);
 
     // Then
     expect(readBytes()).toEqual([]);
+  });
+
+  it('As a developer with the debug panel, I see the load hand off and the last total heard reported', () => {
+    // Given a second total within a second of the first, so it went unreported
+    const { reporter, timers, readBytes } = setupReporter();
+    reporter.recordBytes(100);
+    timers.freeze(500);
+    reporter.recordBytes(200);
+
+    // When the load hands off
+    reporter.closeBytes();
+
+    // Then
+    expect(readBytes()).toEqual([{ received: 100 }, { received: 200 }]);
   });
 });
 

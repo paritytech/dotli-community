@@ -6,7 +6,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { noop } from '@dotli/shared';
-import { resetAllStoresForTests } from '@dotli/shared/testing';
+import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { pageLoading } from '../../progress/createLoadingController.js';
@@ -81,6 +81,24 @@ describe('createLoadTelemetry', () => {
     ]);
     expect(nextAttempt.attemptNumber).toBe(1);
   });
+
+  it('As a developer with the debug panel, I see the load hand off and hear no byte total after', () => {
+    // Given a load from the CID cache that reported a byte total and is rendering
+    const { telemetry, debug, timers, sendNetBytes } = setupTelemetry();
+    telemetry.report({ kind: 'started', label: 'doom' });
+    telemetry.report({ kind: 'setUp' });
+    sendNetBytes(100);
+    telemetry.report({ kind: 'cacheChecked', read: { kind: 'hit', cid: 'bafy-cached' } });
+    telemetry.report({ kind: 'rendering' });
+
+    // When the load hands off, and a total arrives later
+    telemetry.report({ kind: 'handedOff' });
+    timers.freeze(5_000);
+    sendNetBytes(300);
+
+    // Then
+    expect(debug.filter(event => event.event === 'bytes').map(event => event.payload)).toEqual([{ received: 100 }]);
+  });
 });
 
 /** Builds a load's telemetry on a fresh page, with its reports and its debug events recorded. */
@@ -100,21 +118,33 @@ function setupTelemetry() {
     pageLoading.stopStatusTick();
     unwatch();
   });
+  const timers = createManualTimers();
+  let hearNetBytes: (report: { received: number }) => void = noop;
   const telemetry = createLoadTelemetry({
     backend: 'smoldot-direct',
     flowId: 'boot-1',
     startedAt: 0,
     blockRelay: { onProgress: () => noop },
+    timers,
     telemetry: {
       subscribeChainSync: () => noop,
       subscribeChainDetail: () => noop,
-      subscribeNetBytes: () => noop,
+      subscribeNetBytes: listener => {
+        hearNetBytes = listener;
+        return noop;
+      },
       getSmoldotDbOutcome: () => 'unknown',
     },
     debugBus: bus,
   });
   return {
     telemetry,
+    /** The clock and timers the load's debug events and deadlines run on. */
+    timers,
+    /** Sends the protocol frame's byte total so far, as its light client would. */
+    sendNetBytes: (received: number) => {
+      hearNetBytes({ received });
+    },
     /** The debug bus the load's events go to. */
     bus,
     /** Each debug panel event the load sent, in order. */

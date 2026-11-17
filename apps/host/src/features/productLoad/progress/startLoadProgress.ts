@@ -27,7 +27,6 @@ import {
   type Transition,
 } from '@dotli/shared';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { productState } from '../../page/index.js';
 import { networkMonitorState } from '../../network/index.js';
 import type { ChainReporter } from './createChainReporter.js';
 import { readPageClock } from '../../../kit/readPageClock.js';
@@ -81,7 +80,7 @@ type Params = {
     'recordChainSync' | 'recordChainDetail' | 'recordBytes' | 'recordContent' | 'markWarningShown'
   >;
   /** Where the load's chain events and byte totals go. */
-  chainReporter: Pick<ChainReporter, 'record' | 'recordDetail' | 'recordBytes' | 'closeBytes'>;
+  chainReporter: Pick<ChainReporter, 'record' | 'recordDetail' | 'recordBytes'>;
   loading?: LoadingScreen;
   /** The timers the warnings wait on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout'>;
@@ -143,7 +142,6 @@ type ProgressEvent =
   | { kind: 'netBytes'; received: number; at: number }
   | ({ kind: 'contentProgressed' } & ContentFacts)
   | { kind: 'barStalled' }
-  | { kind: 'productLoaded' }
   | { kind: 'phaseResolved'; phase: ResolvePhase }
   | { kind: 'nameResolved' }
   | { kind: 'contentFetchEntered' }
@@ -159,7 +157,6 @@ type ProgressEffect =
   | { kind: 'chainDetailRecorded'; detail: ChainDetail }
   | { kind: 'bytesRecorded'; received: number }
   | { kind: 'chainBytesRecorded'; received: number }
-  | { kind: 'byteTotalsClosed' }
   | { kind: 'rateMeasured'; bytesPerSecond: number }
   | ({ kind: 'contentRecorded' } & ContentFacts)
   | ({ kind: 'contentShown' } & ContentFacts)
@@ -232,12 +229,6 @@ export function startLoadProgress({
             () =>
               loading.onProgressStall(() => {
                 update({ kind: 'barStalled' });
-              }),
-            () =>
-              productState.store.listen(product => {
-                if (product.status === 'loaded') {
-                  update({ kind: 'productLoaded' });
-                }
               }),
           ]);
           emitState({
@@ -332,9 +323,6 @@ export function startLoadProgress({
           }
           raiseWarning(state, line, transition);
         },
-        productLoaded(_state, _event, { emitSideEffect }) {
-          emitSideEffect({ kind: 'byteTotalsClosed' });
-        },
         phaseResolved(_state, { phase }, { emitSideEffect }) {
           emitSideEffect({ kind: 'barMovedToPhase', phase });
         },
@@ -392,9 +380,6 @@ export function startLoadProgress({
         case 'chainBytesRecorded':
           chainReporter.recordBytes(effect.received);
           return;
-        case 'byteTotalsClosed':
-          chainReporter.closeBytes();
-          return;
         case 'rateMeasured':
           networkMonitorState.recordTransfer({ bytesPerSecond: effect.bytesPerSecond });
           return;
@@ -445,8 +430,8 @@ export function startLoadProgress({
     /** Enters the last band, just before the sandbox takes over. Ignored once disposed. */
     enterContentFetch,
     /**
-     * Stops hearing the load's reports, the product store and the loading screen's stalls, so no warning shows after.
-     * Repeating it does nothing. A throw of an unsubscribe in `telemetry` or `blockRelay` is reported.
+     * Stops hearing the load's reports and the loading screen's stalls, so no warning shows after. Repeating it does
+     * nothing. A throw of an unsubscribe in `telemetry` or `blockRelay` is reported.
      */
     dispose,
   };
