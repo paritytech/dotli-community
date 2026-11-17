@@ -123,33 +123,27 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
   const stops: (() => void)[] = [];
   // Set on dispose, after which the round starts no flow, as nothing would release it.
   let disposed = false;
-  const site = createRound((stored, close, failed) => {
+  const site = createRound((stored, close) => {
     if (disposed) {
       return;
     }
     // A round whose stored session is gone starts a flow again on Try again. The flow before it is left until the
     // window is disposed, since closing the window twice is harmless.
     let stopFollowing = (): void => undefined;
-    let flow: WindowFlow;
-    try {
-      flow = createWindowFlow({
-        responder,
-        intent: 'resume',
-        // A site is named by its full origin, so two sites on one host never read the same.
-        pageLabel: pageOrigin => pageOrigin,
-        // The flow is done once it stored a sign-in, so a flow the round starts after it shows alone. The result stays
-        // here, so nothing of the session reaches the round.
-        deliver() {
-          stopFollowing();
-          flowScreen.set(null);
-          stored();
-        },
-        close,
-      });
-    } catch (error) {
-      failed(error);
-      return;
-    }
+    const flow = createWindowFlow({
+      responder,
+      intent: 'resume',
+      // A site is named by its full origin, so two sites on one host never read the same.
+      pageLabel: pageOrigin => pageOrigin,
+      // The flow is done once it stored a sign-in, so a flow the round starts after it shows alone. The result stays
+      // here, so nothing of the session reaches the round.
+      deliver() {
+        stopFollowing();
+        flowScreen.set(null);
+        stored();
+      },
+      close,
+    });
     stopFollowing = flow.screen.subscribe(next => {
       flowScreen.set(next);
     });

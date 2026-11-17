@@ -141,10 +141,9 @@ export type SiteRoundParams<Result, Outcome extends string> = {
   mainAccount: (signal: AbortSignal) => Promise<MainAccount>;
   /**
    * Starts the window flow that signs in or resumes the stored sign-in, and calls `stored` once one is stored. `close`
-   * is the round's own, so a window flow that closes the window cancels a round still open. Calls `failed` when the
-   * flow cannot start.
+   * is the round's own, so a window flow that closes the window cancels a round still open.
    */
-  startWindowFlow: (stored: () => void, close: () => void, failed: (error: unknown) => void) => void;
+  startWindowFlow: (stored: () => void, close: () => void) => void;
   /** The time a grant's first and last use are stamped with. */
   now: () => number;
   /** A new grant's site token. */
@@ -206,7 +205,6 @@ type RoundEvent<Result> =
   | { kind: 'consented' }
   | { kind: 'declined' }
   | { kind: 'stored'; signingIn: SigningIn }
-  | { kind: 'flowFailed'; signingIn: SigningIn; error: unknown }
   | { kind: 'accountRead'; main: MainAccount }
   | { kind: 'accountFailed'; error: unknown }
   | { kind: 'staleForgotten' }
@@ -334,20 +332,6 @@ export function createSiteRound<Result, Outcome extends string>({
             return;
           }
           readAccount(state, transition);
-        },
-        flowFailed(state, { signingIn, error }, { emitState, emitSideEffect }) {
-          if (signingIn !== state) {
-            return;
-          }
-          const { group, known } = state;
-          const failure = new SiteRoundFailure({
-            step: 'action',
-            retry: true,
-            message: 'The site round failed',
-            cause: error,
-          });
-          emitState({ kind: 'failed', group, known, failure, retry: 'signIn' });
-          emitSideEffect({ kind: 'failed', failure });
         },
         cancelled: cancelRound,
       },
@@ -686,9 +670,6 @@ export function createSiteRound<Result, Outcome extends string>({
       },
       () => {
         update({ kind: 'cancelled' });
-      },
-      error => {
-        update({ kind: 'flowFailed', signingIn, error });
       },
     );
   }

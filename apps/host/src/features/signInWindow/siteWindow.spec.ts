@@ -35,8 +35,6 @@ type CreateWindowPartsParams = {
   sessionReadHeld?: Promise<void>;
   /** Shows this screen source in place of each window flow's own, which the window flow keeps running behind it. */
   flowScreen?: ReadableAtom<SignInScreen>;
-  /** Makes the first window flow throw as it starts. */
-  firstFlowStartFails?: boolean;
 };
 
 type OpenTransactionWindowParams = {
@@ -95,7 +93,6 @@ function createWindowParts({
   leaveFlowsRunning = false,
   sessionReadHeld = Promise.resolve(),
   flowScreen,
-  firstFlowStartFails = false,
 }: CreateWindowPartsParams = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   recordLog({ onFinished: onTestFinished, level: 'error' });
@@ -117,16 +114,11 @@ function createWindowParts({
   const flows: WindowFlow[] = [];
   // What each window flow was told to do once it stored a sign-in.
   const deliveries: SiteWindowFlowDeliver[] = [];
-  let starts = 0;
   const params: Omit<SiteWindowParams, 'request'> = {
     origin: ORIGIN,
     self: SELF,
     responder,
     createWindowFlow(flow) {
-      starts += 1;
-      if (firstFlowStartFails && starts === 1) {
-        throw new Error('The window flow could not start');
-      }
       const started = createWindowFlow({
         signIns,
         auth,
@@ -354,24 +346,6 @@ describe('site sign-in window', () => {
     // Then the window flow ran again, its view showed, and the site got its one result
     expect(page.shown.filter(shown => shown.view === 'connecting')).toHaveLength(2);
     expect(page.readPosted().filter(message => JSON.stringify(message).includes('dotli:s:result'))).toHaveLength(1);
-  });
-
-  it('As a user whose window flow throws as it starts, I see the failure with Try again', async () => {
-    // Given a site on its consent view, whose first window flow throws as it starts
-    const page = openSignInWindow({ firstFlowStartFails: true });
-    await page.waitForView('consent');
-
-    // When the user consents, then presses Try again
-    await page.site.consent();
-    const failed = page.screen.get();
-    await page.site.retry();
-    await page.closed;
-
-    // Then the window showed the failure with Try again, and the Try again started a window flow whose view showed
-    expect([failed, page.shown.filter(shown => shown.view === 'connecting')]).toMatchObject([
-      { view: 'site-failed', retry: true },
-      [{ view: 'connecting', pageHost: ORIGIN }],
-    ]);
   });
 
   it("As a dotli integrator, I dispose a site's sign-in window as it opens and it shows none of its round's views after it", async () => {

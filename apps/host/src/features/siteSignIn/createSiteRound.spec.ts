@@ -76,8 +76,6 @@ type StartRoundParams = {
   saveGate?: Promise<void>;
   /** Whether saving a grant fails. */
   saveFails?: boolean;
-  /** Whether the first start of the window flow fails. */
-  windowFlowFails?: boolean;
   /** Whether reading a grant fails. */
   readFails?: boolean;
   /** Whether closing the window throws. */
@@ -186,8 +184,7 @@ async function startRound(options: StartRoundParams = {}) {
     },
     await: () => Promise.resolve(),
   };
-  let windowFlowFails = options.windowFlowFails === true;
-  const windowFlows: { stored: () => void; close: () => void; failed: (error: unknown) => void }[] = [];
+  const windowFlows: { stored: () => void; close: () => void }[] = [];
   const closed = createDeferred<undefined>();
   let closes = 0;
   const flow = createSiteRound({
@@ -206,13 +203,8 @@ async function startRound(options: StartRoundParams = {}) {
       changes.notify();
       return readMain(signal);
     },
-    startWindowFlow(storedSignIn, close, failed) {
-      if (windowFlowFails) {
-        windowFlowFails = false;
-        failed(new Error('The window flow could not start'));
-        return;
-      }
-      windowFlows.push({ stored: storedSignIn, close, failed });
+    startWindowFlow(storedSignIn, close) {
+      windowFlows.push({ stored: storedSignIn, close });
     },
     now: () => ROUND_NOW,
     randomToken: () => options.newToken ?? NEW_SITE_TOKEN,
@@ -583,25 +575,6 @@ describe('site round', () => {
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
-  it('As a user whose window flow failed to start, I retry and the window flow starts and the site gets its result', async () => {
-    // Given a site granted before, whose window flow fails to start
-    const round = await startRound({ siteToken: SITE_TOKEN, grants: [createGrant()], windowFlowFails: true });
-    await round.waitForView('site-failed');
-
-    // When the user retries and the started window flow says a sign-in is stored
-    await round.flow.retry();
-    round.storeSignIn();
-    await round.closed;
-
-    // Then the retry started the window flow, and the site got its result
-    expect(round.windowFlows).toHaveLength(1);
-    expect(getResult(round.posts).site_token).toBeUndefined();
-    expect(round.metrics.counted('test.site_round')).toEqual([
-      { outcome: 'error', reason: 'action' },
-      { outcome: 'granted', reason: 'known' },
-    ]);
-  });
-
   it('As a user whose site grants cannot be read, I sign in to a site I used before and am asked for consent as for a new site', async () => {
     // Given a grant for this site in a grants store whose read fails
     const round = await startRound({ siteToken: SITE_TOKEN, grants: [createGrant()], readFails: true });
@@ -778,32 +751,6 @@ describe('site round', () => {
     // Then the late sign-in left the round on the window flow, and only the second flow's read the main account
     expect(late).toEqual({ view: 'window', reads: 1 });
     expect(round.mainReads).toHaveLength(2);
-    expect(getResult(round.posts).result).toEqual(RESULT);
-  });
-
-  it('As a user who pressed Try again, I see the earlier window flow fail and the round goes on for the new flow', async () => {
-    // Given a round whose stored session was gone after its first window flow, and a Try again that started a second
-    let reads = 0;
-    const round = await startRound({
-      mainAccount() {
-        reads += 1;
-        return reads === 1
-          ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
-          : Promise.resolve(MAIN_ACCOUNT);
-      },
-    });
-    await consentAndStore(round);
-    await round.waitForView('site-failed');
-    await round.flow.retry();
-
-    // When the first window flow fails late, and then the second one stores its own
-    must(round.windowFlows[0], 'a first window flow').failed(new Error('The first window flow failed'));
-    const afterFailure = round.flow.screen.get().view;
-    must(round.windowFlows[1], 'a second window flow').stored();
-    await round.closed;
-
-    // Then the late failure left the round on the window flow, and the site got its result
-    expect(afterFailure).toBe('window');
     expect(getResult(round.posts).result).toEqual(RESULT);
   });
 
