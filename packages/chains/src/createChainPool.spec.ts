@@ -299,25 +299,22 @@ describe('createChainPool', () => {
     expect(activity.slice(heardBefore)).toEqual([]);
   });
 
-  it('As a dotli integrator, I read each chain status from the pool and a closed transport changes nothing', async () => {
-    // Given
+  it('As a dotli integrator, I read each chain status from the pool and a closed transport changes nothing', () => {
+    // Given a chain that was leased, connected, then released and closed
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
-    const seen: string[] = [];
-    pool.onStatusChanged('0xaa', status => {
-      seen.push(status);
-    });
-
-    // When
     const connection = lease(pool, '0xaa');
+    const leased = pool.status('0xaa');
     must(built[0], 'transport').hooks.onStatus('connected');
+    const connected = pool.status('0xaa');
     connection.disconnect();
+
+    // When its closed transport reports connected
     must(built[0], 'transport').hooks.onStatus('connected');
-    await Promise.resolve();
 
     // Then
     expect(pool.status('0xbb')).toBe('disconnected');
-    expect(seen).toEqual(['connecting', 'connected', 'disconnected']);
+    expect([leased, connected]).toEqual(['connecting', 'connected']);
     expect(pool.status('0xaa')).toBe('disconnected');
   });
 
@@ -526,10 +523,6 @@ describe('createChainPool', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
-    const seen: string[] = [];
-    pool.onStatusChanged('0xaa', status => {
-      seen.push(status);
-    });
     remoteLease(pool, '0xaa', {
       onHalt: () => {
         lease(pool, '0xaa');
@@ -543,7 +536,6 @@ describe('createChainPool', () => {
     // Then
     expect(built).toHaveLength(2);
     expect(pool.status('0xaa')).toBe('connecting');
-    expect(seen).toEqual(['connecting', 'disconnected', 'connecting']);
   });
 
   it("As a dotli integrator, I release the last lease, my chain's status changes during its destroy delay, and it still closes destroyDelay later", () => {
@@ -1000,18 +992,21 @@ describe('createChainPool watch', () => {
     expect(pool.status('0xbb')).toBe('connecting');
   });
 
-  it("As a dotli integrator, I connect remotely to another chain while I hear a chain's status change, and I get my session", async () => {
-    // Given a status listener on 0xaa that connects a remote session to 0xbb the first time it hears
+  it("As the network panel, I connect remotely to another chain while I hear a chain's activity, and I get my session", async () => {
+    // Given a watcher that connects a remote session to 0xbb the first time it hears of 0xaa
     const { createTransport } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
     const sessions: unknown[] = [];
-    pool.onStatusChanged('0xaa', () => {
-      if (sessions.length === 0) {
-        sessions.push(pool.connectRemote({ genesisHash: '0xbb', connectionId: 'inner', onMessage: () => undefined }));
-      }
+    pool.watch({
+      onActivity: ({ genesisHash }) => {
+        if (genesisHash === '0xaa' && sessions.length === 0) {
+          sessions.push(pool.connectRemote({ genesisHash: '0xbb', connectionId: 'inner', onMessage: () => undefined }));
+        }
+      },
+      onBestBlock: () => undefined,
     });
 
-    // When 0xaa is leased, and the listener hears its status
+    // When 0xaa is leased, and the watcher hears of it
     lease(pool, '0xaa');
     await Promise.resolve();
 

@@ -60,7 +60,7 @@ type ExpectedReport = Omit<ExpectedParams<string>, 'metric'> & MetricName;
 
 /**
  * A listener that threw, so it missed that delivery. Tagged `outcome` (error), `reason` (the error's name) and `owner`
- * (whose listeners, such as `chain_pool.status` or `debug_bus.replay`).
+ * (whose listeners, such as `chain_pool.watch` or `debug_bus.replay`).
  */
 const listenerDeliveryMetric = defineCount<'error'>('listener.delivery');
 

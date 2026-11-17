@@ -94,8 +94,6 @@ export type ChainPool = {
   getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): JsonRpcProvider | null;
   /** The chain's transport status, `disconnected` for a chain the pool does not hold. */
   status(genesisHash: string): ConnectionStatus;
-  /** Hears each change of the chain's status once the call that changed it has returned, and returns the unsubscribe. */
-  onStatusChanged(genesisHash: string, callback: (status: ConnectionStatus) => void): () => void;
   /**
    * Reports each chain's leases, status, follow and best blocks, each once the call that changed it has returned. The
    * chains held now are replayed first, during the call. A chain someone holds is followed for its blocks until its
@@ -203,7 +201,6 @@ type PoolEvent =
 
 /** What happened to a chain or the pool. The runner reads the activity from the state the transition left. */
 type PoolEffect =
-  | { kind: 'status'; key: string; status: ConnectionStatus }
   | { kind: 'activity' | 'built' | 'followed'; key: string }
   | { kind: 'leaseCounted'; key: string; holder: string; change: 'leased' | 'released' }
   | { kind: 'chainClosed'; key: string; halt: Halt }
@@ -240,9 +237,6 @@ export function createChainPool({
   isFrameDown = () => false,
   timers = realTimers,
 }: Params): ChainPool {
-  // Each hears the pool once the call that changed it has returned, so one that asks the pool for a chain finds it
-  // settled.
-  const listeners = new Map<string, ReturnType<typeof createLaterListeners<ConnectionStatus>>>();
   let sessionCounter = 0;
   const watchers = createLaterListeners<WatchEvent>({ onListenerError: protocolReport.listener('chain_pool.watch') });
   const redial = createChainRedial({ status: readStatus, isFrameDown, timers });
@@ -254,9 +248,6 @@ export function createChainPool({
     { emitState, emitSideEffect },
   ) => {
     emitState({ ...entry, status });
-    if (entry.status !== status) {
-      emitSideEffect({ kind: 'status', key, status });
-    }
     emitSideEffect({ kind: 'activity', key });
   };
   // Calls no lanes method, since the lanes are halted only once the entry reads closed.
@@ -510,9 +501,6 @@ export function createChainPool({
         status: lanes.status(),
       };
       transition.emitState({ ...state, entries: new Map(state.entries).set(key, built) });
-      if (asked?.status !== built.status) {
-        transition.emitSideEffect({ kind: 'status', key, status: built.status });
-      }
       transition.emitSideEffect({ kind: 'built', key });
     },
     modeAsked(state, { mode }, { emitState, emitSideEffect }) {
@@ -664,18 +652,6 @@ export function createChainPool({
       return readStatus(genesisHash.toLowerCase());
     },
 
-    onStatusChanged(genesisHash, callback) {
-      const key = genesisHash.toLowerCase();
-      let callbacks = listeners.get(key);
-      if (callbacks === undefined) {
-        callbacks = createLaterListeners<ConnectionStatus>({
-          onListenerError: protocolReport.listener('chain_pool.status'),
-        });
-        listeners.set(key, callbacks);
-      }
-      return callbacks.subscribe(callback);
-    },
-
     watch(watcher) {
       function hear(event: WatchEvent): void {
         switch (event.kind) {
@@ -707,9 +683,6 @@ export function createChainPool({
   /** Runs one effect a transition emitted. */
   function runEffect(effect: PoolEffect): void {
     switch (effect.kind) {
-      case 'status':
-        listeners.get(effect.key)?.emit(effect.status);
-        return;
       case 'activity':
         watchers.emit({ kind: 'activity', activity: getActivity(effect.key) });
         return;
@@ -804,11 +777,7 @@ export function createChainPool({
     { key, entry, halt }: { key: string; entry: LiveEntry; halt: Halt },
     { emitState, emitSideEffect }: Transition<EntryMachine>,
   ): void {
-    const { chain, status } = entry;
-    emitState({ kind: 'closed', chain, status: 'disconnected', halt });
-    if (status !== 'disconnected') {
-      emitSideEffect({ kind: 'status', key, status: 'disconnected' });
-    }
+    emitState({ kind: 'closed', chain: entry.chain, status: 'disconnected', halt });
     emitSideEffect({ kind: 'chainClosed', key, halt });
   }
 
