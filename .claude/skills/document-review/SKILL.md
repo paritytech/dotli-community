@@ -54,7 +54,8 @@ document's quality, it is the "must address" item. Highlight it prominently.
 Present your findings, then:
 
 1. **Auto-fix** minor issues (vague language, formatting) without asking.
-2. **Ask approval** before substantive changes (restructuring, removing sections, changing meaning).
+2. **Ask approval** before substantive changes (restructuring, rewriting the whole document, removing sections, changing
+   meaning). Add no section or requirement the user did not discuss.
 3. **Update** the document inline, with no separate files and no metadata sections.
 
 Inside the `architecture` skill, the `architect` agent runs this review and cannot ask the owner directly. Each ask here
@@ -90,10 +91,3 @@ After 2 refinement passes, recommend completion, since returns are likely to dim
 allow it.
 
 Return control to the caller (the `architecture` skill, or the user) after the selection.
-
-## What NOT to Do
-
-- Do not rewrite the entire document
-- Do not add new sections or requirements the user didn't discuss
-- Do not over-engineer or add complexity
-- Do not create separate review files or add metadata sections
