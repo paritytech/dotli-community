@@ -284,5 +284,6 @@ sequenceDiagram
 | `test:functional`, `test:e2e`, `test:e2e:local`, `test:perf*` | Playwright suites.                     |
 
 - **Trap:** a functional run needs the root `build:test` build, as CI does. It turns metrics on and sets a Sentry DSN.
-  Without it, Sentry sends nothing and the light client gauge never reaches the preview server.
+  Without it, Sentry sends nothing and the light client gauge never reaches the preview server. The root
+  `test:functional` builds it, then runs the suite.
 - Component stories run in the one Storybook at the repo root.

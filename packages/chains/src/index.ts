@@ -5,7 +5,13 @@ export { byteMeter } from './byteMeter.js';
 export type { RemoteChainHalt } from './chainHaltError.js';
 export { ChainHaltError, getHaltReason } from './chainHaltError.js';
 export { createChainHaltedError } from './createChainHaltedError.js';
-export type { ChainActivity, ChainPool, ChainPoolControl, ChainPoolWatcher } from './createChainPool.js';
+export type {
+  ChainActivity,
+  ChainPool,
+  ChainPoolControl,
+  ChainPoolWatcher,
+  StringJsonRpcConnection,
+} from './createChainPool.js';
 export { createChainPool } from './createChainPool.js';
 export type { ChainDetail, ChainPeer, ChainSyncEvent, ChainSyncKind } from './createChainSyncReporter.js';
 export { chainSync } from './createChainSyncReporter.js';
@@ -20,7 +26,6 @@ export type { SmoldotDbChain, SmoldotDbOutcome } from './createPrefetchingStore.
 export { createLightClient, createLightClientDeps } from './createLightClient.js';
 export { SMOLDOT_DB_NAME } from './createSmoldotDb.js';
 export { loadProvider } from './lazy.js';
-export type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 export { requireBrokerLocalProvider } from './requireBrokerLocalProvider.js';
 export type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
 export { RPC_FOLLOW_LIMIT } from './transportHooks.js';

@@ -2,49 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-
-/** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
-export type StringJsonRpcConnection = {
-  /** Sends one JSON-RPC message as JSON text. */
-  send: (message: string) => void;
-  /** Ends the connection. A repeated call does nothing. */
-  disconnect: () => void;
-};
-
-type ConnectRemoteParams = {
-  /** The chain to open a session on. */
-  genesisHash: string;
-  /** Names the session. One id has one session at a time. */
-  connectionId: string;
-  /** Hears each message of the session as JSON text. */
-  onMessage: (message: string) => void;
-};
-
-type GetLocalProviderParams = {
-  /** Names the lease in debug logs. `local` without one. */
-  holder?: string;
-};
-
-/** What owns the brokered chain connections of a context. */
-export type ChainBrokerManager = {
-  /**
-   * Opens a session on the chain under `connectionId`, with its messages sent to `onMessage` as JSON text. Returns
-   * `null` when this context cannot reach the chain, and throws when `connectionId` already has a session. Throws when
-   * the chain halts while the session opens, with the halt's error as the cause.
-   */
-  connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
-  /**
-   * A provider whose connections are sessions on the chain, or `null` when this context cannot reach it. `holder`
-   * names the lease in debug logs.
-   */
-  getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): JsonRpcProvider | null;
-  /** Closes every chain and its sessions, without telling them of a halt. */
-  disconnectAll(): void;
-};
+import type { ChainPool } from './createChainPool.js';
 
 type Params = {
   /** Owns the brokered connections the provider leases. */
-  manager: ChainBrokerManager;
+  manager: Pick<ChainPool, 'getLocalProvider'>;
   /** The chain to reach. */
   genesisHash: string;
   /** Names the chain in the error thrown when it cannot be reached. */
