@@ -18,18 +18,19 @@ import type { SessionRequest } from './readSessionRequest.js';
 import type { RefusalReason } from '../../kit/sessionMessages.js';
 import type { SessionRoute } from '../../kit/sessionRoute.js';
 import { SITE_ROUTE_METRICS, type SiteRoute } from '../siteSignIn/index.js';
+import { parseSiteCall } from '../siteSignIn/index.js';
 
 const report = createReporter({ flow: 'wallet' });
 
 /**
  * What the sign-in window runs for its round: dot.li's own flow for the request's intent, or a site's sign-in or
- * transaction. Each is for the vetted origin, which the browser vouched for, never one the request names, and comes
- * with what the boot gave.
+ * transaction, which carries the site's call. Each is for the vetted origin, which the browser vouched for, never one
+ * the request names, and comes with what the boot gave.
  */
 export type SignInRound<Booted> =
   | { party: 'first'; origin: string; intent: SignInIntent; booted: Booted }
   | { party: 'third'; origin: string; request: SiteRequest; booted: Booted }
-  | { party: 'third-sign'; origin: string; request: SiteSignRequest; booted: Booted };
+  | { party: 'third-sign'; origin: string; request: SiteSignRequest; call: Uint8Array; booted: Booted };
 
 /** How the sign-out window answers its round. */
 export type SignOutAnswer = {
@@ -67,7 +68,7 @@ type RoundRequest = {
 };
 
 type AnswerSignInParams<Booted> = RoundRequest & {
-  responder: Pick<Responder<unknown>, 'state' | 'refuse'>;
+  responder: Pick<Responder<unknown>, 'state' | 'refuse' | 'payload'>;
   /** What the window's boot gives. Rejects when the boot failed. */
   booted: Promise<Booted>;
 };
@@ -95,21 +96,10 @@ type Answerable = {
 export const SIGNED_OUT_RESULT: Readonly<Record<string, never>> = {};
 
 /**
- * Refuses the round with `reason`, leaves a breadcrumb, and counts a site's refusal on the metric of the site route
- * `route` maps to: a transaction's on the sign route, a sign-in's on any other.
- */
-export function refuseRound({ responder, party, reason, route }: RefuseRoundParams): void {
-  responder.refuse(reason);
-  report.log.event('session window refused its round', { party, reason });
-  if (party === 'third') {
-    SITE_ROUTE_METRICS[getRefusedSiteRoute(route)].count({ outcome: 'refused', reason });
-  }
-}
-
-/**
  * The sign-in window's round, decided once both `booted` resolved and the first vetting came, or null for a round it
- * refused. A site's refusal is counted with its reason, and its sign-in or transaction counts its own outcome. Rejects
- * when `booted` rejects.
+ * refused. A site's transaction is decided only once the window also has its call, the request's, else the payload's,
+ * and a call that is not one refuses it. A site's refusal is counted with its reason, and its sign-in or transaction
+ * counts its own outcome. Rejects when `booted` rejects.
  */
 export async function answerSignIn<Booted>({
   responder,
@@ -133,8 +123,15 @@ export async function answerSignIn<Booted>({
       return { party: 'first', origin, intent: round.request.intent, booted: bootedValue };
     case 'third':
       return { party: 'third', origin, request: round.request, booted: bootedValue };
-    case 'third-sign':
-      return { party: 'third-sign', origin, request: round.request, booted: bootedValue };
+    case 'third-sign': {
+      // A request that carries its call never reads a payload.
+      const call = round.request.call ?? parseSiteCall(await responder.payload());
+      if (call === null) {
+        refuseRound({ responder, party: 'third', reason: 'bad_request', route: request.route });
+        return null;
+      }
+      return { party: 'third-sign', origin, request: round.request, call, booted: bootedValue };
+    }
   }
 }
 
@@ -166,6 +163,18 @@ export function answerSignOut({ responder, request, enabled, read }: AnswerSignO
       responder.send(SIGNED_OUT_RESULT);
     }),
   };
+}
+
+/**
+ * Refuses the round with `reason`, leaves a breadcrumb, and counts a site's refusal on the metric of the site route
+ * `route` maps to: a transaction's on the sign route, a sign-in's on any other.
+ */
+function refuseRound({ responder, party, reason, route }: RefuseRoundParams): void {
+  responder.refuse(reason);
+  report.log.event('session window refused its round', { party, reason });
+  if (party === 'third') {
+    SITE_ROUTE_METRICS[getRefusedSiteRoute(route)].count({ outcome: 'refused', reason });
+  }
 }
 
 /** The site route whose metric a site's refusal on `route` counts on. */

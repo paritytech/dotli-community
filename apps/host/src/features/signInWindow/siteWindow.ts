@@ -4,20 +4,18 @@
 // A site's round in the session window, its sign-in or its transaction, wired to the window flow it reuses. The window
 // flow signs in or resumes the main session and tells the site's round only that a sign-in is stored, never the session
 // and never the responder, so what the site gets is only what its own round builds. The round shows the site's views,
-// and the window flow's while that flow signs in. A transaction's round starts only once the window has the site's
-// call.
+// and the window flow's while that flow signs in.
 
 import type { SiteGrantStore } from '@dotli/storage';
 import type { Responder } from './createResponder.js';
 import type { WindowFlow, WindowFlowParams } from './createWindowFlow.js';
-import { refuseRound } from './roundAnswer.js';
 import type { MainAccount } from '../siteSignIn/index.js';
 import type { SiteChain } from '../siteSignIn/index.js';
 import type { SiteGroups } from '../siteSignIn/index.js';
 import type { SiteRequest } from '../siteSignIn/index.js';
 import type { SiteRound } from '../siteSignIn/index.js';
 import { createSiteSignIn } from '../siteSignIn/index.js';
-import { parseSiteCall, type SiteSignRequest } from '../siteSignIn/index.js';
+import type { SiteSignRequest } from '../siteSignIn/index.js';
 import type { SiteAccountReader } from '../siteSignIn/index.js';
 import { createSiteTransaction } from '../siteSignIn/index.js';
 import type { SiteTxSigner } from '../siteSignIn/index.js';
@@ -52,11 +50,13 @@ export type SiteWindowParams = {
 };
 
 /**
- * What a site's transaction window runs on: a sign-in window's parts, with the chain, the transaction signer and the
- * account reader that reads the site account.
+ * What a site's transaction window runs on: a sign-in window's parts, with the site's call, the chain, the transaction
+ * signer and the account reader that reads the site account.
  */
 type OpenSiteTransactionParams = Omit<SiteWindowParams, 'request'> & {
   request: SiteSignRequest;
+  /** The call the site's request carried, else the one it posted. */
+  call: Uint8Array;
   chain: SiteChain;
   txSigner: SiteTxSigner;
   accountReader: SiteAccountReader;
@@ -68,28 +68,15 @@ export function openSiteSignIn({ origin, responder, createWindowFlow, ...round }
   return createSiteSignIn({ ...round, origin, responder, startWindowFlow });
 }
 
-/**
- * Runs a site's transaction for the vetted origin with the window flow it reuses, once the window has the site's call:
- * the request's, else the payload's, while the responder's view stays on show. Resolves with the round once it
- * started, or null once it refused a call that is not one and closed the window.
- */
-export async function openSiteTransaction({
-  request,
+/** Runs a site's transaction of `call` for the vetted origin with the window flow it reuses. */
+export function openSiteTransaction({
   origin,
   responder,
   createWindowFlow,
-  close,
   ...round
-}: OpenSiteTransactionParams): Promise<SiteRound | null> {
-  // A request that carries its call never reads a payload.
-  const call = request.call ?? parseSiteCall(await responder.payload());
-  if (call === null) {
-    refuseRound({ responder, party: 'third', reason: 'bad_request', route: 'sign' });
-    close();
-    return null;
-  }
+}: OpenSiteTransactionParams): SiteRound {
   const startWindowFlow = getWindowFlowStart({ origin, responder, createWindowFlow });
-  return createSiteTransaction({ ...round, request, call, origin, responder, close, startWindowFlow });
+  return createSiteTransaction({ ...round, origin, responder, startWindowFlow });
 }
 
 /** Starts the window flow a site's round reuses, which resumes the stored sign-in for the site. */

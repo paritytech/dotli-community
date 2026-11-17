@@ -26,11 +26,18 @@ const SITE = 'https://example.com';
 const ENABLED: readonly Network[] = ['paseo-next-v2'];
 const HUB = NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].assethub.genesis;
 const CALL = '0x0a0300';
+const PAYLOAD_CALL = '0x0a0300040506';
 const PRODUCT = `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`;
 
 /** The request for round r1 on `route` with `params`, as the window reads it. */
 function readRequest(route: SessionRoute, params: Record<string, unknown>): SessionRequest {
   return must(readSessionRequest(route, { round: 'r1', ...params }), 'a session request');
+}
+
+/** A site's sign request for round r1 on Asset Hub that carries `call`, or leaves it to a payload when null. */
+function readSignRequest(call: string | null): SessionRequest {
+  const params = { v: 1, net: 'paseo-next-v2', chain: HUB, account: `${PRODUCT}/0` };
+  return readRequest('sign', call === null ? params : { ...params, call });
 }
 
 /**
@@ -54,6 +61,12 @@ function openWindow({ opened = true }: Params = {}) {
     messages.post({ data: createHelloMessage('r1'), origin, source: opener });
   }
 
+  /** The site at `origin` posting `call` as the round's payload. */
+  function postPayload(origin: string, call: string): void {
+    // A third-party site writes its payload itself, with no dotli builder, so this stands in for that site's wire.
+    messages.post({ data: { type: 'dotli:s:payload', round: 'r1', call }, origin, source: opener });
+  }
+
   /** What the opener got after its ready. */
   function readAnswers(): unknown[] {
     return (opener?.posted ?? []).flatMap(({ message }) =>
@@ -61,7 +74,7 @@ function openWindow({ opened = true }: Params = {}) {
     );
   }
 
-  return { metrics, responder, sayHello, readAnswers };
+  return { metrics, responder, sayHello, postPayload, readAnswers };
 }
 
 describe('session window round answer', () => {
@@ -376,10 +389,78 @@ describe('session window round answer', () => {
         chain: HUB,
         call: fromHex(CALL),
       },
+      call: fromHex(CALL),
       booted: 'bridge',
     });
     expect(readAnswers()).toEqual([]);
     expect(metrics.counted('session_pages.site_transaction')).toEqual([]);
+  });
+
+  it('As a site, I send a call in my request and a payload and my transaction round carries the call my request carries', async () => {
+    // Given a booted sign window with a site's request that carries its call, and a site that posts another call too
+    const { responder, sayHello, postPayload } = openWindow();
+    const answered = answerSignIn({
+      responder,
+      request: readSignRequest(CALL),
+      enabled: ENABLED,
+      booted: Promise.resolve('bridge'),
+    });
+
+    // When the site says hello and posts its payload
+    sayHello(SITE);
+    postPayload(SITE, PAYLOAD_CALL);
+    const round = await answered;
+
+    // Then the round carries the request's call
+    expect(round).toMatchObject({ party: 'third-sign', call: fromHex(CALL) });
+  });
+
+  it('As a site, I post my call after the sign window opened and the window waits for it before it answers my transaction round', async () => {
+    // Given a booted sign window with a site's request that carries no call, which the window asked the payload for
+    const { responder, sayHello, postPayload } = openWindow();
+    const asked = createDeferred<undefined>();
+    const answered = answerSignIn({
+      responder: {
+        ...responder,
+        payload() {
+          asked.resolve(undefined);
+          return responder.payload();
+        },
+      },
+      request: readSignRequest(null),
+      enabled: ENABLED,
+      booted: Promise.resolve('bridge'),
+    });
+    sayHello(SITE);
+    await asked.promise;
+
+    // When the site posts its call
+    postPayload(SITE, PAYLOAD_CALL);
+    const round = await answered;
+
+    // Then the round carries the call that came
+    expect(round).toMatchObject({ party: 'third-sign', call: fromHex(PAYLOAD_CALL) });
+  });
+
+  it('As a site, I post a call that is not hex of two or more bytes and am refused as a bad request, counted as my transaction', async () => {
+    // Given a booted sign window with a site's request that carries no call
+    const { metrics, responder, sayHello, postPayload, readAnswers } = openWindow();
+    const answered = answerSignIn({
+      responder,
+      request: readSignRequest(null),
+      enabled: ENABLED,
+      booted: Promise.resolve('bridge'),
+    });
+    sayHello(SITE);
+
+    // When the site posts a one-byte call
+    postPayload(SITE, '0x0a');
+    const round = await answered;
+
+    // Then no round starts, the site is refused and the refusal counts as a transaction
+    expect(round).toBeNull();
+    expect(readAnswers()).toEqual([{ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' }]);
+    expect(metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
   });
 
   it('As a site, I open the sign window with a request for another chain and am refused as a bad request, counted as my transaction', async () => {

@@ -94,8 +94,6 @@ type OpenSiteFlowParams = {
 type OpenSiteTransactionFlowParams = {
   responder: Responder<unknown>;
   round: Extract<SignInRound<HostBridge>, { party: 'third-sign' }>;
-  /** Ends the responder's view once the window has the site's call. */
-  stopShowingResponder: () => void;
 };
 
 type RedirectSignInParams = {
@@ -281,31 +279,20 @@ function openSiteFlow({ responder, round, close }: OpenSiteFlowParams): () => vo
   return sessionWindowState.showScreen(site.screen);
 }
 
-/**
- * Runs a site's transaction for the vetted origin the round carries, and shows its views once the window has the
- * site's call. Until then the responder's view stays, which `stopShowingResponder` ends.
- */
-async function openSiteTransactionFlow({
-  responder,
-  round,
-  stopShowingResponder,
-}: OpenSiteTransactionFlowParams): Promise<void> {
+/** Runs a site's transaction of the call for the vetted origin the round carries, and shows its views. */
+function openSiteTransactionFlow({ responder, round }: OpenSiteTransactionFlowParams): void {
   const { booted: bridge } = round;
   // Before the round starts, so the first core the window boots runs as the product account the transaction names.
   bridge.serveSite(round.request.account);
   // The site's round lives as long as the window's page, so nothing disposes it.
-  const site = await openSiteTransaction({
+  const site = openSiteTransaction({
     ...getSiteWindowParams({ responder, round, close: closeWindow }),
     request: round.request,
+    call: round.call,
     chain: bridge.siteChain,
     txSigner: bridge.siteTxSigner,
     accountReader: bridge.siteAccountReader,
   });
-  // A refused round keeps showing the responder, which says it refused, while the window closes.
-  if (site === null) {
-    return;
-  }
-  stopShowingResponder();
   sessionWindowState.setSiteIntents(site);
   sessionWindowState.showScreen(site.screen);
 }
@@ -432,22 +419,24 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
     return;
   }
 
+  // Until the round is known, which for a site's transaction waits for its call, Connecting shows, whose Close closes
+  // the window. A refused round keeps showing the responder, which says it refused.
   const stopShowingResponder = showResponder(responder);
-  // A refused round keeps showing the responder, which says it refused.
   const round = await answerSignIn({ responder, request: taken, enabled, booted: bootSignIn(taken, enabled) });
   if (round === null) {
     return;
   }
-  if (round.party === 'third-sign') {
-    // Waiting for the site's call shows Connecting, whose Close closes the window.
-    await openSiteTransactionFlow({ responder, round, stopShowingResponder });
-    return;
-  }
   stopShowingResponder();
-  if (round.party === 'first') {
-    openFlow({ responder, intent: round.intent, origin: round.origin, bridge: round.booted });
-  } else {
-    openSiteFlow({ responder, round, close: closeWindow });
+  switch (round.party) {
+    case 'first':
+      openFlow({ responder, intent: round.intent, origin: round.origin, bridge: round.booted });
+      return;
+    case 'third':
+      openSiteFlow({ responder, round, close: closeWindow });
+      return;
+    case 'third-sign':
+      openSiteTransactionFlow({ responder, round });
+      return;
   }
 }
 

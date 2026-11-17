@@ -73,7 +73,6 @@ const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true
 const PAIRING: DotliAuthState = { tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' };
 
 const CALL = '0x0a0300010203';
-const PAYLOAD_CALL = '0x0a0300040506';
 const DISPLAY: DisplayCall = { name: 'Balances.transfer_keep_alive', args: [{ name: 'value', value: '1' }] };
 /** The signed transaction the fake chain builds. */
 const SIGNED_TX = `0x${'5e'.repeat(80)}`;
@@ -247,13 +246,12 @@ function createFakeChain() {
 }
 
 /**
- * A site's transaction window over the window's parts, a chain that builds it and an account reader that reads the site account,
- * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload.
+ * A site's transaction of `call` in a session window over the window's parts, a chain that builds it and an account
+ * reader that reads the site account.
  */
-function openTransactionWindow(call: Uint8Array | null, { grantRead }: OpenTransactionWindowParams = {}) {
+function openTransactionWindow(call: Uint8Array, { grantRead }: OpenTransactionWindowParams = {}) {
   const parts = createWindowParts();
   const { chain, decoded } = createFakeChain();
-  const asked = createDeferred<undefined>();
   const request: SiteSignRequest = {
     round: 'r1',
     account: ACCOUNT,
@@ -262,10 +260,11 @@ function openTransactionWindow(call: Uint8Array | null, { grantRead }: OpenTrans
     chain: SERVICES.assethub.genesis,
     call,
   };
-  const { responder, grants } = parts.params;
-  const opening = openSiteTransaction({
+  const { grants } = parts.params;
+  const site = openSiteTransaction({
     ...parts.params,
     request,
+    call,
     grants: {
       ...grants,
       async read(token) {
@@ -273,18 +272,11 @@ function openTransactionWindow(call: Uint8Array | null, { grantRead }: OpenTrans
         return grants.read(token);
       },
     },
-    responder: {
-      ...responder,
-      payload() {
-        asked.resolve(undefined);
-        return responder.payload();
-      },
-    },
     chain,
     accountReader: ACCOUNT_READER,
     txSigner: { creator: () => () => Promise.reject(new Error('The fake chain signs no transaction')) },
   });
-  return { ...parts, decoded, asked: asked.promise, opening };
+  return { ...parts, decoded, ...watchWindow(site) };
 }
 
 describe('site sign-in window', () => {
@@ -495,31 +487,28 @@ describe('site transaction window', () => {
     // Given a site's request that carries its call and a token whose grant is still being read
     const grantRead = createDeferred<undefined>();
     const page = openTransactionWindow(fromHex(CALL), { grantRead: grantRead.promise });
-    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
 
     // When the grant read ends
     grantRead.resolve(undefined);
-    await watched.waitForView('consent');
+    await page.waitForView('consent');
 
     // Then the window started on the sign route's working view, then asked the consent of the vetted origin
-    expect(watched.shown).toEqual([{ view: 'site-signing', route: 'sign' }, { view: 'consent' }]);
-    expect(watched.site.screen.get()).toMatchObject({ origin: ORIGIN });
+    expect(page.shown).toEqual([{ view: 'site-signing', route: 'sign' }, { view: 'consent' }]);
+    expect(page.site.screen.get()).toMatchObject({ origin: ORIGIN });
   });
 
-  it('As a site, I send a call in my request and a payload and get my transaction signed for the call my request carries', async () => {
-    // Given a site's request that carries its call, and a payload with another call the site posted as well
+  it('As a site, I get my transaction signed for my call', async () => {
+    // Given a site's transaction on its consent view
     const page = openTransactionWindow(fromHex(CALL));
-    page.postPayload(PAYLOAD_CALL);
-    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
-    await watched.waitForView('consent');
+    await page.waitForView('consent');
 
     // When the user consents and confirms the review
-    await watched.site.consent();
-    await watched.waitForView('site-review');
-    watched.site.confirm();
+    await page.site.consent();
+    await page.waitForView('site-review');
+    page.site.confirm();
     await page.closed;
 
-    // Then the request's call was decoded, and the site got the signed transaction
+    // Then the call was decoded, and the site got the signed transaction
     expect(page.decoded).toEqual([CALL]);
     expect(page.readPosted()).toContainEqual({
       type: 'dotli:s:result',
@@ -527,40 +516,5 @@ describe('site transaction window', () => {
       result: { transaction: SIGNED_TX },
       site_token: TOKEN,
     });
-  });
-
-  it('As a site, I post my call after the window opened and the window waits for it before it starts my round', async () => {
-    // Given a site's request with no call, whose window asked for the payload
-    const page = openTransactionWindow(null);
-    await page.asked;
-
-    // When the site posts its call
-    page.postPayload(PAYLOAD_CALL);
-    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
-    await watched.waitForView('consent');
-    await watched.site.consent();
-    await watched.waitForView('site-review');
-
-    // Then the round started with the call that came, and decodes the posted call
-    expect(page.decoded).toEqual([PAYLOAD_CALL]);
-  });
-
-  it('As a site, I post a call that is not hex of two or more bytes and am refused as a bad request, counted as my transaction', async () => {
-    // Given a site's request with no call, whose window asked for the payload
-    const page = openTransactionWindow(null);
-    await page.asked;
-
-    // When the site posts a one-byte call
-    page.postPayload('0x0a');
-    const opened = await page.opening;
-    await page.closed;
-
-    // Then no round starts, the site is refused and the refusal counts as a transaction
-    expect(opened).toBeNull();
-    expect(page.decoded).toEqual([]);
-    expect(page.readPosted()).toContainEqual({ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' });
-    expect(page.metrics.counted('session_pages.site_transaction')).toEqual([
-      { outcome: 'refused', reason: 'bad_request' },
-    ]);
   });
 });
