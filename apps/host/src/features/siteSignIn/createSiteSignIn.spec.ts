@@ -3,7 +3,8 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
+import { createDeferred, noop } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -14,7 +15,14 @@ import { createSiteSignIn } from './createSiteSignIn.js';
 import { createRecordingResponder } from '../signInWindow/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';
 import { getResult } from '../../testing/getResult.js';
-import { MAIN_ACCOUNT, MAIN_OWNER, NEW_SITE_TOKEN, ROUND_NOW, SITE_ORIGIN } from '../../testing/siteRoundConstants.js';
+import {
+  FLOW_SCREEN,
+  MAIN_ACCOUNT,
+  MAIN_OWNER,
+  NEW_SITE_TOKEN,
+  ROUND_NOW,
+  SITE_ORIGIN,
+} from '../../testing/siteRoundConstants.js';
 import { waitForView } from '../../testing/waitForView.js';
 import { SITE_GROUPS } from './createSiteGroups.fake.js';
 
@@ -58,6 +66,7 @@ function startSignIn(options: Params = {}) {
     mainAccount: () => Promise.resolve(options.main ?? MAIN_ACCOUNT),
     startWindowFlow(storedSignIn, close) {
       windowFlows.push({ stored: storedSignIn, close });
+      return { screen: atom(FLOW_SCREEN), dispose: noop };
     },
     now: () => ROUND_NOW,
     randomToken: () => NEW_SITE_TOKEN,
@@ -104,7 +113,7 @@ describe('site sign-in', () => {
     expect(await signIn.stored.list()).toEqual([
       { token: NEW_SITE_TOKEN, origin: SITE_ORIGIN, owner: MAIN_OWNER, firstUsedAt: ROUND_NOW, lastUsedAt: ROUND_NOW },
     ]);
-    expect(signIn.views).toEqual(['site-signing', 'consent', 'window', 'site-signing']);
+    expect(signIn.views).toEqual(['site-signing', 'consent', 'connecting', 'site-signing']);
     expect(signIn.flow.screen.get()).toEqual({ view: 'site-signing', origin: SITE_ORIGIN, route: 'auth' });
     expect(signIn.metrics.counted('session_pages.site_sign_in')).toEqual([{ outcome: 'granted', reason: 'new' }]);
   });

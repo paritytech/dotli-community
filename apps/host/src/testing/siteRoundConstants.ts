@@ -1,11 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What a site's round runs over in a spec: the site, its grants' tokens, the window's clock and the main account.
+// What a site's round runs over in a spec: the site, its grants' tokens, the window's clock, the main account and the
+// view of the window flow it starts.
 
 import { base64urlnopad } from '@scure/base';
 import { fromHex, hashBlake2b, toHex } from '@dotli/shared';
 import type { MainAccount } from '../features/siteSignIn/mainAccount.js';
+import type { SignInScreen } from '../features/signInWindow/sessionWindowState.js';
 
 /** The site's origin. */
 export const SITE_ORIGIN = 'https://my-site.com';
@@ -22,3 +24,5 @@ export const MAIN_KEY = `0x${'a'.repeat(64)}`;
 export const MAIN_OWNER = toHex(hashBlake2b(fromHex(MAIN_KEY), 32));
 /** The main account the window's core reports. */
 export const MAIN_ACCOUNT: MainAccount = { owner: MAIN_OWNER, username: { name: 'alice.dot', kind: 'full' } };
+/** What the window flow a round starts shows. */
+export const FLOW_SCREEN: SignInScreen = { view: 'connecting', pageHost: SITE_ORIGIN, failure: null };

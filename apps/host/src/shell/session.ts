@@ -272,13 +272,13 @@ function openSiteFlow({ responder, round, close }: OpenSiteFlowParams): () => vo
   // Before the round starts, so the first core the window boots runs as dot.li's own product: a sign-in names no
   // account.
   round.booted.serveSite(null);
-  // The site window lives as long as the window's page, so nothing disposes it.
-  const { site, screen } = openSiteSignIn({
+  // The site's round lives as long as the window's page, so nothing disposes it.
+  const site = openSiteSignIn({
     ...getSiteWindowParams({ responder, round, close }),
     request: round.request,
   });
   sessionWindowState.setSiteIntents(site);
-  return sessionWindowState.showScreen(screen);
+  return sessionWindowState.showScreen(site.screen);
 }
 
 /**
@@ -293,8 +293,8 @@ async function openSiteTransactionFlow({
   const { booted: bridge } = round;
   // Before the round starts, so the first core the window boots runs as the product account the transaction names.
   bridge.serveSite(round.request.account);
-  // The site window lives as long as the window's page, so nothing disposes it.
-  const opened = await openSiteTransaction({
+  // The site's round lives as long as the window's page, so nothing disposes it.
+  const site = await openSiteTransaction({
     ...getSiteWindowParams({ responder, round, close: closeWindow }),
     request: round.request,
     chain: bridge.siteChain,
@@ -302,12 +302,12 @@ async function openSiteTransactionFlow({
     accountReader: bridge.siteAccountReader,
   });
   // A refused round keeps showing the responder, which says it refused, while the window closes.
-  if (opened === null) {
+  if (site === null) {
     return;
   }
   stopShowingResponder();
-  sessionWindowState.setSiteIntents(opened.site);
-  sessionWindowState.showScreen(opened.screen);
+  sessionWindowState.setSiteIntents(site);
+  sessionWindowState.showScreen(site.screen);
 }
 
 /** Shows where the responder stands until the returned function stops it. */

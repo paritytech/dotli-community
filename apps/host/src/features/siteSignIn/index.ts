@@ -13,7 +13,7 @@ export type { SiteGroups } from './createSiteGroups.js';
 export { createSiteGroups } from './createSiteGroups.js';
 export type { ListedSite, SiteList, SiteListScreen } from './createSiteList.js';
 export { createSiteList } from './createSiteList.js';
-export type { SiteRound, SiteRoundParams, SiteScreen } from './createSiteRound.js';
+export type { SiteRound, SiteScreen } from './createSiteRound.js';
 export { createSiteSignIn } from './createSiteSignIn.js';
 export { createSiteTransaction } from './createSiteTransaction.js';
 export type { SiteTxSigner } from './createSiteTxSigner.js';
