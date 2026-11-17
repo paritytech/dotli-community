@@ -147,7 +147,7 @@ type Halt = { error: unknown } | null;
 
 /**
  * One chain's lanes as the pool holds them. `unheld` has no lease and no countdown, and `expiring` counts down to its
- * close. `closed` stays until the chain is asked for again, so a lease that opened as the chain halted reads the halt.
+ * close. `closed` keeps the chain's warner until the chain is asked for again.
  * `chain` holds the facts that outlive every kind. The follow gate outlives `held`, so a chain leased again still
  * waits out its backoff.
  */
@@ -165,7 +165,7 @@ type Entry = {
       /** The timer of the countdown to the chain's close. */
       countdown: unknown;
     }
-  | { kind: 'closed'; halt: Halt }
+  | { kind: 'closed' }
 );
 
 type LiveKind = 'held' | 'unheld' | 'expiring';
@@ -777,7 +777,7 @@ export function createChainPool({
     { key, entry, halt }: { key: string; entry: LiveEntry; halt: Halt },
     { emitState, emitSideEffect }: Transition<EntryMachine>,
   ): void {
-    emitState({ kind: 'closed', chain: entry.chain, status: 'disconnected', halt });
+    emitState({ kind: 'closed', chain: entry.chain, status: 'disconnected' });
     emitSideEffect({ kind: 'chainClosed', key, halt });
   }
 
@@ -888,25 +888,15 @@ export function createChainPool({
       return { kind: 'unreachable' };
     }
     const { lanes } = entry.chain;
-    // A halt heard while the session opens goes in the answer.
-    let phase: { kind: 'opening'; halt: Halt } | { kind: 'open' } | { kind: 'released' } = {
-      kind: 'opening',
-      halt: null,
-    };
+    // A halt heard while the session opens is read from the lanes once it is open.
+    let open = false;
     let connection: BrokerConnection;
     try {
       connection = lanes.connect({
         ...session,
         onHalt: error => {
-          switch (phase.kind) {
-            case 'opening':
-              phase = { kind: 'opening', halt: { error } };
-              return;
-            case 'open':
-              session.onHalt?.(error);
-              return;
-            case 'released':
-              return;
+          if (open) {
+            session.onHalt?.(error);
           }
         },
       });
@@ -916,40 +906,35 @@ export function createChainPool({
     }
     machine.update({ kind: 'leased', key, lanes, holder, watched: watchers.size > 0 });
     // A halt while the session opens may not reach it, and a session on a closed chain would never hear one.
-    const openingHalt = phase.halt;
-    if (openingHalt !== null || findLive(key)?.chain.lanes !== lanes) {
-      phase = { kind: 'released' };
+    const phase = lanes.phase();
+    switch (phase.kind) {
+      case 'open':
+        open = true;
+        return {
+          kind: 'attached',
+          connection: {
+            send: connection.send,
+            disconnect() {
+              if (!open) {
+                return;
+              }
+              open = false;
+              release();
+            },
+          },
+        };
+      case 'halted':
+        release();
+        return { kind: 'halted', error: phase.error };
+      case 'closed':
+        release();
+        return { kind: 'halted', error: undefined };
+    }
+
+    function release(): void {
       connection.disconnect();
       machine.update({ kind: 'released', key, lanes, holder });
-      return { kind: 'halted', error: getHaltError(key, lanes, openingHalt) };
     }
-    phase = { kind: 'open' };
-    return {
-      kind: 'attached',
-      connection: {
-        send: connection.send,
-        disconnect() {
-          if (phase.kind !== 'open') {
-            return;
-          }
-          phase = { kind: 'released' };
-          connection.disconnect();
-          machine.update({ kind: 'released', key, lanes, holder });
-        },
-      },
-    };
-  }
-
-  /**
-   * Returns the error a session that opened on halted `lanes` hears: the halt that closed its chain, or else the one
-   * heard while it opened.
-   */
-  function getHaltError(key: string, lanes: ChainLanes, openingHalt: Halt): unknown {
-    const closed = machine.state.get().entries.get(key);
-    if (closed?.kind === 'closed' && closed.chain.lanes === lanes) {
-      return closed.halt?.error;
-    }
-    return openingHalt?.error;
   }
 }
 

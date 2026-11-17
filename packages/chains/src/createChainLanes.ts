@@ -37,6 +37,9 @@ type Params = {
   onHalt: (error?: unknown) => void;
 };
 
+/** Serving, halted with the first halt's error, or closed. A halt or a close is final. */
+type LanesPhase = { kind: 'open' } | { kind: 'halted'; error: unknown } | { kind: 'closed' };
+
 /** Whether a session is a consumer's own, on its home lane, or one the consumer's router opened for a follow. */
 type SessionRole = 'home' | 'follow';
 
@@ -61,8 +64,7 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   let nextLaneId = 0;
   let nextSessionNumber = 0;
   let paused = initiallyPaused;
-  let halted = false;
-  let closed = false;
+  let phase: LanesPhase = { kind: 'open' };
 
   const firstId = takeLaneId();
   const firstTransport = createTransport(createHooks(firstId));
@@ -84,7 +86,7 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     return {
       onStatus: status => {
         const lane = findLane(id);
-        if (lane === undefined || halted) {
+        if (lane === undefined || phase.kind === 'halted') {
           return;
         }
         setLaneStatus(lane, status);
@@ -174,7 +176,7 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
 
   function pickFollowLane(home: Lane): LaneHandle | null {
     // A consumer whose home lane closed has no session left to follow for.
-    if (halted || !lanes.includes(home)) {
+    if (phase.kind === 'halted' || !lanes.includes(home)) {
       return null;
     }
     const roomy = hasRoom(home) ? home : lanes.find(hasRoom);
@@ -281,19 +283,16 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   }
 
   function reportHalt(error: unknown): void {
-    if (halted) {
+    if (phase.kind !== 'open') {
       return;
     }
-    halted = true;
+    phase = { kind: 'halted', error };
     onHalt(error);
   }
 
   function connect(params: LaneConnectParams): BrokerConnection {
-    if (halted) {
-      throw new Error(`${label} halted, so ${params.sessionId} cannot connect`);
-    }
-    if (closed) {
-      throw new Error(`${label} closed, so ${params.sessionId} cannot connect`);
+    if (phase.kind !== 'open') {
+      throw new Error(`${label} ${phase.kind}, so ${params.sessionId} cannot connect`);
     }
     if (hasConsumer(params.sessionId)) {
       throw new Error(`Duplicate ${label} consumer: ${params.sessionId}`);
@@ -346,7 +345,9 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   }
 
   function disconnectAll(): void {
-    closed = true;
+    if (phase.kind === 'open') {
+      phase = { kind: 'closed' };
+    }
     const closing = lanes.splice(0);
     try {
       runEvery(
@@ -361,7 +362,9 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   }
 
   function halt(error?: unknown): void {
-    halted = true;
+    if (phase.kind === 'open') {
+      phase = { kind: 'halted', error };
+    }
     const halting = lanes.splice(0);
     // The chain already halted, so a failure here is only reported.
     haltOnFailure({ step: 'chain_pool_close', doing: 'halting' }, () => {
@@ -405,6 +408,8 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     connect,
     /** The combined status of the open lanes. Never throws. */
     status: getStatus,
+    /** Whether the lanes serve, halted with the first halt's error, or closed. */
+    phase: () => phase,
     /**
      * Closes every lane's connection under its sessions, and gives each lane `disconnected`. Tries every lane, and halts
      * the chain through `onHalt` with what any threw, after reporting it.
