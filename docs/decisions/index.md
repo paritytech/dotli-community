@@ -68,8 +68,12 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## UI
 
+- [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
+  primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
   that runs edge to edge across a shared container primitive, past its inner padding.
+- [listbox-option-needs-a-remove-action](listbox-option-needs-a-remove-action.md): a combobox's popup is a shared
+  listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
