@@ -146,6 +146,40 @@
   height: 16px;
   color: var(--chrome-text);
 }
+.heading {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1_5);
+  font-family: var(--font-sans);
+}
+.group {
+  margin: 0;
+  padding: 0;
+}
+/* Shown on every row that has it, since a touch screen has no hover to reveal it. */
+.remove {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
+  color: var(--chrome-text-muted);
+  cursor: pointer;
+}
+/* Stronger than the row's own fill, which shows under it while the row is active or hovered. */
+.remove:active {
+  background: var(--chrome-fill-strong);
+}
+@media (hover: hover) {
+  .remove:hover {
+    background: var(--chrome-fill-strong);
+    color: var(--chrome-text);
+  }
+}
+.removeIcon {
+  width: 14px;
+  height: 14px;
+}
 /* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its control's width
    and the text ellipsizes. */
 @media (max-width: 560px) {
@@ -165,6 +199,14 @@
   .icon {
     width: 20px;
     height: 20px;
+  }
+  .remove {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+  }
+  .removeIcon {
+    width: 16px;
+    height: 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

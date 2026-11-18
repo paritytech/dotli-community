@@ -1,16 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, Show, type Component } from 'solid-js';
+import { createEffect, createUniqueId, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { CheckIcon } from '../icons/CheckIcon.js';
+import { CloseIcon } from '../icons/CloseIcon.js';
 import { DrawIcon } from '../icons/DrawIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { createOverflow } from '../createOverflow.js';
+import { SectionLabel } from './SectionLabel.js';
 import { Spinner } from './Spinner.js';
 import s from './Listbox.module.css';
 
-export const Listbox = Object.assign(ListboxRoot, { Option });
+export const Listbox = Object.assign(ListboxRoot, { Group, Option });
 
 /**
  * A list of options that drops below its nearest positioned ancestor and never takes focus, so the control that opened
@@ -53,13 +55,34 @@ function ListboxRoot(props: {
   );
 }
 
-/** One option. `active` is the option the arrow keys point at, and `chosen` is the control's current value. */
+/** A section of options under a visible heading that names it. The caller leaves out a section with no options. */
+function Group(props: { label: string; children: JSX.Element }): JSX.Element {
+  const headingId = createUniqueId();
+  return (
+    // A listbox may own only options and groups, and an item may not be a group, so the items around them are none.
+    <li role="none">
+      <ul class={s['group']} role="group" aria-labelledby={headingId}>
+        <li role="none">
+          <SectionLabel text={props.label} id={headingId} class={s['heading']} />
+        </li>
+        {props.children}
+      </ul>
+    </li>
+  );
+}
+
+/**
+ * One option. `active` is the option the arrow keys point at, and `chosen` is the control's current value. With
+ * `remove`, the row ends in a cross for mouse and touch that calls `onRemove` and never picks the option. Keyboard and
+ * screen reader users remove with Shift+Delete, which the option announces and the control's key handling runs.
+ */
 function Option(props: {
   id: string;
   active?: boolean | undefined;
   chosen?: boolean | undefined;
   icon?: Component<IconProps> | undefined;
   detail?: string | undefined;
+  remove?: { label: string; onRemove: () => void } | undefined;
   onPick: () => void;
   testId?: string | undefined;
   children: JSX.Element;
@@ -83,6 +106,7 @@ function Option(props: {
       role="option"
       aria-selected={props.active === true ? 'true' : 'false'}
       aria-checked={props.chosen === true ? 'true' : undefined}
+      aria-keyshortcuts={props.remove === undefined ? undefined : 'Shift+Delete'}
       data-testid={props.testId}
       onMouseDown={event => {
         // The control that opened the list keeps focus, so its keys still drive the list. A touch tap fires this too.
@@ -99,6 +123,25 @@ function Option(props: {
       </span>
       <Show when={props.chosen === true}>
         <CheckIcon class={s['check']} />
+      </Show>
+      {/* An option may hold no interactive control, and a button with a negative tabindex is still one, so the
+          pointer's control is a plain element. */}
+      <Show when={props.remove}>
+        {remove => (
+          <span
+            class={s['remove']}
+            aria-hidden="true"
+            title={remove().label}
+            data-testid="listbox-remove"
+            onClick={event => {
+              // The row's own click would pick the option.
+              event.stopPropagation();
+              remove().onRemove();
+            }}
+          >
+            <CloseIcon class={s['removeIcon']} />
+          </span>
+        )}
       </Show>
     </li>
   );

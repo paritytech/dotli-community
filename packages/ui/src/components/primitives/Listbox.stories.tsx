@@ -4,8 +4,9 @@
 import { createSignal, createUniqueId, For, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
+import { ClockIcon } from '../icons/ClockIcon.js';
 import { GlobeIcon } from '../icons/GlobeIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { SlidersIcon } from '../icons/SlidersIcon.js';
@@ -230,6 +231,33 @@ export const Loading: Story = {
   },
 };
 
+/**
+ * As a dotli user typing a name, I see my recent names and the app names under their own headings, and I remove a recent
+ * name with its cross and it goes while nothing is picked and the input keeps focus.
+ */
+export const Groups: Story = {
+  render: args => <GroupsFrame onPick={args.onPick} />,
+  play: async ({ args, canvas, step }) => {
+    const input = canvas.getByRole('combobox', { name: 'Name' });
+    await step('Then the recent names are a group named by its heading', async () => {
+      const recent = canvas.getByRole('group', { name: 'Recent' });
+      await expect(within(recent).getAllByRole('option')).toHaveLength(2);
+    });
+    await step('Given the input has focus', () => {
+      input.focus();
+    });
+    await step('When I click the cross on news', async () => {
+      const news = canvas.getByRole('option', { name: 'news.dot' });
+      await (await trustedInput()).click(within(news).getByTestId('listbox-remove'));
+    });
+    await step('Then news is gone, nothing is picked and the input still has focus', async () => {
+      await expect(canvas.queryByRole('option', { name: 'news.dot' })).toBeNull();
+      await expect(args.onPick).not.toHaveBeenCalled();
+      await expect(input).toHaveFocus();
+    });
+  },
+};
+
 /** As a phone user, I see a long option end in an ellipsis inside the list, which stays as wide as the input. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -308,6 +336,42 @@ function ManyOptionsFrame(props: StoryArgs): JSX.Element {
       }}
     >
       <Options labels={MANY_OPTIONS} active={MANY_OPTIONS[active()]} onPick={props.onPick} />
+    </InputFrame>
+  );
+}
+
+/** Recent names that each remove themselves, then the app names, each under its heading. */
+function GroupsFrame(props: StoryArgs): JSX.Element {
+  const idPrefix = createUniqueId();
+  const [recent, setRecent] = createSignal(['news', 'browse']);
+  return (
+    <InputFrame width="300px" inputLabel="Name" listId="listbox-groups" listLabel="Suggested names">
+      <Listbox.Group label="Recent">
+        <For each={recent()}>
+          {label => (
+            <Listbox.Option
+              id={`${idPrefix}-recent-${label}`}
+              active={label === 'browse'}
+              icon={ClockIcon}
+              detail=".dot"
+              remove={{
+                label: `Remove ${label}.dot from recent`,
+                onRemove: () => {
+                  setRecent(names => names.filter(name => name !== label));
+                },
+              }}
+              onPick={() => {
+                props.onPick(label);
+              }}
+            >
+              {label}
+            </Listbox.Option>
+          )}
+        </For>
+      </Listbox.Group>
+      <Listbox.Group label="Apps">
+        <Options labels={['bridge', 'broker']} detail=".dot" onPick={props.onPick} />
+      </Listbox.Group>
     </InputFrame>
   );
 }
