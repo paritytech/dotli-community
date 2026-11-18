@@ -24,7 +24,7 @@ type Params = {
   open: (label: string) => void;
 };
 
-const NO_MATCHES: { recent: readonly string[]; apps: readonly string[] } = { recent: [], apps: [] };
+const NO_MATCHES: ReturnType<typeof matchSuggestions> = { recent: [], apps: null };
 
 /**
  * The suggestions for the name input, for the owner's lifetime, in two sections. `recent` holds the recents that start
@@ -42,15 +42,11 @@ export function useSuggestions({ labels, recents, loading, suffix, combobox, ope
 } {
   const text = useStore(combobox.text);
   const focused = useStore(combobox.focused);
-  const name = createMemo(() => {
-    const tld = suffix();
-    return tld === null ? null : typedName(text(), tld);
-  });
   const matches = createMemo(() => {
-    const typedSoFar = name();
-    return typedSoFar === null
+    const tld = suffix();
+    return tld === null
       ? NO_MATCHES
-      : matchSuggestions({ name: typedSoFar, recents: recents.labels(), apps: labels() });
+      : matchSuggestions({ name: typedName(text(), tld), recents: recents.labels(), apps: labels() });
   });
   // Escape and a chosen label each last until the text changes, so they read the text only to reset on it.
   const [escaped, setEscaped] = createSignal(() => {
@@ -63,14 +59,11 @@ export function useSuggestions({ labels, recents, loading, suffix, combobox, ope
   });
   const visible = createMemo(() => focused() && !escaped());
   const recent = createMemo<readonly string[]>(() => (visible() ? matches().recent : []));
-  const apps = createMemo<readonly string[]>(() => (visible() ? matches().apps : []));
+  const apps = createMemo<readonly string[]>(() => (visible() ? (matches().apps ?? []) : []));
   // The one order the arrow keys walk.
   const shown = createMemo(() => [...recent(), ...apps()]);
-  const typed = createMemo(() => {
-    const typedSoFar = name();
-    return typedSoFar !== null && typedSoFar !== '';
-  });
-  const shownLoading = createMemo(() => visible() && typed() && loading());
+  // The loading row belongs to the apps section, so it shows only where that section applies.
+  const shownLoading = createMemo(() => visible() && matches().apps !== null && loading());
   const listShown = createMemo(() => shown().length > 0 || shownLoading());
   const active = createMemo(() => {
     const label = chosen();

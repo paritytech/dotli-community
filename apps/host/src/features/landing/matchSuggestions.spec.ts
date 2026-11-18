@@ -27,15 +27,15 @@ describe('matchSuggestions', () => {
     expect(matches.apps).toEqual(['a1', 'a2', 'a3', 'a4', 'a5', 'a6']);
   });
 
-  it('As a returning visitor with nothing typed, I see all my recents and no app labels', () => {
+  it('As a returning visitor with nothing typed, I see all my recents and no app section', () => {
     // Given recents and apps
     const recents = ['bob', 'alice'];
 
     // When nothing is typed
     const matches = matchSuggestions({ name: '', recents, apps: ['alice', 'bob', 'carol'] });
 
-    // Then every recent shows, in its order, and no app label
-    expect(matches).toEqual({ recent: ['bob', 'alice'], apps: [] });
+    // Then every recent shows, in its order, and there is no app section
+    expect(matches).toEqual({ recent: ['bob', 'alice'], apps: null });
   });
 
   it('As a returning visitor typing a, I see my matching recents in order and the other matching app labels', () => {

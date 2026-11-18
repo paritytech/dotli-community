@@ -12,13 +12,14 @@ type Params = {
 
 /**
  * The suggestions for a typed name, in two sections. `recent` holds the recents that start with it, in their order, so
- * an empty name keeps them all. `apps` holds at most 6 app labels that start with a non-empty name, shortest first, then
- * in code point order. An app that is also a recent shows once, under `recent`.
+ * an empty name keeps them all. `apps` is null for an empty name, which has no apps section, and otherwise holds at most
+ * 6 app labels that start with the name, shortest first, then in code point order. An app that is also a recent shows
+ * once, under `recent`.
  */
-export function matchSuggestions({ name, recents, apps }: Params): { recent: string[]; apps: string[] } {
+export function matchSuggestions({ name, recents, apps }: Params): { recent: string[]; apps: string[] | null } {
   const recent = recents.filter(label => label.startsWith(name));
   if (name === '') {
-    return { recent, apps: [] };
+    return { recent, apps: null };
   }
   const visited = new Set(recents);
   return {
