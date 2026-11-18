@@ -14,6 +14,7 @@
     "./dependency-versions": "./src/dependencyVersions.ts",
     "./inline-script": "./src/inlineScript.ts",
     "./mode-sync": "./src/modeSync.ts",
+    "./page-modules": "./src/readPageModules.ts",
     "./runtime-network-config": "./src/runtimeNetworkConfigPlugin.ts",
     "./service-worker": "./src/serviceWorker.ts",
     "./serving": "./src/serving.ts",

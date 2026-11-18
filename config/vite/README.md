@@ -22,6 +22,7 @@ Build plugins and options shared by these builds:
 | `./inline-script`          | A `?inline-script` import returns a module bundled into one classic script.    |
 | `./astro-pwa`              | Astro integration for the web manifest and service worker.                     |
 | `./astro-modulepreload`    | Astro integration that preloads the modules each page runs at load.            |
+| `./page-modules`           | Reads a built page's entries, modulepreloads and load island modules.          |
 | `./service-worker`         | Builds a hand-written service worker into one file at the root.                |
 | `./truapi-signing-worker`  | A second TrUAPI worker on the `testing` wasm bundle, with a signing host.      |
 | `./build-info`             | Writes the build version file and reads the release version.                   |
@@ -65,5 +66,7 @@ plain export.
     that hydrate at load, with their static imports.
   - The client bundle's import graph names the imports. Dynamic imports and later islands get no link.
   - A page reference the graph does not hold fails the build, naming the page and the reference.
+  - One reader knows Astro's island attributes, and the eager path check reads pages through it too. An island that
+    hydrates at load with no component fails the read, naming the page and the island.
 - **Runtime network config:** every local server reads `$DOTLI_NETWORK` once at start. A value that is not JSON stops
   the server.

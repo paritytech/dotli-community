@@ -28,6 +28,8 @@ const PAGE =
 
 describe('addModulePreloads', () => {
   it('As a dotli developer, I build a page and its head preloads its entry and load islands with their static imports, once each and entry first', () => {
+    // Given a page with an entry, a load island and an idle island
+
     // When
     const html = addModulePreloads(PAGE, GRAPH, PARAMS);
 
@@ -55,6 +57,22 @@ describe('addModulePreloads', () => {
     expect(html).toBe(rewritten);
   });
 
+  it('As a dotli developer, I build a page with a load island whose renderer has no client entrypoint and its head preloads the component', () => {
+    // Given a load island Astro wrote with no renderer-url
+    const page = '<head></head><astro-island uid="a" component-url="/app/assets/Menu.js" client="load"></astro-island>';
+
+    // When
+    const html = addModulePreloads(page, GRAPH, PARAMS);
+
+    // Then
+    expect(html).toBe(
+      '<head>' +
+        '<link rel="modulepreload" href="/app/assets/Menu.js">' +
+        '<link rel="modulepreload" href="/app/assets/menu.js">' +
+        page.slice('<head>'.length),
+    );
+  });
+
   it.each([
     [
       'a module the client bundle does not hold',
@@ -71,9 +89,16 @@ describe('addModulePreloads', () => {
       '<script type="module" src="/app/assets/main.js"></script>',
       'index.html has no </head> to put its modulepreload links in',
     ],
+    [
+      'a load island with no component-url',
+      '<head></head><astro-island uid="a" renderer-url="/app/assets/client.js" client="load"></astro-island>',
+      "index.html has an island with uid 'a' that hydrates at load and has no component-url",
+    ],
   ])(
     'As a dotli developer, I build a page whose markup has %s and the rewrite throws naming the page',
     (_, page, message) => {
+      // Given a page from the row
+
       // When
       const rewrite = (): unknown => addModulePreloads(page, GRAPH, PARAMS);
 
