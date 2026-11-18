@@ -1,0 +1,29 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The landing page's backdrop: dots circling three rings on a tilted floor. HTML and CSS only, so it ships no code.
+import s from './Orbit.module.css';
+
+// Each dot's angle on its ring at rest.
+const RINGS = [
+  { ring: 'inner', starts: [-70, 50, 170] },
+  { ring: 'middle', starts: [-20, 100, 215, 290] },
+  { ring: 'outer', starts: [20, 140, 185, 250, 320] },
+];
+---
+
+<div class={s['orbit']} aria-hidden="true">
+  <div class={s['stage']}>
+    <div class={s['plane']}>
+      {RINGS.map(({ ring, starts }) => (
+        <div class={s['ring']} data-ring={ring}>
+          {starts.map(start => (
+            <div class={s['dot']} style={`--start: ${start}deg`} />
+          ))}
+        </div>
+      ))}
+      <div class={s['centre']}></div>
+    </div>
+  </div>
+</div>

@@ -15,7 +15,10 @@
   --topbar-inline-end: calc(var(--landing-edge) + var(--safe-right));
 }
 
+/* A stacking context of its own, so a backdrop below zero paints over the page's background, not under it. */
 .landing {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;

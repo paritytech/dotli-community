@@ -1,0 +1,124 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Registered, so it animates as an angle rather than flipping between its two ends. */
+@property --orbit-turn {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+/* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. */
+.orbit {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: clip;
+  pointer-events: none;
+}
+
+/* Lengths below are in --unit, a 640th of the stage's width, so the whole orbit scales with the viewport. */
+.stage {
+  --width: min(1500px, 220vw);
+  --unit: calc(var(--width) / 640);
+  --tilt: 74deg;
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: var(--width);
+  aspect-ratio: 12 / 5;
+  translate: -50% 30%;
+  /* Long, so the floor reads close to isometric while near dots still grow a little. */
+  perspective: calc(1920 * var(--unit));
+}
+
+/* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. */
+.plane {
+  --floor: calc(293 * var(--unit));
+  position: absolute;
+  inset: calc(50% - var(--floor));
+  transform: rotateX(var(--tilt));
+  transform-style: preserve-3d;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--text-strong) 4%, transparent), transparent);
+}
+
+.ring {
+  position: absolute;
+  inset: calc(50% - var(--radius));
+  box-sizing: border-box;
+  border: 2px solid var(--ring-color);
+  border-radius: 50%;
+  transform-style: preserve-3d;
+}
+
+/* Inner orbits turn faster, and their dots are larger and brighter. */
+.ring[data-ring='inner'] {
+  --radius: calc(110 * var(--unit));
+  --ring-color: color-mix(in srgb, var(--text-strong) 13%, transparent);
+  --period: 120s;
+  --size: calc(10 * var(--unit));
+  --alpha: 0.45;
+}
+.ring[data-ring='middle'] {
+  --radius: calc(190 * var(--unit));
+  --ring-color: color-mix(in srgb, var(--text-strong) 9%, transparent);
+  --period: 180s;
+  --size: calc(7 * var(--unit));
+  --alpha: 0.37;
+}
+.ring[data-ring='outer'] {
+  --radius: calc(260 * var(--unit));
+  --ring-color: color-mix(in srgb, var(--text-strong) 6%, transparent);
+  --period: 257s;
+  --size: calc(4.5 * var(--unit));
+  --alpha: 0.25;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ring {
+    animation: turn var(--period) linear infinite;
+  }
+}
+
+@keyframes turn {
+  to {
+    --orbit-turn: 360deg;
+  }
+}
+
+.dot {
+  --angle: calc(var(--start) + var(--orbit-turn));
+  position: absolute;
+  inset: calc(50% - var(--size) / 2);
+  border-radius: 50%;
+  background: var(--text-strong);
+  /* Brighter on the near side of the floor. */
+  opacity: calc(var(--alpha) * (0.8 + 0.2 * sin(var(--angle))));
+  /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. */
+  transform: translate(calc(cos(var(--angle)) * var(--radius)), calc(sin(var(--angle)) * var(--radius)))
+    rotateX(calc(-1 * var(--tilt)));
+}
+
+/* Without trig functions the dots hold still at their starting angles. */
+@supports not (scale: sin(0deg)) {
+  .dot {
+    opacity: var(--alpha);
+    transform: rotate(var(--start)) translateX(var(--radius)) rotate(calc(-1 * var(--start)))
+      rotateX(calc(-1 * var(--tilt)));
+  }
+}
+
+/* A soft glow with a dot in it, upright like the dots. */
+.centre {
+  --glow: calc(53 * var(--unit));
+  position: absolute;
+  inset: calc(50% - var(--glow));
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--text-strong) 55%, transparent) 14%,
+    color-mix(in srgb, var(--text-strong) 10%, transparent) 16%,
+    transparent
+  );
+  transform: rotateX(calc(-1 * var(--tilt)));
+}

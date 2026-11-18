@@ -10,10 +10,12 @@ import { LandingNetworkIsland } from './LandingNetworkIsland.jsx';
 import { LandingSettingsIsland } from './LandingSettingsIsland.jsx';
 import { LandingNavIsland } from './LandingNavIsland.jsx';
 import { LandingSuggestIsland } from './LandingSuggestIsland.jsx';
+import Orbit from './Orbit.astro';
 import s from './Landing.module.css';
 ---
 
 <div class={s['landing']} data-testid="landing">
+  <Orbit />
   <header class={s['header']}>
     {/* The wordmark names the link. */}
     <a class={s['home']} href="/">
