@@ -1,7 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* One clock for every ring, registered so it animates as an angle rather than flipping between its two ends. */
+/* One clock for every ring, so a line between two rings follows both of its dots, registered so it animates as an angle
+   rather than flipping between its two ends. */
 @property --clock {
   syntax: '<angle>';
   inherits: true;
@@ -82,7 +83,6 @@
   --dot-color: var(--chrome-action-dim);
 }
 
-/* One clock for every ring, so a line between two rings follows both of its dots. */
 @media (prefers-reduced-motion: no-preference) {
   .plane {
     animation: turn 1800s linear infinite;
