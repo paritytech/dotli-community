@@ -149,23 +149,6 @@
   --to-turn: var(--middle-turn);
 }
 
-/* Without trig functions the dots hold still at their starting angles, and only the lines from the centre can reach
-   theirs. */
-@supports not (scale: sin(0deg)) {
-  .dot {
-    transform: rotate(var(--start)) translateX(var(--radius)) rotate(calc(-1 * var(--start)))
-      rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
-  }
-  .link {
-    width: var(--to-radius);
-    transform: rotate(var(--to-start));
-  }
-  .link[data-from='inner'],
-  .link[data-from='middle'] {
-    display: none;
-  }
-}
-
 /* A soft glow with a dot in it, upright and moved toward the viewer like the dots, by twice the width of its dot,
    which is 28% of the glow's radius. */
 .centre {
