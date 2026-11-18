@@ -7,54 +7,109 @@
   color-scheme: dark;
 }
 
+/* No bar here, so menus from the header's buttons anchor to them instead. The buttons are the header's tallest
+   item, so they span its row. */
+:global(:root:has(body[data-landing])) {
+  --landing-edge: var(--sp-6);
+  --topbar-bottom: calc(var(--landing-edge) + var(--h-bar-control) + var(--safe-top));
+  --topbar-inline-end: calc(var(--landing-edge) + var(--safe-right));
+}
+
 .landing {
   display: flex;
   flex-direction: column;
-  align-items: center;
   box-sizing: border-box;
   min-height: 100dvh;
   margin: 0;
-  padding: calc(var(--sp-8) + var(--safe-top)) calc(var(--sp-8) + var(--safe-right))
-    calc(var(--sp-8) + var(--safe-bottom)) calc(var(--sp-8) + var(--safe-left));
+  padding: 0;
   background: var(--bg-page);
   color: var(--text-strong);
   font-family: var(--font-sans);
 }
 
-/* The landing page has no topbar, so these buttons sit under the status bar in an installed PWA. */
-.corner {
-  position: absolute;
-  top: calc(16px + var(--safe-top));
-  right: calc(16px + var(--safe-right));
+/* The page has no topbar, so the header clears the status bar in an installed PWA. */
+.header {
   display: flex;
-  gap: var(--sp-1);
+  flex-wrap: wrap;
+  gap: var(--sp-4);
   align-items: center;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-.center {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   box-sizing: border-box;
   width: 100%;
   margin: 0;
+  padding: calc(var(--landing-edge) + var(--safe-top)) calc(var(--landing-edge) + var(--safe-right)) var(--landing-edge)
+    calc(var(--landing-edge) + var(--safe-left));
+}
+
+.home {
+  display: flex;
+  flex: none;
+  gap: var(--sp-2);
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--r-xs);
+  color: var(--text-strong);
+  text-decoration: none;
+}
+.home:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+
+/* At the end even on a wrapped row, where the menus open. */
+.actions {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  margin: 0 0 0 auto;
   padding: 0;
 }
 
-.content {
+.main {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   box-sizing: border-box;
   width: 100%;
-  max-width: 440px;
+  margin: 0;
+  padding: clamp(var(--sp-10), 9vh, 96px) calc(var(--sp-4) + var(--safe-right)) 0 calc(var(--sp-4) + var(--safe-left));
+}
+
+.intro {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 600px;
   margin: 0;
   padding: 0;
   text-align: center;
+}
+
+.title {
+  margin: 0;
+  padding: 0;
+  font-size: clamp(32px, 3.7vw, 52px);
+  font-weight: var(--fw-medium);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  color: var(--text-strong);
+}
+
+/* The headline breaks only between its two lines. */
+.line {
+  display: block;
+  white-space: nowrap;
+}
+
+.lead {
+  max-width: var(--w-landing);
+  margin: var(--sp-4) auto 0;
+  padding: 0;
+  font-size: var(--fs-title-lg);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  text-wrap: balance;
 }
 
 /* The input and, under it, its suggestions. */
@@ -64,47 +119,57 @@
   max-width: var(--w-landing);
 }
 
-/* Holds only the wordmark and its tag, so no line box adds space under it. */
-.title {
-  position: relative;
+.footer {
   display: flex;
-  margin: var(--sp-5) 0 0;
-  padding: 0;
-}
-
-/* The topbar's Beta tag at the wordmark's scale. Out of the flow, so the wordmark stays centered. */
-.beta {
-  position: absolute;
-  top: calc(-1 * var(--sp-1));
-  left: calc(100% + var(--sp-2));
-  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-6);
   align-items: center;
-  height: 20px;
-  padding: 0 var(--sp-2);
-  border-radius: var(--r-full);
-  background: var(--fill-strong);
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: var(--sp-5) calc(var(--landing-edge) + var(--safe-right)) calc(var(--sp-6) + var(--safe-bottom))
+    calc(var(--landing-edge) + var(--safe-left));
+  font-size: var(--fs-small);
   color: var(--text-secondary);
-  font: var(--fw-semibold) var(--fs-label) / 1 var(--font-sans);
-  letter-spacing: var(--ls-caps);
 }
 
-.subtitle {
-  margin: var(--sp-4) 0 0;
+.notice {
+  margin: 0;
   padding: 0;
-  font-size: var(--fs-title-lg);
-  line-height: var(--lh-body);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+}
+
+.link {
+  border-radius: var(--r-hair);
   color: var(--text-secondary);
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .link:hover {
+    color: var(--text-strong);
+  }
+}
+.link:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
 }
 
 @media (max-width: 560px) {
-  .landing {
-    padding-right: calc(var(--sp-4) + var(--safe-right));
-    padding-left: calc(var(--sp-4) + var(--safe-left));
+  :global(:root:has(body[data-landing])) {
+    --landing-edge: var(--sp-4);
   }
-}
-
-/* No bar here, so menus from the corner's buttons anchor to the corner instead. */
-:global(:root:has(body[data-landing])) {
-  --topbar-bottom: calc(16px + var(--h-bar-control) + var(--safe-top));
-  --topbar-inline-end: calc(16px + var(--safe-right));
+  /* Under about 330px the clamp's floor would push the longer line past the screen. */
+  .title {
+    font-size: min(32px, 9vw);
+  }
 }

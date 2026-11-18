@@ -191,8 +191,9 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(page.getByTestId('landing')).toBeVisible();
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 1, name: 'Polkadot' })).toBeVisible();
-    await expect(page.getByText('The decentralized web, in your browser.')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'The decentralized web, in your browser.' }),
+    ).toBeVisible();
     // The islands' build-time renders.
     await expect(page.locator('#landing-auth-button')).toBeVisible();
     await expect(page.locator('#dotli-nav-input')).toBeVisible();

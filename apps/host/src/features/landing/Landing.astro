@@ -14,24 +14,44 @@ import s from './Landing.module.css';
 ---
 
 <div class={s['landing']} data-testid="landing">
-  <div class={s['corner']} id="landing-auth">
-    <LandingAuthIsland client:load />
-    <LandingNetworkIsland client:idle />
-    <LandingSettingsIsland client:idle />
-  </div>
-  <div class={s['center']}>
-    <div class={s['content']}>
-      <LogoSymbol height={54} />
-      {/* Sized and spaced as the guide's vertical lockup. */}
-      <h1 class={s['title']}>
-        <LogoWordmark height={25} testId="landing-wordmark" />
-        <span class={s['beta']}>β</span>
-      </h1>
-      <p class={s['subtitle']}>The decentralized web, in your browser.</p>
-      <div class={s['nav']}>
-        <LandingNavIsland client:load />
-        <LandingSuggestIsland client:idle />
-      </div>
+  <header class={s['header']}>
+    {/* The wordmark names the link. */}
+    <a class={s['home']} href="/">
+      <LogoSymbol height={28} />
+      <LogoWordmark height={18} />
+    </a>
+    <div class={s['actions']} id="landing-auth">
+      <LandingAuthIsland client:load />
+      <LandingNetworkIsland client:idle />
+      <LandingSettingsIsland client:idle />
     </div>
-  </div>
+  </header>
+  <main class={s['main']}>
+    <div class={s['intro']}>
+      <h1 class={s['title']}>
+        <span class={s['line']}>The decentralized web,</span>
+        <span class={s['line']}>in your browser.</span>
+      </h1>
+      <p class={s['lead']}>Apps load straight from the Polkadot network, with no middleman to trust.</p>
+    </div>
+    <div class={s['nav']}>
+      <LandingNavIsland client:load />
+      <LandingSuggestIsland client:idle />
+    </div>
+  </main>
+  <footer class={s['footer']}>
+    {/* Every network this build knows is a test network. */}
+    <p class={s['notice']}>Test network · tokens have no real value</p>
+    <nav class={s['links']} aria-label="Footer">
+      <a class={s['link']} href="https://developers.polkadot.com/apps/">
+        Get Polkadot App
+      </a>
+      <a class={s['link']} href="https://developers.polkadot.com/apps/">
+        Build an app
+      </a>
+      <a class={s['link']} href="https://github.com/paritytech/dotli-community">
+        Source
+      </a>
+    </nav>
+  </footer>
 </div>
