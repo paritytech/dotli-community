@@ -107,7 +107,7 @@
 }
 
 .lead {
-  max-width: var(--w-landing);
+  max-width: 460px;
   margin: var(--sp-4) auto 0;
   padding: 0;
   font-size: var(--fs-title-lg);

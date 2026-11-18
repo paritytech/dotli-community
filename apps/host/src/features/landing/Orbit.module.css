@@ -51,27 +51,27 @@
   transform-style: preserve-3d;
 }
 
-/* Inner orbits turn faster, and their dots are larger and brighter. */
+/* Inner orbits turn faster and carry larger dots, the innermost brightest. Dots are opaque, so no ring shows through one. */
 .ring[data-ring='inner'] {
   --radius: calc(110 * var(--unit));
   --ring-color: color-mix(in srgb, var(--text-strong) 13%, transparent);
   --period: 120s;
   --size: calc(10 * var(--unit));
-  --alpha: 0.45;
+  --dot-color: var(--text-faint);
 }
 .ring[data-ring='middle'] {
   --radius: calc(190 * var(--unit));
   --ring-color: color-mix(in srgb, var(--text-strong) 9%, transparent);
   --period: 180s;
   --size: calc(7 * var(--unit));
-  --alpha: 0.37;
+  --dot-color: var(--chrome-action-dim);
 }
 .ring[data-ring='outer'] {
   --radius: calc(260 * var(--unit));
   --ring-color: color-mix(in srgb, var(--text-strong) 6%, transparent);
   --period: 257s;
   --size: calc(4.5 * var(--unit));
-  --alpha: 0.25;
+  --dot-color: var(--chrome-action-dim);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -91,20 +91,18 @@
   position: absolute;
   inset: calc(50% - var(--size) / 2);
   border-radius: 50%;
-  background: var(--text-strong);
-  /* Brighter on the near side of the floor. */
-  opacity: calc(var(--alpha) * (0.8 + 0.2 * sin(var(--angle))));
-  /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. */
+  background: var(--dot-color);
+  /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then moved toward the
+     viewer by more than the floor comes forward across the dot's lower half, so nothing on the floor draws over it. */
   transform: translate(calc(cos(var(--angle)) * var(--radius)), calc(sin(var(--angle)) * var(--radius)))
-    rotateX(calc(-1 * var(--tilt)));
+    rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
 }
 
 /* Without trig functions the dots hold still at their starting angles. */
 @supports not (scale: sin(0deg)) {
   .dot {
-    opacity: var(--alpha);
     transform: rotate(var(--start)) translateX(var(--radius)) rotate(calc(-1 * var(--start)))
-      rotateX(calc(-1 * var(--tilt)));
+      rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
   }
 }
 

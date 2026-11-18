@@ -240,7 +240,7 @@
   --r-pop: 20px;
   /* Phones' toasts are full width. */
   --w-toast: 340px;
-  --w-landing: 460px;
+  --w-landing: 400px;
 
   --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
   --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
