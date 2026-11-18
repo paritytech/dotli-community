@@ -21,6 +21,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to
   need it too.
+- [slice-edits-an-end-to-end-spec](slice-edits-an-end-to-end-spec.md): a slice edits a Playwright spec that drives the
+  built app, and the question is whether the slice's checks run it.
 - [workflow-dispatches-several-subagents](workflow-dispatches-several-subagents.md): a workflow dispatches several
   subagents for one change, and the question is which loads the code-writing docs and who runs the loop.
 
