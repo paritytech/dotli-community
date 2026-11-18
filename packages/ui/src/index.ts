@@ -9,6 +9,7 @@ export {
   listenForSandboxStatus,
   nudgePhaseProgress,
   onProgressStall,
+  onProgressResume,
   onSandboxDone,
   releasePhaseProgress,
   setLoadingDomain,

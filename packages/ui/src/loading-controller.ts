@@ -49,25 +49,39 @@ const PROGRESS_STALL_MS = 4_000;
 
 let progressStallTimer: ReturnType<typeof setTimeout> | null = null;
 let progressStallListener: ((pct: number) => void) | null = null;
+let progressResumeListener: ((pct: number) => void) | null = null;
+let progressStalled = false;
 
 /** Fires each time the bar stops afresh. Replaces any previous listener. */
 export function onProgressStall(listener: (pct: number) => void): void {
   progressStallListener = listener;
 }
 
-export function stopProgressWatch(): void {
+/** Fires on the first real movement after a reported stall. Replaces any previous listener. */
+export function onProgressResume(listener: (pct: number) => void): void {
+  progressResumeListener = listener;
+}
+
+function clearProgressTimer(): void {
   if (progressStallTimer !== null) {
     clearTimeout(progressStallTimer);
     progressStallTimer = null;
   }
 }
 
+export function stopProgressWatch(): void {
+  clearProgressTimer();
+  progressStalled = false;
+}
+
 function armProgressWatch(pct: number): void {
-  stopProgressWatch();
+  clearProgressTimer();
   if (pct >= 100 || !trackLoadingRoot()) {
     return;
   }
   progressStallTimer = setTimeout(() => {
+    progressStallTimer = null;
+    progressStalled = true;
     progressStallListener?.(pct);
   }, PROGRESS_STALL_MS);
 }
@@ -82,6 +96,10 @@ function setProgress(pct: number, cosmetic = false): void {
   const moved = !cosmetic && shown !== lastRealShown;
   if (moved) {
     lastRealShown = shown;
+    if (progressStalled) {
+      progressStalled = false;
+      progressResumeListener?.(pct);
+    }
   }
   currentProgress = pct;
   if (moved) {

@@ -18,10 +18,12 @@ import {
   advancePhase,
   nudgePhaseProgress,
   onProgressStall,
+  onProgressResume,
   releasePhaseProgress,
   setLoadingDomain,
   setLoadingStage,
   setLoadingWarning,
+  getLoadingState,
   stopStatusTick,
   listenForSandboxStatus,
   onSandboxDone,
@@ -950,38 +952,83 @@ async function main(): Promise<void> {
     const warned = new Set<CriticalChain>();
     let liveBytesPerSecond: number | null = null;
 
-    // Once shown, the warning stays and only its text updates, since a blinking row reads as worse trouble. An early
-    // condition is parked until the load is old enough to be slow.
-    const loadStartedAt = performance.now();
-    let warningShown = false;
-    let pendingWarning: string | null = null;
-    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+    interface VisibleLoadingWarning {
+      message: string;
+      kind: 'progress' | 'chain';
+      barPercent: number;
+      chain?: CriticalChain;
+    }
 
-    const showWarning = (message: string): void => {
+    const readLoadingPercent = (): number => getLoadingState().progress;
+
+    // A warning is visible only while its evidence still stands. Keeping a recovered warning beside a later terminal
+    // error made an old network condition look like the cause of that error.
+    const loadStartedAt = performance.now();
+    let activeWarning: VisibleLoadingWarning | null = null;
+    let pendingWarning: VisibleLoadingWarning | null = null;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+    let barStalled = false;
+
+    const displayWarning = (warning: VisibleLoadingWarning): void => {
+      activeWarning = warning;
+      setLoadingWarning(warning.message);
+      trace.loadingWarning({
+        kind: warning.kind,
+        message: warning.message,
+        barPercent: warning.barPercent,
+        bytesPerSecond: liveBytesPerSecond,
+        ...(warning.chain === undefined ? {} : { chain: warning.chain }),
+      });
+    };
+
+    const clearWarning = (barPercent = readLoadingPercent()): void => {
+      pendingWarning = null;
+      if (pendingTimer !== null) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
+      }
+      if (activeWarning !== null) {
+        setLoadingWarning(null);
+        trace.loadingWarningCleared(barPercent);
+        activeWarning = null;
+      }
+    };
+
+    const showWarning = (warning: VisibleLoadingWarning): void => {
       const waitLeft = WARNING_MIN_LOAD_MS - (performance.now() - loadStartedAt);
       if (waitLeft > 0) {
-        pendingWarning = message;
+        pendingWarning = warning;
         pendingTimer ??= setTimeout(() => {
           pendingTimer = null;
           if (pendingWarning !== null) {
-            warningShown = true;
-            trace.warningShown();
-            setLoadingWarning(pendingWarning);
+            const due = pendingWarning;
+            pendingWarning = null;
+            displayWarning(due);
           }
         }, waitLeft);
         return;
       }
-      warningShown = true;
-      trace.warningShown();
       pendingWarning = null;
-      setLoadingWarning(message);
+      displayWarning(warning);
     };
 
-    onProgressStall(() => {
+    onProgressStall(barPercent => {
+      barStalled = true;
       if (warned.size > 0) {
         return;
       }
-      showWarning(describeProgressStall(liveBytesPerSecond));
+      showWarning({
+        message: describeProgressStall(liveBytesPerSecond),
+        kind: 'progress',
+        barPercent,
+      });
+    });
+
+    onProgressResume(barPercent => {
+      barStalled = false;
+      if (warned.size === 0 && (activeWarning?.kind === 'progress' || pendingWarning?.kind === 'progress')) {
+        clearWarning(barPercent);
+      }
     });
 
     const armStallWatch = (chain: CriticalChain, state: ChainSyncKind): void => {
@@ -990,11 +1037,14 @@ async function main(): Promise<void> {
         clearTimeout(existing);
       }
       if (warned.delete(chain) && warned.size === 0) {
-        // Recovered, but hiding the row would flash it, so fall back to the general slow-load line.
-        if (warningShown) {
-          showWarning(describeProgressStall(liveBytesPerSecond));
+        if (barStalled) {
+          showWarning({
+            message: describeProgressStall(liveBytesPerSecond),
+            kind: 'progress',
+            barPercent: readLoadingPercent(),
+          });
         } else {
-          pendingWarning = null;
+          clearWarning();
         }
       }
       if (state === 'bootstrapComplete') {
@@ -1014,7 +1064,12 @@ async function main(): Promise<void> {
             return;
           }
           warned.add(chain);
-          showWarning(message);
+          showWarning({
+            message,
+            kind: 'chain',
+            chain,
+            barPercent: readLoadingPercent(),
+          });
         }, STALL_WARNING_MS),
       );
     };
