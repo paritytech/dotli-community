@@ -24,6 +24,12 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [workflow-dispatches-several-subagents](workflow-dispatches-several-subagents.md): a workflow dispatches several
   subagents for one change, and the question is which loads the code-writing docs and who runs the loop.
 
+## Build
+
+- [build-feature-the-framework-lacks](build-feature-the-framework-lacks.md): a build step would fill a gap in the
+  framework, such as post-processing its emitted pages, and the question is whether to write custom code and how it
+  reacts when the framework's output stops matching.
+
 ## Code structure
 
 - [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one

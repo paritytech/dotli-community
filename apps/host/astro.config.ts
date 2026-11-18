@@ -8,6 +8,7 @@ import { LOCAL_ROOTS } from '@dotli/config/local-roots';
 import astroSolid from '@config/astro-solid';
 import { createDotliApp } from '@config/vite/app';
 import { astroPwa } from '@config/vite/astro-pwa';
+import { astroModulePreload } from '@config/vite/astro-modulepreload';
 import { readReleaseVersion } from '@config/vite/build-info';
 import { listDependencyVersions } from '@config/vite/dependency-versions';
 import { PROTOCOL_PREFIX } from '@config/vite/serving';
@@ -39,6 +40,7 @@ export default defineConfig({
   build: { assets: 'assets', format: 'file' },
   integrations: [
     astroSolid(),
+    astroModulePreload(),
     // Builds the worker that retires the shell's precaching worker from earlier releases, and emits the web manifest.
     astroPwa({
       strategies: 'injectManifest',
