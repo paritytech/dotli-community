@@ -26,6 +26,11 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [workflow-dispatches-several-subagents](workflow-dispatches-several-subagents.md): a workflow dispatches several
   subagents for one change, and the question is which loads the code-writing docs and who runs the loop.
 
+## Browser support
+
+- [fallback-for-a-floor-era-browser](fallback-for-a-floor-era-browser.md): a cleanup finds a fallback for a feature
+  Safari 17.4 has but another browser of the same era lacked, and the question is whether the floor binds only Safari.
+
 ## Build
 
 - [build-feature-the-framework-lacks](build-feature-the-framework-lacks.md): a build step would fill a gap in the

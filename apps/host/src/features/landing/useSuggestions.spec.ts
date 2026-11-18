@@ -12,10 +12,12 @@ type MountOptions = {
   loading?: boolean;
   /** The recently visited names, newest first. */
   visited?: readonly string[];
+  /** The TLD a typed name may end with, null before the network is known. */
+  suffix?: string | null;
 };
 
 /** The suggestions under a fresh owner, over a focused input holding `initial`, settled. */
-function mount(initial: string, { loading = false, visited = [] }: MountOptions = {}) {
+function mount(initial: string, { loading = false, visited = [], suffix = '.dot' }: MountOptions = {}) {
   const combobox = createNavComboboxState();
   combobox.setText(initial);
   combobox.setFocused(true);
@@ -35,7 +37,7 @@ function mount(initial: string, { loading = false, visited = [] }: MountOptions 
       labels: () => LABELS,
       recents,
       loading: syncing,
-      suffix: () => '.dot',
+      suffix: () => suffix,
       combobox,
       open,
     }),
@@ -98,16 +100,14 @@ describe('useSuggestions', () => {
     expect(view.suggestions.apps()).toEqual(['ant', 'apple', 'avocado']);
   });
 
-  it('As a returning visitor, I type the start of a name and see the matching recents, newest first, then the other matching app labels', () => {
-    // Given recents newest first, one of them also an app
-    const view = mount('', { visited: ['avocado', 'banana', 'axe'] });
-
+  it('As a returning visitor before my network is known, I focus the input and see no suggestions', () => {
     // When
-    view.type('a');
+    const view = mount('al', { visited: ['alpha'], suffix: null });
 
     // Then
-    expect(view.suggestions.recent()).toEqual(['avocado', 'axe']);
-    expect(view.suggestions.apps()).toEqual(['ant', 'apple']);
+    expect(view.suggestions.recent()).toEqual([]);
+    expect(view.suggestions.apps()).toEqual([]);
+    expect(view.listbox()).toBeNull();
   });
 
   it('As a returning visitor, I press ArrowDown on the last recent and the first app label is active', () => {
