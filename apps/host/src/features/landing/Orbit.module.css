@@ -1,8 +1,18 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Registered, so it animates as an angle rather than flipping between its two ends. */
-@property --orbit-turn {
+/* Each ring's turn, registered so it animates as an angle rather than flipping between its two ends. */
+@property --inner-turn {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --middle-turn {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --outer-turn {
   syntax: '<angle>';
   inherits: true;
   initial-value: 0deg;
@@ -35,6 +45,9 @@
 /* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. */
 .plane {
   --floor: calc(293 * var(--unit));
+  --inner-radius: calc(110 * var(--unit));
+  --middle-radius: calc(190 * var(--unit));
+  --outer-radius: calc(260 * var(--unit));
   position: absolute;
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
@@ -51,43 +64,48 @@
   transform-style: preserve-3d;
 }
 
-/* Inner orbits turn faster and carry larger dots, the innermost brightest. Dots are opaque, so no ring shows through one. */
+/* Inner orbits carry larger dots, the innermost brightest. Dots are opaque, so nothing on the floor shows through one.
+   The fallback turn holds the dots at rest where the turns are not registered. */
 .ring[data-ring='inner'] {
-  --radius: calc(110 * var(--unit));
+  --radius: var(--inner-radius);
+  --turn: var(--inner-turn, 0deg);
   --ring-color: color-mix(in srgb, var(--text-strong) 13%, transparent);
-  --period: 120s;
   --size: calc(10 * var(--unit));
   --dot-color: var(--text-faint);
 }
 .ring[data-ring='middle'] {
-  --radius: calc(190 * var(--unit));
+  --radius: var(--middle-radius);
+  --turn: var(--middle-turn, 0deg);
   --ring-color: color-mix(in srgb, var(--text-strong) 9%, transparent);
-  --period: 180s;
   --size: calc(7 * var(--unit));
   --dot-color: var(--chrome-action-dim);
 }
 .ring[data-ring='outer'] {
-  --radius: calc(260 * var(--unit));
+  --radius: var(--outer-radius);
+  --turn: var(--outer-turn, 0deg);
   --ring-color: color-mix(in srgb, var(--text-strong) 6%, transparent);
-  --period: 257s;
   --size: calc(4.5 * var(--unit));
   --dot-color: var(--chrome-action-dim);
 }
 
+/* One clock for every ring, so a line between two rings follows both of its dots. */
 @media (prefers-reduced-motion: no-preference) {
-  .ring {
-    animation: turn var(--period) linear infinite;
+  .plane {
+    animation: turn 1800s linear infinite;
   }
 }
 
+/* Inner orbits turn faster. Each ring makes whole turns in the half hour, so the loop has no seam. */
 @keyframes turn {
   to {
-    --orbit-turn: 360deg;
+    --inner-turn: 5400deg;
+    --middle-turn: 3600deg;
+    --outer-turn: 2520deg;
   }
 }
 
 .dot {
-  --angle: calc(var(--start) + var(--orbit-turn, 0deg));
+  --angle: calc(var(--start) + var(--turn));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
   border-radius: 50%;
@@ -98,15 +116,67 @@
     rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
 }
 
-/* Without trig functions the dots hold still at their starting angles. */
+/* A line flat on the floor from one dot to another, or from the centre. It runs under the dots, which cover its ends. */
+.link {
+  --line: 2px;
+  --from-angle: calc(var(--from-start) + var(--from-turn));
+  --to-angle: calc(var(--to-start) + var(--to-turn));
+  --dx: calc(cos(var(--to-angle)) * var(--to-radius) - cos(var(--from-angle)) * var(--from-radius));
+  --dy: calc(sin(var(--to-angle)) * var(--to-radius) - sin(var(--from-angle)) * var(--from-radius));
+  position: absolute;
+  top: calc(50% - var(--line) / 2);
+  left: 50%;
+  width: hypot(var(--dx), var(--dy));
+  height: var(--line);
+  background: color-mix(in srgb, var(--text-strong) 16%, transparent);
+  transform-origin: 0 50%;
+  transform: translate(
+      calc(cos(var(--from-angle)) * var(--from-radius)),
+      calc(sin(var(--from-angle)) * var(--from-radius))
+    )
+    rotate(atan2(var(--dy), var(--dx)));
+}
+.link[data-from='centre'] {
+  --from-radius: 0px;
+  --from-turn: 0deg;
+  background: color-mix(in srgb, var(--text-strong) 30%, transparent);
+}
+.link[data-from='inner'] {
+  --from-radius: var(--inner-radius);
+  --from-turn: var(--inner-turn, 0deg);
+}
+.link[data-from='middle'] {
+  --from-radius: var(--middle-radius);
+  --from-turn: var(--middle-turn, 0deg);
+}
+.link[data-to='inner'] {
+  --to-radius: var(--inner-radius);
+  --to-turn: var(--inner-turn, 0deg);
+}
+.link[data-to='middle'] {
+  --to-radius: var(--middle-radius);
+  --to-turn: var(--middle-turn, 0deg);
+}
+
+/* Without trig functions the dots hold still at their starting angles, and only the lines from the centre can reach
+   theirs. */
 @supports not (scale: sin(0deg)) {
   .dot {
     transform: rotate(var(--start)) translateX(var(--radius)) rotate(calc(-1 * var(--start)))
       rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
   }
+  .link {
+    width: var(--to-radius);
+    transform: rotate(var(--to-start));
+  }
+  .link[data-from='inner'],
+  .link[data-from='middle'] {
+    display: none;
+  }
 }
 
-/* A soft glow with a dot in it, upright like the dots. */
+/* A soft glow with a dot in it, upright and moved toward the viewer like the dots, by twice the width of its dot,
+   which is 28% of the glow's radius. */
 .centre {
   --glow: calc(53 * var(--unit));
   position: absolute;
@@ -118,5 +188,5 @@
     color-mix(in srgb, var(--text-strong) 10%, transparent) 16%,
     transparent
   );
-  transform: rotateX(calc(-1 * var(--tilt)));
+  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(0.56 * var(--glow)));
 }

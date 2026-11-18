@@ -2,14 +2,29 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page's backdrop: dots circling three rings on a tilted floor. HTML and CSS only, so it ships no code.
+// The landing page's backdrop: dots circling three rings on a tilted floor, linked to the centre and to each other.
+// HTML and CSS only, so it ships no code.
 import s from './Orbit.module.css';
 
 // Each dot's angle on its ring at rest.
+const INNER = { c0: -70, c1: 50, c2: 170 };
+const MIDDLE = { s0: -20, s1: 100, s2: 215, s3: 290 };
+
 const RINGS = [
-  { ring: 'inner', starts: [-70, 50, 170] },
-  { ring: 'middle', starts: [-20, 100, 215, 290] },
+  { ring: 'inner', starts: Object.values(INNER) },
+  { ring: 'middle', starts: Object.values(MIDDLE) },
   { ring: 'outer', starts: [20, 140, 185, 250, 320] },
+];
+
+// The centre links to every inner dot, and some dots link to each other.
+const LINKS = [
+  ...Object.values(INNER).map(start => ({ from: { ring: 'centre', start: 0 }, to: { ring: 'inner', start } })),
+  { from: { ring: 'inner', start: INNER.c0 }, to: { ring: 'middle', start: MIDDLE.s3 } },
+  { from: { ring: 'inner', start: INNER.c0 }, to: { ring: 'middle', start: MIDDLE.s0 } },
+  { from: { ring: 'middle', start: MIDDLE.s0 }, to: { ring: 'middle', start: MIDDLE.s3 } },
+  { from: { ring: 'inner', start: INNER.c1 }, to: { ring: 'middle', start: MIDDLE.s1 } },
+  { from: { ring: 'inner', start: INNER.c2 }, to: { ring: 'middle', start: MIDDLE.s2 } },
+  { from: { ring: 'inner', start: INNER.c2 }, to: { ring: 'middle', start: MIDDLE.s1 } },
 ];
 ---
 
@@ -22,6 +37,14 @@ const RINGS = [
             <div class={s['dot']} style={`--start: ${start}deg`} />
           ))}
         </div>
+      ))}
+      {LINKS.map(({ from, to }) => (
+        <div
+          class={s['link']}
+          data-from={from.ring}
+          data-to={to.ring}
+          style={`--from-start: ${from.start}deg; --to-start: ${to.start}deg`}
+        />
       ))}
       <div class={s['centre']}></div>
     </div>
