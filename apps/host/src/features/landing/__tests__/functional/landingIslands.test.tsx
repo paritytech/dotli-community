@@ -13,7 +13,7 @@ import { pageScreen, showErrorPage } from '@dotli/ui';
 import { LandingAuthIsland } from '../../LandingAuthIsland.js';
 import { LandingNavIsland } from '../../LandingNavIsland.js';
 import { LandingPartIsland } from '../../LandingPartIsland.js';
-import { LandingRecentsIsland } from '../../LandingRecentsIsland.js';
+import { LandingSuggestIsland } from '../../LandingSuggestIsland.js';
 import { createRecentLabels } from '../../createRecentLabels.js';
 import { appears, byTestId } from '@dotli/ui/testing';
 
@@ -25,20 +25,20 @@ type Params = {
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
-const SLOTS = { auth: 'landing-auth', nav: 'landing-nav-slot', recents: 'landing-recents-slot' } as const;
+const SLOTS = { auth: 'landing-auth', nav: 'landing-nav-slot', suggestions: 'landing-suggestions-slot' } as const;
 
 let unmounts: (() => void)[] = [];
 
 /**
- * The three islands, settled as hydration leaves them: the name form and the one recent name the shared store holds
- * shown, or the error page. `nav` takes the name form's place.
+ * The three islands, settled as hydration leaves them: the name form enabled, or the error page. `nav` takes the name
+ * form's place.
  */
 async function mountIslands({ nav = LandingNavIsland }: Params = {}): Promise<void> {
-  const shared = createMemorySharedChannel({ entries: { dotli_recent: '["alpha"]' } });
+  const shared = createMemorySharedChannel();
   const islands = [
     [LandingAuthIsland, SLOTS.auth, {}],
     [nav, SLOTS.nav, {}],
-    [LandingRecentsIsland, SLOTS.recents, { recents: createRecentLabels({ channel: shared }) }],
+    [LandingSuggestIsland, SLOTS.suggestions, { recents: createRecentLabels({ channel: shared }) }],
   ] as const;
   for (const [island, id, props] of islands) {
     // As in Astro, an island an error page already removed never hydrates.
@@ -48,7 +48,7 @@ async function mountIslands({ nav = LandingNavIsland }: Params = {}): Promise<vo
     }
   }
   flush();
-  await appears('[data-testid="landing-recent-item"], [data-testid="error-page"]');
+  await appears('#dotli-nav-input:not([disabled]), [data-testid="error-page"]');
   flush();
 }
 
@@ -63,7 +63,7 @@ function slot(id: string): HTMLElement {
 beforeEach(() => {
   captures.exception.mockReset();
   // Shaped like the landing page, which has no `#app`.
-  document.body.innerHTML = `<div data-testid="landing"><div id="${SLOTS.auth}"></div><div id="${SLOTS.nav}"></div><div id="${SLOTS.recents}"></div></div>`;
+  document.body.innerHTML = `<div data-testid="landing"><div id="${SLOTS.auth}"></div><div id="${SLOTS.nav}"></div><div id="${SLOTS.suggestions}"></div></div>`;
 });
 
 afterEach(() => {

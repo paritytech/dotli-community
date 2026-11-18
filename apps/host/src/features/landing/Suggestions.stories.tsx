@@ -3,17 +3,20 @@
 
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn } from 'storybook/test';
+import { expect, fn, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { Suggestions } from './Suggestions.js';
 
-const LABELS = ['ant', 'apple', 'avocado'];
+const RECENT = ['axe'];
+const APPS = ['ant', 'apple', 'avocado'];
 
 type FrameProps = {
-  labels: readonly string[];
+  recent: readonly string[];
+  apps: readonly string[];
   loading: boolean;
   active: string | null;
   onPick: (label: string) => void;
+  onForget: (label: string) => void;
 };
 
 /** The list below a name input, inside a positioned frame as the page places it. */
@@ -22,11 +25,13 @@ function Frame(props: FrameProps): JSX.Element {
     <div style={{ position: 'relative', width: '480px' }}>
       <input type="text" aria-label="Name" data-testid="story-name-input" />
       <Suggestions
-        labels={() => props.labels}
+        recent={() => props.recent}
+        apps={() => props.apps}
         loading={() => props.loading}
         suffix={() => '.dot'}
         active={() => props.active}
         onPick={props.onPick}
+        onForget={props.onForget}
       />
     </div>
   );
@@ -35,7 +40,7 @@ function Frame(props: FrameProps): JSX.Element {
 const meta = {
   title: 'Host/Landing/Suggestions',
   component: Frame,
-  args: { labels: LABELS, loading: false, active: 'apple', onPick: fn() },
+  args: { recent: RECENT, apps: APPS, loading: false, active: 'apple', onPick: fn(), onForget: fn() },
   // Its ids are the page's, so each story keeps its own frame.
   tags: ['!autodocs'],
 } satisfies Meta<typeof Frame>;
@@ -43,13 +48,28 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a visitor, I see three suggested names, and the one the arrow keys point at is selected. */
+/**
+ * As a returning visitor typing a name, I see the recent name that matches, then the app names, and the one the arrow
+ * keys point at is selected.
+ */
 export const ActiveSelected: Story = {
   play: async ({ canvas, step }) => {
-    await step('Then three names show and only apple is selected', async () => {
-      await expect(await canvas.findAllByRole('option')).toHaveLength(3);
+    await step('Then four names show and only apple is selected', async () => {
+      await expect(await canvas.findAllByRole('option')).toHaveLength(4);
       const selected = canvas.getAllByRole('option', { selected: true });
       await expect(selected).toEqual([canvas.getByRole('option', { name: 'apple.dot' })]);
+    });
+  },
+};
+
+/** As a returning visitor, I focus the empty name input and see only my recent names. */
+export const RecentOnFocus: Story = {
+  args: { recent: ['news', 'browse'], apps: [], active: null },
+  play: async ({ canvas, step }) => {
+    await step('Then my recent names show in their own section, and no app section', async () => {
+      const recent = await canvas.findByRole('group', { name: 'Recent' });
+      await expect(within(recent).getAllByRole('option')).toHaveLength(2);
+      await expect(canvas.getAllByRole('group')).toEqual([recent]);
     });
   },
 };
@@ -73,9 +93,23 @@ export const ClickPicks: Story = {
   },
 };
 
+/** As a returning visitor, I click the cross on a recent name and it is forgotten. */
+export const CrossForgets: Story = {
+  args: { active: null },
+  play: async ({ args, canvas, step }) => {
+    await step('When I click the cross on axe', async () => {
+      const option = await canvas.findByRole('option', { name: 'axe.dot' });
+      await (await trustedInput()).click(within(option).getByTestId('listbox-remove'));
+    });
+    await step('Then axe is forgotten', async () => {
+      await expect(args.onForget).toHaveBeenCalledWith('axe');
+    });
+  },
+};
+
 /** As a visitor typing a name while the names still load, I see the list open with only a loading row. */
 export const NoMatchesWhileLoading: Story = {
-  args: { labels: [], loading: true, active: null },
+  args: { recent: [], apps: [], loading: true, active: null },
   play: async ({ canvas, step }) => {
     await step('Then the list shows a status and no names', async () => {
       await expect(await canvas.findByRole('status')).toBeInTheDocument();

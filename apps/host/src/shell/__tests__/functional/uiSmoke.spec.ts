@@ -199,32 +199,34 @@ test.describe('Shell UI smoke', () => {
 
     await context.close();
   });
-  test('As a returning user, I remove a site from my recent list and it stays removed', async ({ page, request }) => {
-    // Given
+  test('As a returning user, I remove a site from my recent names and it stays removed', async ({ page, request }) => {
+    // Given my recent names, shown when I focus the empty name input
     const put = await request.put(`${SHARED_STORE}dotli_recent`, {
       data: JSON.stringify(['browse', 'playground']),
     });
     expect(put.ok()).toBe(true);
     await page.goto(LANDING_URL);
-    const links = page.locator('#dotli-recent').getByTestId('landing-recent-link');
-    await expect(links).toHaveCount(2);
+    const input = page.locator('#dotli-nav-input');
+    const recents = page.getByRole('group', { name: 'Recent' }).getByRole('option');
+    await input.click();
+    await expect(recents).toHaveCount(2);
 
     // When
-    await links.first().hover();
-    await page.getByRole('button', { name: /^Remove browse/ }).click();
+    await recents.first().getByTestId('listbox-remove').click();
 
     // Then
-    await expect(links).toHaveCount(1);
-    await expect(links.first()).toHaveAttribute('href', /playground/);
+    await expect(recents).toHaveCount(1);
+    await expect(recents.first()).toHaveAccessibleName(/^playground/);
     await expect
       .poll(async () => (await request.get(`${SHARED_STORE}dotli_recent`)).text())
       .toBe(JSON.stringify(['playground']));
 
     // When
     await page.reload();
+    await input.click();
 
     // Then
-    await expect(links).toHaveCount(1);
+    await expect(recents).toHaveCount(1);
   });
 
   test('As a user on a product, the shell and its sandbox come with the framing headers production sends', async ({

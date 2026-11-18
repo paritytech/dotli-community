@@ -5,7 +5,7 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { LandingAuthIsland } from '../../src/features/landing/LandingAuthIsland.js';
 import { LandingNavIsland } from '../../src/features/landing/LandingNavIsland.js';
-import { LandingRecentsIsland } from '../../src/features/landing/LandingRecentsIsland.js';
+import { LandingSuggestIsland } from '../../src/features/landing/LandingSuggestIsland.js';
 import type { RecentLabels } from '../../src/features/landing/createRecentLabels.js';
 
 type Params = {
@@ -18,12 +18,12 @@ export function mountLandingPage({ recents }: Params) {
   const view = document.createElement('div');
   view.id = 'app-view';
   view.innerHTML =
-    '<div data-testid="landing"><div id="landing-auth"></div><div data-slot="content"><div data-slot="nav"></div><div data-slot="recents"></div></div></div>';
+    '<div data-testid="landing"><div id="landing-auth"></div><div data-slot="nav"><div data-slot="form"></div><div data-slot="suggestions"></div></div></div>';
   document.body.append(view);
   const unmounts = [
     render(() => <LandingAuthIsland />, findSlot('#landing-auth')),
-    render(() => <LandingNavIsland />, findSlot('[data-slot="nav"]')),
-    render(() => <LandingRecentsIsland recents={recents} />, findSlot('[data-slot="recents"]')),
+    render(() => <LandingNavIsland />, findSlot('[data-slot="form"]')),
+    render(() => <LandingSuggestIsland recents={recents} />, findSlot('[data-slot="suggestions"]')),
   ];
   flush();
   return {

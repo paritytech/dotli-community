@@ -43,7 +43,7 @@ export type NavFormProps = {
 /**
  * The landing page's name form.
  * The input is not focused on load: that hijacks screen reader order and pops the mobile keyboard over
- * the recents.
+ * the page.
  */
 export function NavForm(props: NavFormProps): JSX.Element {
   let input: HTMLInputElement | undefined;
@@ -98,6 +98,12 @@ export function NavForm(props: NavFormProps): JSX.Element {
       case 'Enter':
       case 'Escape':
         if (props.combobox.press(e.key)) {
+          e.preventDefault();
+        }
+        return;
+      // A plain Delete edits the text.
+      case 'Delete':
+        if (e.shiftKey && props.combobox.press('Shift+Delete')) {
           e.preventDefault();
         }
         return;
