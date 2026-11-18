@@ -19,8 +19,9 @@ type AddModulePreloadsParams = {
 
 /**
  * Returns the integration that writes a modulepreload link into each built page's head for every module the page runs
- * at load. Acts on `astro build` only. Its build-done hook rejects, so the build fails, when a page references a module
- * the client bundle does not hold, naming the page and the reference.
+ * at load. Acts on `astro build` only. Its build-done hook rejects, so the build fails, naming the page, when the page
+ * references a module outside the base or one the client bundle does not hold, has an island that hydrates at load with
+ * no component URL, or has no `</head>`.
  */
 export function astroModulePreload(): AstroIntegration {
   // Each client chunk's file name to the file names of its static imports.

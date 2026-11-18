@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Reads the module references a page Astro built names in its markup, the one place that knows Astro's island
-// attributes.
+// Reads the module references a page Astro built names in its markup: its entry scripts, its modulepreloads and its
+// islands' attributes.
 
 const SCRIPT = /<script\b([^>]*)>/gi;
 
