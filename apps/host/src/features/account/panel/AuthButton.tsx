@@ -118,7 +118,7 @@ function getButtonLook(face: AuthButtonFace, showName: boolean): ButtonLook {
 }
 
 /**
- * The auth button and the account popover, in the topbar and in the landing page's corner.
+ * The auth button and the account popover, in the topbar and in the landing page's header.
  *
  * A click toggles the popover only while `Connected`, and starts a sign-in in any other state, a pairing under way
  * while logged in included. It takes no clicks while the saved session is being read, and shows an alert button that
