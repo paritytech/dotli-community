@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The landing page's islands mounted in their slots: the recent names in the name input's suggestions, read from and
-// forgotten in the shared store, and the corner button. The controls are story plays beside NavForm and Suggestions, and
+// forgotten in the shared store, and the header's auth button. The controls are story plays beside NavForm and Suggestions, and
 // the static markup is Astro's, which the functional smoke test covers.
 
 import { flush } from 'solid-js';
@@ -119,7 +119,7 @@ describe('landing page', () => {
     });
   });
 
-  it("As a visitor, I can press the auth button in the page's corner", async () => {
+  it("As a visitor, I can press the auth button in the page's header", async () => {
     // When
     mount();
     await appears('#landing-auth-button');

@@ -62,7 +62,7 @@ describe('useActiveTld', () => {
 });
 
 describe('useRecents', () => {
-  it('As the recents list, I open the store once settled and show what it loads', async () => {
+  it('As the name suggestions, I open the store once settled and show what it loads', async () => {
     // Given
     const store = createMemoryRecents({ stored: ['alpha', 'beta'] });
 
@@ -84,7 +84,7 @@ describe('useRecents', () => {
     dispose();
   });
 
-  it('As the recents list on a page inside another frame, I have no store and show none', () => {
+  it('As the name suggestions on a page inside another frame, I have no store and show none', () => {
     // Given
     const { recents, dispose } = createRoot(d => ({ recents: useRecents(() => undefined), dispose: d }));
     flush();

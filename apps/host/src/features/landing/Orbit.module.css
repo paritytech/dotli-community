@@ -87,7 +87,7 @@
 }
 
 .dot {
-  --angle: calc(var(--start) + var(--orbit-turn));
+  --angle: calc(var(--start) + var(--orbit-turn, 0deg));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
   border-radius: 50%;

@@ -77,7 +77,8 @@
   box-sizing: border-box;
   width: 100%;
   margin: 0;
-  padding: clamp(var(--sp-10), 9vh, 96px) calc(var(--sp-4) + var(--safe-right)) 0 calc(var(--sp-4) + var(--safe-left));
+  padding: clamp(var(--sp-10), 9vh, var(--sp-14)) calc(var(--sp-4) + var(--safe-right)) 0
+    calc(var(--sp-4) + var(--safe-left));
 }
 
 .intro {
