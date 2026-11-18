@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     "./app": "./src/app.ts",
+    "./astro-modulepreload": "./src/astroModulePreload.ts",
     "./astro-pwa": "./src/astroPwa.ts",
     "./build-info": "./src/buildInfoPlugin.ts",
     "./css-modules": "./src/cssModules.ts",

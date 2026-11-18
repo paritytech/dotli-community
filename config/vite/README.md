@@ -21,6 +21,7 @@ Build plugins and options shared by these builds:
 | `./css-modules`            | CSS-modules options with one short-name counter per build.                     |
 | `./inline-script`          | A `?inline-script` import returns a module bundled into one classic script.    |
 | `./astro-pwa`              | Astro integration for the web manifest and service worker.                     |
+| `./astro-modulepreload`    | Astro integration that preloads the modules each page runs at load.            |
 | `./service-worker`         | Builds a hand-written service worker into one file at the root.                |
 | `./truapi-signing-worker`  | A second TrUAPI worker on the `testing` wasm bundle, with a signing host.      |
 | `./build-info`             | Writes the build version file and reads the release version.                   |
@@ -59,5 +60,10 @@ plain export.
   - Under a local root, a subdomain is a product's shell. `app.` is the sandbox, and the root is the bare host.
   - Files resolve in nginx's order, so the release and test servers agree.
   - A spec checks header values against nginx's snippets. Which snippet each location includes is not checked.
+- **Module preload:** Astro writes no modulepreload links, so the integration adds them once the pages are built.
+  - Each page's head gets one link for every module the page runs at load. Those are its entry scripts and the islands
+    that hydrate at load, with their static imports.
+  - The client bundle's import graph names the imports. Dynamic imports and later islands get no link.
+  - A page reference the graph does not hold fails the build, naming the page and the reference.
 - **Runtime network config:** every local server reads `$DOTLI_NETWORK` once at start. A value that is not JSON stops
   the server.
