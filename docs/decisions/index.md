@@ -55,6 +55,11 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [permission-request-the-host-no-longer-offers](permission-request-the-host-no-longer-offers.md): a product requests a
   permission the host removed from its UI because the capability cannot work where products run.
 
+## Tests
+
+- [capacity-stories-near-the-test-timeout](capacity-stories-near-the-test-timeout.md): a story file drives a component
+  at full capacity, and the preview's a11y check over the large DOM pushes its stories near the browser test timeout.
+
 ## UI
 
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element

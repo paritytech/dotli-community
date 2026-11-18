@@ -54,6 +54,8 @@ export function openSurface(ids: { trigger?: string; surface: string }): Play {
     }
     await step('Then the surface is open with its content', async () => {
       await waitFor(() => expect(byId(ids.surface)).toHaveAttribute('data-open'));
+      // The surface fades in from opacity 0, which holds until the next frame, and a busy runner can be slow to draw it.
+      await waitFor(() => expect(byId(ids.surface)).toBeVisible());
       // Lazy bodies show a placeholder first.
       await waitFor(() => expect(byId(ids.surface).querySelector('[data-testid="popover-loading"]')).toBeNull());
     });

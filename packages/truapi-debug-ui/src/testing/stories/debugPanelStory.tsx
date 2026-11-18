@@ -8,12 +8,17 @@ import { createJSXDecorator, type Decorator, type Parameters } from 'storybook-s
 import palette from '../../palette.module.css';
 import s from './debugPanelStory.module.css';
 
+/** The a11y addon's settings for the panel's stories. */
+export const debugPanelA11y = {
+  // Contrast is off because the panel's palette is kept as designed, and its contrast is the owner's call.
+  config: { rules: [{ id: 'color-contrast', enabled: false }] },
+};
+
 /** The panel's page under a story, in place of the page frame every other story gets. */
 export const debugPanelStory: { parameters: Parameters; decorators: Decorator[] } = {
   parameters: {
     pageFrame: false,
-    // Contrast is off because the panel's palette is kept as designed, and its contrast is the owner's call.
-    a11y: { config: { rules: [{ id: 'color-contrast', enabled: false }] } },
+    a11y: debugPanelA11y,
   },
   decorators: [
     // Once per mount, since the story memo will not render twice and a re-run on a globals change
