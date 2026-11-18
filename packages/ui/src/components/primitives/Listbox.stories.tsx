@@ -24,6 +24,7 @@ type OptionsProps = {
   chosen?: string | undefined;
   detail?: string | undefined;
   icon?: Component<IconProps> | undefined;
+  onRemove?: ((label: string) => void) | undefined;
   onPick: (label: string) => void;
 };
 
@@ -306,6 +307,14 @@ function Options(props: OptionsProps): JSX.Element {
           chosen={label === props.chosen}
           icon={props.icon}
           detail={props.detail}
+          remove={
+            props.onRemove && {
+              label: `Remove ${label}`,
+              onRemove: () => {
+                props.onRemove?.(label);
+              },
+            }
+          }
           onPick={() => {
             props.onPick(label);
           }}
@@ -342,32 +351,20 @@ function ManyOptionsFrame(props: StoryArgs): JSX.Element {
 
 /** Recent names that each remove themselves, then the app names, each under its heading. */
 function GroupsFrame(props: StoryArgs): JSX.Element {
-  const idPrefix = createUniqueId();
   const [recent, setRecent] = createSignal(['news', 'browse']);
   return (
     <InputFrame width="300px" inputLabel="Name" listId="listbox-groups" listLabel="Suggested names">
       <Listbox.Group label="Recent">
-        <For each={recent()}>
-          {label => (
-            <Listbox.Option
-              id={`${idPrefix}-recent-${label}`}
-              active={label === 'browse'}
-              icon={ClockIcon}
-              detail=".dot"
-              remove={{
-                label: `Remove ${label}.dot from recent`,
-                onRemove: () => {
-                  setRecent(names => names.filter(name => name !== label));
-                },
-              }}
-              onPick={() => {
-                props.onPick(label);
-              }}
-            >
-              {label}
-            </Listbox.Option>
-          )}
-        </For>
+        <Options
+          labels={recent()}
+          active="browse"
+          icon={ClockIcon}
+          detail=".dot"
+          onRemove={label => {
+            setRecent(names => names.filter(name => name !== label));
+          }}
+          onPick={props.onPick}
+        />
       </Listbox.Group>
       <Listbox.Group label="Apps">
         <Options labels={['bridge', 'broker']} detail=".dot" onPick={props.onPick} />
