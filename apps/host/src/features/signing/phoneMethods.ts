@@ -69,7 +69,7 @@ type PhoneMethodEntry = {
   request: Codec<VersionedRequest>;
   /** The newest envelope version the request codec speaks, which a body is encoded at. */
   version: string;
-  /** The method's response, as the generated wire decode table pairs it. */
+  /** The method's response: its ok and error envelopes inside the call result. */
   response: ResponseCodec;
   ask: PhoneAsk;
 };
@@ -78,7 +78,7 @@ type Params<Request, Ok, Failure> = {
   ids: MethodIds;
   /** The method's request envelope, with a variant for each version the core serves. */
   request: Codec<Request>;
-  /** The newest envelope version the request codec speaks, checked against the codec. */
+  /** The newest envelope version the request codec speaks. The type admits only versions the codec speaks. */
   version: Request extends { tag: infer Version extends string } ? Version : never;
   /** The method's response envelope, with a variant for each version the core serves. */
   ok: Codec<Ok>;
@@ -181,8 +181,8 @@ export const PHONE_METHODS = {
 } satisfies Record<string, PhoneMethodEntry>;
 
 /**
- * The response codec must be the generated client's exact composition, as a bare codec would decode real response
- * bytes as garbage.
+ * The response codec wraps the ok and error envelopes in the call result as the wire does, since any other composition
+ * decodes real response bytes as garbage.
  */
 function buildMethodEntry<Request extends VersionedRequest, Ok, Failure>({
   ids,

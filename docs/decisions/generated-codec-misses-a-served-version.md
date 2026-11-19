@@ -3,9 +3,12 @@
 The host reads protocol messages with codecs a dependency generates. The codegen emits only the newest envelope version
 of each method, while the core the host bundles still serves older versions and answers in the request's version. A
 product built with an older SDK sends an older version, and the host fails to decode it. The package also exports the
-per-version body codecs and a helper that builds an envelope with explicit discriminants. The question is whether to
-compose the missing versions in the host, reshape every entry the same way, or wait for the package to publish codecs
-that cover every version.
+per-version body codecs and a helper that builds an envelope with explicit discriminants. The question is which of
+these to do:
+
+- compose the missing versions in the host
+- reshape every entry the same way
+- wait for the package to publish codecs that cover every version
 
 ## How to resolve
 
