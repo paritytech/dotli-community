@@ -29,13 +29,13 @@ The design gives `20/29`, `16/23` and `14/16`. The ratios are 1.45, 1.44 and 1.1
 
 /* instead: the few ratios the steps cluster on */
 --lh-body: 1.44;
---lh-tight: 1.15;
+--lh-tight: 1.14;
 ```
 
 ```css
 .intro {
   font-size: var(--text-lead);
-  /* was var(--lh-tight): 20 x 1.15 = 23, far from 29 */
+  /* was var(--lh-tight): 20 x 1.14 = 22.8, far from 29 */
   line-height: var(--lh-body); /* 20 x 1.44 = 28.8, within a pixel of 29 */
 }
 ```

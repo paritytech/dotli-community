@@ -61,7 +61,6 @@
     gap: var(--sp-2);
     width: var(--h-control);
     padding: 0;
-    font-size: var(--fs-body);
   }
   .name,
   .label {
