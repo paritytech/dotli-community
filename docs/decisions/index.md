@@ -85,7 +85,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
 - [dropdown-placed-against-its-trigger](dropdown-placed-against-its-trigger.md): a shared primitive that opens as a
   dropdown places itself in its own way, a new user's trigger sits where that breaks, and the question is how a host
-  should place it.
+  should place it, or whether it should line up with the edge of the bar its trigger sits in.
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
   that runs edge to edge across a shared container primitive, past its inner padding.
 - [existing-component-already-does-the-job](existing-component-already-does-the-job.md): a primitive is changed to do
