@@ -83,8 +83,14 @@ The owner may change or remove any rule. A change here lands in the same commit 
   line height, and the tokens hold a few line-height ratios that places pair with sizes.
 - [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
+- [dropdown-placed-against-its-trigger](dropdown-placed-against-its-trigger.md): a shared primitive that opens as a
+  dropdown places itself in its own way, a new user's trigger sits where that breaks, and the question is how a host
+  should place it.
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
   that runs edge to edge across a shared container primitive, past its inner padding.
+- [existing-component-already-does-the-job](existing-component-already-does-the-job.md): a primitive is changed to do
+  something another component of its package already does, that component has a gap such as a missing browser
+  fallback, and the question is whether to fill the gap or keep the old way.
 - [listbox-option-needs-a-remove-action](listbox-option-needs-a-remove-action.md): a combobox's popup is a shared
   listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
@@ -92,6 +98,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [match-an-on-screen-reference](match-an-on-screen-reference.md): the owner asks for UI done like something already on
   screen, and the question is whether a close or moved version is enough before presenting, or whether a shared
   component's fixed placement may stay a pixel or two off at one caller's size.
+- [one-form-of-a-responsive-component-changes](one-form-of-a-responsive-component-changes.md): a shared component with a
+  wide-screen form and a phone form needs a different primitive on one form only, and the question is where the switch
+  between the forms lives and what ARIA its trigger carries.
 - [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
   optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
