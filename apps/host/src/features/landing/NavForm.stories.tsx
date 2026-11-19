@@ -68,6 +68,23 @@ export const NothingFocusedOnLoad: Story = {
   },
 };
 
+/** As a visitor, I press the suffix beside the name, and the name field takes focus. */
+export const SuffixFocusesTheField: Story = {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Given the form knows my network', async () => {
+      await waitFor(() => expect(canvas.getByRole('combobox')).toBeEnabled());
+    });
+
+    await step('When I press the suffix', async () => {
+      await userEvent.click(canvas.getByText(SUFFIX));
+    });
+
+    await step('Then the name field has focus', async () => {
+      await expect(canvas.getByRole('combobox')).toHaveFocus();
+    });
+  },
+};
+
 /** As a visitor, I am told inline why a name is not valid, and the error clears when I type again. */
 export const InvalidNameInline: Story = {
   play: async ({ canvas, userEvent, step }) => {

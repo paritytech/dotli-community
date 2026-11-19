@@ -115,39 +115,41 @@ export function NavForm(props: NavFormProps): JSX.Element {
   return (
     <form onSubmit={onSubmit} id="dotli-nav-form" class={s['form']} autocomplete="off">
       <div class={s['bar']} id="dotli-nav-bar" data-invalid={error() === null ? undefined : ''}>
-        <input
-          ref={el => {
-            input = el;
-          }}
-          onInput={e => {
-            setError(null);
-            placeholder?.resume();
-            props.combobox.setText(e.currentTarget.value);
-          }}
-          onFocus={() => {
-            props.combobox.setFocused(true);
-          }}
-          onBlur={() => {
-            props.combobox.setFocused(false);
-          }}
-          onKeyDown={onKeyDown}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={props.listbox() === null ? 'false' : 'true'}
-          aria-controls={props.listbox() === null ? undefined : SUGGESTIONS_ID}
-          aria-activedescendant={activeId()}
-          id="dotli-nav-input"
-          class={s['input']}
-          type="text"
-          placeholder={PLACEHOLDER_NAMES[0]}
-          spellcheck="false"
-          autocomplete="off"
-          aria-label={['Search a', props.suffix(), 'name'].filter(Boolean).join(' ')}
-          aria-describedby={error() === null ? undefined : 'dotli-nav-error'}
-          aria-invalid={error() === null ? undefined : 'true'}
-          disabled={props.suffix() === null}
-        />
-        <span class={s['suffix']}>{props.suffix()}</span>
+        <label class={s['label']}>
+          <input
+            ref={el => {
+              input = el;
+            }}
+            onInput={e => {
+              setError(null);
+              placeholder?.resume();
+              props.combobox.setText(e.currentTarget.value);
+            }}
+            onFocus={() => {
+              props.combobox.setFocused(true);
+            }}
+            onBlur={() => {
+              props.combobox.setFocused(false);
+            }}
+            onKeyDown={onKeyDown}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={props.listbox() === null ? 'false' : 'true'}
+            aria-controls={props.listbox() === null ? undefined : SUGGESTIONS_ID}
+            aria-activedescendant={activeId()}
+            id="dotli-nav-input"
+            class={s['input']}
+            type="text"
+            placeholder={PLACEHOLDER_NAMES[0]}
+            spellcheck="false"
+            autocomplete="off"
+            aria-label={['Search a', props.suffix(), 'name'].filter(Boolean).join(' ')}
+            aria-describedby={error() === null ? undefined : 'dotli-nav-error'}
+            aria-invalid={error() === null ? undefined : 'true'}
+            disabled={props.suffix() === null}
+          />
+          <span class={s['suffix']}>{props.suffix()}</span>
+        </label>
         <button type="submit" class={s['go']} aria-label="Go" disabled={props.suffix() === null}>
           <ArrowRightIcon />
         </button>
