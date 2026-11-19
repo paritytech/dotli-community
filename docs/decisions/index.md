@@ -83,6 +83,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   line height, and the tokens hold a few line-height ratios that places pair with sizes.
 - [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
+- [dim-a-graphic-of-overlapping-parts](dim-a-graphic-of-overlapping-parts.md): a decorative graphic of overlapping
+  parts, such as dots on lines, must look faint against the page, and the question is where the faintness goes.
 - [dropdown-placed-against-its-trigger](dropdown-placed-against-its-trigger.md): a shared primitive that opens as a
   dropdown places itself in its own way, a new user's trigger sits where that breaks, and the question is how a host
   should place it, or whether it should line up with the edge of the bar its trigger sits in.
