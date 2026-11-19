@@ -39,6 +39,7 @@ const SECTIONS = [
   'CC0-1.0',
   'CC-BY-3.0',
   'CC-BY-4.0',
+  'OFL-1.1',
   'GPL-3.0-or-later WITH Classpath-exception-2.0',
   'LGPL-3.0-or-later',
   'MPL-2.0',
@@ -66,7 +67,10 @@ outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0
 FSL-1.1-Apache-2.0) terms is used to build the application and is not redistributed as part of it.
 
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
-License 2.0 (\`MPL-2.0\`), unmodified and with its license header.`;
+License 2.0 (\`MPL-2.0\`), unmodified and with its license header.
+
+The application bundles font files under the SIL Open Font License 1.1 (\`OFL-1.1\`), which permits bundling fonts with
+software under any license. They are served unmodified and are not sold on their own.`;
 
 function getSection(license: unknown, path: string): string {
   if (typeof license !== 'string') {

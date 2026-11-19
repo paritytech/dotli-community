@@ -4,6 +4,9 @@
 /* Nothing here resets elements, each module resets its own. The chrome is dark only, data-theme is the
    product's preference. */
 
+/* Upright faces only. The few italic runs take the browser's slant, rather than a second set of files. */
+@import '@fontsource-variable/geist/wght.css';
+
 :root {
   --text-strong: #f4f4f5;
   --text: #dadbe0;
@@ -175,7 +178,7 @@
 
 /* 44 px is the touch minimum. */
 :root {
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --fs-label: 11px;
   --fs-caption: 12px;
@@ -282,7 +285,7 @@ body {
   margin: 0;
   background: var(--bg-page);
   color: var(--text);
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-sans);
   /* macOS's default smoothing draws light text on the dark chrome a weight heavier than designed. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

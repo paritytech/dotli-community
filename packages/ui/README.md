@@ -86,6 +86,9 @@ One component per icon, named `<Thing>Icon` (`CloseIcon`, `InfoIcon` and the res
 
 The tokens and global styles. The apps import it once.
 
+It carries the brand typeface, which the build bundles and serves from the page's own origin. Sans text sets in it and
+falls back to the system face while it loads or where it lacks a script. Monospace text keeps the system face.
+
 ## Design
 
 - **Stores render, others act:** `toasts`, `modals` and `pageScreen` hold their state in an atom. The overlays render
