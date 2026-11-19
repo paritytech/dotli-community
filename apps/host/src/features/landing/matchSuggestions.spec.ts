@@ -27,6 +27,17 @@ describe('matchSuggestions', () => {
     expect(matches.apps).toEqual(['a1', 'a2', 'a3', 'a4', 'a5', 'a6']);
   });
 
+  it('As a returning visitor with eight recents, I see the newest 6', () => {
+    // Given eight recents, newest first
+    const recents = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'];
+
+    // When nothing is typed
+    const matches = matchSuggestions({ name: '', recents, apps: [] });
+
+    // Then only the newest six show
+    expect(matches.recent).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6']);
+  });
+
   it('As a returning visitor with nothing typed, I see all my recents and no app section', () => {
     // Given recents and apps
     const recents = ['bob', 'alice'];
