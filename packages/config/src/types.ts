@@ -62,6 +62,8 @@ export type FixedServicesConfig = {
 export type ServicesConfig = {
   readonly label: string;
   readonly description: string;
+  /** Whether the network's tokens have no real value. No runtime override changes it. */
+  readonly testnet: boolean;
   readonly relay: ChainService;
   readonly assethub: ChainService;
   readonly bulletin: BulletinService;

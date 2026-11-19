@@ -12,7 +12,8 @@ Build-time and runtime configuration:
 
 ## Responsibilities
 
-- **Owns** the network table (dotNS contracts, chain services, TLD) and the active network.
+- **Owns** the network table (dotNS contracts, chain services, TLD, whether it is a test network) and the active
+  network.
 - **Owns** each network's signed Trinity stack, which the TrUAPI core boots from.
 - **Owns** the local roots, read by pages and the local servers.
 - **Owns** the backend and cache settings with their storage keys. It also owns the settings' URL form.

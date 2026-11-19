@@ -44,6 +44,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   unreachable.
 - [existing-call-needs-a-variant](existing-call-needs-a-variant.md): a shared primitive needs a second form of a call
   that differs in one aspect.
+- [fact-about-each-network](fact-about-each-network.md): UI depends on a fact about the network the visitor picked,
+  such as whether its tokens have value, and the network table holds no field for it.
 - [files-away-from-their-feature](files-away-from-their-feature.md): files that serve one feature sit in a top-level
   folder filed by kind.
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
@@ -79,5 +81,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
+- [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
+  build must show a piece of content only when a setting the visitor picks at runtime says so.
 - [window-blur-closes-a-popover](window-blur-closes-a-popover.md): a shared layer closes a popover on every window blur,
   and it also closes when the browser's own UI or another app takes focus.
