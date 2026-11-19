@@ -172,6 +172,9 @@
   :global(:root:has(body[data-landing])) {
     --landing-edge: var(--sp-4);
   }
+  .main {
+    padding-top: 18vh;
+  }
   /* Under about 330px the clamp's floor would push the longer line past the screen. */
   .title {
     font-size: min(32px, 9vw);
