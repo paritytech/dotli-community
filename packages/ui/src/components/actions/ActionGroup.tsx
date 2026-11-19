@@ -108,9 +108,12 @@ export function ActionGroup(props: {
 
   const bar: ActionBar = {
     register(entry) {
-      setEntries(list => [...list, entry]);
-      onCleanup(() => {
-        setEntries(list => list.filter(other => other !== entry));
+      // Joining once settled keeps a server render, which never settles, from writing the list.
+      onSettled(() => {
+        setEntries(list => [...list, entry]);
+        return () => {
+          setEntries(list => list.filter(other => other !== entry));
+        };
       });
       return () => collapsed().has(entry.name);
     },

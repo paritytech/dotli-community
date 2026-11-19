@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { waitForDom } from '@dotli/shared/testing';
-import { appears, byId, query } from '@dotli/ui/testing';
+import { byId, query } from '@dotli/ui/testing';
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expectBefore } from '@config/storybook/play';
@@ -28,6 +28,7 @@ type Activation = {
 
 const GROUP = 'story-actions';
 const MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-popover' };
+const ROW = ':is([role="option"], [role="menuitem"])';
 
 /** Every stand-in item's width, wider than More so a row's room always fits More in its place. */
 const ITEM = 48;
@@ -326,17 +327,17 @@ export const GrowingItem: Story = {
   },
 };
 
-/** As a mobile user, choosing a row closes the menu, hands focus to More and activates the item with my tap. */
+/** As a mouse user, choosing an option closes the list, keeps focus on More and activates the item with my click. */
 export const RowTapActivates: Story = {
   play: async ({ userEvent, step }) => {
     await step('Given More open', async () => {
       fitSlots(5);
       await openMore(userEvent);
     });
-    await step('When I tap the theme row', async () => {
+    await step('When I click the theme option', async () => {
       await userEvent.click(getMoreRow('theme'));
     });
-    await step('Then theme was activated with my tap, the menu closed and More has focus', async () => {
+    await step('Then theme was activated with my click, the list closed and More has focus', async () => {
       await waitFor(() => expect(activations).toEqual([{ name: 'theme', detail: 1 }]));
       await waitFor(() => expect(isMoreOpen()).toBe(false));
       await expect(byId(MORE.buttonId)).toHaveFocus();
@@ -344,25 +345,69 @@ export const RowTapActivates: Story = {
   },
 };
 
-/** As a keyboard user, choosing a row with a key activates the item with detail 0. */
-export const RowKeyActivates: Story = {
+/** As a keyboard user, ArrowDown on More opens the list on its first option, and focus stays on More. */
+export const ArrowDownOpensOnFirstOption: Story = {
   play: async ({ userEvent, step }) => {
-    await step('Given More open on the settings row', async () => {
+    const button = (): HTMLElement => byId(MORE.buttonId);
+    await step('Given More shows with three options', async () => {
       fitSlots(4);
-      await openMore(userEvent);
-      getMoreRow('settings').focus();
+      await waitFor(() => expect(isMoreShown()).toBe(true));
     });
-    await step('When I press Enter', async () => {
-      await userEvent.keyboard('{Enter}');
+    await step('When I press ArrowDown on More', async () => {
+      button().focus();
+      await userEvent.keyboard('{ArrowDown}');
     });
-    await step('Then settings was activated with detail 0 and the menu closed', async () => {
-      await waitFor(() => expect(activations).toEqual([{ name: 'settings', detail: 0 }]));
-      await waitFor(() => expect(isMoreOpen()).toBe(false));
+    await step('Then the list is open with permissions, its first option, active and More keeps focus', async () => {
+      await waitFor(() => expect(isMoreOpen()).toBe(true));
+      await waitFor(() => expect(getMoreRow('permissions')).toHaveAttribute('aria-selected', 'true'));
+      await expect(button()).toHaveAttribute('aria-activedescendant', getMoreRow('permissions').id);
+      await expect(button()).toHaveFocus();
+    });
+    await step('When I press ArrowUp', async () => {
+      await userEvent.keyboard('{ArrowUp}');
+    });
+    await step('Then the active option wrapped to settings, the last', async () => {
+      await expect(button()).toHaveAttribute('aria-activedescendant', getMoreRow('settings').id);
+      await expect(getMoreRow('permissions')).toHaveAttribute('aria-selected', 'false');
+    });
+    await step('When I press Home', async () => {
+      await userEvent.keyboard('{Home}');
+    });
+    await step('Then permissions is active again', async () => {
+      await expect(button()).toHaveAttribute('aria-activedescendant', getMoreRow('permissions').id);
     });
   },
 };
 
-/** As a screen-reader user, More announces its menu, and each row is a menu item with the item icon, label and a chevron. */
+/** As a keyboard user, Enter on More picks the active option, which closes the list and activates the item with detail 0. */
+export const RowKeyActivates: Story = {
+  play: async ({ userEvent, step }) => {
+    const button = (): HTMLElement => byId(MORE.buttonId);
+    await step('Given the list open from More on its last option, settings', async () => {
+      fitSlots(4);
+      await waitFor(() => expect(isMoreShown()).toBe(true));
+      button().focus();
+      await userEvent.keyboard('{ArrowDown}');
+      await waitFor(() => expect(isMoreOpen()).toBe(true));
+      await userEvent.keyboard('{End}');
+      await waitFor(() => expect(button()).toHaveAttribute('aria-activedescendant', getMoreRow('settings').id));
+    });
+    await step('When I press Enter', async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Then settings was activated once with detail 0, the list closed and More has focus', async () => {
+      await waitFor(() => expect(activations).toEqual([{ name: 'settings', detail: 0 }]));
+      await waitFor(() => expect(isMoreOpen()).toBe(false));
+      await expect(button()).toHaveAttribute('aria-expanded', 'false');
+      await expect(button()).toHaveFocus();
+    });
+  },
+};
+
+/**
+ * As a screen-reader user on a wide screen, More is a combobox that controls a list, and each option has the item's
+ * icon, label and a chevron.
+ */
 export const MoreAria: Story = {
   play: async ({ userEvent, mount, step }) => {
     await step('When the group renders and the bar has room for five, one of them More', async () => {
@@ -370,9 +415,10 @@ export const MoreAria: Story = {
       fitSlots(5);
     });
     const button = (): HTMLElement => byId(MORE.buttonId);
-    await step('Then More announces its closed menu with no badge', async () => {
+    await step('Then More is a combobox announcing its closed list with no badge', async () => {
       await waitFor(() => expect(isMoreShown()).toBe(true));
-      await expect(button()).toHaveAttribute('aria-haspopup', 'menu');
+      await expect(button()).toHaveAttribute('role', 'combobox');
+      await expect(button()).toHaveAttribute('aria-haspopup', 'listbox');
       await expect(button()).toHaveAttribute('aria-controls', MORE.menuId);
       await expect(button()).toHaveAttribute('aria-expanded', 'false');
       await expect(button()).toHaveAttribute('aria-label', 'More');
@@ -381,17 +427,56 @@ export const MoreAria: Story = {
     await step('When I open it', async () => {
       await openMore(userEvent);
     });
-    await step('Then it is a menu named More, and the theme row a menu item with icon, label and chevron', async () => {
-      await expect(byId(MORE.menuId)).toHaveAttribute('role', 'menu');
-      await expect(byId(MORE.menuId)).toHaveAttribute('aria-label', 'More');
-      const row = getMoreRow('theme');
-      await expect(row).toHaveAttribute('role', 'menuitem');
-      await expect(row).toHaveAttribute('tabindex', '-1');
-      await expect(row.textContent).toBe('THEME');
-      await expect(row.querySelector('svg[data-testid="icon-theme"]')).not.toBeNull();
-      await expect(row.lastElementChild).toHaveAttribute('data-testid', 'more-row-chevron');
-      await expect(row.lastElementChild).toHaveAttribute('aria-hidden', 'true');
+    await step(
+      'Then it is a listbox named More with no active option, and theme an option with icon, label and chevron',
+      async () => {
+        await expect(byId(MORE.menuId)).toHaveAttribute('role', 'listbox');
+        await expect(byId(MORE.menuId)).toHaveAttribute('aria-label', 'More');
+        await expect(button()).toHaveAttribute('aria-expanded', 'true');
+        await expect(button()).not.toHaveAttribute('aria-activedescendant');
+        const row = getMoreRow('theme');
+        await expect(row).toHaveAttribute('role', 'option');
+        await expect(row).toHaveAttribute('aria-selected', 'false');
+        await expect(row.textContent).toBe('THEME');
+        await expect(row.querySelector('svg[data-testid="icon-theme"]')).not.toBeNull();
+        const end = within(row).getByTestId('listbox-end');
+        await expect(end.lastElementChild).toHaveAttribute('data-testid', 'more-row-chevron');
+        await expect(end.lastElementChild).toHaveAttribute('aria-hidden', 'true');
+      },
+    );
+  },
+};
+
+/** As a screen-reader user on a phone, More is a menu button, and becomes a combobox again when the window widens. */
+export const PhoneMoreAria: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ mount, step }) => {
+    const { page } = await import('vitest/browser');
+    const button = (): HTMLElement => byId(MORE.buttonId);
+    await step('When the group renders on a phone and the bar has room for four', async () => {
+      await mount();
+      fitSlots(4);
     });
+    await expectPhone(step);
+    await step('Then More is a menu button, no combobox', async () => {
+      await waitFor(() => expect(isMoreShown()).toBe(true));
+      await waitFor(() => expect(button()).toHaveAttribute('aria-haspopup', 'menu'));
+      await expect(button()).not.toHaveAttribute('role');
+      await expect(button()).toHaveAttribute('aria-controls', MORE.menuId);
+    });
+    const phone = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await step('When the window widens past the phone breakpoint', async () => {
+        await page.viewport(1024, 768);
+      });
+      await step('Then More is a combobox controlling a list', async () => {
+        await waitFor(() => expect(button()).toHaveAttribute('role', 'combobox'));
+        await expect(button()).toHaveAttribute('aria-haspopup', 'listbox');
+      });
+    } finally {
+      // The next story must not inherit the width.
+      await page.viewport(phone.width, phone.height);
+    }
   },
 };
 
@@ -638,19 +723,17 @@ export const RowPastIslandWrapper: Story = {
 async function openMore(userEvent: { click: (element: Element) => Promise<void> }): Promise<void> {
   await waitForDom(isMoreShown);
   await userEvent.click(byId(MORE.buttonId));
-  await appears(`#${MORE.menuId}[data-open]`);
+  await waitForDom(isMoreOpen);
 }
 
-/** A row of the open More menu. */
+/** A row of the open More menu: an option of the list on a wide screen, a menu item of the sheet on a phone. */
 function getMoreRow(name: string): HTMLElement {
-  return query(document, `#${MORE.menuId} [role="menuitem"][data-item="${name}"]`);
+  return query(document, `#${MORE.menuId} ${ROW}[data-item="${name}"]`);
 }
 
 /** The open More menu's rows, in order. */
 function listMoreRowNames(): string[] {
-  return [...document.querySelectorAll<HTMLElement>(`#${MORE.menuId} [role="menuitem"]`)].map(
-    row => row.dataset['item'] ?? '',
-  );
+  return [...document.querySelectorAll<HTMLElement>(`#${MORE.menuId} ${ROW}`)].map(row => row.dataset['item'] ?? '');
 }
 
 /** The phone variant's guard: the story's viewport really crossed the phone breakpoint. */
@@ -679,6 +762,7 @@ function isMoreShown(): boolean {
   return document.querySelector('[data-testid="more-item"]')?.hasAttribute('data-parked') === false;
 }
 
+/** The sheet itself, or the layer around the list, is open. */
 function isMoreOpen(): boolean {
-  return document.getElementById(MORE.menuId)?.hasAttribute('data-open') === true;
+  return (document.getElementById(MORE.menuId)?.closest('[data-open]') ?? null) !== null;
 }

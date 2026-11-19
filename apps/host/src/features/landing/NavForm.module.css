@@ -20,7 +20,7 @@
   width: 100%;
   height: var(--h-control-lg);
   margin: 0;
-  padding: 0 var(--sp-2) 0 var(--sp-5);
+  padding: 0 var(--sp-2) 0 0;
   border: 0;
   border-radius: var(--r-full);
   background: var(--surface);
@@ -40,17 +40,47 @@
   box-shadow: 0 0 0 2px var(--chrome-err);
 }
 
-.input {
+/* Spans the bar up to Go, so a press anywhere on the name or its suffix focuses the input. */
+.label {
+  display: flex;
   flex: 1;
-  box-sizing: border-box;
+  align-items: baseline;
   min-width: 0;
+  height: 100%;
+  padding: 0 0 0 var(--sp-5);
+}
+
+/* As wide as its text, so the suffix follows the name. The input and a hidden copy of its text share one cell, and the
+   copy sets the width. */
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  height: 100%;
+}
+
+.input,
+.mirror {
+  grid-area: 1 / 1;
+  font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
+}
+
+.mirror {
+  visibility: hidden;
+  white-space: pre;
+}
+
+.input {
+  box-sizing: border-box;
+  /* Adds no width of its own to the cell, then fills it. */
+  width: 0;
+  min-width: 100%;
   height: 100%;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-strong);
-  font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
 }
 
 /* The bar draws the ring. Outweighs global.css's :focus-visible in any sheet order (dev loads it last). */
@@ -91,7 +121,7 @@
 }
 
 /* Muted until there is a name to go to. */
-.input:placeholder-shown ~ .go {
+.bar:has(.input:placeholder-shown) .go {
   background: var(--fill);
   box-shadow: none;
   color: var(--text-secondary);

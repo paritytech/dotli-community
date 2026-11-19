@@ -69,8 +69,14 @@ Fakes for the specs and stories of other packages. Functional tests use them too
 
 ### `@dotli/ui/brand`
 
-`LogoSymbol`, `LogoWordmark` and `PetalMark` are the logo components. `PetalMark` draws six petals that can `pulse`.
-Astro renders them at build time with no directive, so they ship no code there.
+`Logo` draws the Polkadot logo. Its `variant` picks the symbol alone (`symbol`) or the symbol with the word (`full`),
+and its `height` is the symbol's height in pixels. The full logo reads as "Polkadot" to assistive technology, and the
+symbol alone is hidden from it. Its `beta` flag draws the Beta tag out of the flow, where the variant puts it: over the
+end of the word, or just past the symbol's top-right corner. Its root wraps the drawing and takes the caller's `class`
+and test id, so a height set there sizes the whole logo.
+
+`PetalMark` draws six petals that can `pulse`. Astro renders the brand marks at build time with no directive, so they
+ship no code there.
 
 ### `@dotli/ui/icons`
 
@@ -79,6 +85,9 @@ One component per icon, named `<Thing>Icon` (`CloseIcon`, `InfoIcon` and the res
 ### `@dotli/ui/styles.css`
 
 The tokens and global styles. The apps import it once.
+
+It carries the brand typeface, which the build bundles and serves from the page's own origin. Sans text sets in it and
+falls back to the system face while it loads or where it lacks a script. Monospace text keeps the system face.
 
 ## Design
 
@@ -89,10 +98,20 @@ The tokens and global styles. The apps import it once.
 - **One layer stack:** floating layers share one stack. It makes the page inert under the top modal layer.
 - **Responsive popovers:** `Popover` and `DropdownMenu` anchor on a wide screen and become a bottom sheet on a phone.
   The sheet loads in its own chunk, preloaded when the browser is idle on a phone. Heavy content is the app's to load
-  with `lazy()`.
-- **Listbox:** drops below its nearest positioned ancestor and never takes focus, so the control that opened it keeps
-  its keys. Its caller owns which option is active and which is chosen. While `loading` holds a text, a status row with
-  a spinner follows the options, outside the list, and the list is busy.
+  with `lazy()`. On a wide screen `DropdownMenu` is a `Listbox` hung from its button's end, which the button drives as a
+  combobox while it keeps focus, and each item is an option. On a phone its items are menu rows in the sheet, which take
+  focus, and the button is a menu button. The button's ARIA follows the viewport.
+- **Listbox:** drops below its anchor in a floating layer, at least as wide as the anchor, and never takes focus, so the
+  control that opened it keeps its keys. It names the anchor for its placement itself. A press outside the anchor and
+  the list, Escape and focus leaving them close it through `onClose`, and its caller sets `open` from that. A press on
+  the anchor leaves it open. The caller also owns which option is active and which is chosen. A pick hands the caller
+  its click, whose `detail` is 0 for a click from script. While `loading` holds a text, a status row with a spinner
+  follows the options, outside the list, and the list is busy. A `Group` puts options in a section, a group named by its
+  visible heading, and the caller leaves out an empty one. An option's `end` holds trailing markup after its text, such
+  as a status and a chevron, which never shrinks, and the text ellipsizes before it. An option with `remove` ends in a
+  cross that removes it without picking it. The cross is a plain element for mouse and touch only, out of the tab order
+  and the accessibility tree, since an option may hold no interactive control. The option announces Shift+Delete, and
+  the caller's key handling removes the active option on it.
 - **Action group:** moves the lowest priority items into a More menu when they do not fit. Items join through
   `ActionsContext`.
 - **Icons as components:** every `icon` prop takes a component, except in `Choice` and `SegmentedControl`, whose slot

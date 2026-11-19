@@ -45,6 +45,10 @@
   margin-top: var(--pop-gap);
   transform-origin: top left;
 }
+:where(.triggerEnd) {
+  position-area: bottom span-left;
+  margin-top: var(--pop-gap);
+}
 /* The surface takes focus itself when it holds nothing focusable, with no ring. */
 .layer:focus-visible {
   outline: none;

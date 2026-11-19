@@ -71,7 +71,7 @@
   padding: 0;
   font-size: var(--fs-h2);
   font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
   text-wrap: balance;
 }

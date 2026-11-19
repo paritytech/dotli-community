@@ -1,44 +1,17 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.surface {
-  position: absolute;
-  top: calc(100% + var(--sp-2));
-  left: 0;
-  z-index: 1;
-  display: flex;
+/* The floating layer draws the surface, so this lays out only what is inside it. */
+.layer {
   flex-direction: column;
-  box-sizing: border-box;
   width: max-content;
-  min-width: max(100%, 200px);
+  min-width: max(anchor-size(width), 200px);
   max-width: var(--w-pop-md);
   max-height: 312px;
   padding: var(--sp-1_5);
-  border-radius: var(--r-pop);
-  /* The list would inherit the alignment of what it drops from, which may centre its text. */
-  text-align: left;
-  background: var(--chrome-surface);
-  -webkit-backdrop-filter: var(--chrome-blur);
-  box-shadow: var(--chrome-shadow-pop);
-  color: var(--chrome-text);
-  transition:
-    opacity var(--dur-fast),
-    transform var(--dur-fast);
 }
-@supports (backdrop-filter: blur(1px)) {
-  .surface {
-    backdrop-filter: var(--chrome-blur);
-  }
-}
-@starting-style {
-  .surface {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-.surface[data-align='end'] {
-  right: 0;
-  left: auto;
+.layer[data-open] {
+  display: flex;
 }
 /* The options scroll on their own, so the status row stays in view below them. */
 .list {
@@ -134,6 +107,18 @@
 .option[aria-selected='true'] .detail {
   color: var(--chrome-text);
 }
+.end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--chrome-text-muted);
+}
+.end svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
 .icon {
   flex: none;
   width: 16px;
@@ -146,11 +131,45 @@
   height: 16px;
   color: var(--chrome-text);
 }
-/* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its control's width
+.heading {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1_5);
+  font-family: var(--font-sans);
+}
+.group {
+  margin: 0;
+  padding: 0;
+}
+/* Shown on every row that has it, since a touch screen has no hover to reveal it. */
+.remove {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
+  color: var(--chrome-text-muted);
+  cursor: pointer;
+}
+/* Stronger than the row's own fill, which shows under it while the row is active or hovered. */
+.remove:active {
+  background: var(--chrome-fill-strong);
+}
+@media (hover: hover) {
+  .remove:hover {
+    background: var(--chrome-fill-strong);
+    color: var(--chrome-text);
+  }
+}
+.removeIcon {
+  width: 14px;
+  height: 14px;
+}
+/* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its anchor's width
    and the text ellipsizes. */
 @media (max-width: 560px) {
-  .surface {
-    width: max(100%, 200px);
+  .layer {
+    width: max(anchor-size(width), 200px);
     min-width: 0;
     max-width: none;
     max-height: 342px;
@@ -162,13 +181,17 @@
   .option {
     height: var(--h-control);
   }
-  .icon {
+  .icon,
+  .end svg {
     width: 20px;
     height: 20px;
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  .surface {
-    transition: none;
+  .remove {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+  }
+  .removeIcon {
+    width: 16px;
+    height: 16px;
   }
 }

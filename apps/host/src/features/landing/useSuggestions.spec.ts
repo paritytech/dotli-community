@@ -8,15 +8,39 @@ import { useSuggestions } from './useSuggestions.js';
 
 const LABELS = ['ant', 'apple', 'avocado', 'banana'];
 
+type MountOptions = {
+  loading?: boolean;
+  /** The recently visited names, newest first. */
+  visited?: readonly string[];
+  /** The TLD a typed name may end with, null before the network is known. */
+  suffix?: string | null;
+};
+
 /** The suggestions under a fresh owner, over a focused input holding `initial`, settled. */
-function mount(initial: string, { loading = false } = {}) {
+function mount(initial: string, { loading = false, visited = [], suffix = '.dot' }: MountOptions = {}) {
   const combobox = createNavComboboxState();
   combobox.setText(initial);
   combobox.setFocused(true);
   const open = vi.fn();
   const [syncing, setSyncing] = createSignal(loading);
+  const [recentLabels, setRecentLabels] = createSignal<readonly string[]>(visited);
+  const forgotten: string[] = [];
+  const recents = {
+    labels: recentLabels,
+    forget(label: string): void {
+      forgotten.push(label);
+      setRecentLabels(all => all.filter(l => l !== label));
+    },
+  };
   const { suggestions, dispose } = createRoot(d => ({
-    suggestions: useSuggestions({ labels: () => LABELS, loading: syncing, suffix: () => '.dot', combobox, open }),
+    suggestions: useSuggestions({
+      labels: () => LABELS,
+      recents,
+      loading: syncing,
+      suffix: () => suffix,
+      combobox,
+      open,
+    }),
     dispose: d,
   }));
   onTestFinished(dispose);
@@ -24,6 +48,7 @@ function mount(initial: string, { loading = false } = {}) {
   return {
     suggestions,
     open,
+    forgotten,
     listbox: () => combobox.listbox.get(),
     finishLoading(): void {
       setSyncing(false);
@@ -37,6 +62,10 @@ function mount(initial: string, { loading = false } = {}) {
       combobox.setFocused(false);
       flush();
     },
+    close(): void {
+      suggestions.close();
+      flush();
+    },
     press(key: NavKey): boolean {
       const taken = combobox.press(key);
       flush();
@@ -46,6 +75,24 @@ function mount(initial: string, { loading = false } = {}) {
 }
 
 describe('useSuggestions', () => {
+  it('As a returning visitor, I focus the empty input and see my recent names, newest first, and no app labels', () => {
+    // When
+    const view = mount('', { visited: ['banana', 'zebra', 'ant'] });
+
+    // Then
+    expect(view.suggestions.recent()).toEqual(['banana', 'zebra', 'ant']);
+    expect(view.suggestions.apps()).toEqual([]);
+    expect(view.listbox()).toEqual({ active: null });
+  });
+
+  it('As a first-time visitor, I focus the empty input and no list shows', () => {
+    // When
+    const view = mount('');
+
+    // Then
+    expect(view.listbox()).toBeNull();
+  });
+
   it('As a visitor typing in the focused input, I type the start of a name and see the matching app labels', () => {
     // Given the focused input, empty
     const view = mount('');
@@ -54,7 +101,56 @@ describe('useSuggestions', () => {
     view.type('a');
 
     // Then
-    expect(view.suggestions.shown()).toEqual(['ant', 'apple', 'avocado']);
+    expect(view.suggestions.apps()).toEqual(['ant', 'apple', 'avocado']);
+  });
+
+  it('As a returning visitor before my network is known, I focus the input and see no suggestions', () => {
+    // When
+    const view = mount('al', { visited: ['alpha'], suffix: null });
+
+    // Then
+    expect(view.suggestions.recent()).toEqual([]);
+    expect(view.suggestions.apps()).toEqual([]);
+    expect(view.listbox()).toBeNull();
+  });
+
+  it('As a returning visitor, I press ArrowDown on the last recent and the first app label is active', () => {
+    // Given the one matching recent active
+    const view = mount('a', { visited: ['axe'] });
+    view.press('ArrowDown');
+
+    // When
+    view.press('ArrowDown');
+
+    // Then
+    expect(view.suggestions.active()).toBe('ant');
+  });
+
+  it('As a returning visitor, I press Shift+Delete on the active recent, it is forgotten and the next option is active', () => {
+    // Given the first of two recents active
+    const view = mount('', { visited: ['axe', 'banana'] });
+    view.press('ArrowDown');
+
+    // When
+    const taken = view.press('Shift+Delete');
+
+    // Then
+    expect(taken).toBe(true);
+    expect(view.forgotten).toEqual(['axe']);
+    expect(view.suggestions.recent()).toEqual(['banana']);
+    expect(view.suggestions.active()).toBe('banana');
+  });
+
+  it('As a visitor, I press Shift+Delete on an active app label and the input keeps the key', () => {
+    // Given an app label active
+    const view = mount('a');
+    view.press('ArrowDown');
+
+    // When
+    const taken = view.press('Shift+Delete');
+
+    // Then
+    expect(taken).toBe(false);
   });
 
   it('As a visitor, I leave the input and the suggestions hide', () => {
@@ -65,7 +161,7 @@ describe('useSuggestions', () => {
     view.blur();
 
     // Then
-    expect(view.suggestions.shown()).toEqual([]);
+    expect(view.suggestions.apps()).toEqual([]);
     expect(view.listbox()).toBeNull();
   });
 
@@ -152,7 +248,18 @@ describe('useSuggestions', () => {
     view.press('Escape');
 
     // Then
-    expect(view.suggestions.shown()).toEqual([]);
+    expect(view.suggestions.apps()).toEqual([]);
+    expect(view.listbox()).toBeNull();
+  });
+
+  it('As a visitor, I dismiss the list from outside the input and it hides', () => {
+    // Given the suggestions for "a"
+    const view = mount('a');
+
+    // When
+    view.close();
+
+    // Then
     expect(view.listbox()).toBeNull();
   });
 
@@ -165,7 +272,7 @@ describe('useSuggestions', () => {
     view.type('ap');
 
     // Then
-    expect(view.suggestions.shown()).toEqual(['apple']);
+    expect(view.suggestions.apps()).toEqual(['apple']);
   });
 
   it('As a visitor, I press Escape, type a character and delete it, and the list stays shown', () => {
@@ -178,7 +285,7 @@ describe('useSuggestions', () => {
     view.type('a');
 
     // Then
-    expect(view.suggestions.shown()).toEqual(['ant', 'apple', 'avocado']);
+    expect(view.suggestions.apps()).toEqual(['ant', 'apple', 'avocado']);
   });
 
   it('As a visitor, I type past the active label and back and no label is active', () => {

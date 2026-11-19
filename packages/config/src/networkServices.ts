@@ -10,6 +10,7 @@ export const BUILTIN_NETWORK_SERVICES: Record<Network, ServicesConfig> = {
   'paseo-next-v2': {
     label: 'Paseo',
     description: 'Paseo Next Network',
+    testnet: true,
     relay: {
       genesis: '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd',
       rpcs: [
@@ -57,6 +58,7 @@ export const BUILTIN_NETWORK_SERVICES: Record<Network, ServicesConfig> = {
   previewnet: {
     label: 'Previewnet',
     description: 'Product Preview Network',
+    testnet: true,
     relay: {
       genesis: '0x860145753657e73c29b9388ffa0a8aebc643ea87434b4b271b6c3c3cc9e6bf92',
       rpcs: ['wss://previewnet.substrate.dev/relay/alice', 'wss://previewnet.substrate.dev/relay/bob'],
@@ -99,6 +101,7 @@ export const BUILTIN_NETWORK_SERVICES: Record<Network, ServicesConfig> = {
   'pcf-devnet': {
     label: 'PCF Devnet',
     description: 'Polkadot Community Foundation devnet on Paseo',
+    testnet: true,
     relay: {
       genesis: '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd',
       rpcs: [

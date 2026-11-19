@@ -16,13 +16,20 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [cleanup-move-matches-a-rule](cleanup-move-matches-a-rule.md): a simplification pass finds a shape that matches one
   of its rules, or a rater lists it.
 - [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md): a simple design competes with
-  elaborate ones that guard a size or a setup.
+  elaborate ones that guard a size, a setup or a first-visit cost.
 - [owner-approves-in-advance](owner-approves-in-advance.md): the owner approved a change in advance, and its gates or a
   follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to
   need it too.
+- [slice-edits-an-end-to-end-spec](slice-edits-an-end-to-end-spec.md): a slice edits a Playwright spec that drives the
+  built app, and the question is whether the slice's checks run it.
 - [workflow-dispatches-several-subagents](workflow-dispatches-several-subagents.md): a workflow dispatches several
   subagents for one change, and the question is which loads the code-writing docs and who runs the loop.
+
+## Browser support
+
+- [fallback-for-a-floor-era-browser](fallback-for-a-floor-era-browser.md): a cleanup finds a fallback for a feature
+  Safari 17.4 has but another browser of the same era lacked, and the question is whether the floor binds only Safari.
 
 ## Build
 
@@ -42,6 +49,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   unreachable.
 - [existing-call-needs-a-variant](existing-call-needs-a-variant.md): a shared primitive needs a second form of a call
   that differs in one aspect.
+- [fact-about-each-network](fact-about-each-network.md): UI depends on a fact about the network the visitor picked,
+  such as whether its tokens have value, and the network table holds no field for it.
 - [files-away-from-their-feature](files-away-from-their-feature.md): files that serve one feature sit in a top-level
   folder filed by kind.
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
@@ -68,10 +77,37 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## UI
 
+- [component-shown-in-several-forms](component-shown-in-several-forms.md): a piece of UI, such as a logo, appears in
+  several forms that callers assemble from part components, and an optional decoration's place depends on the form.
+- [design-gives-px-line-heights](design-gives-px-line-heights.md): a design's type scale pairs each size with a fixed px
+  line height, and the tokens hold a few line-height ratios that places pair with sizes.
+- [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
+  primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
+- [dropdown-placed-against-its-trigger](dropdown-placed-against-its-trigger.md): a shared primitive that opens as a
+  dropdown places itself in its own way, a new user's trigger sits where that breaks, and the question is how a host
+  should place it, or whether it should line up with the edge of the bar its trigger sits in.
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
   that runs edge to edge across a shared container primitive, past its inner padding.
+- [existing-component-already-does-the-job](existing-component-already-does-the-job.md): a primitive is changed to do
+  something another component of its package already does, that component has a gap such as a missing browser
+  fallback, and the question is whether to fill the gap or keep the old way.
+- [listbox-option-needs-a-remove-action](listbox-option-needs-a-remove-action.md): a combobox's popup is a shared
+  listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
+- [match-an-on-screen-reference](match-an-on-screen-reference.md): the owner asks for UI done like something already on
+  screen, and the question is whether a close or moved version is enough before presenting, or whether a shared
+  component's fixed placement may stay a pixel or two off at one caller's size.
+- [one-form-of-a-responsive-component-changes](one-form-of-a-responsive-component-changes.md): a shared component with a
+  wide-screen form and a phone form needs a different primitive on one form only, and the question is where the switch
+  between the forms lives, what ARIA its trigger carries and which keys it handles.
+- [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
+  optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
+- [press-on-the-anchor-closes-a-popover](press-on-the-anchor-closes-a-popover.md): a popover on the shared floating
+  layer is anchored to a control that cannot be its invoker, such as a text field, and the browser's light dismiss
+  closes it on a press on that control.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
+- [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
+  build must show a piece of content only when a setting the visitor picks at runtime says so.
 - [window-blur-closes-a-popover](window-blur-closes-a-popover.md): a shared layer closes a popover on every window blur,
   and it also closes when the browser's own UI or another app takes focus.

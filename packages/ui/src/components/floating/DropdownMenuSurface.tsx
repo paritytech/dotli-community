@@ -1,65 +1,82 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { AnchoredContent } from './AnchoredContent.js';
+import { Listbox } from '../primitives/Listbox.js';
 import type { MenuState } from './DropdownMenu.js';
-import type { Placement } from './FloatingLayer.js';
+import { SheetContent } from './SheetContent.js';
 import s from './DropdownMenu.module.css';
 
 const ITEM = '[role="menuitem"]';
 
-/** DropdownMenu's surface: an anchored menu or a sheet of rows. */
+/** DropdownMenu's surface: a list hung from the trigger's end, or a sheet of menu rows on a phone. */
 export function DropdownMenuSurface(props: {
   state: MenuState;
+  anchor: HTMLElement | undefined;
   class?: string | undefined;
-  placement?: Placement | undefined;
+  onClose: () => void;
   children: JSX.Element;
 }): JSX.Element {
-  /** The first item when opened by key, else the menu. */
-  function findOpeningFocus(menu: HTMLElement, root: HTMLElement): HTMLElement {
-    return (props.state.keyboard.value ? listItems(root)[0] : undefined) ?? menu;
-  }
-
   return (
-    <AnchoredContent
-      state={props.state}
-      role="menu"
-      placement={props.placement}
-      class={[s['menu'], props.class]}
-      onOpened={surface => {
-        findOpeningFocus(surface, surface).focus();
-      }}
-      onKeyDown={(event, surface) => {
-        // Tab stays put in the anchored menu. In a sheet, Tab is the dialog's, to reach the head's close button.
-        if (event.key === 'Tab') {
-          event.preventDefault();
-          return;
-        }
-        moveFocus(event, surface);
-      }}
-      sheetTestId="menu"
-      sheetBody={{
-        role: 'menu',
-        label: props.state.title,
-        testId: 'menu-sheet-body',
-        onKeyDown: event => {
-          moveFocus(event, event.currentTarget);
-        },
-      }}
-      sheetClass={[s['rows'], props.class]}
-      onSheetPointerMove={focusHovered}
-      sheetFocus={rows => {
-        const menu = rows.closest<HTMLElement>('[role="menu"]');
-        return menu === null ? undefined : findOpeningFocus(menu, rows);
-      }}
-      sheetChildren={() => props.children}
+    <Show
+      when={props.state.sheet()}
+      fallback={
+        <Listbox
+          id={props.state.id}
+          label={props.state.title}
+          anchor={props.anchor}
+          open={props.state.open()}
+          onClose={props.onClose}
+          align="end"
+        >
+          {props.children}
+        </Listbox>
+      }
     >
-      <div class={s['rows']} onPointerMove={focusHovered}>
-        {props.children}
-      </div>
-    </AnchoredContent>
+      <SheetContent
+        state={props.state}
+        testId="menu"
+        body={{
+          role: 'menu',
+          label: props.state.title,
+          testId: 'menu-sheet-body',
+          onKeyDown: event => {
+            moveFocus(event, event.currentTarget);
+          },
+        }}
+        class={[s['rows'], props.class]}
+        onPointerMove={focusHovered}
+        focus={rows => {
+          const menu = rows.closest<HTMLElement>('[role="menu"]');
+          // The first row when opened by key, else the menu.
+          return menu === null ? undefined : ((props.state.byKey() ? listItems(rows)[0] : undefined) ?? menu);
+        }}
+        content={() => props.children}
+      />
+    </Show>
   );
+}
+
+/**
+ * Where a navigation key moves in a list of `count` from `index` (-1 for none), wrapping at either end, or null for a key
+ * that moves nothing.
+ */
+export function stepIndex(key: string, index: number, count: number): number | null {
+  if (count === 0) {
+    return null;
+  }
+  switch (key) {
+    case 'ArrowDown':
+      return (index + 1) % count;
+    case 'ArrowUp':
+      return index <= 0 ? count - 1 : Math.min(index, count) - 1;
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+  }
+  return null;
 }
 
 function listItems(root: HTMLElement): HTMLElement[] {
@@ -78,19 +95,10 @@ function moveFocus(event: KeyboardEvent, root: HTMLElement): void {
 
 /** The item of `list` that `event`'s key moves focus to, or undefined for a key that moves nothing. */
 function findKeyTarget(event: KeyboardEvent, list: HTMLElement[]): HTMLElement | undefined {
-  if (list.length === 0) {
-    return undefined;
-  }
   const index = list.findIndex(item => item === document.activeElement);
-  switch (event.key) {
-    case 'ArrowDown':
-      return list[(index + 1) % list.length];
-    case 'ArrowUp':
-      return list[index <= 0 ? list.length - 1 : index - 1];
-    case 'Home':
-      return list[0];
-    case 'End':
-      return list.at(-1);
+  const step = stepIndex(event.key, index, list.length);
+  if (step !== null) {
+    return list[step];
   }
   if (event.key.length !== 1 || event.key === ' ' || event.ctrlKey || event.altKey || event.metaKey) {
     return undefined;

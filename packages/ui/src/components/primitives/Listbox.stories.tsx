@@ -4,12 +4,15 @@
 import { createSignal, createUniqueId, For, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
+import { ChevronRightIcon } from '../icons/ChevronRightIcon.js';
+import { ClockIcon } from '../icons/ClockIcon.js';
 import { GlobeIcon } from '../icons/GlobeIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { SlidersIcon } from '../icons/SlidersIcon.js';
 import { Button } from './Button.js';
+import { Chip } from './Chip.js';
 import { IconButton } from './IconButton.js';
 import { Listbox } from './Listbox.js';
 
@@ -23,6 +26,8 @@ type OptionsProps = {
   chosen?: string | undefined;
   detail?: string | undefined;
   icon?: Component<IconProps> | undefined;
+  end?: ((label: string) => JSX.Element) | undefined;
+  onRemove?: ((label: string) => void) | undefined;
   onPick: (label: string) => void;
 };
 
@@ -35,6 +40,19 @@ type InputFrameProps = {
   onKeyDown?: (event: KeyboardEvent) => void;
   children: JSX.Element;
 };
+
+type OpenListProps = {
+  listId: string;
+  listLabel: string;
+  align?: 'start' | 'end' | undefined;
+  loading?: string | undefined;
+  /** Renders the control the list drops below, handing its element to `ref`. */
+  anchor: (ref: (element: HTMLElement) => void) => JSX.Element;
+  children: JSX.Element;
+};
+
+/** The lists render in the top layer, outside the story's canvas. */
+const body = within(document.body);
 
 const MANY_OPTIONS = ['app', 'apple', 'apps', 'apricot', 'april', 'apron', 'aptos', 'aptitude', 'apex', 'aphid'];
 
@@ -72,10 +90,10 @@ export const UnderInput: Story = {
       />
     </InputFrame>
   ),
-  play: async ({ canvas, step }) => {
+  play: async ({ step }) => {
     await step('Then only one option is active', async () => {
-      const active = canvas.getByRole('option', { name: 'browse-default-relevant-sort00.paseo' });
-      await expect(canvas.getAllByRole('option', { selected: true })).toEqual([active]);
+      const active = body.getByRole('option', { name: 'browse-default-relevant-sort00.paseo' });
+      await expect(body.getAllByRole('option', { selected: true })).toEqual([active]);
     });
   },
 };
@@ -93,7 +111,7 @@ export const ClickKeepsFocus: Story = {
       input.focus();
     });
     await step('When I click avocado', async () => {
-      await (await trustedInput()).click(canvas.getByRole('option', { name: 'avocado.dot' }));
+      await (await trustedInput()).click(body.getByRole('option', { name: 'avocado.dot' }));
     });
     await step('Then avocado is picked and the input still has focus', async () => {
       await expect(args.onPick).toHaveBeenCalledWith('avocado');
@@ -102,28 +120,53 @@ export const ClickKeepsFocus: Story = {
   },
 };
 
+/** As a dotli user typing a name, I press in the input and the list stays open. */
+export const PressInInputKeepsOpen: Story = {
+  render: args => (
+    <InputFrame width="300px" inputLabel="Name" listId="listbox-press-input" listLabel="Suggested names">
+      <Options labels={['ant', 'apple']} detail=".dot" onPick={args.onPick} />
+    </InputFrame>
+  ),
+  play: async ({ canvas, step }) => {
+    const input = canvas.getByRole('combobox', { name: 'Name' });
+    await step('Given the input has focus', () => {
+      input.focus();
+    });
+    await step('When I press in the input', async () => {
+      await (await trustedInput()).click(input);
+    });
+    await step('Then the list is still open', async () => {
+      const list = body.getByRole('listbox', { name: 'Suggested names' });
+      await expect(list.closest('[data-open]')).not.toBeNull();
+    });
+  },
+};
+
 /** As a dotli user, I open a list from a button and see the current network checked. */
 export const UnderButton: Story = {
   render: args => (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <Button aria-expanded="true" aria-controls="listbox-under-button">
-        Polkadot
-      </Button>
-      <Listbox id="listbox-under-button" label="Network">
-        <Options
-          labels={['Polkadot', 'Kusama', 'Paseo testnet']}
-          active="Kusama"
-          chosen="Polkadot"
-          icon={GlobeIcon}
-          onPick={args.onPick}
-        />
-      </Listbox>
-    </div>
+    <OpenList
+      listId="listbox-under-button"
+      listLabel="Network"
+      anchor={ref => (
+        <Button ref={ref} aria-expanded="true" aria-controls="listbox-under-button">
+          Polkadot
+        </Button>
+      )}
+    >
+      <Options
+        labels={['Polkadot', 'Kusama', 'Paseo testnet']}
+        active="Kusama"
+        chosen="Polkadot"
+        icon={GlobeIcon}
+        onPick={args.onPick}
+      />
+    </OpenList>
   ),
-  play: async ({ canvas, step }) => {
+  play: async ({ step }) => {
     await step('Then only Polkadot is checked', async () => {
-      const chosen = canvas.getByRole('option', { name: 'Polkadot' });
-      await expect(canvas.getAllByRole('option', { checked: true })).toEqual([chosen]);
+      const chosen = body.getByRole('option', { name: 'Polkadot' });
+      await expect(body.getAllByRole('option', { checked: true })).toEqual([chosen]);
     });
   },
 };
@@ -132,19 +175,23 @@ export const UnderButton: Story = {
 export const AlignEnd: Story = {
   render: args => (
     <div style={{ display: 'flex', 'justify-content': 'flex-end', width: '260px' }}>
-      <div style={{ position: 'relative', display: 'inline-block' }}>
-        <IconButton aria-label="Sort" aria-expanded="true" aria-controls="listbox-align-end">
-          <SlidersIcon />
-        </IconButton>
-        <Listbox id="listbox-align-end" label="Sort" align="end">
-          <Options
-            labels={['Most relevant', 'Recently opened', 'Name']}
-            active="Recently opened"
-            chosen="Recently opened"
-            onPick={args.onPick}
-          />
-        </Listbox>
-      </div>
+      <OpenList
+        listId="listbox-align-end"
+        listLabel="Sort"
+        align="end"
+        anchor={ref => (
+          <IconButton ref={ref} aria-label="Sort" aria-expanded="true" aria-controls="listbox-align-end">
+            <SlidersIcon />
+          </IconButton>
+        )}
+      >
+        <Options
+          labels={['Most relevant', 'Recently opened', 'Name']}
+          active="Recently opened"
+          chosen="Recently opened"
+          onPick={args.onPick}
+        />
+      </OpenList>
     </div>
   ),
 };
@@ -169,12 +216,39 @@ export const LongText: Story = {
   ),
 };
 
+/** As a dotli user, I see each option end in its status and a chevron, after its text. */
+export const EndSlot: Story = {
+  render: args => (
+    <InputFrame width="300px" inputLabel="Actions" listId="listbox-end-slot" listLabel="More actions">
+      <Options
+        labels={['Chat', 'Offline', 'a-label-long-enough-that-it-must-ellipsize-before-the-slot']}
+        icon={GlobeIcon}
+        end={label => (
+          <>
+            {label === 'Chat' ? <Chip>3</Chip> : <span>{label === 'Offline' ? 'Offline' : 'Soon'}</span>}
+            <ChevronRightIcon />
+          </>
+        )}
+        onPick={args.onPick}
+      />
+    </InputFrame>
+  ),
+  play: async () => {
+    const list = await body.findByRole('listbox', { name: 'More actions' });
+    const option = within(list).getByRole('option', { name: /^Chat/ });
+    const end = within(option).getByTestId('listbox-end');
+    const text = within(option).getByText('Chat');
+    await expect(end).toHaveTextContent('3');
+    await expect(text.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  },
+};
+
 /** As a keyboard user, I move past the list's edge with the arrow keys and the active option scrolls into view. */
 export const ActiveScrollsIntoView: Story = {
   render: args => <ManyOptionsFrame onPick={args.onPick} />,
   play: async ({ canvas, step }) => {
     const input = canvas.getByRole('combobox', { name: 'Name' });
-    const list = canvas.getByRole('listbox', { name: 'Many options' });
+    const list = body.getByRole('listbox', { name: 'Many options' });
     await step('Given the input has focus', () => {
       input.focus();
     });
@@ -182,50 +256,77 @@ export const ActiveScrollsIntoView: Story = {
       await (await trustedInput()).keyboard('{ArrowUp}');
     });
     await step('Then aphid is inside the list', async () => {
-      await waitFor(() => expectInside(canvas.getByRole('option', { name: 'aphid' }), list));
+      await waitFor(() => expectInside(body.getByRole('option', { name: 'aphid' }), list));
     });
     await step('When I press ArrowDown', async () => {
       await (await trustedInput()).keyboard('{ArrowDown}');
     });
     await step('Then app is inside the list', async () => {
-      await waitFor(() => expectInside(canvas.getByRole('option', { name: 'app' }), list));
+      await waitFor(() => expectInside(body.getByRole('option', { name: 'app' }), list));
     });
   },
 };
 
-/**
- * As a dotli user typing a name while the names still load, I see a loading row after the matches so far, or alone when
- * none match yet.
- */
+/** As a dotli user typing a name while the names still load, I see a loading row after the matches so far. */
 export const Loading: Story = {
   render: args => (
-    <div style={{ display: 'flex', gap: '72px', 'align-items': 'flex-start' }}>
-      <InputFrame
-        width="300px"
-        inputLabel="Name with matches"
-        listId="listbox-loading-matches"
-        listLabel="Suggested names"
-        loading="Loading names"
-      >
-        <Options labels={['hosted', 'host-tools']} active="host-tools" detail=".paseo" onPick={args.onPick} />
-      </InputFrame>
-      <InputFrame
-        width="300px"
-        inputLabel="Name with no matches"
-        listId="listbox-loading-empty"
-        listLabel="Suggested names"
-        loading="Loading names"
-      >
-        {null}
-      </InputFrame>
-    </div>
+    <InputFrame
+      width="300px"
+      inputLabel="Name"
+      listId="listbox-loading-matches"
+      listLabel="Suggested names"
+      loading="Loading names"
+    >
+      <Options labels={['hosted', 'host-tools']} active="host-tools" detail=".paseo" onPick={args.onPick} />
+    </InputFrame>
   ),
-  play: async ({ canvas, step }) => {
-    await step('Then both lists are busy and two statuses show', async () => {
-      for (const list of canvas.getAllByRole('listbox')) {
-        await expect(list).toHaveAttribute('aria-busy', 'true');
-      }
-      await expect(canvas.getAllByRole('status')).toHaveLength(2);
+  play: async ({ step }) => {
+    await step('Then the list is busy and a status shows', async () => {
+      const list = await body.findByRole('listbox', { name: 'Suggested names' });
+      await expect(list).toHaveAttribute('aria-busy', 'true');
+      await expect(body.getByRole('status')).toBeInTheDocument();
+    });
+  },
+};
+
+/** As a dotli user typing a name while the names still load, I see the list open with only a loading row. */
+export const LoadingAlone: Story = {
+  render: () => (
+    <InputFrame
+      width="300px"
+      inputLabel="Name"
+      listId="listbox-loading-empty"
+      listLabel="Suggested names"
+      loading="Loading names"
+    >
+      {null}
+    </InputFrame>
+  ),
+};
+
+/**
+ * As a dotli user typing a name, I see my recent names and the app names under their own headings, and I remove a recent
+ * name with its cross and it goes while nothing is picked and the input keeps focus.
+ */
+export const Groups: Story = {
+  render: args => <GroupsFrame onPick={args.onPick} />,
+  play: async ({ args, canvas, step }) => {
+    const input = canvas.getByRole('combobox', { name: 'Name' });
+    await step('Then the recent names are a group named by its heading', async () => {
+      const recent = body.getByRole('group', { name: 'Recent' });
+      await expect(within(recent).getAllByRole('option')).toHaveLength(2);
+    });
+    await step('Given the input has focus', () => {
+      input.focus();
+    });
+    await step('When I click the cross on news', async () => {
+      const news = body.getByRole('option', { name: 'news.dot' });
+      await (await trustedInput()).click(within(news).getByTestId('listbox-remove'));
+    });
+    await step('Then news is gone, nothing is picked and the input still has focus', async () => {
+      await expect(body.queryByRole('option', { name: 'news.dot' })).toBeNull();
+      await expect(args.onPick).not.toHaveBeenCalled();
+      await expect(input).toHaveFocus();
     });
   },
 };
@@ -245,24 +346,55 @@ export const Phone: Story = {
   ),
 };
 
-/** A combobox input with its list below, inside a positioned frame as a page places them. */
+/** A combobox input with its list open below it, until the list closes. */
 function InputFrame(props: InputFrameProps): JSX.Element {
   return (
-    <div style={{ position: 'relative', width: props.width }}>
-      <input
-        type="text"
-        role="combobox"
-        aria-expanded="true"
-        aria-controls={props.listId}
-        aria-label={props.inputLabel}
-        onKeyDown={event => {
-          props.onKeyDown?.(event);
+    <div style={{ width: props.width }}>
+      <OpenList
+        listId={props.listId}
+        listLabel={props.listLabel}
+        loading={props.loading}
+        anchor={ref => (
+          <input
+            ref={ref}
+            type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={props.listId}
+            aria-label={props.inputLabel}
+            onKeyDown={event => {
+              props.onKeyDown?.(event);
+            }}
+          />
+        )}
+      >
+        {props.children}
+      </OpenList>
+    </div>
+  );
+}
+
+/** The control `anchor` renders, with its list open below it until the list closes. */
+function OpenList(props: OpenListProps): JSX.Element {
+  const [anchor, setAnchor] = createSignal<HTMLElement | undefined>(undefined, { ownedWrite: true });
+  const [open, setOpen] = createSignal(true);
+  return (
+    <>
+      {props.anchor(setAnchor)}
+      <Listbox
+        id={props.listId}
+        label={props.listLabel}
+        anchor={anchor()}
+        open={open()}
+        onClose={() => {
+          setOpen(false);
         }}
-      />
-      <Listbox id={props.listId} label={props.listLabel} loading={props.loading}>
+        align={props.align}
+        loading={props.loading}
+      >
         {props.children}
       </Listbox>
-    </div>
+    </>
   );
 }
 
@@ -278,6 +410,15 @@ function Options(props: OptionsProps): JSX.Element {
           chosen={label === props.chosen}
           icon={props.icon}
           detail={props.detail}
+          end={props.end?.(label)}
+          remove={
+            props.onRemove && {
+              label: `Remove ${label}`,
+              onRemove: () => {
+                props.onRemove?.(label);
+              },
+            }
+          }
           onPick={() => {
             props.onPick(label);
           }}
@@ -308,6 +449,30 @@ function ManyOptionsFrame(props: StoryArgs): JSX.Element {
       }}
     >
       <Options labels={MANY_OPTIONS} active={MANY_OPTIONS[active()]} onPick={props.onPick} />
+    </InputFrame>
+  );
+}
+
+/** Recent names that each remove themselves, then the app names, each under its heading. */
+function GroupsFrame(props: StoryArgs): JSX.Element {
+  const [recent, setRecent] = createSignal(['news', 'browse']);
+  return (
+    <InputFrame width="300px" inputLabel="Name" listId="listbox-groups" listLabel="Suggested names">
+      <Listbox.Group label="Recent">
+        <Options
+          labels={recent()}
+          active="browse"
+          icon={ClockIcon}
+          detail=".dot"
+          onRemove={label => {
+            setRecent(names => names.filter(name => name !== label));
+          }}
+          onPick={props.onPick}
+        />
+      </Listbox.Group>
+      <Listbox.Group label="Apps">
+        <Options labels={['bridge', 'broker']} detail=".dot" onPick={props.onPick} />
+      </Listbox.Group>
     </InputFrame>
   );
 }

@@ -77,7 +77,7 @@
   padding: 0;
   font-size: var(--fs-title-lg);
   font-weight: var(--fw-medium);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-body);
 }
 
 .host {

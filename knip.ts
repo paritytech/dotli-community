@@ -16,6 +16,10 @@ export default {
   vite: true,
   vitest: true,
   turbo: true,
+  // A stylesheet's `@import` uses a dependency too.
+  compilers: {
+    css: (text: string) => [...text.matchAll(/(?<=@)import[^;]+/g)].join('\n'),
+  },
   workspaces: {
     '.': {
       // Node runs these from the shell or by hand, not through a package.json script.

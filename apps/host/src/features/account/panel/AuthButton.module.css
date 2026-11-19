@@ -11,7 +11,7 @@
 .chip {
   gap: var(--sp-1_5);
   --button-h: var(--h-bar-control);
-  font-size: 13px;
+  font-size: var(--fs-body);
 }
 .sign-in {
   padding: 0 var(--sp-4) 0 var(--sp-3);
@@ -61,7 +61,6 @@
     gap: var(--sp-2);
     width: var(--h-control);
     padding: 0;
-    font-size: var(--fs-body);
   }
   .name,
   .label {

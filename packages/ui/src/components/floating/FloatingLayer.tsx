@@ -10,9 +10,11 @@ import { LayerTracker } from './layerContext.js';
 import { createPresence } from './createPresence.js';
 import s from './FloatingLayer.module.css';
 
-export type Placement = 'topbar-end' | 'trigger-start';
+export type Placement = 'topbar-end' | 'trigger-start' | 'trigger-end';
 
 export type LayerCloseReason = Exclude<CloseReason, 'sheet' | 'released'>;
+
+type LayerKind = 'auto' | 'manual' | 'self-dismiss';
 
 const EXIT_MS = 220;
 
@@ -20,11 +22,26 @@ const EXIT_MS = 220;
 const PLACEMENTS = {
   'topbar-end': { class: s['topbarEnd'], anchored: false },
   'trigger-start': { class: s['triggerStart'], anchored: true },
+  'trigger-end': { class: s['triggerEnd'], anchored: true },
 } satisfies Record<Placement, { class: string | undefined; anchored: boolean }>;
+
+/**
+ * Each kind's popover type, and who closes it on a press outside it and its trigger. A kind with a closer also closes on
+ * Escape, focus leaving and a blur into a frame. Without one, only the owner closes it.
+ */
+const KINDS = {
+  auto: { popover: 'auto', outsidePress: 'browser' },
+  manual: { popover: 'manual', outsidePress: null },
+  'self-dismiss': { popover: 'manual', outsidePress: 'layer' },
+} satisfies Record<LayerKind, { popover: 'auto' | 'manual'; outsidePress: 'browser' | 'layer' | null }>;
 
 export type FloatingLayerProps = {
   id: string;
-  kind: 'auto' | 'manual';
+  /**
+   * `auto` takes the browser's light dismiss, `manual` closes only when its owner says, and `self-dismiss` runs the
+   * closes of `auto` itself, so that a press on a trigger that cannot be the popover's invoker leaves it open.
+   */
+  kind: LayerKind;
   open: boolean;
   /** A close the browser or the layer made. The owner sets its state from it. */
   onClose: (reason: LayerCloseReason) => void;
@@ -85,7 +102,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   createEffect(
     () => props.open,
     open => {
-      if (!open || props.kind !== 'auto') {
+      if (!open || KINDS[props.kind].outsidePress === null) {
         return;
       }
       return listenForCloses();
@@ -110,8 +127,16 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
       const target = event.target as Node | null;
       if (props.trigger()?.contains(target) === true) {
         reason = 'trigger';
-      } else {
-        reason = surface?.contains(target) === true ? 'programmatic' : 'outside';
+        return;
+      }
+      if (surface?.contains(target) === true) {
+        reason = 'programmatic';
+        return;
+      }
+      reason = 'outside';
+      // A manual popover has no light dismiss, so the layer makes this close itself.
+      if (KINDS[props.kind].outsidePress === 'layer') {
+        props.onClose('outside');
       }
     }
 
@@ -175,7 +200,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
           surface = element;
           props.ref?.(element);
         }}
-        popover={props.kind}
+        popover={KINDS[props.kind].popover}
         id={props.id}
         class={[s['layer'], placement().class, props.class]}
         style={placement().anchored ? { 'position-anchor': anchorName(props.id) } : undefined}

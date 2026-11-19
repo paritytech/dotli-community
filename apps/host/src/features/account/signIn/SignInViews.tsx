@@ -7,7 +7,7 @@
 import { createSignal, For, Show, untrack, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ArrowRightIcon, CheckIcon, CircleAlertIcon, type IconProps } from '@dotli/ui/icons';
-import { LogoSymbol } from '@dotli/ui/brand';
+import { Logo } from '@dotli/ui/brand';
 import { Button, ButtonLink, Callout, Chip, SectionLabel, Spinner, Well } from '@dotli/ui';
 import type { ContinueOffer } from '../../signInWindow/index.js';
 import { AccountAvatar } from '../panel/AccountAvatar.js';
@@ -317,7 +317,7 @@ export function PairingScreen(props: PairingScreenProps): SignInParts {
           // Where a status's mark stands, so every sign-in view heads with its title.
           mark={
             <Show when={!scanning()}>
-              <LogoSymbol class={s['symbol']} height={44} />
+              <Logo variant="symbol" class={s['symbol']} height={44} />
             </Show>
           }
           body={body()}

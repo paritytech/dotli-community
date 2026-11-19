@@ -12,7 +12,7 @@ import { AccountItem } from './AuthButton.js';
 import { authModalState } from '../signIn/authModalState.js';
 import { useAccount } from './useAccount.js';
 
-/** The account button bound to the session, as the topbar and the landing page's corner show it. */
+/** The account button bound to the session, as the topbar and the landing page's header show it. */
 export function AccountButtonIsland(props: { idPrefix?: string; showName?: boolean }): JSX.Element {
   const account = useAccount({
     auth: authState.store,

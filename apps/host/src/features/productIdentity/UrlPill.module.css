@@ -30,7 +30,7 @@
     inset 0 0 0 1px var(--chrome-ring),
     var(--chrome-shadow-inset);
   color: var(--chrome-text);
-  font: var(--fw-regular) 13px / 1 var(--font-sans);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
   user-select: none;
   transition: background var(--dur-fast);
 }
@@ -65,7 +65,7 @@
 }
 .pill[data-localhost] .domain {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-label);
 }
 
 /* Phones: the actions take the address's place. */

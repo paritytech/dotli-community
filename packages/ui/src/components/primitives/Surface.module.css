@@ -47,7 +47,7 @@
   margin: 0;
   font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-body);
 }
 /* The hint takes the free space and wraps its text beside the action. Only a foot too narrow for both puts the action
    on a row of its own, still on the right. */

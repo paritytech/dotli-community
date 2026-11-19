@@ -1,0 +1,56 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The landing page's backdrop: dots circling rings on a tilted floor, each linked inward to the centre.
+// HTML and CSS only, so it ships no code.
+import s from './Orbit.module.css';
+
+// Each ring's dots, by their angle at rest, from the centre outward.
+const RINGS = [
+  { ring: 'inner', starts: [-78, 30, 158] },
+  { ring: 'ring1', starts: [-34, 17, 64, 148, 221, 283] },
+  { ring: 'ring2', starts: [3, 41, 118, 139, 197, 262, 289, 344] },
+  { ring: 'ring3', starts: [12, 37, 79, 125, 171, 203, 248, 301, 329] },
+  { ring: 'ring4', starts: [6, 28, 61, 97, 132, 160, 189, 227, 266, 293, 338] },
+];
+
+function gap(a: number, b: number) {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+// Every dot links inward: an inner dot to the centre, any other to the nearest dot on the ring inside its own.
+const LINKS = RINGS.flatMap(({ ring, starts }, index) => {
+  const inside = RINGS[index - 1];
+  return starts.map(start => {
+    if (!inside) {
+      return { from: { ring: 'centre', start: 0 }, to: { ring, start } };
+    }
+    const nearest = inside.starts.reduce((best, other) => (gap(other, start) < gap(best, start) ? other : best));
+    return { from: { ring: inside.ring, start: nearest }, to: { ring, start } };
+  });
+});
+---
+
+<div class={s['orbit']} aria-hidden="true">
+  <div class={s['stage']}>
+    <div class={s['plane']}>
+      {RINGS.map(({ ring, starts }) => (
+        <div class={s['ring']} data-ring={ring}>
+          {starts.map(start => (
+            <div class={s['dot']} style={`--start: ${start}deg`} />
+          ))}
+        </div>
+      ))}
+      {LINKS.map(({ from, to }) => (
+        <div
+          class={s['link']}
+          data-from={from.ring}
+          data-to={to.ring}
+          style={`--from-start: ${from.start}deg; --to-start: ${to.start}deg`}
+        />
+      ))}
+      <div class={s['centre']}></div>
+    </div>
+  </div>
+</div>

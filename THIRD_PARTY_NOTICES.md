@@ -12,7 +12,10 @@ FSL-1.1-Apache-2.0) terms is used to build the application and is not redistribu
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
 License 2.0 (`MPL-2.0`), unmodified and with its license header.
 
-> Generated from the resolved dependency tree (909 distinct third-party packages) by `scripts/thirdPartyNotices.ts`.
+The application bundles font files under the SIL Open Font License 1.1 (`OFL-1.1`), which permits bundling fonts with
+software under any license. They are served unmodified and are not sold on their own.
+
+> Generated from the resolved dependency tree (905 distinct third-party packages) by `scripts/thirdPartyNotices.ts`.
 > Platform-specific binary packages (for example `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;
 > other platforms resolve their own equivalents under the same licenses. Regenerate after dependency changes.
 
@@ -20,24 +23,25 @@ License 2.0 (`MPL-2.0`), unmodified and with its license header.
 
 @adobe/css-tools, @apideck/better-ajv-errors, @astrojs/astro2tsx, @astrojs/check, @astrojs/compiler-binding,
 @astrojs/compiler-binding-darwin-arm64, @astrojs/compiler-rs, @astrojs/internal-helpers, @astrojs/language-server,
-@astrojs/markdown-satteri, @astrojs/prism, @astrojs/telemetry, @astrojs/yaml2ts, @babel/code-frame, @babel/compat-data,
-@babel/core, @babel/generator, @babel/helper-annotate-as-pure, @babel/helper-compilation-targets,
-@babel/helper-create-class-features-plugin, @babel/helper-create-regexp-features-plugin,
-@babel/helper-define-polyfill-provider, @babel/helper-globals, @babel/helper-member-expression-to-functions,
-@babel/helper-module-imports, @babel/helper-module-transforms, @babel/helper-optimise-call-expression,
-@babel/helper-plugin-utils, @babel/helper-remap-async-to-generator, @babel/helper-replace-supers,
-@babel/helper-skip-transparent-expression-wrappers, @babel/helper-string-parser, @babel/helper-validator-identifier,
-@babel/helper-validator-option, @babel/helper-wrap-function, @babel/helpers, @babel/parser,
-@babel/plugin-bugfix-firefox-class-in-computed-class-key, @babel/plugin-bugfix-safari-class-field-initializer-scope,
+@astrojs/markdown-satteri, @astrojs/prism, @astrojs/runtime, @astrojs/telemetry, @astrojs/vite-plugin-astro,
+@astrojs/yaml2ts, @babel/code-frame, @babel/compat-data, @babel/core, @babel/generator, @babel/helper-annotate-as-pure,
+@babel/helper-compilation-targets, @babel/helper-create-class-features-plugin,
+@babel/helper-create-regexp-features-plugin, @babel/helper-define-polyfill-provider, @babel/helper-globals,
+@babel/helper-member-expression-to-functions, @babel/helper-module-imports, @babel/helper-module-transforms,
+@babel/helper-optimise-call-expression, @babel/helper-plugin-utils, @babel/helper-remap-async-to-generator,
+@babel/helper-replace-supers, @babel/helper-skip-transparent-expression-wrappers, @babel/helper-string-parser,
+@babel/helper-validator-identifier, @babel/helper-validator-option, @babel/helper-wrap-function, @babel/helpers,
+@babel/parser, @babel/plugin-bugfix-firefox-class-in-computed-class-key,
+@babel/plugin-bugfix-safari-class-field-initializer-scope,
 @babel/plugin-bugfix-safari-id-destructuring-collision-in-function-expression,
 @babel/plugin-bugfix-safari-rest-destructuring-rhs-array,
 @babel/plugin-bugfix-v8-spread-parameters-in-optional-chaining,
 @babel/plugin-bugfix-v8-static-class-fields-redefine-readonly, @babel/plugin-proposal-private-property-in-object,
-@babel/plugin-syntax-import-assertions, @babel/plugin-syntax-import-attributes, @babel/plugin-syntax-jsx,
-@babel/plugin-syntax-unicode-sets-regex, @babel/plugin-transform-arrow-functions,
-@babel/plugin-transform-async-generator-functions, @babel/plugin-transform-async-to-generator,
-@babel/plugin-transform-block-scoped-functions, @babel/plugin-transform-block-scoping,
-@babel/plugin-transform-class-properties, @babel/plugin-transform-class-static-block, @babel/plugin-transform-classes,
+@babel/plugin-syntax-import-assertions, @babel/plugin-syntax-import-attributes, @babel/plugin-syntax-unicode-sets-regex,
+@babel/plugin-transform-arrow-functions, @babel/plugin-transform-async-generator-functions,
+@babel/plugin-transform-async-to-generator, @babel/plugin-transform-block-scoped-functions,
+@babel/plugin-transform-block-scoping, @babel/plugin-transform-class-properties,
+@babel/plugin-transform-class-static-block, @babel/plugin-transform-classes,
 @babel/plugin-transform-computed-properties, @babel/plugin-transform-destructuring,
 @babel/plugin-transform-dotall-regex, @babel/plugin-transform-duplicate-keys,
 @babel/plugin-transform-duplicate-named-capturing-groups-regex, @babel/plugin-transform-dynamic-import,
@@ -65,55 +69,54 @@ License 2.0 (`MPL-2.0`), unmodified and with its license header.
 @img/colour, @jridgewell/gen-mapping, @jridgewell/remapping, @jridgewell/resolve-uri, @jridgewell/source-map,
 @jridgewell/sourcemap-codec, @jridgewell/trace-mapping, @keyv/bigmap, @keyv/serialize, @mdx-js/react,
 @napi-rs/wasm-runtime, @noble/ciphers, @noble/curves, @noble/hashes, @oslojs/encoding, @oxc-parser/binding-darwin-arm64,
-@oxc-project/types, @oxc-resolver/binding-darwin-arm64, @parity/truapi, @parity/truapi-host, @pkgr/core, @polka/url,
-@polkadot-api/cli, @polkadot-api/codegen, @polkadot-api/ink-contracts, @polkadot-api/json-rpc-provider,
-@polkadot-api/json-rpc-provider-proxy, @polkadot-api/known-chains, @polkadot-api/logs-provider,
-@polkadot-api/merkleize-metadata, @polkadot-api/metadata-builders, @polkadot-api/metadata-compatibility,
-@polkadot-api/observable-client, @polkadot-api/pjs-signer, @polkadot-api/raw-client, @polkadot-api/raw-tx-creator,
-@polkadot-api/signers-common, @polkadot-api/sm-provider, @polkadot-api/smoldot, @polkadot-api/substrate-bindings,
-@polkadot-api/substrate-client, @polkadot-api/tx-creator, @polkadot-api/utils, @polkadot-api/wasm-executor,
-@polkadot-api/ws-middleware, @polkadot-api/ws-provider, @polkadot-labs/hdkd-helpers, @prettier/parse-srcset,
-@rolldown/binding-darwin-arm64, @rolldown/pluginutils, @rollup/plugin-babel, @rollup/plugin-node-resolve,
-@rollup/plugin-replace, @rollup/plugin-terser, @rollup/pluginutils, @rollup/rollup-darwin-arm64, @rx-state/core,
-@scure/base, @scure/sr25519, @sec-ant/readable-stream, @sentry/browser, @sentry/browser-utils, @sentry/bundler-plugins,
-@sentry/conventions, @sentry/core, @sentry/feedback, @sentry/replay, @sentry/replay-canvas, @sentry/vite-plugin,
-@shikijs/core, @shikijs/engine-javascript, @shikijs/engine-oniguruma, @shikijs/langs, @shikijs/primitive,
-@shikijs/themes, @shikijs/types, @shikijs/vscode-textmate, @sindresorhus/merge-streams, @solidjs/babel-plugin,
-@solidjs/compiler, @solidjs/compiler-darwin-arm64, @solidjs/compiler-wasm32-wasi, @solidjs/signals,
-@solidjs/vite-plugin, @solidjs/web, @storybook/addon-a11y, @storybook/addon-docs, @storybook/addon-vitest,
-@storybook/builder-vite, @storybook/global, @storybook/icons, @storybook/react-dom-shim, @testing-library/dom,
-@testing-library/jest-dom, @testing-library/user-event, @turbo/darwin-arm64, @tybys/wasm-util, @types/aria-query,
-@types/babel__core, @types/babel__generator, @types/babel__template, @types/babel__traverse, @types/chai,
-@types/deep-eql, @types/esrecurse, @types/estree, @types/estree-jsx, @types/hast, @types/json-schema, @types/mdast,
-@types/mdx, @types/nlcst, @types/node, @types/normalize-package-data, @types/qrcode, @types/react, @types/resolve,
-@types/trusted-types, @types/unist, @types/whatwg-mimetype, @types/ws, @typescript-eslint/eslint-plugin,
-@typescript-eslint/parser, @typescript-eslint/project-service, @typescript-eslint/scope-manager,
-@typescript-eslint/tsconfig-utils, @typescript-eslint/type-utils, @typescript-eslint/types,
-@typescript-eslint/typescript-estree, @typescript-eslint/utils, @typescript-eslint/visitor-keys, @vitest/browser,
-@vitest/browser-playwright, @vitest/expect, @vitest/mocker, @vitest/pretty-format, @vitest/spy, @vitest/ui,
-@vitest/utils, @volar/kit, @volar/language-core, @volar/language-server, @volar/language-service, @volar/source-map,
-@volar/typescript, @vscode/emmet-helper, @vscode/l10n, @webcontainer/env, acorn, acorn-jsx, ajv, ajv-draft-04, ajv-i18n,
-am-i-vibing, ansi-regex, ansi-styles, array-buffer-byte-length, arraybuffer.prototype.slice, assertion-error, ast-types,
-astro, astro-eslint-parser, async, async-function, available-typed-arrays, babel-plugin-polyfill-corejs2,
-babel-plugin-polyfill-corejs3, babel-plugin-polyfill-regenerator, bail, balanced-match, brace-expansion, browserslist,
-buffer-from, buffer-image-size, bundle-name, cacheable, call-bind, call-bind-apply-helpers, call-bound, camelcase,
-ccount, chai, chalk, character-entities-html4, character-entities-legacy, check-error, chokidar, ci-info, cli-cursor,
-cli-spinners, clsx, color-convert, color-name, comma-separated-tokens, commander, common-tags, convert-source-map,
-cookie, cookie-es, core-js-compat, cross-spawn, crossws, crypto-random-string, css-tree, css.escape, cssesc, csso,
-csstype, data-view-buffer, data-view-byte-length, data-view-byte-offset, debug, decamelize, deep-eql, deep-is,
-deepmerge, default-browser, default-browser-id, define-data-property, define-lazy-prop, define-properties, defu, dequal,
-destr, detect-indent, devalue, devlop, dijkstrajs, dom-accessibility-api, dom-serializer, dset, dunder-proto, emmet,
-emoji-regex, es-abstract, es-abstract-get, es-define-property, es-errors, es-module-lexer, es-object-atoms,
-es-set-tostringtag, es-to-primitive, esbuild, escalade, escape-string-regexp, eslint, eslint-config-prettier,
-eslint-plugin-astro, eslint-plugin-solid, eslint-plugin-turbo, estree-walker, eta, eventemitter3, execa, extend,
-fast-deep-equal, fast-json-stable-stringify, fast-levenshtein, fast-string-truncated-width, fast-string-width,
-fast-wrap-ansi, fd-package-json, fdir, fflate, figures, file-entry-cache, find-up, flat-cache, flattie, fnv1a-64,
-fontace, fontkitten, for-each, formatly, fs-extra, fs.promises.exists, fsevents, function-bind, function.prototype.name,
-functions-have-names, generator-function, gensync, get-east-asian-width, get-intrinsic, get-proto, get-stream,
-get-symbol-description, get-tsconfig, globals, globalthis, gopd, h3, happy-dom, has-bigints, has-flag,
-has-property-descriptors, has-proto, has-symbols, has-tostringtag, hashery, hasown, hast-util-to-html,
-hast-util-whitespace, hookified, html-entities, html-escaper, html-tags, html-void-elements, husky, ignore, imurmurhash,
-indent-string, index-to-position, inline-style-parser, internal-slot, iron-webcrypto, is-array-buffer,
+@oxc-project/types, @oxc-resolver/binding-darwin-arm64, @parity/trinity-stack, @parity/truapi, @parity/truapi-host,
+@pkgr/core, @polka/url, @polkadot-api/cli, @polkadot-api/codegen, @polkadot-api/ink-contracts,
+@polkadot-api/json-rpc-provider, @polkadot-api/json-rpc-provider-proxy, @polkadot-api/known-chains,
+@polkadot-api/logs-provider, @polkadot-api/merkleize-metadata, @polkadot-api/metadata-builders,
+@polkadot-api/metadata-compatibility, @polkadot-api/observable-client, @polkadot-api/pjs-signer,
+@polkadot-api/raw-client, @polkadot-api/raw-tx-creator, @polkadot-api/signers-common, @polkadot-api/sm-provider,
+@polkadot-api/smoldot, @polkadot-api/substrate-bindings, @polkadot-api/substrate-client, @polkadot-api/tx-creator,
+@polkadot-api/utils, @polkadot-api/wasm-executor, @polkadot-api/ws-middleware, @polkadot-api/ws-provider,
+@polkadot-labs/hdkd-helpers, @prettier/parse-srcset, @rolldown/binding-darwin-arm64, @rolldown/pluginutils,
+@rollup/plugin-babel, @rollup/plugin-node-resolve, @rollup/plugin-replace, @rollup/plugin-terser, @rollup/pluginutils,
+@rollup/rollup-darwin-arm64, @rx-state/core, @scure/base, @scure/sr25519, @sec-ant/readable-stream, @sentry/browser,
+@sentry/browser-utils, @sentry/bundler-plugins, @sentry/conventions, @sentry/core, @sentry/feedback, @sentry/replay,
+@sentry/replay-canvas, @sentry/vite-plugin, @shikijs/core, @shikijs/engine-javascript, @shikijs/engine-oniguruma,
+@shikijs/langs, @shikijs/primitive, @shikijs/themes, @shikijs/types, @shikijs/vscode-textmate,
+@sindresorhus/merge-streams, @solidjs/compiler, @solidjs/compiler-darwin-arm64, @solidjs/compiler-wasm32-wasi,
+@solidjs/signals, @solidjs/vite-plugin, @solidjs/web, @storybook/addon-a11y, @storybook/addon-docs,
+@storybook/addon-vitest, @storybook/builder-vite, @storybook/global, @storybook/icons, @storybook/react-dom-shim,
+@testing-library/dom, @testing-library/jest-dom, @testing-library/user-event, @turbo/darwin-arm64, @tybys/wasm-util,
+@types/aria-query, @types/chai, @types/deep-eql, @types/esrecurse, @types/estree, @types/estree-jsx, @types/hast,
+@types/json-schema, @types/mdast, @types/mdx, @types/nlcst, @types/node, @types/normalize-package-data, @types/qrcode,
+@types/react, @types/resolve, @types/trusted-types, @types/unist, @types/whatwg-mimetype, @types/ws,
+@typescript-eslint/eslint-plugin, @typescript-eslint/parser, @typescript-eslint/project-service,
+@typescript-eslint/scope-manager, @typescript-eslint/tsconfig-utils, @typescript-eslint/type-utils,
+@typescript-eslint/types, @typescript-eslint/typescript-estree, @typescript-eslint/utils,
+@typescript-eslint/visitor-keys, @vitest/browser, @vitest/browser-playwright, @vitest/expect, @vitest/mocker,
+@vitest/pretty-format, @vitest/spy, @vitest/ui, @vitest/utils, @volar/kit, @volar/language-core, @volar/language-server,
+@volar/language-service, @volar/source-map, @volar/typescript, @vscode/emmet-helper, @vscode/l10n, @webcontainer/env,
+acorn, acorn-jsx, ajv, ajv-draft-04, ajv-i18n, am-i-vibing, ansi-regex, ansi-styles, array-buffer-byte-length,
+arraybuffer.prototype.slice, assertion-error, ast-types, astro, astro-eslint-parser, async, async-function,
+available-typed-arrays, babel-plugin-polyfill-corejs2, babel-plugin-polyfill-corejs3, babel-plugin-polyfill-regenerator,
+bail, balanced-match, brace-expansion, browserslist, buffer-from, buffer-image-size, bundle-name, cacheable, call-bind,
+call-bind-apply-helpers, call-bound, camelcase, ccount, chai, chalk, character-entities-html4,
+character-entities-legacy, check-error, chokidar, ci-info, cli-cursor, cli-spinners, clsx, color-convert, color-name,
+comma-separated-tokens, commander, common-tags, convert-source-map, cookie, cookie-es, core-js-compat, cross-spawn,
+crossws, crypto-random-string, css-tree, css.escape, csso, csstype, data-view-buffer, data-view-byte-length,
+data-view-byte-offset, debug, decamelize, deep-eql, deep-is, deepmerge, default-browser, default-browser-id,
+define-data-property, define-lazy-prop, define-properties, defu, dequal, destr, detect-indent, devalue, devlop,
+dijkstrajs, dom-accessibility-api, dom-serializer, dset, dunder-proto, emmet, emoji-regex, es-abstract, es-abstract-get,
+es-define-property, es-errors, es-module-lexer, es-object-atoms, es-set-tostringtag, es-to-primitive, esbuild, escalade,
+escape-string-regexp, eslint, eslint-config-prettier, eslint-plugin-astro, eslint-plugin-solid, eslint-plugin-turbo,
+estree-walker, eta, execa, extend, fast-deep-equal, fast-json-stable-stringify, fast-levenshtein,
+fast-string-truncated-width, fast-string-width, fast-wrap-ansi, fd-package-json, fdir, fflate, figures,
+file-entry-cache, find-up, flat-cache, flattie, fnv1a-64, fontace, fontkitten, for-each, formatly, fs-extra,
+fs.promises.exists, fsevents, function-bind, function.prototype.name, functions-have-names, generator-function, gensync,
+get-east-asian-width, get-intrinsic, get-proto, get-stream, get-symbol-description, get-tsconfig, globals, globalthis,
+gopd, h3, happy-dom, has-bigints, has-property-descriptors, has-proto, has-symbols, has-tostringtag, hashery, hasown,
+hast-util-to-html, hast-util-whitespace, hookified, html-escaper, html-tags, html-void-elements, husky, ignore,
+imurmurhash, indent-string, index-to-position, inline-style-parser, internal-slot, iron-webcrypto, is-array-buffer,
 is-async-function, is-bigint, is-boolean-object, is-callable, is-core-module, is-data-view, is-date-object, is-docker,
 is-document.all, is-extglob, is-finalizationregistry, is-fullwidth-code-point, is-generator-function, is-glob, is-html,
 is-inside-container, is-interactive, is-map, is-module, is-negative-zero, is-number-object, is-obj, is-plain-obj,
@@ -123,11 +126,11 @@ json-schema-traverse, json-stable-stringify-without-jsonify, json5, jsonc-parser
 keyv, kleur, known-css-properties, leven, levn, lint-staged, locate-path, lodash.debounce, log-symbols, loupe,
 lz-string, magic-string, magicast, math-intrinsics, mdast-util-to-hast, merge-anything, micromark-util-character,
 micromark-util-encode, micromark-util-sanitize-uri, micromark-util-symbol, micromark-util-types, mimic-function,
-min-indent, mrmime, ms, muggle-string, nanoevents, nanoid, nanostores, natural-compare, neotraverse, neverthrow,
+min-indent, mri, mrmime, ms, muggle-string, nanoevents, nanoid, nanostores, natural-compare, neotraverse, neverthrow,
 nlcst-to-string, node-fetch-native, node-mock-http, node-releases, normalize-path, npm-run-path, object-inspect,
 object-keys, object.assign, obug, ofetch, onetime, oniguruma-parser, oniguruma-to-es, open, optionator, ora, own-keys,
-oxc-parser, oxc-resolver, p-limit, p-locate, p-queue, p-timeout, p-try, package-manager-detector, parse-json, parse-ms,
-parse5, path-browserify, path-exists, path-key, path-parse, pathe, pathval, picomatch, pngjs, polkadot-api,
+oxc-parser, oxc-resolver, p-limit, p-locate, p-queue, p-try, package-manager-detector, parse-json, parse-ms, parse5,
+path-browserify, path-exists, path-key, path-parse, pathe, pathval, picomatch, pngjs, polkadot-api,
 possible-typed-array-names, postcss, postcss-selector-parser, prelude-ls, prettier, prettier-plugin-astro, pretty-bytes,
 pretty-format, pretty-ms, prismjs, process-ancestry, property-information, punycode, qified, qrcode, radix3, react,
 react-dom, react-is, read-pkg, readdirp, recast, redent, reflect.getprototypeof, regenerate,
@@ -183,10 +186,10 @@ uint8arraylist, uint8arrays
 ## ISC
 
 @emmetio/html-matcher, @ungap/structured-clone, anymatch, at-least-node, boolbase, cliui, electron-to-chromium, flatted,
-foreground-child, get-caller-file, get-own-enumerable-property-symbols, github-slugger, glob-parent, graceful-fs,
-hosted-git-info, idb, isexe, knip, lru-cache, minimatch, piccolore, picocolors, require-main-filename, semver,
-set-blocking, signal-exit, simple-statistics, unbash, walk-up-path, which, which-module, write-file-atomic, y18n,
-yallist, yaml, yargs-parser
+foreground-child, get-caller-file, get-own-enumerable-property-symbols, github-slugger, glob-parent, hosted-git-info,
+idb, isexe, knip, lru-cache, minimatch, piccolore, picocolors, require-main-filename, semver, set-blocking, signal-exit,
+simple-statistics, unbash, validate-html-nesting, walk-up-path, which, which-module, write-file-atomic, y18n, yallist,
+yaml, yargs-parser
 
 ## BSD-2-Clause
 
@@ -204,8 +207,8 @@ tslib
 
 ## BlueOak-1.0.0
 
-@isaacs/cliui, common-ancestor-path, glob, jackspeak, lru-cache, minimatch, minipass, package-json-from-dist,
-path-scurry, sax
+@isaacs/cliui, @isaacs/nonrecursive-glob-match, common-ancestor-path, glob, graceful-fs, jackspeak, lru-cache,
+minimatch, minipass, package-json-from-dist, path-scurry, sax
 
 ## MIT OR CC0-1.0
 
@@ -222,6 +225,10 @@ spdx-exceptions
 ## CC-BY-4.0
 
 caniuse-lite
+
+## OFL-1.1
+
+@fontsource-variable/geist
 
 ## GPL-3.0-or-later WITH Classpath-exception-2.0
 

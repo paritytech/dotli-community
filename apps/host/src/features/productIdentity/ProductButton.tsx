@@ -6,7 +6,7 @@
 import { createMemo, createSignal, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ButtonLink, IconButton, Popover } from '@dotli/ui';
-import { LogoSymbol } from '@dotli/ui/brand';
+import { Logo } from '@dotli/ui/brand';
 import type { ProductCardView } from './productCardView.js';
 import { OpenProductCard, preloadProductCard } from './OpenProductCard.js';
 import s from './ProductButton.module.css';
@@ -43,7 +43,7 @@ export function ProductButton(props: ProductButtonProps): JSX.Element {
         id="product-button"
         aria-label={name()}
       >
-        <Show when={card()?.icon} fallback={<LogoSymbol height={24} testId="product-button-mark" />}>
+        <Show when={card()?.icon} fallback={<Logo variant="symbol" height={24} testId="product-button-mark" />}>
           {icon => (
             <img class={s['icon']} src={icon()} alt="" width="28" height="28" data-testid="product-button-icon" />
           )}

@@ -4,9 +4,9 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { byId, query } from '@dotli/ui/testing';
+import { byId } from '@dotli/ui/testing';
 import { expectPhone, openSurface } from '../../testing/stories/topbarFrame.js';
-import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
+import { GroupFrame, isMoreOpen, moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js';
 import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
 import {
   DEFAULT_SETTINGS,
@@ -50,8 +50,14 @@ type Story = StoryObj<typeof meta>;
 /** As a user, I press More and see the actions that do not fit in the bar. */
 export const Open: Story = {
   tags: ['!autodocs'],
-  play: async ctx => {
-    await open(ctx);
+  play: async ({ userEvent, step }) => {
+    await step('When I press More', async () => {
+      await openMore(userEvent);
+    });
+    await step('Then its list shows the actions that do not fit', async () => {
+      await waitFor(() => expect(byId('more-popover')).toBeVisible());
+      await expect(moreRowNames()).toEqual(['network', 'permissions', 'settings']);
+    });
   },
 };
 
@@ -73,15 +79,14 @@ export const RowOpensCollapsedPopover: Story = {
   tags: ['!autodocs'],
   play: async ({ userEvent, step }) => {
     await step('Given More is open', async () => {
-      await userEvent.click(query(document, '#more-button'));
-      await waitFor(() => expect(document.getElementById('more-popover')).toHaveAttribute('data-open'));
+      await openMore(userEvent);
     });
     await step('When I choose the Settings row', async () => {
-      await userEvent.click(query(document, '#more-popover [data-item="settings"]'));
+      await userEvent.click(moreRow('settings'));
     });
     await step('Then Settings is open under the topbar and More is closed', async () => {
       await waitFor(() => expect(document.getElementById('mode-popover')).toHaveAttribute('data-open'));
-      await expect(document.getElementById('more-popover')).not.toHaveAttribute('data-open');
+      await expect(isMoreOpen()).toBe(false);
     });
     await step('When I press Escape', async () => {
       await userEvent.keyboard('{Escape}');

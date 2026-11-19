@@ -53,6 +53,7 @@ describe('applyNetworkOverrides', () => {
     ['a chain block time', { people: { blockTimeMs: 1 } }, 'people.blockTimeMs'],
     ['the Bulletin genesis hash', { bulletin: { genesis: '0x00' } }, 'bulletin.genesis'],
     ['the dotNS contracts', { dotns: {} }, 'dotns'],
+    ['whether it is a test network', { testnet: false }, 'testnet'],
   ])('As an operator, I try to override %s and the config is refused', (_field, patch, path) => {
     // When the override is merged
     const merge = (): unknown =>

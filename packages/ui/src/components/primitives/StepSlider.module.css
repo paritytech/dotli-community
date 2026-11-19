@@ -98,7 +98,7 @@
   border: 0;
   background: transparent;
   color: var(--chrome-text-muted);
-  font: var(--fw-medium) var(--fs-caption) / 16px var(--font-sans);
+  font: var(--fw-medium) var(--fs-caption) / var(--lh-tight) var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;

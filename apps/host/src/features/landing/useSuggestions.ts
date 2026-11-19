@@ -6,12 +6,15 @@
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
 import { useStore } from '@dotli/stores-solid';
 import type { NavComboboxState, NavKey } from './navComboboxState.js';
+import type { Recents } from './landing.js';
 import { typedName } from './dotUrl.js';
-import { matchLabels } from './matchLabels.js';
+import { matchSuggestions } from './matchSuggestions.js';
 
 type Params = {
-  /** Every label the list may suggest. */
+  /** Every app label the list may suggest. */
   labels: Accessor<readonly string[]>;
+  /** The recently visited names, newest first, and a way to forget one. */
+  recents: Recents;
   /** True while more labels may still come. */
   loading: Accessor<boolean>;
   /** The TLD a typed name may end with. Null suggests nothing. */
@@ -21,20 +24,31 @@ type Params = {
   open: (label: string) => void;
 };
 
+const NO_MATCHES: ReturnType<typeof matchSuggestions> = { recent: [], apps: null };
+
 /**
- * The suggestions for the name input, for the owner's lifetime. They show while the input has focus, and Escape hides
- * them until the text changes. While labels still load and a name is typed, `loading` shows too, even with no match.
- * Once settled, the arrow keys move the active label, wrapping around, Enter opens it, and the input points at the list
- * while it shows.
+ * The suggestions for the name input, for the owner's lifetime, in two sections. `recent` holds the recents that start
+ * with the typed name, newest first, so an empty input shows them all. `apps` holds the app labels that match it, less
+ * any recent. They show while the input has focus, and Escape hides them until the text changes. While labels still
+ * load and a name is typed, `loading` shows too, even with no match. Once settled, the arrow keys move the active label
+ * through both sections, wrapping around, Enter opens it, Shift+Delete forgets it when it is a recent, and the input
+ * points at the list while it shows. `close` hides them as Escape does.
  */
-export function useSuggestions({ labels, loading, suffix, combobox, open }: Params): {
-  shown: Accessor<readonly string[]>;
+export function useSuggestions({ labels, recents, loading, suffix, combobox, open }: Params): {
+  recent: Accessor<readonly string[]>;
+  apps: Accessor<readonly string[]>;
   active: Accessor<string | null>;
   loading: Accessor<boolean>;
+  close: () => void;
 } {
   const text = useStore(combobox.text);
   const focused = useStore(combobox.focused);
-  const matches = createMemo(() => matchLabels(labels(), text(), suffix()));
+  const matches = createMemo(() => {
+    const tld = suffix();
+    return tld === null
+      ? NO_MATCHES
+      : matchSuggestions({ name: typedName(text(), tld), recents: recents.labels(), apps: labels() });
+  });
   // Escape and a chosen label each last until the text changes, so they read the text only to reset on it.
   const [escaped, setEscaped] = createSignal(() => {
     text();
@@ -45,12 +59,12 @@ export function useSuggestions({ labels, loading, suffix, combobox, open }: Para
     return null;
   });
   const visible = createMemo(() => focused() && !escaped());
-  const shown = createMemo<readonly string[]>(() => (visible() ? matches() : []));
-  const typed = createMemo(() => {
-    const tld = suffix();
-    return tld !== null && typedName(text(), tld) !== '';
-  });
-  const shownLoading = createMemo(() => visible() && typed() && loading());
+  const recent = createMemo<readonly string[]>(() => (visible() ? matches().recent : []));
+  const apps = createMemo<readonly string[]>(() => (visible() ? (matches().apps ?? []) : []));
+  // The one order the arrow keys walk.
+  const shown = createMemo(() => [...recent(), ...apps()]);
+  // The loading row belongs to the apps section, so it shows only where that section applies.
+  const shownLoading = createMemo(() => visible() && matches().apps !== null && loading());
   const listShown = createMemo(() => shown().length > 0 || shownLoading());
   const active = createMemo(() => {
     const label = chosen();
@@ -95,10 +109,32 @@ export function useSuggestions({ labels, loading, suffix, combobox, open }: Para
         }
         open(label);
         return true;
+      case 'Shift+Delete':
+        return forgetActive(list, index);
     }
+  }
+
+  // Forgets the active option when it is a recent, and returns whether it did.
+  function forgetActive(list: readonly string[], index: number): boolean {
+    const label = list[index];
+    if (label === undefined || !recent().includes(label)) {
+      return false;
+    }
+    recents.forget(label);
+    // The option that takes its place becomes active, so the keys go on from there.
+    setChosen(list[index + 1] ?? list[index - 1] ?? null);
+    return true;
   }
   // Once in the browser, so a key the input gets before then stays with the form.
   onSettled(() => combobox.handleKeys(handleKey));
 
-  return { shown, active, loading: shownLoading };
+  return {
+    recent,
+    apps,
+    active,
+    loading: shownLoading,
+    close: () => {
+      setEscaped(true);
+    },
+  };
 }
