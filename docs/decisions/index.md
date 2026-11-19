@@ -88,7 +88,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
 - [match-an-on-screen-reference](match-an-on-screen-reference.md): the owner asks for UI done like something already on
-  screen, and the question is whether a close or moved version is enough before presenting.
+  screen, and the question is whether a close or moved version is enough before presenting, or whether a shared
+  component's fixed placement may stay a pixel or two off at one caller's size.
 - [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
   optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
