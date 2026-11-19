@@ -43,17 +43,22 @@
   }
 }
 
-/* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. */
+/* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. The two outermost
+   rings run past the floor's edge and out of view, so the field reads as going on beyond the horizon. */
 .plane {
   --floor: calc(293 * var(--unit));
   --inner-radius: calc(110 * var(--unit));
-  --middle-radius: calc(190 * var(--unit));
-  --outer-radius: calc(260 * var(--unit));
+  --ring1-radius: calc(190 * var(--unit));
+  --ring2-radius: calc(260 * var(--unit));
+  --ring3-radius: calc(340 * var(--unit));
+  --ring4-radius: calc(430 * var(--unit));
   /* Inner orbits turn faster. Each ring makes whole turns per turn of the clock, so the loop has no seam. The fallback
      holds the dots at rest where the clock is not registered. */
   --inner-turn: calc(var(--clock, 0deg) * 15);
-  --middle-turn: calc(var(--clock, 0deg) * 10);
-  --outer-turn: calc(var(--clock, 0deg) * 7);
+  --ring1-turn: calc(var(--clock, 0deg) * 10);
+  --ring2-turn: calc(var(--clock, 0deg) * 7);
+  --ring3-turn: calc(var(--clock, 0deg) * 5);
+  --ring4-turn: calc(var(--clock, 0deg) * 4);
   position: absolute;
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
@@ -78,18 +83,32 @@
   --size: calc(10 * var(--unit));
   --dot-color: var(--text-faint);
 }
-.ring[data-ring='middle'] {
-  --radius: var(--middle-radius);
-  --turn: var(--middle-turn);
+.ring[data-ring='ring1'] {
+  --radius: var(--ring1-radius);
+  --turn: var(--ring1-turn);
   --ring-color: var(--chrome-solid);
   --size: calc(7 * var(--unit));
   --dot-color: var(--chrome-action-dim);
 }
-.ring[data-ring='outer'] {
-  --radius: var(--outer-radius);
-  --turn: var(--outer-turn);
+.ring[data-ring='ring2'] {
+  --radius: var(--ring2-radius);
+  --turn: var(--ring2-turn);
   --ring-color: var(--surface);
   --size: calc(4.5 * var(--unit));
+  --dot-color: var(--chrome-action-dim);
+}
+.ring[data-ring='ring3'] {
+  --radius: var(--ring3-radius);
+  --turn: var(--ring3-turn);
+  --ring-color: var(--surface);
+  --size: calc(4 * var(--unit));
+  --dot-color: var(--chrome-action-dim);
+}
+.ring[data-ring='ring4'] {
+  --radius: var(--ring4-radius);
+  --turn: var(--ring4-turn);
+  --ring-color: var(--surface);
+  --size: calc(3.5 * var(--unit));
   --dot-color: var(--chrome-action-dim);
 }
 
@@ -146,17 +165,41 @@
   --from-radius: var(--inner-radius);
   --from-turn: var(--inner-turn);
 }
-.link[data-from='middle'] {
-  --from-radius: var(--middle-radius);
-  --from-turn: var(--middle-turn);
+.link[data-from='ring1'] {
+  --from-radius: var(--ring1-radius);
+  --from-turn: var(--ring1-turn);
+}
+.link[data-from='ring2'] {
+  --from-radius: var(--ring2-radius);
+  --from-turn: var(--ring2-turn);
+}
+.link[data-from='ring3'] {
+  --from-radius: var(--ring3-radius);
+  --from-turn: var(--ring3-turn);
+}
+.link[data-from='ring4'] {
+  --from-radius: var(--ring4-radius);
+  --from-turn: var(--ring4-turn);
 }
 .link[data-to='inner'] {
   --to-radius: var(--inner-radius);
   --to-turn: var(--inner-turn);
 }
-.link[data-to='middle'] {
-  --to-radius: var(--middle-radius);
-  --to-turn: var(--middle-turn);
+.link[data-to='ring1'] {
+  --to-radius: var(--ring1-radius);
+  --to-turn: var(--ring1-turn);
+}
+.link[data-to='ring2'] {
+  --to-radius: var(--ring2-radius);
+  --to-turn: var(--ring2-turn);
+}
+.link[data-to='ring3'] {
+  --to-radius: var(--ring3-radius);
+  --to-turn: var(--ring3-turn);
+}
+.link[data-to='ring4'] {
+  --to-radius: var(--ring4-radius);
+  --to-turn: var(--ring4-turn);
 }
 
 /* Upright and moved toward the viewer like the dots, so the lines that meet in it end under it. */
