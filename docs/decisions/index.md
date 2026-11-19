@@ -100,7 +100,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
   component's fixed placement may stay a pixel or two off at one caller's size.
 - [one-form-of-a-responsive-component-changes](one-form-of-a-responsive-component-changes.md): a shared component with a
   wide-screen form and a phone form needs a different primitive on one form only, and the question is where the switch
-  between the forms lives and what ARIA its trigger carries.
+  between the forms lives, what ARIA its trigger carries and which keys it handles.
 - [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
   optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
 - [press-on-the-anchor-closes-a-popover](press-on-the-anchor-closes-a-popover.md): a popover on the shared floating
