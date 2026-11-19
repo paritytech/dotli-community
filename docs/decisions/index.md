@@ -77,6 +77,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## UI
 
+- [component-shown-in-several-forms](component-shown-in-several-forms.md): a piece of UI, such as a logo, appears in
+  several forms that callers assemble from part components, and an optional decoration's place depends on the form.
 - [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
@@ -85,6 +87,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
+- [match-an-on-screen-reference](match-an-on-screen-reference.md): the owner asks for UI done like something already on
+  screen, and the question is whether a close or moved version is enough before presenting.
 - [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
   optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.

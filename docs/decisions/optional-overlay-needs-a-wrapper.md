@@ -50,7 +50,8 @@ props.stamp ? <span class={s['frame']}><svg class={props.class} />…</span> : <
 ## Cases
 
 - A brand symbol gained a flag that pins a Beta tag to its corner. The wrapper became its permanent root, sized to fit
-  its content, and took the callers' `class` and test id. (PR #493, branch `feat/landing-horizon`, design
-  `docs/_plans/beta-logo-flag-design.md`)
+  its content, and took the callers' `class` and test id. The badge's place on the symbol was later rejected, and the
+  symbol became one logo component ([component-shown-in-several-forms](component-shown-in-several-forms.md)), whose
+  root is still the wrapper. (PR #493, branch `feat/landing-horizon`, design `docs/_plans/beta-logo-flag-design.md`)
 
 Status: active
