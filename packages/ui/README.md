@@ -69,10 +69,14 @@ Fakes for the specs and stories of other packages. Functional tests use them too
 
 ### `@dotli/ui/brand`
 
-`LogoSymbol`, `LogoWordmark` and `PetalMark` are the logo components. `PetalMark` draws six petals that can `pulse`.
-`LogoSymbol` wraps its symbol in an element that takes the caller's `class` and test id, so a height set there sizes the
-symbol. Its `beta` flag pins the Beta tag to the symbol's top-right corner, out of the flow. Astro renders them at build
-time with no directive, so they ship no code there.
+`Logo` draws the Polkadot logo. Its `variant` picks the symbol alone (`symbol`) or the symbol with the word (`full`),
+and its `height` is the symbol's height in pixels. The full logo reads as "Polkadot" to assistive technology, and the
+symbol alone is hidden from it. Its `beta` flag draws the Beta tag out of the flow, where the variant puts it: over the
+end of the word, or just past the symbol's top-right corner. Its root wraps the drawing and takes the caller's `class`
+and test id, so a height set there sizes the whole logo.
+
+`LogoSymbol` and `LogoWordmark` are the older logo parts, and `LogoSymbol` wraps its symbol the same way. `PetalMark`
+draws six petals that can `pulse`. Astro renders them all at build time with no directive, so they ship no code there.
 
 ### `@dotli/ui/icons`
 

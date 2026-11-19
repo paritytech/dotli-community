@@ -1,9 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* As wide as the symbol, so a caller's height sizes both and the tag pins to the symbol's corner. */
+/* As wide as the symbol, so a caller's height sizes the symbol. */
 .frame {
-  position: relative;
   display: inline-block;
   width: fit-content;
 }
@@ -13,23 +12,4 @@
   display: block;
   width: auto;
   height: 100%;
-}
-
-/* Out of the flow, so a header lays out the same with or without it. Mostly over the symbol's empty corner, so its
-   end clears a wordmark set a few pixels after the symbol. */
-.beta {
-  position: absolute;
-  top: -7px;
-  right: -6px;
-  display: inline-flex;
-  align-items: center;
-  height: 12px;
-  margin: 0;
-  padding: 0 var(--sp-hair);
-  border-radius: var(--r-full);
-  background: var(--chrome-fill-strong);
-  color: var(--chrome-text-muted);
-  font: var(--fw-semibold) var(--fs-tag) / 1 var(--font-sans);
-  letter-spacing: var(--ls-caps);
-  pointer-events: none;
 }

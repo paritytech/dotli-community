@@ -47,7 +47,6 @@
 .home {
   display: flex;
   flex: none;
-  gap: var(--sp-2);
   align-items: center;
   margin: 0;
   padding: 0;
