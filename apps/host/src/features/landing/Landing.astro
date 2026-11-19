@@ -2,11 +2,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Static but for its five islands. The logo renders here with no directive, so it ships no code.
+// Static but for its six islands. The logo renders here with no directive, so it ships no code.
 import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
 import { LandingAuthIsland } from './LandingAuthIsland.jsx';
 import { LandingNetworkIsland } from './LandingNetworkIsland.jsx';
+import { LandingNoticeIsland } from './LandingNoticeIsland.jsx';
 import { LandingSettingsIsland } from './LandingSettingsIsland.jsx';
 import { LandingNavIsland } from './LandingNavIsland.jsx';
 import { LandingSuggestIsland } from './LandingSuggestIsland.jsx';
@@ -41,7 +42,9 @@ import s from './Landing.module.css';
     </div>
   </main>
   <footer class={s['footer']}>
-    <p class={s['notice']}>Test network · tokens have no real value</p>
+    <p class={s['notice']}>
+      <LandingNoticeIsland client:idle />
+    </p>
     <nav class={s['links']} aria-label="Footer">
       <a class={s['link']} href="https://developers.polkadot.com/apps/">
         Get Polkadot App
