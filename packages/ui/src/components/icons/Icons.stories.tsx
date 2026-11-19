@@ -17,7 +17,7 @@ function Gallery(): JSX.Element {
         {([name, Icon]) => (
           <figure style={{ display: 'grid', 'justify-items': 'center', gap: '8px', margin: '0' }}>
             <Icon size={24} testId={name} />
-            <figcaption style={{ 'font-size': '11px' }}>{name}</figcaption>
+            <figcaption style={{ 'font-size': 'var(--fs-label)' }}>{name}</figcaption>
           </figure>
         )}
       </For>

@@ -21,7 +21,7 @@
   background: transparent;
   color: var(--chrome-text);
   font-family: inherit;
-  font-size: 0.75rem;
+  font-size: var(--fs-caption);
   cursor: pointer;
   transition:
     background var(--dur-fast),

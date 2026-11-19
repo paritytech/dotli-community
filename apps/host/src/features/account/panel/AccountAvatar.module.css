@@ -20,7 +20,7 @@
 .avatar[data-size='lg'] {
   width: 40px;
   height: 40px;
-  font-size: 16px;
+  font-size: var(--fs-title);
 }
 /* The person glyph shown until a name is known. */
 .avatar[data-size='bar'] .glyph,
