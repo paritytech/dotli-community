@@ -9,13 +9,15 @@
   initial-value: 0deg;
 }
 
-/* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. */
+/* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. Its parts are solid,
+   so none shows another through it, and one opacity dims them together. */
 .orbit {
   position: absolute;
   inset: 0;
   z-index: -1;
   overflow: clip;
   pointer-events: none;
+  opacity: 0.8;
 }
 
 /* Lengths below are in --unit, a 640th of the stage's width, so the whole orbit scales with the viewport. */
@@ -48,7 +50,7 @@
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
   transform-style: preserve-3d;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--text-strong) 4%, transparent), transparent);
+  background: radial-gradient(closest-side, var(--surface), var(--bg-page));
 }
 
 .ring {
@@ -60,25 +62,25 @@
   transform-style: preserve-3d;
 }
 
-/* Inner orbits carry larger dots, the innermost brightest. Dots are opaque, so nothing on the floor shows through one. */
+/* Inner orbits carry larger dots, the innermost brightest. */
 .ring[data-ring='inner'] {
   --radius: var(--inner-radius);
   --turn: var(--inner-turn);
-  --ring-color: color-mix(in srgb, var(--text-strong) 13%, transparent);
+  --ring-color: var(--chrome-solid);
   --size: calc(10 * var(--unit));
   --dot-color: var(--text-faint);
 }
 .ring[data-ring='middle'] {
   --radius: var(--middle-radius);
   --turn: var(--middle-turn);
-  --ring-color: color-mix(in srgb, var(--text-strong) 9%, transparent);
+  --ring-color: var(--chrome-solid);
   --size: calc(7 * var(--unit));
   --dot-color: var(--chrome-action-dim);
 }
 .ring[data-ring='outer'] {
   --radius: var(--outer-radius);
   --turn: var(--outer-turn);
-  --ring-color: color-mix(in srgb, var(--text-strong) 6%, transparent);
+  --ring-color: var(--surface);
   --size: calc(4.5 * var(--unit));
   --dot-color: var(--chrome-action-dim);
 }
@@ -119,7 +121,7 @@
   left: 50%;
   width: hypot(var(--dx), var(--dy));
   height: var(--line);
-  background: color-mix(in srgb, var(--text-strong) 16%, transparent);
+  background: var(--chrome-solid);
   transform-origin: 0 50%;
   transform: translate(
       calc(cos(var(--from-angle)) * var(--from-radius)),
@@ -130,7 +132,7 @@
 .link[data-from='centre'] {
   --from-radius: 0px;
   --from-turn: 0deg;
-  background: color-mix(in srgb, var(--text-strong) 30%, transparent);
+  background: var(--chrome-action-dim);
 }
 .link[data-from='inner'] {
   --from-radius: var(--inner-radius);
@@ -149,18 +151,12 @@
   --to-turn: var(--middle-turn);
 }
 
-/* A soft glow with a dot in it, upright and moved toward the viewer like the dots, by twice the width of its dot,
-   which is 28% of the glow's radius. */
+/* Upright and moved toward the viewer like the dots, so the lines that meet in it end under it. */
 .centre {
-  --glow: calc(53 * var(--unit));
+  --size: calc(15 * var(--unit));
   position: absolute;
-  inset: calc(50% - var(--glow));
+  inset: calc(50% - var(--size) / 2);
   border-radius: 50%;
-  background: radial-gradient(
-    closest-side,
-    color-mix(in srgb, var(--text-strong) 55%, transparent) 14%,
-    color-mix(in srgb, var(--text-strong) 10%, transparent) 16%,
-    transparent
-  );
-  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(0.56 * var(--glow)));
+  background: var(--neutral-solid);
+  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
 }
