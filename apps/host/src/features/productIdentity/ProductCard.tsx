@@ -4,7 +4,7 @@
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { SectionLabel } from '@dotli/ui';
-import { LogoSymbol } from '@dotli/ui/brand';
+import { Logo } from '@dotli/ui/brand';
 import { AccountAvatar } from '../account/index.js';
 import type { AccountSession } from '../account/index.js';
 import { shortenAccount } from '../account/index.js';
@@ -24,7 +24,10 @@ export function ProductCard(props: ProductCardProps): JSX.Element {
   return (
     <div class={s['card']} data-testid="product-card">
       <div class={s['icon']}>
-        <Show when={props.card.icon} fallback={<LogoSymbol class={s['mark']} height={36} testId="product-card-mark" />}>
+        <Show
+          when={props.card.icon}
+          fallback={<Logo variant="symbol" class={s['mark']} height={36} testId="product-card-mark" />}
+        >
           {icon => (
             <img class={s['image']} src={icon()} alt="" width="40" height="40" data-testid="product-card-icon" />
           )}

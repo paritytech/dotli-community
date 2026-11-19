@@ -75,8 +75,8 @@ symbol alone is hidden from it. Its `beta` flag draws the Beta tag out of the fl
 end of the word, or just past the symbol's top-right corner. Its root wraps the drawing and takes the caller's `class`
 and test id, so a height set there sizes the whole logo.
 
-`LogoSymbol` and `LogoWordmark` are the older logo parts, and `LogoSymbol` wraps its symbol the same way. `PetalMark`
-draws six petals that can `pulse`. Astro renders them all at build time with no directive, so they ship no code there.
+`PetalMark` draws six petals that can `pulse`. Astro renders the brand marks at build time with no directive, so they
+ship no code there.
 
 ### `@dotli/ui/icons`
 

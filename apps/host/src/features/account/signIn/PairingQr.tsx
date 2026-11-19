@@ -3,7 +3,7 @@
 
 import { createEffect, createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { LogoSymbol } from '@dotli/ui/brand';
+import { Logo } from '@dotli/ui/brand';
 import { Spinner } from '@dotli/ui';
 import { drawQrCode, prepareQrCode, type DrawQr } from './qrCode.js';
 import { presentQr, QR_MARGIN } from './qrDrawer.js';
@@ -30,7 +30,7 @@ function QrBadge(): JSX.Element {
   return (
     <span class={s['badge']} aria-hidden="true" data-testid="auth-modal-qr-badge">
       <span class={s['badgeMark']}>
-        <LogoSymbol height={26} />
+        <Logo variant="symbol" height={26} />
       </span>
     </span>
   );

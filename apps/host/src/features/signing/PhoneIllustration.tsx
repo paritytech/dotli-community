@@ -3,7 +3,7 @@
 
 import { createUniqueId } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { LogoSymbol } from '@dotli/ui/brand';
+import { Logo } from '@dotli/ui/brand';
 import s from './PhoneIllustration.module.css';
 
 const SYMBOL_HEIGHT = 30;
@@ -34,7 +34,7 @@ export function PhoneIllustration(): JSX.Element {
         <rect class={[s['answer'], s['tap']]} x="120" y="246" width="100" height="30" rx="8" />
       </svg>
       <div class={s['symbol']}>
-        <LogoSymbol height={SYMBOL_HEIGHT} />
+        <Logo variant="symbol" height={SYMBOL_HEIGHT} />
       </div>
       <div class={s['label']}>Polkadot App</div>
     </div>
