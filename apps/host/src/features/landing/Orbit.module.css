@@ -35,6 +35,14 @@
   perspective: calc(1920 * var(--unit));
 }
 
+/* A phone has height to spare under the form, so the floor stands nearly upright and in full view. */
+@media (max-width: 560px) {
+  .stage {
+    --tilt: 10deg;
+    translate: -50% 0;
+  }
+}
+
 /* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. */
 .plane {
   --floor: calc(293 * var(--unit));
