@@ -33,7 +33,10 @@ export type ActionEntry = {
 };
 
 export type ActionBar = {
-  /** Add an item in bar order until the caller is disposed. Returns whether the group has moved it into More. */
+  /**
+   * Add an item in bar order once the caller has settled, until it is disposed. Returns at once whether the group has
+   * moved it into More.
+   */
   register: (entry: ActionEntry) => Accessor<boolean>;
   /** Measure `el` again whenever its size changes, until it is disposed. */
   observe: (el: HTMLElement) => void;
