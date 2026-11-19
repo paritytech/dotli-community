@@ -118,7 +118,6 @@
 
 /* The input and, under it, its suggestions. */
 .nav {
-  position: relative;
   width: 100%;
   max-width: var(--w-landing);
 }

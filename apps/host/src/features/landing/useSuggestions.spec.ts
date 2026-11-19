@@ -62,6 +62,10 @@ function mount(initial: string, { loading = false, visited = [], suffix = '.dot'
       combobox.setFocused(false);
       flush();
     },
+    close(): void {
+      suggestions.close();
+      flush();
+    },
     press(key: NavKey): boolean {
       const taken = combobox.press(key);
       flush();
@@ -245,6 +249,17 @@ describe('useSuggestions', () => {
 
     // Then
     expect(view.suggestions.apps()).toEqual([]);
+    expect(view.listbox()).toBeNull();
+  });
+
+  it('As a visitor, I dismiss the list from outside the input and it hides', () => {
+    // Given the suggestions for "a"
+    const view = mount('a');
+
+    // When
+    view.close();
+
+    // Then
     expect(view.listbox()).toBeNull();
   });
 

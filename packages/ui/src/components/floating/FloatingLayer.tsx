@@ -10,7 +10,7 @@ import { LayerTracker } from './layerContext.js';
 import { createPresence } from './createPresence.js';
 import s from './FloatingLayer.module.css';
 
-export type Placement = 'topbar-end' | 'trigger-start';
+export type Placement = 'topbar-end' | 'trigger-start' | 'trigger-end';
 
 export type LayerCloseReason = Exclude<CloseReason, 'sheet' | 'released'>;
 
@@ -20,6 +20,7 @@ const EXIT_MS = 220;
 const PLACEMENTS = {
   'topbar-end': { class: s['topbarEnd'], anchored: false },
   'trigger-start': { class: s['triggerStart'], anchored: true },
+  'trigger-end': { class: s['triggerEnd'], anchored: true },
 } satisfies Record<Placement, { class: string | undefined; anchored: boolean }>;
 
 export type FloatingLayerProps = {

@@ -32,13 +32,14 @@ const NO_MATCHES: ReturnType<typeof matchSuggestions> = { recent: [], apps: null
  * any recent. They show while the input has focus, and Escape hides them until the text changes. While labels still
  * load and a name is typed, `loading` shows too, even with no match. Once settled, the arrow keys move the active label
  * through both sections, wrapping around, Enter opens it, Shift+Delete forgets it when it is a recent, and the input
- * points at the list while it shows.
+ * points at the list while it shows. `close` hides them as Escape does.
  */
 export function useSuggestions({ labels, recents, loading, suffix, combobox, open }: Params): {
   recent: Accessor<readonly string[]>;
   apps: Accessor<readonly string[]>;
   active: Accessor<string | null>;
   loading: Accessor<boolean>;
+  close: () => void;
 } {
   const text = useStore(combobox.text);
   const focused = useStore(combobox.focused);
@@ -127,5 +128,13 @@ export function useSuggestions({ labels, recents, loading, suffix, combobox, ope
   // Once in the browser, so a key the input gets before then stays with the form.
   onSettled(() => combobox.handleKeys(handleKey));
 
-  return { recent, apps, active, loading: shownLoading };
+  return {
+    recent,
+    apps,
+    active,
+    loading: shownLoading,
+    close: () => {
+      setEscaped(true);
+    },
+  };
 }

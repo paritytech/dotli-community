@@ -1,13 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createUniqueId, Show, type Component } from 'solid-js';
+import { createEffect, createMemo, createUniqueId, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { CheckIcon } from '../icons/CheckIcon.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { DrawIcon } from '../icons/DrawIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { createOverflow } from '../createOverflow.js';
+import { anchorName } from '../floating/anchorName.js';
+import { FloatingLayer } from '../floating/FloatingLayer.js';
 import { SectionLabel } from './SectionLabel.js';
 import { Spinner } from './Spinner.js';
 import s from './Listbox.module.css';
@@ -15,43 +17,90 @@ import s from './Listbox.module.css';
 export const Listbox = Object.assign(ListboxRoot, { Group, Option });
 
 /**
- * A list of options that drops below its nearest positioned ancestor and never takes focus, so the control that opened
- * it keeps its keys. While `loading` is set, a status row with that text follows the options. The caller renders it only
- * while it has options or is loading.
+ * A list of options in a floating layer placed below `anchor`, at least as wide as it, which never takes focus, so the
+ * control that opened it keeps its keys. It names the anchor for the placement itself while it holds one. A press
+ * outside the list, Escape and focus leaving the anchor and the list close it through `onClose`, and its caller sets
+ * `open` from that. While `loading` is set, a status row with that text follows the options.
  */
 function ListboxRoot(props: {
   id: string;
   label: string;
+  /** The control the list drops below, undefined while there is none. */
+  anchor: HTMLElement | undefined;
+  open: boolean;
+  onClose: () => void;
   align?: 'start' | 'end' | undefined;
   loading?: string | undefined;
   testId?: string | undefined;
   children: JSX.Element;
 }): JSX.Element {
+  const layerId = (): string => `${props.id}-layer`;
+  // From the first opening on, so a list that never opens adds nothing to the page.
+  const mounted = createMemo<boolean>(wasMounted => wasMounted === true || props.open);
+  createEffect(
+    () => ({ anchor: props.anchor, name: anchorName(layerId()) }),
+    ({ anchor, name }) => {
+      if (anchor === undefined) {
+        return;
+      }
+      anchor.style.setProperty('anchor-name', name);
+      return () => {
+        anchor.style.removeProperty('anchor-name');
+      };
+    },
+  );
+  return (
+    <Show when={mounted()}>
+      <FloatingLayer
+        id={layerId()}
+        kind="auto"
+        open={props.open}
+        onClose={() => {
+          props.onClose();
+        }}
+        trigger={() => props.anchor}
+        placement={props.align === 'end' ? 'trigger-end' : 'trigger-start'}
+        class={s['layer']}
+      >
+        <OptionList id={props.id} label={props.label} busy={props.loading !== undefined} testId={props.testId}>
+          {props.children}
+        </OptionList>
+        {/* Outside the list, since a listbox may own only options. */}
+        <Show when={props.loading}>
+          {text => (
+            <div class={s['status']} role="status">
+              <Spinner class={s['spinner']} />
+              {text()}
+            </div>
+          )}
+        </Show>
+      </FloatingLayer>
+    </Show>
+  );
+}
+
+/** The listbox itself, inside the layer, so each opening measures its own overflow. */
+function OptionList(props: {
+  id: string;
+  label: string;
+  busy: boolean;
+  testId: string | undefined;
+  children: JSX.Element;
+}): JSX.Element {
   const overflow = createOverflow();
   return (
-    <div class={s['surface']} data-align={props.align ?? 'start'}>
-      <ul
-        ref={overflow.ref}
-        id={props.id}
-        class={s['list']}
-        data-overflows={overflow.overflows() ? '' : undefined}
-        role="listbox"
-        aria-label={props.label}
-        aria-busy={props.loading === undefined ? undefined : 'true'}
-        data-testid={props.testId}
-      >
-        {props.children}
-      </ul>
-      {/* Outside the list, since a listbox may own only options. */}
-      <Show when={props.loading}>
-        {text => (
-          <div class={s['status']} role="status">
-            <Spinner class={s['spinner']} />
-            {text()}
-          </div>
-        )}
-      </Show>
-    </div>
+    <ul
+      ref={overflow.ref}
+      id={props.id}
+      class={s['list']}
+      data-overflows={overflow.overflows() ? '' : undefined}
+      role="listbox"
+      aria-label={props.label}
+      aria-busy={props.busy ? 'true' : undefined}
+      data-testid={props.testId}
+    >
+      {props.children}
+    </ul>
   );
 }
 

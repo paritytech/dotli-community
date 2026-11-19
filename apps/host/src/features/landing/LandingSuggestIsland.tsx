@@ -3,7 +3,7 @@
 
 // One module per island, so Astro loads only this island's code when its directive fires.
 
-import { onSettled } from 'solid-js';
+import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { useStore } from '@dotli/stores-solid';
 import type { RecentLabels } from './createRecentLabels.js';
@@ -35,8 +35,11 @@ function BoundSuggestions(props: { recents: RecentLabels | undefined }): JSX.Ele
   const syncing = useStore(landingNameList.syncing);
   const suffix = useActiveTld();
   const recents = useRecents(() => props.recents ?? getLandingRecentLabels(window));
+  // The name input's bar is another island's, and in the page's markup before either hydrates.
+  const [anchor, setAnchor] = createSignal<HTMLElement | undefined>(undefined, { ownedWrite: true });
   onSettled(() => {
     landingNameList.start();
+    setAnchor(document.getElementById('dotli-nav-bar') ?? undefined);
   });
   const open = (label: string): void => {
     window.location.href = dotUrl(label);
@@ -44,6 +47,7 @@ function BoundSuggestions(props: { recents: RecentLabels | undefined }): JSX.Ele
   const suggestions = useSuggestions({ labels, recents, loading: syncing, suffix, combobox: navComboboxState, open });
   return (
     <Suggestions
+      anchor={anchor}
       recent={suggestions.recent}
       apps={suggestions.apps}
       loading={suggestions.loading}
@@ -51,6 +55,7 @@ function BoundSuggestions(props: { recents: RecentLabels | undefined }): JSX.Ele
       active={suggestions.active}
       onPick={open}
       onForget={recents.forget}
+      onClose={suggestions.close}
     />
   );
 }
