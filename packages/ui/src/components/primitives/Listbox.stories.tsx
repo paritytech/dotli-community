@@ -117,6 +117,28 @@ export const ClickKeepsFocus: Story = {
   },
 };
 
+/** As a dotli user typing a name, I press in the input and the list stays open. */
+export const PressInInputKeepsOpen: Story = {
+  render: args => (
+    <InputFrame width="300px" inputLabel="Name" listId="listbox-press-input" listLabel="Suggested names">
+      <Options labels={['ant', 'apple']} detail=".dot" onPick={args.onPick} />
+    </InputFrame>
+  ),
+  play: async ({ canvas, step }) => {
+    const input = canvas.getByRole('combobox', { name: 'Name' });
+    await step('Given the input has focus', () => {
+      input.focus();
+    });
+    await step('When I press in the input', async () => {
+      await (await trustedInput()).click(input);
+    });
+    await step('Then the list is still open', async () => {
+      const list = body.getByRole('listbox', { name: 'Suggested names' });
+      await expect(list.closest('[data-open]')).not.toBeNull();
+    });
+  },
+};
+
 /** As a dotli user, I open a list from a button and see the current network checked. */
 export const UnderButton: Story = {
   render: args => (

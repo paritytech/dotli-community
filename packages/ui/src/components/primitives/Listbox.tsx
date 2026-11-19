@@ -19,8 +19,9 @@ export const Listbox = Object.assign(ListboxRoot, { Group, Option });
 /**
  * A list of options in a floating layer placed below `anchor`, at least as wide as it, which never takes focus, so the
  * control that opened it keeps its keys. It names the anchor for the placement itself while it holds one. A press
- * outside the list, Escape and focus leaving the anchor and the list close it through `onClose`, and its caller sets
- * `open` from that. While `loading` is set, a status row with that text follows the options.
+ * outside the anchor and the list, Escape and focus leaving them close it through `onClose`, and its caller sets `open`
+ * from that. A press on the anchor leaves it open. While `loading` is set, a status row with that text follows the
+ * options.
  */
 function ListboxRoot(props: {
   id: string;
@@ -53,7 +54,7 @@ function ListboxRoot(props: {
     <Show when={mounted()}>
       <FloatingLayer
         id={layerId()}
-        kind="auto"
+        kind="self-dismiss"
         open={props.open}
         onClose={() => {
           props.onClose();

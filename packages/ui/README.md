@@ -100,14 +100,14 @@ falls back to the system face while it loads or where it lacks a script. Monospa
   The sheet loads in its own chunk, preloaded when the browser is idle on a phone. Heavy content is the app's to load
   with `lazy()`.
 - **Listbox:** drops below its anchor in a floating layer, at least as wide as the anchor, and never takes focus, so the
-  control that opened it keeps its keys. It names the anchor for its placement itself. A press outside the list, Escape
-  and focus leaving the anchor and the list close it through `onClose`, and its caller sets `open` from that. The caller
-  also owns which option is active and which is chosen. While `loading` holds a text, a status row with a spinner
-  follows the options, outside the list, and the list is busy. A `Group` puts options in a section, a group named by its
-  visible heading, and the caller leaves out an empty one. An option with `remove` ends in a cross that removes it
-  without picking it. The cross is a plain element for mouse and touch only, out of the tab order and the accessibility
-  tree, since an option may hold no interactive control. The option announces Shift+Delete, and the caller's key
-  handling removes the active option on it.
+  control that opened it keeps its keys. It names the anchor for its placement itself. A press outside the anchor and
+  the list, Escape and focus leaving them close it through `onClose`, and its caller sets `open` from that. A press on
+  the anchor leaves it open. The caller also owns which option is active and which is chosen. While `loading` holds a
+  text, a status row with a spinner follows the options, outside the list, and the list is busy. A `Group` puts options
+  in a section, a group named by its visible heading, and the caller leaves out an empty one. An option with `remove`
+  ends in a cross that removes it without picking it. The cross is a plain element for mouse and touch only, out of the
+  tab order and the accessibility tree, since an option may hold no interactive control. The option announces
+  Shift+Delete, and the caller's key handling removes the active option on it.
 - **Action group:** moves the lowest priority items into a More menu when they do not fit. Items join through
   `ActionsContext`.
 - **Icons as components:** every `icon` prop takes a component, except in `Choice` and `SegmentedControl`, whose slot
