@@ -103,6 +103,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   between the forms lives and what ARIA its trigger carries.
 - [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
   optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
+- [press-on-the-anchor-closes-a-popover](press-on-the-anchor-closes-a-popover.md): a popover on the shared floating
+  layer is anchored to a control that cannot be its invoker, such as a text field, and the browser's light dismiss
+  closes it on a press on that control.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.
