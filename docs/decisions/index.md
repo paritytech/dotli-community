@@ -85,6 +85,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
+- [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
+  optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.
