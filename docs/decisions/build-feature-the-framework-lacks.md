@@ -52,11 +52,24 @@ if (!graph.has(ref)) {
 }
 ```
 
+## Not when
+
+- The framework's mechanism serves only one of several builds that share the thing, such as an asset a shared package
+  declares for an app, a second app and Storybook. Using it there would declare the thing two ways. When the bundler's
+  plain handling already serves every build alike, measure it as
+  [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md) says and let the owner judge the
+  numbers. Step 1 does not pick the framework's mechanism on its own. Hand-written code that copies the framework's
+  feature, such as a preload link, stays ruled out.
+
 ## Cases
 
 - A question on whether a step adding preload links to the host's pages should fail, warn or stay silent on an unknown
   reference led the owner to ask why custom code was being built at all. Once the framework's latest release and the
   bundler proved to have no such mechanism for those pages, the owner chose a small integration on the framework's own
   hooks that fails the build on a mismatch. (docs/_plans/host-modulepreload-design.md)
+- Brand webfonts live in a shared stylesheet that an app, a second app and Storybook import. The app's framework has a
+  font feature with preload and fallback faces, but only for that one app. Once the plain import was measured, the owner
+  kept it in every build over declaring the family a second way through the framework. (docs/_plans/brand-fonts-design.md,
+  PR #493)
 
 Status: active
