@@ -107,6 +107,18 @@
 .option[aria-selected='true'] .detail {
   color: var(--chrome-text);
 }
+.end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--chrome-text-muted);
+}
+.end svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
 .icon {
   flex: none;
   width: 16px;
@@ -169,7 +181,8 @@
   .option {
     height: var(--h-control);
   }
-  .icon {
+  .icon,
+  .end svg {
     width: 20px;
     height: 20px;
   }

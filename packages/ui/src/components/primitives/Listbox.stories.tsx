@@ -6,11 +6,13 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
+import { ChevronRightIcon } from '../icons/ChevronRightIcon.js';
 import { ClockIcon } from '../icons/ClockIcon.js';
 import { GlobeIcon } from '../icons/GlobeIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { SlidersIcon } from '../icons/SlidersIcon.js';
 import { Button } from './Button.js';
+import { Chip } from './Chip.js';
 import { IconButton } from './IconButton.js';
 import { Listbox } from './Listbox.js';
 
@@ -24,6 +26,7 @@ type OptionsProps = {
   chosen?: string | undefined;
   detail?: string | undefined;
   icon?: Component<IconProps> | undefined;
+  end?: ((label: string) => JSX.Element) | undefined;
   onRemove?: ((label: string) => void) | undefined;
   onPick: (label: string) => void;
 };
@@ -213,6 +216,32 @@ export const LongText: Story = {
   ),
 };
 
+/** As a dotli user, I see each option end in its status and a chevron, after its text. */
+export const EndSlot: Story = {
+  render: args => (
+    <InputFrame width="300px" inputLabel="Actions" listId="listbox-end-slot" listLabel="More actions">
+      <Options
+        labels={['Chat', 'Offline', 'a-label-long-enough-that-it-must-ellipsize-before-the-slot']}
+        icon={GlobeIcon}
+        end={label => (
+          <>
+            {label === 'Chat' ? <Chip>3</Chip> : <span>{label === 'Offline' ? 'Offline' : 'Soon'}</span>}
+            <ChevronRightIcon />
+          </>
+        )}
+        onPick={args.onPick}
+      />
+    </InputFrame>
+  ),
+  play: async () => {
+    const list = await body.findByRole('listbox', { name: 'More actions' });
+    for (const option of within(list).getAllByRole('option')) {
+      const end = within(option).getByTestId('listbox-end');
+      await expect(option).toContainElement(end);
+    }
+  },
+};
+
 /** As a keyboard user, I move past the list's edge with the arrow keys and the active option scrolls into view. */
 export const ActiveScrollsIntoView: Story = {
   render: args => <ManyOptionsFrame onPick={args.onPick} />,
@@ -380,6 +409,7 @@ function Options(props: OptionsProps): JSX.Element {
           chosen={label === props.chosen}
           icon={props.icon}
           detail={props.detail}
+          end={props.end?.(label)}
           remove={
             props.onRemove && {
               label: `Remove ${label}`,

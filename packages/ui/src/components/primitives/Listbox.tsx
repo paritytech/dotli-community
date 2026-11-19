@@ -122,7 +122,9 @@ function Group(props: { label: string; children: JSX.Element }): JSX.Element {
 }
 
 /**
- * One option. `active` is the option the arrow keys point at, and `chosen` is the control's current value. With
+ * One option. `active` is the option the arrow keys point at, and `chosen` is the control's current value. `end` is
+ * trailing markup after the text and its `detail`, such as a status or a chevron, which never shrinks, and the text
+ * ellipsizes before it. Icons in it are sized like the option's own. With
  * `remove`, the row ends in a cross for mouse and touch that calls `onRemove` and never picks the option. Keyboard and
  * screen reader users remove with Shift+Delete, which the option announces and the control's key handling runs.
  */
@@ -132,6 +134,7 @@ function Option(props: {
   chosen?: boolean | undefined;
   icon?: Component<IconProps> | undefined;
   detail?: string | undefined;
+  end?: JSX.Element | undefined;
   remove?: { label: string; onRemove: () => void } | undefined;
   onPick: () => void;
   testId?: string | undefined;
@@ -171,6 +174,13 @@ function Option(props: {
         {props.children}
         <Show when={props.detail}>{detail => <span class={s['detail']}>{detail()}</span>}</Show>
       </span>
+      <Show when={props.end}>
+        {end => (
+          <span class={s['end']} data-testid="listbox-end">
+            {end()}
+          </span>
+        )}
+      </Show>
       <Show when={props.chosen === true}>
         <CheckIcon class={s['check']} />
       </Show>
