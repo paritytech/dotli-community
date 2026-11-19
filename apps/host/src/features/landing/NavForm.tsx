@@ -48,6 +48,9 @@ export type NavFormProps = {
 export function NavForm(props: NavFormProps): JSX.Element {
   let input: HTMLInputElement | undefined;
   const [error, setError] = createSignal<string | null>(null);
+  // What the input shows, its value or else its placeholder, copied into the mirror that sizes it.
+  const [value, setValue] = createSignal('');
+  const [hint, setHint] = createSignal<string>(PLACEHOLDER_NAMES[0]);
 
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
@@ -56,9 +59,25 @@ export function NavForm(props: NavFormProps): JSX.Element {
       const initial = untrack(() => props.readInitialName?.());
       if (initial !== undefined) {
         input.value = initial;
+        setValue(initial);
         props.combobox.setText(initial);
       }
-      placeholder = animatePlaceholder(input, prefersReducedMotion());
+      const field = input;
+      placeholder = animatePlaceholder(
+        {
+          get value() {
+            return field.value;
+          },
+          get placeholder() {
+            return field.placeholder;
+          },
+          set placeholder(next) {
+            field.placeholder = next;
+            setHint(next);
+          },
+        },
+        prefersReducedMotion(),
+      );
     }
   });
   onCleanup(() => {
@@ -116,38 +135,44 @@ export function NavForm(props: NavFormProps): JSX.Element {
     <form onSubmit={onSubmit} id="dotli-nav-form" class={s['form']} autocomplete="off">
       <div class={s['bar']} id={NAV_BAR_ID} data-invalid={error() === null ? undefined : ''}>
         <label class={s['label']}>
-          <input
-            ref={el => {
-              input = el;
-            }}
-            onInput={e => {
-              setError(null);
-              placeholder?.resume();
-              props.combobox.setText(e.currentTarget.value);
-            }}
-            onFocus={() => {
-              props.combobox.setFocused(true);
-            }}
-            onBlur={() => {
-              props.combobox.setFocused(false);
-            }}
-            onKeyDown={onKeyDown}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={props.listbox() === null ? 'false' : 'true'}
-            aria-controls={props.listbox() === null ? undefined : SUGGESTIONS_ID}
-            aria-activedescendant={activeId()}
-            id="dotli-nav-input"
-            class={s['input']}
-            type="text"
-            placeholder={PLACEHOLDER_NAMES[0]}
-            spellcheck="false"
-            autocomplete="off"
-            aria-label={['Search a', props.suffix(), 'name'].filter(Boolean).join(' ')}
-            aria-describedby={error() === null ? undefined : 'dotli-nav-error'}
-            aria-invalid={error() === null ? undefined : 'true'}
-            disabled={props.suffix() === null}
-          />
+          <span class={s['field']}>
+            <input
+              ref={el => {
+                input = el;
+              }}
+              onInput={e => {
+                setError(null);
+                setValue(e.currentTarget.value);
+                placeholder?.resume();
+                props.combobox.setText(e.currentTarget.value);
+              }}
+              onFocus={() => {
+                props.combobox.setFocused(true);
+              }}
+              onBlur={() => {
+                props.combobox.setFocused(false);
+              }}
+              onKeyDown={onKeyDown}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={props.listbox() === null ? 'false' : 'true'}
+              aria-controls={props.listbox() === null ? undefined : SUGGESTIONS_ID}
+              aria-activedescendant={activeId()}
+              id="dotli-nav-input"
+              class={s['input']}
+              type="text"
+              placeholder={PLACEHOLDER_NAMES[0]}
+              spellcheck="false"
+              autocomplete="off"
+              aria-label={['Search a', props.suffix(), 'name'].filter(Boolean).join(' ')}
+              aria-describedby={error() === null ? undefined : 'dotli-nav-error'}
+              aria-invalid={error() === null ? undefined : 'true'}
+              disabled={props.suffix() === null}
+            />
+            <span class={s['mirror']} aria-hidden="true">
+              {value() || hint()}
+            </span>
+          </span>
           <span class={s['suffix']}>{props.suffix()}</span>
         </label>
         <button type="submit" class={s['go']} aria-label="Go" disabled={props.suffix() === null}>

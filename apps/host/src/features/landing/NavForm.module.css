@@ -50,18 +50,37 @@
   padding: 0 0 0 var(--sp-5);
 }
 
-/* As wide as its text, so the suffix follows the name. */
+/* As wide as its text, so the suffix follows the name. The input and a hidden copy of its text share one cell, and the
+   copy sets the width. */
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  height: 100%;
+}
+
+.input,
+.mirror {
+  grid-area: 1 / 1;
+  font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
+}
+
+.mirror {
+  visibility: hidden;
+  white-space: pre;
+}
+
 .input {
   box-sizing: border-box;
-  min-width: 0;
-  field-sizing: content;
+  /* Adds no width of its own to the cell, then fills it. */
+  width: 0;
+  min-width: 100%;
   height: 100%;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-strong);
-  font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
 }
 
 /* The bar draws the ring. Outweighs global.css's :focus-visible in any sheet order (dev loads it last). */
