@@ -70,108 +70,96 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a keyboard user, I open the menu with Enter, move with the arrows and typeahead, and choose a row with focus back on More. */
+/** As a keyboard user, I open the list with Enter, move its active option with the arrows and pick one, with focus on More throughout. */
 export const KeyboardOpensOnFirstItem: Story = {
   play: async ({ mount, step }) => {
     await step('When the menu and its More button render', async () => {
       await mount();
     });
-    await step('Then More announces the menu it controls', async () => {
-      const more = body.getByTestId('story-more');
-      await waitFor(() => expect(more).toHaveAttribute('popovertarget', 'story-menu'));
-      await expect(more).toHaveAttribute('aria-haspopup', 'menu');
-      await expect(more).toHaveAttribute('aria-controls', 'story-menu');
-      await expect(more).toHaveAttribute('aria-expanded', 'false');
+    const more = (): HTMLElement => body.getByTestId('story-more');
+    await step('Then More is a combobox announcing the list it controls', async () => {
+      await waitFor(() => expect(more()).toHaveAttribute('role', 'combobox'));
+      await expect(more()).toHaveAttribute('aria-haspopup', 'listbox');
+      await expect(more()).toHaveAttribute('aria-controls', 'story-menu');
+      await expect(more()).toHaveAttribute('aria-expanded', 'false');
+      await expect(more()).not.toHaveAttribute('popovertarget');
     });
     await step('When I focus More and press Enter', async () => {
-      body.getByTestId('story-more').focus();
+      more().focus();
       await (await trustedInput()).keyboard('{Enter}');
     });
-    await step('Then the menu is open on Network', async () => {
-      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
-      await expect(getMenu()).toHaveAttribute('role', 'menu');
-      await expect(body.getByTestId('story-more')).toHaveAttribute('aria-expanded', 'true');
-      await waitFor(() => expect(getRow('row-network')).toHaveFocus());
+    await step('Then the list is open on Network and More keeps focus', async () => {
+      await waitFor(() => expect(isOpen()).toBe(true));
+      await expect(getMenu()).toHaveAttribute('role', 'listbox');
+      await expect(more()).toHaveAttribute('aria-expanded', 'true');
+      await waitFor(() => expect(more()).toHaveAttribute('aria-activedescendant', getRow('row-network').id));
+      await expect(more()).toHaveFocus();
     });
     await step('When I press ArrowUp', async () => {
       await (await trustedInput()).keyboard('{ArrowUp}');
     });
-    await step('Then focus wrapped to Settings', async () => {
-      await expect(getRow('row-settings')).toHaveFocus();
+    await step('Then the active option wrapped to Settings', async () => {
+      await expect(more()).toHaveAttribute('aria-activedescendant', getRow('row-settings').id);
+      await expect(getRow('row-settings')).toHaveAttribute('aria-selected', 'true');
     });
-    await step('When I type p', async () => {
-      await (await trustedInput()).keyboard('p');
+    await step('When I press ArrowUp again and Enter', async () => {
+      await (await trustedInput()).keyboard('{ArrowUp}{Enter}');
     });
-    await step('Then typeahead moved to Permissions', async () => {
-      await expect(getRow('row-permissions')).toHaveFocus();
-    });
-    await step('When I press Tab', async () => {
-      await (await trustedInput()).keyboard('{Tab}');
-    });
-    await step('Then focus stayed on Permissions', async () => {
-      await expect(getRow('row-permissions')).toHaveFocus();
-    });
-    await step('When I press Enter', async () => {
-      await (await trustedInput()).keyboard('{Enter}');
-    });
-    await step('Then Permissions was chosen, the menu closed and More has focus', async () => {
+    await step('Then Permissions was chosen, the list closed and More has focus', async () => {
       await expect(onRow).toHaveBeenCalledWith('permissions');
-      await waitFor(() => expect(getMenu()).not.toHaveAttribute('data-open'));
-      await expect(body.getByTestId('story-more')).toHaveFocus();
+      await waitFor(() => expect(isOpen()).toBe(false));
+      await expect(more()).toHaveFocus();
     });
   },
 };
 
-/** As a keyboard user, I open the menu with ArrowDown and dismiss it with Escape, choosing nothing and keeping focus on More. */
+/** As a keyboard user, I open the list with ArrowDown and dismiss it with Escape, choosing nothing and keeping focus on More. */
 export const ArrowDownOpensOnFirstItem: Story = {
   play: async ({ step }) => {
+    const more = (): HTMLElement => body.getByTestId('story-more');
     await step('When I focus More and press ArrowDown', async () => {
-      body.getByTestId('story-more').focus();
+      more().focus();
       await (await trustedInput()).keyboard('{ArrowDown}');
     });
-    await step('Then the menu is open on Network', async () => {
-      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
-      await waitFor(() => expect(getRow('row-network')).toHaveFocus());
+    await step('Then the list is open on Network', async () => {
+      await waitFor(() => expect(isOpen()).toBe(true));
+      await waitFor(() => expect(getRow('row-network')).toHaveAttribute('aria-selected', 'true'));
     });
     await step('When I press End', async () => {
       await (await trustedInput()).keyboard('{End}');
     });
-    await step('Then focus is on Settings', async () => {
-      await expect(getRow('row-settings')).toHaveFocus();
+    await step('Then Settings is active', async () => {
+      await expect(more()).toHaveAttribute('aria-activedescendant', getRow('row-settings').id);
     });
     await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
-    await step('Then the menu closed, nothing was chosen and More has focus', async () => {
-      await waitFor(() => expect(getMenu()).not.toHaveAttribute('data-open'));
+    await step('Then the list closed, nothing was chosen and More has focus', async () => {
+      await waitFor(() => expect(isOpen()).toBe(false));
       await expect(onRow).not.toHaveBeenCalled();
-      await waitFor(() => expect(body.getByTestId('story-more')).toHaveFocus());
+      await expect(more()).toHaveFocus();
     });
   },
 };
 
-/** As a mouse user, I click More and the menu takes focus, follows my hover and closes when I click More again. */
+/** As a mouse user, I click More and the list opens with no active option, and closes when I click More again. */
 export const PointerOpensOnTheMenu: Story = {
   play: async ({ step }) => {
+    const more = (): HTMLElement => body.getByTestId('story-more');
     await step('When I click More', async () => {
-      await (await trustedInput()).click(body.getByTestId('story-more'));
+      await (await trustedInput()).click(more());
     });
-    await step('Then the menu itself has focus', async () => {
-      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
-      await waitFor(() => expect(getMenu()).toHaveFocus());
-    });
-    await step('When I hover Permissions', async () => {
-      await (await trustedInput()).hover(getRow('row-permissions'));
-    });
-    await step('Then Permissions has focus', async () => {
-      await waitFor(() => expect(getRow('row-permissions')).toHaveFocus());
+    await step('Then the list is open with no active option, and More has focus', async () => {
+      await waitFor(() => expect(isOpen()).toBe(true));
+      await expect(more()).not.toHaveAttribute('aria-activedescendant');
+      await expect(more()).toHaveFocus();
     });
     await step('When I click More again', async () => {
-      await (await trustedInput()).click(body.getByTestId('story-more'));
+      await (await trustedInput()).click(more());
     });
-    await step('Then the menu closed', async () => {
-      await waitFor(() => expect(getMenu()).not.toHaveAttribute('data-open'));
-      await expect(body.getByTestId('story-more')).toHaveAttribute('aria-expanded', 'false');
+    await step('Then the list closed', async () => {
+      await waitFor(() => expect(isOpen()).toBe(false));
+      await expect(more()).toHaveAttribute('aria-expanded', 'false');
     });
   },
 };
@@ -201,14 +189,14 @@ export const Sheet: Story = {
   },
 };
 
-/** As a phone user, I turn the screen with the menu open and it stays open, as a sheet on the phone and anchored when wide again. */
+/** As a phone user, I turn the screen with the menu open and it stays open, as a sheet on the phone and a list when wide again. */
 export const FollowsTheViewportWhileOpen: Story = {
   play: async ({ step }) => {
     const { page } = await import('vitest/browser');
     const wide = { width: window.innerWidth, height: window.innerHeight };
-    const isShown = () => getMenu().matches(':popover-open');
+    const isShown = () => document.getElementById('story-menu')?.checkVisibility() === true;
     try {
-      await step('Given the menu is open and anchored on a wide screen', async () => {
+      await step('Given the menu is open as a list on a wide screen', async () => {
         await (await trustedInput()).click(body.getByTestId('story-more'));
         await waitFor(() => expect(isShown()).toBe(true));
       });
@@ -224,11 +212,11 @@ export const FollowsTheViewportWhileOpen: Story = {
       await step('When the screen widens again', async () => {
         await page.viewport(wide.width, wide.height);
       });
-      await step('Then the menu is still open, anchored again with focus inside', async () => {
+      await step('Then the menu is still open, as a list again with focus on More', async () => {
         await waitFor(() => expect(body.queryByTestId('menu-sheet-title')).toBeNull());
         await waitFor(() => expect(isShown()).toBe(true));
         await expect(body.getByTestId('story-more')).toHaveAttribute('aria-expanded', 'true');
-        await waitFor(() => expect(getMenu().contains(document.activeElement)).toBe(true));
+        await waitFor(() => expect(body.getByTestId('story-more')).toHaveFocus());
       });
     } finally {
       // The next story must not inherit the phone.
@@ -297,6 +285,11 @@ export const SheetRowWithoutSheetSlides: Story = {
 
 function getMenu(): HTMLElement {
   return byId('story-menu');
+}
+
+/** The sheet itself, or the layer around the list, is open. */
+function isOpen(): boolean {
+  return (document.getElementById('story-menu')?.closest('[data-open]') ?? null) !== null;
 }
 
 function getRow(testId: string): HTMLElement {

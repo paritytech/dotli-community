@@ -136,7 +136,10 @@ function Option(props: {
   detail?: string | undefined;
   end?: JSX.Element | undefined;
   remove?: { label: string; onRemove: () => void } | undefined;
-  onPick: () => void;
+  /** With the click that picked it, whose `detail` is 0 for a click from script. */
+  onPick: (event: MouseEvent) => void;
+  /** The key of the item the option stands for. */
+  'data-item'?: string | undefined;
   testId?: string | undefined;
   children: JSX.Element;
 }): JSX.Element {
@@ -160,13 +163,14 @@ function Option(props: {
       aria-selected={props.active === true ? 'true' : 'false'}
       aria-checked={props.chosen === true ? 'true' : undefined}
       aria-keyshortcuts={props.remove === undefined ? undefined : 'Shift+Delete'}
+      data-item={props['data-item']}
       data-testid={props.testId}
       onMouseDown={event => {
         // The control that opened the list keeps focus, so its keys still drive the list. A touch tap fires this too.
         event.preventDefault();
       }}
-      onClick={() => {
-        props.onPick();
+      onClick={event => {
+        props.onPick(event);
       }}
     >
       <Show when={props.icon}>{icon => <DrawIcon icon={icon()} class={s['icon']} />}</Show>

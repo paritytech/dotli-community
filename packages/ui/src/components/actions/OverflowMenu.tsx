@@ -5,7 +5,6 @@ import { createEffect, createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { DropdownMenu, useDropdownMenu } from '../floating/DropdownMenu.js';
 import { ChevronRightIcon } from '../icons/ChevronRightIcon.js';
-import { DrawIcon } from '../icons/DrawIcon.js';
 import { MoreIcon } from '../icons/MoreIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import type { StatusTone } from '../../page/statusTone.js';
@@ -14,7 +13,7 @@ import { moreLabel, worstTone } from './alerts.js';
 import s from './OverflowMenu.module.css';
 
 /**
- * An action group's More button and its flyout, with a row per collapsed item.
+ * An action group's More button and its menu, with a row per collapsed item.
  * The wrapper stays `data-parked` while there is no row, so the group still knows the room it takes. Choosing a
  * row hands focus back to More before activating the item, since the item's own button is collapsed.
  */
@@ -55,23 +54,25 @@ export function OverflowMenu(props: {
             <DropdownMenu.Item
               class={s['row']}
               data-item={entry.name}
+              icon={entry.icon}
+              end={
+                <>
+                  <Show when={entry.aside()}>
+                    {aside => (
+                      <span class={s['aside']} data-testid="more-row-aside">
+                        {aside()()}
+                      </span>
+                    )}
+                  </Show>
+                  {/* Choosing the row opens another surface. */}
+                  <ChevronRightIcon testId="more-row-chevron" />
+                </>
+              }
               onSelect={ev => {
                 entry.activate(ev);
               }}
             >
-              <span class={s['icon']} aria-hidden="true">
-                <DrawIcon icon={entry.icon} />
-              </span>
-              <span class={s['label']}>{entry.label}</span>
-              <Show when={entry.aside()}>
-                {aside => (
-                  <span class={s['aside']} data-testid="more-row-aside">
-                    {aside()()}
-                  </span>
-                )}
-              </Show>
-              {/* Choosing the row opens another surface. */}
-              <ChevronRightIcon testId="more-row-chevron" />
+              {entry.label}
             </DropdownMenu.Item>
           )}
         </For>
@@ -80,7 +81,7 @@ export function OverflowMenu(props: {
   );
 }
 
-/** The last row going (the group grew) takes the open flyout with it. */
+/** The last row going (the group grew) takes the open menu with it. */
 function CloseWhenEmpty(props: { empty: boolean }): JSX.Element {
   const menu = useDropdownMenu();
   createEffect(
