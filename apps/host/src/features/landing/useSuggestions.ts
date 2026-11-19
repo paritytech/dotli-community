@@ -3,7 +3,7 @@
 
 // What the suggestion island does beside rendering.
 
-import { createEffect, createMemo, createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, onSettled, untrack, type Accessor } from 'solid-js';
 import { useStore } from '@dotli/stores-solid';
 import type { NavComboboxState, NavKey } from './navComboboxState.js';
 import type { Recents } from './landing.js';
@@ -28,9 +28,10 @@ const NO_MATCHES: ReturnType<typeof matchSuggestions> = { recent: [], apps: null
 
 /**
  * The suggestions for the name input, for the owner's lifetime, in two sections. `recent` holds the recents that start
- * with the typed name, newest first, so an empty input shows them all. `apps` holds the app labels that match it, less
- * any recent. They show while the input has focus, and Escape hides them until the text changes. While labels still
- * load and a name is typed, `loading` shows too, even with no match. Once settled, the arrow keys move the active label
+ * with the typed name, newest first, so an empty input shows the newest. `apps` holds the app labels that match it, less
+ * any recent. They show while the input has focus, once there is at least one recent or the input was typed in since it
+ * took focus. Escape hides them until the text changes or the input takes focus again. While labels still load and a
+ * name is typed, `loading` shows too, even with no match. Once settled, the arrow keys move the active label
  * through both sections, wrapping around, Enter opens it, Shift+Delete forgets it when it is a recent, and the input
  * points at the list while it shows. `close` hides them as Escape does.
  */
@@ -49,16 +50,22 @@ export function useSuggestions({ labels, recents, loading, suffix, combobox, ope
       ? NO_MATCHES
       : matchSuggestions({ name: typedName(text(), tld), recents: recents.labels(), apps: labels() });
   });
-  // Escape and a chosen label each last until the text changes, so they read the text only to reset on it.
+  // Escape lasts until the text changes or the input takes focus again, and a chosen label until the text changes, so
+  // they read those only to reset on them.
   const [escaped, setEscaped] = createSignal(() => {
     text();
+    focused();
     return false;
   });
   const [chosen, setChosen] = createSignal<string | null>(() => {
     text();
     return null;
   });
-  const visible = createMemo(() => focused() && !escaped());
+  // The text as the input took focus. Focus alone opens the list only when there is a recent to show, and typing opens it.
+  const focusedText = createMemo(() => (focused() ? untrack(text) : null));
+  const visible = createMemo(
+    () => focused() && !escaped() && (text() !== focusedText() || recents.labels().length > 0),
+  );
   const recent = createMemo<readonly string[]>(() => (visible() ? matches().recent : []));
   const apps = createMemo<readonly string[]>(() => (visible() ? (matches().apps ?? []) : []));
   // The one order the arrow keys walk.

@@ -14,13 +14,19 @@ type MountOptions = {
   visited?: readonly string[];
   /** The TLD a typed name may end with, null before the network is known. */
   suffix?: string | null;
+  /** True for an input that held `initial` before it took focus, rather than one typed in after. */
+  filledBeforeFocus?: boolean;
 };
 
 /** The suggestions under a fresh owner, over a focused input holding `initial`, settled. */
-function mount(initial: string, { loading = false, visited = [], suffix = '.dot' }: MountOptions = {}) {
+function mount(
+  initial: string,
+  { loading = false, visited = [], suffix = '.dot', filledBeforeFocus = false }: MountOptions = {},
+) {
   const combobox = createNavComboboxState();
-  combobox.setText(initial);
-  combobox.setFocused(true);
+  if (filledBeforeFocus) {
+    combobox.setText(initial);
+  }
   const open = vi.fn();
   const [syncing, setSyncing] = createSignal(loading);
   const [recentLabels, setRecentLabels] = createSignal<readonly string[]>(visited);
@@ -45,6 +51,11 @@ function mount(initial: string, { loading = false, visited = [], suffix = '.dot'
   }));
   onTestFinished(dispose);
   flush();
+  // Focused, then typed in, unless the test asks for a field that took focus already filled.
+  combobox.setFocused(true);
+  flush();
+  combobox.setText(initial);
+  flush();
   return {
     suggestions,
     open,
@@ -60,6 +71,10 @@ function mount(initial: string, { loading = false, visited = [], suffix = '.dot'
     },
     blur(): void {
       combobox.setFocused(false);
+      flush();
+    },
+    focus(): void {
+      combobox.setFocused(true);
       flush();
     },
     close(): void {
@@ -261,6 +276,41 @@ describe('useSuggestions', () => {
 
     // Then
     expect(view.listbox()).toBeNull();
+  });
+
+  it('As a first-time visitor, I focus the input that already holds a name and no list shows until I type', () => {
+    // Given an input filled with "a" before it took focus, and no recents
+    const view = mount('a', { filledBeforeFocus: true });
+    expect(view.listbox()).toBeNull();
+
+    // When
+    view.type('ap');
+
+    // Then
+    expect(view.suggestions.apps()).toEqual(['apple']);
+  });
+
+  it('As a returning visitor, I focus the input that already holds a name and see the suggestions', () => {
+    // When
+    const view = mount('a', { filledBeforeFocus: true, visited: ['avocado'] });
+
+    // Then
+    expect(view.suggestions.recent()).toEqual(['avocado']);
+    expect(view.suggestions.apps()).toEqual(['ant', 'apple']);
+  });
+
+  it('As a returning visitor, I dismiss the list from outside the input, focus the input again and see my recent names', () => {
+    // Given the list dismissed from outside, which takes focus from the input
+    const view = mount('', { visited: ['banana', 'zebra'] });
+    view.close();
+    view.blur();
+
+    // When
+    view.focus();
+
+    // Then
+    expect(view.suggestions.recent()).toEqual(['banana', 'zebra']);
+    expect(view.listbox()).toEqual({ active: null });
   });
 
   it('As a visitor, I press Escape and type a character and the list shows again', () => {

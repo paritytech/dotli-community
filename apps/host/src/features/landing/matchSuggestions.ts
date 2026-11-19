@@ -10,14 +10,17 @@ type Params = {
   apps: readonly string[];
 };
 
+// The most labels either section shows.
+const SECTION_LIMIT = 6;
+
 /**
- * The suggestions for a typed name, in two sections. `recent` holds the recents that start with it, in their order, so
- * an empty name keeps them all. `apps` is null for an empty name, which has no apps section, and otherwise holds at most
- * 6 app labels that start with the name, shortest first, then in code point order. An app that is also a recent shows
+ * The suggestions for a typed name, in two sections, each at most 6 labels. `recent` holds the recents that start with
+ * it, in their order, so an empty name keeps the newest. `apps` is null for an empty name, which has no apps section,
+ * and otherwise holds the app labels that start with the name, shortest first, then in code point order. An app that is also a recent shows
  * once, under `recent`.
  */
 export function matchSuggestions({ name, recents, apps }: Params): { recent: string[]; apps: string[] | null } {
-  const recent = recents.filter(label => label.startsWith(name));
+  const recent = recents.filter(label => label.startsWith(name)).slice(0, SECTION_LIMIT);
   if (name === '') {
     return { recent, apps: null };
   }
@@ -27,7 +30,7 @@ export function matchSuggestions({ name, recents, apps }: Params): { recent: str
     apps: apps
       .filter(label => label.startsWith(name) && !visited.has(label))
       .sort((a, b) => a.length - b.length || compareText(a, b))
-      .slice(0, 6),
+      .slice(0, SECTION_LIMIT),
   };
 }
 
