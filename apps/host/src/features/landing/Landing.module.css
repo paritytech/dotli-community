@@ -92,9 +92,10 @@
 .title {
   margin: 0;
   padding: 0;
-  font-size: clamp(32px, 3.7vw, 52px);
+  /* The brand grid's Heading step, 56/64, at its widest. */
+  font-size: clamp(32px, 4vw, 56px);
   font-weight: var(--fw-medium);
-  line-height: 1.04;
+  line-height: var(--lh-heading);
   letter-spacing: -0.04em;
   color: var(--text-strong);
 }

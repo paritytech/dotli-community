@@ -180,23 +180,26 @@
 :root {
   --font-sans: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* From 16 px up, each size sits on a brand grid step, and the ratios are those steps' line heights. The
+     smaller sizes are the app's own. */
   --fs-label: 11px;
   --fs-caption: 12px;
   --fs-small: 13px;
   --fs-body: 14px;
-  --fs-title: 15px;
+  --fs-title: 16px;
   /* The Beta tag's type. */
   --fs-tag: 8px;
   /* A popover's or prompt's title, the title size on phones. */
   --fs-pop-title: 14px;
-  --fs-title-lg: 17px;
-  --fs-h2: 20px;
+  --fs-title-lg: 18px;
+  --fs-h2: 18px;
   --fs-h1: 24px;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
-  --lh-tight: 1.3;
-  --lh-body: 1.5;
+  --lh-heading: 1.14;
+  --lh-tight: 1.29;
+  --lh-body: 1.44;
   --ls-caps: 0.08em;
   --ls-tight: -0.01em;
 

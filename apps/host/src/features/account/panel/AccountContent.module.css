@@ -26,7 +26,7 @@
   color: var(--chrome-text);
   font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;

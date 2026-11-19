@@ -79,6 +79,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [component-shown-in-several-forms](component-shown-in-several-forms.md): a piece of UI, such as a logo, appears in
   several forms that callers assemble from part components, and an optional decoration's place depends on the form.
+- [design-gives-px-line-heights](design-gives-px-line-heights.md): a design's type scale pairs each size with a fixed px
+  line height, and the tokens hold a few line-height ratios that places pair with sizes.
 - [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
