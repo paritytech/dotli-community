@@ -9,7 +9,7 @@ import { ArrowRightIcon } from '@dotli/ui/icons';
 import type { ListboxView, NavComboboxState } from './navComboboxState.js';
 import { dotUrl, typedName } from './dotUrl.js';
 import { animatePlaceholder, PLACEHOLDER_NAMES } from './placeholder.js';
-import { getSuggestionId, SUGGESTIONS_ID } from './suggestionIds.js';
+import { getSuggestionId, NAV_BAR_ID, SUGGESTIONS_ID } from './suggestionIds.js';
 import s from './NavForm.module.css';
 
 const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
@@ -114,7 +114,7 @@ export function NavForm(props: NavFormProps): JSX.Element {
 
   return (
     <form onSubmit={onSubmit} id="dotli-nav-form" class={s['form']} autocomplete="off">
-      <div class={s['bar']} id="dotli-nav-bar" data-invalid={error() === null ? undefined : ''}>
+      <div class={s['bar']} id={NAV_BAR_ID} data-invalid={error() === null ? undefined : ''}>
         <label class={s['label']}>
           <input
             ref={el => {

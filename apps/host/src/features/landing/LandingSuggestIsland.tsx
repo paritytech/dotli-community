@@ -12,6 +12,7 @@ import { getLandingRecentLabels } from './getLandingRecentLabels.js';
 import { Suggestions } from './Suggestions.js';
 import { landingNameList } from './landingNameList.js';
 import { navComboboxState } from './navComboboxState.js';
+import { NAV_BAR_ID } from './suggestionIds.js';
 import { useActiveTld, useRecents } from './landing.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
 import { useSuggestions } from './useSuggestions.js';
@@ -39,7 +40,7 @@ function BoundSuggestions(props: { recents: RecentLabels | undefined }): JSX.Ele
   const [anchor, setAnchor] = createSignal<HTMLElement | undefined>(undefined, { ownedWrite: true });
   onSettled(() => {
     landingNameList.start();
-    setAnchor(document.getElementById('dotli-nav-bar') ?? undefined);
+    setAnchor(document.getElementById(NAV_BAR_ID) ?? undefined);
   });
   const open = (label: string): void => {
     window.location.href = dotUrl(label);

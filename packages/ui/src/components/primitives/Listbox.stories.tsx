@@ -235,10 +235,11 @@ export const EndSlot: Story = {
   ),
   play: async () => {
     const list = await body.findByRole('listbox', { name: 'More actions' });
-    for (const option of within(list).getAllByRole('option')) {
-      const end = within(option).getByTestId('listbox-end');
-      await expect(option).toContainElement(end);
-    }
+    const option = within(list).getByRole('option', { name: /^Chat/ });
+    const end = within(option).getByTestId('listbox-end');
+    const text = within(option).getByText('Chat');
+    await expect(end).toHaveTextContent('3');
+    await expect(text.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   },
 };
 

@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Loading, onSettled } from 'solid-js';
+import { Loading, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { focusables } from '../../page/focusables.js';
 import { focusInto } from '../focus.js';
 import { Spinner } from '../primitives/Spinner.js';
-import { AnchoredContent } from './AnchoredContent.js';
 import { RootBoundary } from '../../mount/rootBoundary.js';
-import type { Placement } from './FloatingLayer.js';
+import { FloatingLayer, type Placement } from './FloatingLayer.js';
 import type { PopoverState } from './Popover.js';
+import { SheetContent } from './SheetContent.js';
 import s from './Popover.module.css';
 
 /** Popover's surface: an anchored layer or a sheet, with the content's own loading and failure. */
@@ -45,22 +45,38 @@ export function PopoverSurface(props: {
     </RootBoundary>
   );
   return (
-    <AnchoredContent
-      state={props.state}
-      role="dialog"
-      placement={props.placement}
-      class={[s['surface'], props.class]}
-      testId={props.testId}
-      trapFocus
-      onOpened={surface => {
-        placeFocus(surface);
-      }}
-      sheetTestId="popover"
-      sheetFocus={wrapper => (props.initialFocus === undefined ? firstControl(wrapper) : props.initialFocus(wrapper))}
-      sheetChildren={wrapper => body(wrapper)}
+    <Show
+      when={props.state.sheet()}
+      fallback={
+        <FloatingLayer
+          id={props.state.id}
+          kind="auto"
+          open={props.state.open()}
+          onClose={reason => {
+            props.state.setOpen(false, reason);
+          }}
+          trigger={props.state.trigger}
+          placement={props.placement ?? 'topbar-end'}
+          role="dialog"
+          label={props.state.title}
+          class={[s['surface'], props.class]}
+          testId={props.testId}
+          trapFocus
+          onOpened={surface => {
+            placeFocus(surface);
+          }}
+        >
+          {body(() => document.getElementById(props.state.id))}
+        </FloatingLayer>
+      }
     >
-      {body(() => document.getElementById(props.state.id))}
-    </AnchoredContent>
+      <SheetContent
+        state={props.state}
+        testId="popover"
+        focus={wrapper => (props.initialFocus === undefined ? firstControl(wrapper) : props.initialFocus(wrapper))}
+        content={wrapper => body(wrapper)}
+      />
+    </Show>
   );
 }
 

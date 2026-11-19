@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, useContext } from 'solid-js';
+import { createMemo, createSignal, onSettled, useContext } from 'solid-js';
 import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
 import { focusTrigger, isFocusLostOrInside } from '../focus.js';
 import type { CloseReason } from './closeReason.js';
@@ -19,12 +19,14 @@ type Params = {
 
 /**
  * Focus returns to the trigger after a close in `returnFocusOn`, if it was lost or still inside. Called inside a
- * component, since it reads the anchor boundary from context. Never throws.
+ * component, since it reads the anchor boundary from context and watches the viewport from when it settles. Never
+ * throws.
  */
 export function createAnchored({ props, returnFocusOn }: Params) {
   const boundary = useContext(AnchorBoundary);
   const [open, setOpenSignal] = createSignal(false, { ownedWrite: true });
-  const [sheet, setSheet] = createSignal(false, { ownedWrite: true });
+  // Wide until settled, so a first client render matches the build's markup.
+  const [phone, setPhone] = createSignal(false, { ownedWrite: true });
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
   /**
    * Not `open()`: a read in the same tick still sees the old value, and one user action can close twice (focus
@@ -33,8 +35,13 @@ export function createAnchored({ props, returnFocusOn }: Params) {
   let current = false;
   let triggerElement: HTMLElement | undefined;
 
-  // A phone turned while the surface is open must not leave it in the other form.
-  createEffect(open, isOpen => (isOpen ? watchPhoneViewport(setSheet) : undefined));
+  onSettled(() => {
+    setPhone(isPhoneViewport());
+    return watchPhoneViewport(setPhone);
+  });
+  // A phone turned while the surface is open must not leave it in the other form, and a closed one keeps the form it
+  // closed in while it plays out.
+  const sheet = createMemo<boolean>(previous => (open() ? phone() : previous === true));
 
   function focusBack(): void {
     focusTrigger(triggerElement, boundary?.fallbackFocus());
@@ -50,7 +57,8 @@ export function createAnchored({ props, returnFocusOn }: Params) {
     }
     current = next;
     if (next) {
-      setSheet(isPhoneViewport());
+      // A resize reaches the media query after its own handlers, so an opening from one asks the query itself.
+      setPhone(isPhoneViewport());
       setMounted(true);
     }
     const returnFocus = !next && returnFocusOn.has(reason) && isFocusLostOrInside(getSurface());
@@ -86,6 +94,8 @@ export function createAnchored({ props, returnFocusOn }: Params) {
     },
     /** Whether the surface is open. */
     open,
+    /** Whether the viewport is phone sized, wide until the component settles. */
+    phone,
     /** Whether the surface is a bottom sheet, following the viewport while open. */
     sheet,
     /**

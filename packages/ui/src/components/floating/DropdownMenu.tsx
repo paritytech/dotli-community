@@ -14,7 +14,6 @@ import {
   type Component,
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
 import { DrawIcon } from '../icons/DrawIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { Listbox } from '../primitives/Listbox.js';
@@ -34,9 +33,21 @@ export type MenuState = Anchored & {
   setByKey: (byKey: boolean) => void;
   /** The option the trigger's keys point at on a wide screen, by its id, null while none is. */
   active: Accessor<string | null>;
-  /** Lists an option of the wide list in document order, until the returned removal runs. */
-  addOption: (id: string) => () => void;
+  /**
+   * Tells the menu that the option `id` shows, so an opening by key that came before its options points at the first,
+   * until the returned removal runs as the option leaves. Idempotent.
+   */
+  showOption: (id: string) => () => void;
 };
+
+/**
+ * Where the trigger's keys point in the wide list. `first` is an opening by key whose options have not rendered yet.
+ */
+type Cursor = { kind: 'none' } | { kind: 'first' } | { kind: 'option'; id: string };
+
+const NO_CURSOR: Cursor = { kind: 'none' };
+
+const OPTION = '[role="option"]';
 
 const MenuContext = createContext<MenuState | null>(null);
 
@@ -64,33 +75,27 @@ function DropdownMenuRoot(props: {
   children: JSX.Element;
 }): JSX.Element {
   const anchored = createAnchored({ props, returnFocusOn: RETURN_FOCUS_ON });
-  // The viewport's form, so the trigger's ARIA and keys are those of the form an opening shows.
-  const [phone, setPhone] = createSignal(false, { ownedWrite: true });
-  onSettled(() => {
-    setPhone(isPhoneViewport());
-    return watchPhoneViewport(setPhone);
-  });
   let byKey = false;
-  const [options, setOptions] = createSignal<readonly string[]>([], { ownedWrite: true });
-  const [activeIndex, setActiveIndex] = createSignal<number | null>(null, { ownedWrite: true });
+  const [cursor, setCursor] = createSignal<Cursor>(NO_CURSOR, { ownedWrite: true });
   const active = createMemo(() => {
-    const index = activeIndex();
-    return index === null ? null : (options()[index] ?? null);
+    const at = cursor();
+    return at.kind === 'option' ? at.id : null;
   });
-  const state = Object.assign(anchored, { byKey: () => byKey, setByKey, active, addOption });
+  const state = Object.assign(anchored, { byKey: () => byKey, setByKey, active, showOption });
 
   createTriggerWiring({
     state,
     trigger: () => props.trigger,
+    // The viewport's form, so the trigger's ARIA and keys are those of the form an opening shows.
     popup: () =>
-      phone()
+      state.phone()
         ? { haspopup: 'menu' }
         : { haspopup: 'listbox', combobox: { activeDescendant: state.open() ? active() : null } },
     opening(event) {
       setByKey(event.detail === 0);
     },
     onKeyDown(event) {
-      if (untrack(phone)) {
+      if (untrack(state.phone)) {
         handleSheetKey(event);
       } else {
         handleListKey(event);
@@ -101,14 +106,25 @@ function DropdownMenuRoot(props: {
 
   function setByKey(next: boolean): void {
     byKey = next;
-    setActiveIndex(next ? 0 : null);
+    // An opening while the last one plays out finds its options still shown.
+    setCursor(next ? pointAtFirst() : NO_CURSOR);
   }
 
-  function addOption(id: string): () => void {
-    setOptions(list => [...list, id].sort(compareDocumentOrder));
+  function showOption(id: string): () => void {
+    setCursor(at => (at.kind === 'first' ? pointAtFirst() : at));
     return () => {
-      setOptions(list => list.filter(other => other !== id));
+      setCursor(at => (at.kind === 'option' && at.id === id ? NO_CURSOR : at));
     };
+  }
+
+  /** The list's options as shown now, in document order. */
+  function listOptions(): HTMLElement[] {
+    return Array.from(document.getElementById(state.id)?.querySelectorAll<HTMLElement>(OPTION) ?? []);
+  }
+
+  function pointAtFirst(): Cursor {
+    const first = listOptions()[0];
+    return first === undefined ? { kind: 'first' } : { kind: 'option', id: first.id };
   }
 
   function openByKey(event: KeyboardEvent): void {
@@ -130,20 +146,24 @@ function DropdownMenuRoot(props: {
       }
       return;
     }
+    const options = listOptions();
+    const id = untrack(active);
+    const index = options.findIndex(option => option.id === id);
     if (event.key === 'Enter') {
-      const id = untrack(active);
-      if (id !== null) {
+      const option = options[index];
+      if (option !== undefined) {
         // Also keeps the button's own click from closing the list.
         event.preventDefault();
         // A click from script has `detail` 0, as a choice by key does.
-        document.getElementById(id)?.click();
+        option.click();
       }
       return;
     }
-    const next = stepIndex(event.key, untrack(activeIndex) ?? -1, untrack(options).length);
-    if (next !== null) {
+    const step = stepIndex(event.key, index, options.length);
+    const next = step === null ? undefined : options[step];
+    if (next !== undefined) {
       event.preventDefault();
-      setActiveIndex(next);
+      setCursor({ kind: 'option', id: next.id });
     }
   }
 
@@ -224,11 +244,11 @@ function Item(props: ItemProps): JSX.Element {
   );
 }
 
-/** An item as an option of the wide list, which it joins in document order while it is shown. */
+/** An item as an option of the wide list. */
 function ListOption(props: { item: ItemProps; onPick: (event: MouseEvent) => void }): JSX.Element {
   const state = useMenuState();
   const id = createUniqueId();
-  onSettled(() => state.addOption(id));
+  onSettled(() => state.showOption(id));
   return (
     <Listbox.Option
       id={id}
@@ -265,13 +285,4 @@ function useMenuState(): MenuState {
     throw new Error('DropdownMenu parts outside a DropdownMenu');
   }
   return state;
-}
-
-function compareDocumentOrder(first: string, second: string): number {
-  const firstElement = document.getElementById(first);
-  const secondElement = document.getElementById(second);
-  if (firstElement === null || secondElement === null) {
-    return 0;
-  }
-  return firstElement.compareDocumentPosition(secondElement) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
 }
