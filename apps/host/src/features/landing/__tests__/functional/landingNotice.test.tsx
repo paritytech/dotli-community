@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 describe('landing test network notice', () => {
-  it('As a visitor whose settings have not booted, I see no test network notice', () => {
+  it('As a visitor whose settings have not booted, I open the landing page and see no test network notice', () => {
     // When
     mount();
 
@@ -42,7 +42,7 @@ describe('landing test network notice', () => {
     expect(notice.textContent).toBe('');
   });
 
-  it('As a visitor on a test network, I see the test network notice once my settings boot', () => {
+  it('As a visitor on a test network, I open the landing page and see the test network notice once my settings boot', () => {
     // Given
     mount();
 
@@ -54,7 +54,7 @@ describe('landing test network notice', () => {
     expect(notice.textContent).not.toBe('');
   });
 
-  it('As a visitor on a network whose tokens have real value, I see no test network notice once my settings boot', () => {
+  it('As a visitor on a network whose tokens have real value, I open the landing page and see no test network notice once my settings boot', () => {
     // Given
     mount({ networks: { ...NETWORK_NAME_TO_SERVICES_CONFIG, [getNetwork()]: { testnet: false } } });
 

@@ -2,9 +2,11 @@
 
 A developer builds UI that depends on a fact about the network the visitor picked, such as whether its tokens have real
 value. The build keeps a static table that describes each network it knows, a deployment enables some of them and the
-visitor picks one at runtime. No field of the table says the fact. The question is where the fact comes from: a field
-on each network's entry, a derivation from the network's chain identity against a known list, or a build variable the
-deployment sets.
+visitor picks one at runtime. No field of the table says the fact. The question is where the fact comes from:
+
+- a field on each network's entry
+- a derivation from the network's chain identity against a known list
+- a build variable the deployment sets
 
 ## How to resolve
 

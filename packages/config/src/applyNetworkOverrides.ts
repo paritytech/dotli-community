@@ -38,7 +38,7 @@ const BULLETIN_OVERRIDES = ['rpcs', 'ipfsGateways'] as const satisfies readonly 
 >[];
 const NETWORK_OVERRIDES = ['label', 'relay', 'assethub', 'bulletin', 'people'] as const satisfies readonly Exclude<
   keyof ServicesConfig,
-  'dotns'
+  'dotns' | 'testnet'
 >[];
 
 /** `base` with the runtime config's per-network `patches` merged over it. Throws on a patch it cannot apply. */
