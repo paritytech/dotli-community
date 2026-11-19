@@ -70,7 +70,9 @@ Fakes for the specs and stories of other packages. Functional tests use them too
 ### `@dotli/ui/brand`
 
 `LogoSymbol`, `LogoWordmark` and `PetalMark` are the logo components. `PetalMark` draws six petals that can `pulse`.
-Astro renders them at build time with no directive, so they ship no code there.
+`LogoSymbol` wraps its symbol in an element that takes the caller's `class` and test id, so a height set there sizes the
+symbol. Its `beta` flag pins the Beta tag to the symbol's top-right corner, out of the flow. Astro renders them at build
+time with no directive, so they ship no code there.
 
 ### `@dotli/ui/icons`
 
