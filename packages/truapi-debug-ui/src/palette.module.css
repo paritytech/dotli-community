@@ -67,4 +67,5 @@
   --td-chain-bg: #0b1418;
   --td-chain-line: #025d73;
   --td-font: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+  --td-font-sans: var(--font-sans);
 }
