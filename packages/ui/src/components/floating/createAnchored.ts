@@ -19,8 +19,7 @@ type Params = {
 
 /**
  * Focus returns to the trigger after a close in `returnFocusOn`, if it was lost or still inside. Called inside a
- * component, since it reads the anchor boundary from context and watches the viewport from when it settles. Never
- * throws.
+ * component, since it reads the anchor boundary from context and watches the viewport from when it settles.
  */
 export function createAnchored({ props, returnFocusOn }: Params) {
   const boundary = useContext(AnchorBoundary);
@@ -105,7 +104,7 @@ export function createAnchored({ props, returnFocusOn }: Params) {
     setOpen,
     /** The trigger the surface is wired to, undefined while it has none. */
     trigger: () => triggerElement,
-    /** Records the trigger the wiring holds, or undefined once it lets go. Never throws. */
+    /** Records the trigger the wiring holds, or undefined once it lets go. */
     setTrigger,
     /** To the trigger, or to the boundary's fallback while the boundary has hidden it. */
     focusBack,

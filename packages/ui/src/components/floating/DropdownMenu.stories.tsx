@@ -142,6 +142,29 @@ export const ArrowDownOpensOnFirstItem: Story = {
   },
 };
 
+/**
+ * As a keyboard user, I press Escape on More's open list, then ArrowDown at once, and the list reopens on its first
+ * option.
+ */
+export const ArrowDownDuringTheExitOpensOnFirstItem: Story = {
+  play: async ({ step }) => {
+    const more = (): HTMLElement => body.getByTestId('story-more');
+    await step('Given the list open from More', async () => {
+      more().focus();
+      await (await trustedInput()).keyboard('{ArrowDown}');
+      await waitFor(() => expect(getRow('row-network')).toHaveAttribute('aria-selected', 'true'));
+    });
+    await step('When I press Escape, then ArrowDown at once', async () => {
+      await (await trustedInput()).keyboard('{Escape}{ArrowDown}');
+    });
+    await step('Then the list is open on Network, which More points at', async () => {
+      await waitFor(() => expect(isOpen()).toBe(true));
+      await waitFor(() => expect(getRow('row-network')).toHaveAttribute('aria-selected', 'true'));
+      await expect(more()).toHaveAttribute('aria-activedescendant', getRow('row-network').id);
+    });
+  },
+};
+
 /** As a mouse user, I click More and the list opens with no active option, and closes when I click More again. */
 export const PointerOpensOnTheMenu: Story = {
   play: async ({ step }) => {

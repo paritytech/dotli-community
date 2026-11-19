@@ -34,8 +34,8 @@ export type MenuState = Anchored & {
   /** The option the trigger's keys point at on a wide screen, by its id, null while none is. */
   active: Accessor<string | null>;
   /**
-   * Tells the menu that the option `id` shows, so an opening by key that came before its options points at the first,
-   * until the returned removal runs as the option leaves. Idempotent.
+   * Tells the menu that the option `id` shows, so an opening by key points at the first option once its options show.
+   * The returned removal, run as the option leaves, clears the cursor only while it points at that option. Idempotent.
    */
   showOption: (id: string) => () => void;
 };
@@ -106,12 +106,16 @@ function DropdownMenuRoot(props: {
 
   function setByKey(next: boolean): void {
     byKey = next;
-    // An opening while the last one plays out finds its options still shown.
-    setCursor(next ? pointAtFirst() : NO_CURSOR);
+    // Every opening mounts its options afresh, even while the last one's still play out, so the opening's own options
+    // resolve `first` as they show.
+    setCursor(next ? { kind: 'first' } : NO_CURSOR);
   }
 
   function showOption(id: string): () => void {
-    setCursor(at => (at.kind === 'first' ? pointAtFirst() : at));
+    setCursor(at => {
+      const first = at.kind === 'first' ? listOptions()[0] : undefined;
+      return first === undefined ? at : { kind: 'option', id: first.id };
+    });
     return () => {
       setCursor(at => (at.kind === 'option' && at.id === id ? NO_CURSOR : at));
     };
@@ -120,11 +124,6 @@ function DropdownMenuRoot(props: {
   /** The list's options as shown now, in document order. */
   function listOptions(): HTMLElement[] {
     return Array.from(document.getElementById(state.id)?.querySelectorAll<HTMLElement>(OPTION) ?? []);
-  }
-
-  function pointAtFirst(): Cursor {
-    const first = listOptions()[0];
-    return first === undefined ? { kind: 'first' } : { kind: 'option', id: first.id };
   }
 
   function openByKey(event: KeyboardEvent): void {
