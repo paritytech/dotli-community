@@ -12,6 +12,7 @@ import { encodePhoneResponseFrame, type PhoneResult } from '../../testing/encode
 import { encodeRequestFrame } from '../../testing/encodeRequestFrame.js';
 import { encodeResponseFrame } from '../../testing/encodeResponseFrame.js';
 import { createPhoneRequestTracker, type PhoneRequest } from './createPhoneRequestTracker.js';
+import type { PhoneOutcome } from './phoneOutcome.js';
 
 const SIGNED: PhoneResult = { kind: 'ok', value: { signature: '0x01' } };
 const REJECTED: PhoneResult = { kind: 'domain', value: { tag: 'Rejected' } };
@@ -71,6 +72,17 @@ function buildSignPayloadBody(): unknown {
   };
 }
 
+function buildTxBody(): unknown {
+  return {
+    signer: { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+    genesisHash: `0x${'11'.repeat(32)}`,
+    callData: '0x0102',
+    extensions: [],
+    txExtVersion: 0,
+    contacts: [],
+  };
+}
+
 /** A login request, a method that never goes to the phone. */
 function encodeLoginRequestFrame(requestId: string): Uint8Array {
   return encodeRequestFrame({ requestId, method: ACCOUNT_REQUEST_LOGIN, value: LOGIN_VALUE });
@@ -96,6 +108,44 @@ describe('phone request tracker', () => {
     expect(claim?.request).toEqual({ method: 'signPayload', body: buildSignPayloadBody() });
     await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signPayload' });
   });
+
+  it.each([
+    {
+      version: 'V1',
+      result: { kind: 'ok', value: { transaction: '0x01' } },
+      outcome: { kind: 'ok', method: 'createTransaction' },
+    },
+    { version: 'V1', result: REJECTED, outcome: { kind: 'rejected' } },
+    {
+      version: 'V1',
+      result: { kind: 'domain', value: { tag: 'Unknown', value: { reason: 'no funds' } } },
+      outcome: { kind: 'failed', tag: 'Unknown', reason: 'no funds' },
+    },
+    {
+      version: 'V2',
+      result: { kind: 'domain', value: { tag: 'ChainUnavailable', value: { reason: 'halted' } } },
+      outcome: { kind: 'failed', tag: 'ChainUnavailable', reason: 'halted' },
+    },
+  ] satisfies { version: string; result: PhoneResult; outcome: PhoneOutcome }[])(
+    'As a dotli integrator, I claim a transaction a product sent at $version and hear its $outcome.kind answer',
+    async ({ version, result, outcome }) => {
+      // Given a transaction request at the version the product's SDK speaks
+      const { tracker: requests, reportUndecodable } = createTrackerHarness();
+      const tap = requests.connect();
+      tap.fromProduct(
+        encodePhoneRequestFrame({ requestId: 'a', method: 'createTransaction', body: buildTxBody(), version }),
+      );
+
+      // When the core answers at the same version
+      const claim = requests.claim(request => request.method === 'createTransaction');
+      tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'createTransaction', result, version }));
+
+      // Then
+      expect(claim?.request).toEqual({ method: 'createTransaction', body: buildTxBody() });
+      await expect(claim?.ended).resolves.toEqual(outcome);
+      expect(reportUndecodable).not.toHaveBeenCalled();
+    },
+  );
 
   it('As a dotli integrator, I claim two identical requests and get one each, with no third', async () => {
     // Given

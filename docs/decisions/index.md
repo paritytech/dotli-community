@@ -67,6 +67,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## Product requests
 
+- [generated-codec-misses-a-served-version](generated-codec-misses-a-served-version.md): the host reads protocol
+  messages with a dependency's generated codecs, which cover only the newest envelope version, while the bundled core
+  still serves older ones.
 - [permission-request-the-host-no-longer-offers](permission-request-the-host-no-longer-offers.md): a product requests a
   permission the host removed from its UI because the capability cannot work where products run.
 
