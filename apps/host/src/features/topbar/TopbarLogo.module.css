@@ -7,7 +7,6 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--sp-1_5);
   box-sizing: border-box;
   height: var(--h-bar-control);
   margin: 0;
@@ -20,32 +19,24 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-.mark,
-.brand {
-  display: block;
+/* Under `.home`, so the form the width hides wins over the logo's own display. */
+.home > .full,
+.home > .symbol {
   flex: none;
 }
-/* Out of the flow, so the bar is laid out as it will be once the tag goes. */
-.beta {
-  position: absolute;
-  top: 2px;
-  right: 4px;
+.home > .symbol {
+  display: none;
 }
-/* Narrow pills: the mark alone, so the wordmark doesn't push actions into More. */
+/* Narrow pills: the symbol alone, so the word doesn't push actions into More. */
 @media (max-width: 620px) {
   .home {
     padding-right: var(--sp-3);
   }
-  /* Out of sight but still the link's accessible name. */
-  .brand {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
+  .home > .full {
+    display: none;
   }
-  .beta {
-    right: 2px;
+  .home > .symbol {
+    display: block;
   }
 }
 @media (max-width: 560px) {
@@ -58,8 +49,7 @@
     width: var(--h-control);
     padding: 0;
   }
-  .mark {
-    width: auto;
+  .home > .symbol {
     height: 24px;
   }
 }

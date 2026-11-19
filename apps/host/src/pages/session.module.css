@@ -33,25 +33,9 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.lockup {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1_5);
-  padding-right: var(--sp-4);
-  color: var(--text-strong);
-}
-.mark,
-.wordmark {
-  display: block;
+.logo {
   flex: none;
-}
-
-/* Out of the flow, over the lockup's end. */
-.beta {
-  position: absolute;
-  top: calc(-1 * var(--sp-1_5));
-  right: 0;
+  color: var(--text-strong);
 }
 
 /* A phone shows the page as one surface: no rule under the header, and the room under the content goes to the actions. */
@@ -60,20 +44,15 @@
   .page {
     background: var(--surface);
   }
-  /* A plain row under the status bar's inset, as tall as the lockup. */
+  /* A plain row under the status bar's inset, as tall as the logo. */
   .header {
     height: auto;
     padding: calc(var(--sp-14) + var(--safe-top)) calc(var(--sp-5) + var(--safe-right)) 0
       calc(var(--sp-5) + var(--safe-left));
     border-bottom: 0;
   }
-  .mark {
-    width: auto;
+  .logo {
     height: 20px;
-  }
-  .wordmark {
-    width: auto;
-    height: 13px;
   }
   .balance {
     display: none;
