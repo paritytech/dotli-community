@@ -50,7 +50,7 @@ function BoundOrbit(): JSX.Element {
   // The computed builds a new mode on every change the monitor counts, so an equal one keeps the layout.
   const mode = useStore(orbitMode, { initial: NO_PEERS, equals: isShallowEqual });
   const layout = createMemo(() => getOrbitLayout(mode(), SEED));
-  const [pointerY, setPointerY] = createSignal(0);
-  onSettled(() => followPointer({ onShift: ({ y }) => setPointerY(y) }));
-  return <Orbit layout={layout()} pointerY={pointerY()} />;
+  const [pointer, setPointer] = createSignal({ x: 0, y: 0 });
+  onSettled(() => followPointer({ onShift: shift => setPointer(shift) }));
+  return <Orbit layout={layout()} pointerX={pointer().x} pointerY={pointer().y} />;
 }

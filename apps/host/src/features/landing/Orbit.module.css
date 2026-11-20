@@ -41,8 +41,13 @@
   initial-value: 0.2;
 }
 
-/* Where the pointer is up the viewport, from -1 at its top to 1 at its foot. Registered so the floor glides to its new
-   tilt rather than jumping with every move. */
+/* Where the pointer is in the viewport, from -1 at its left or top edge to 1 at its right or foot. Registered so the
+   floor glides to its new turn and tilt rather than jumping with every move. */
+@property --pointer-x {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
 @property --pointer-y {
   syntax: '<number>';
   inherits: false;
@@ -62,6 +67,8 @@
   /* The floor's tilt with the pointer at the viewport's middle, or with no mouse to follow. */
   --rest-tilt: 80deg;
   --tilt: var(--rest-tilt);
+  /* How far the floor turns off its own clock with the pointer across the viewport, or with no mouse to follow. */
+  --pointer-turn: 0deg;
   /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
      by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
      and the floor cuts it at no tilt short of edge-on. */
@@ -95,13 +102,17 @@
 }
 
 /* A mouse tips the floor a little toward the viewer as it rises up the page and back as it falls, as if the eye looking
-   on followed it. Everything drawn on the floor reads the one tilt, so it moves as one piece. */
+   on followed it, and swings the floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a)
+   with y down, so a larger turn carries the near side left, and a pointer to the right turns it the other way. Everything
+   drawn on the floor reads the one tilt and turn, so it moves as one piece. */
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .orbit {
     --tilt: calc(var(--rest-tilt) + var(--pointer-y) * 3deg);
+    --pointer-turn: calc(var(--pointer-x) * -12deg);
     transition:
       --rest-tilt var(--reshape) ease-in-out,
       --drop var(--reshape) ease-in-out,
+      --pointer-x 400ms ease-out,
       --pointer-y 400ms ease-out;
   }
 }
@@ -109,7 +120,7 @@
 /* Each ring's radius, as --<ring>-radius in units, comes with the layout. */
 .stage {
   /* The fallback holds the dots and links at rest where the clock is not registered. */
-  --turn: var(--clock, 0deg);
+  --turn: calc(var(--clock, 0deg) + var(--pointer-turn));
   --floor: calc(293 * var(--unit));
   position: absolute;
   bottom: 0;
