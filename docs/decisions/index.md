@@ -74,6 +74,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [capacity-stories-near-the-test-timeout](capacity-stories-near-the-test-timeout.md): a story file drives a component
   at full capacity, and the preview's a11y check over the large DOM pushes its stories near the browser test timeout.
+- [contrast-check-on-a-decorative-graphic](contrast-check-on-a-decorative-graphic.md): a story's axe contrast rule fails
+  on text inside a decorative, `aria-hidden` background graphic.
 
 ## UI
 
