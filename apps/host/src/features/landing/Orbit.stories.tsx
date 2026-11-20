@@ -15,6 +15,8 @@ type FrameProps = {
   peers: number;
   /** What turns each dot off its even place. */
   seed: number;
+  /** Where the pointer is up the viewport, from -1 at its top to 1 at its foot. */
+  pointerY: number;
 };
 
 /** The orbit behind a box the size of a small landing page, with controls that add and drop a peer. */
@@ -25,7 +27,7 @@ function Frame(props: FrameProps): JSX.Element {
   );
   return (
     <div style={{ position: 'relative', isolation: 'isolate', height: '480px' }}>
-      <Orbit layout={layout()} />
+      <Orbit layout={layout()} pointerY={props.pointerY} />
       <button type="button" onClick={() => setPeers(count => count + 1)}>
         Add a peer
       </button>
@@ -39,7 +41,8 @@ function Frame(props: FrameProps): JSX.Element {
 const meta = {
   title: 'Host/Landing/Orbit',
   component: Frame,
-  args: { server: false, peers: 0, seed: 1 },
+  args: { server: false, peers: 0, seed: 1, pointerY: 0 },
+  argTypes: { pointerY: { control: { type: 'range', min: -1, max: 1, step: 0.1 } } },
 } satisfies Meta<typeof Frame>;
 
 export default meta;

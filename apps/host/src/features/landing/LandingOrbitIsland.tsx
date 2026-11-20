@@ -3,7 +3,7 @@
 
 // One module per island, so Astro loads only this island's code when its directive fires.
 
-import { createMemo } from 'solid-js';
+import { createMemo, createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { hasLightClient } from '@dotli/config';
 import { isShallowEqual } from '@dotli/shared';
@@ -11,6 +11,7 @@ import { useStore } from '@dotli/stores-solid';
 import { computed } from 'nanostores';
 import { networkMonitorState } from '../network/index.js';
 import { settingsState } from '../settings/index.js';
+import { followPointerY } from './followPointerY.js';
 import { getOrbitLayout, type OrbitMode } from './getOrbitLayout.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
 import { Orbit } from './Orbit.js';
@@ -49,5 +50,7 @@ function BoundOrbit(): JSX.Element {
   // The computed builds a new mode on every change the monitor counts, so an equal one keeps the layout.
   const mode = useStore(orbitMode, { initial: NO_PEERS, equals: isShallowEqual });
   const layout = createMemo(() => getOrbitLayout(mode(), SEED));
-  return <Orbit layout={layout()} />;
+  const [pointerY, setPointerY] = createSignal(0);
+  onSettled(() => followPointerY({ onShift: setPointerY }));
+  return <Orbit layout={layout()} pointerY={pointerY()} />;
 }

@@ -27,6 +27,14 @@
   initial-value: 0deg;
 }
 
+/* Where the pointer is up the viewport, from -1 at its top to 1 at its foot. Registered so the floor glides to its new
+   tilt rather than jumping with every move. */
+@property --pointer-y {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
 /* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. Its parts are solid,
    so none shows another through it. One opacity dims them together, and one mask fades the rings out toward the
    horizon. Lengths are in --unit, a 640th of the stage's width, so the whole orbit scales with the viewport. */
@@ -37,7 +45,9 @@
   --depth: 1920;
   /* Every line's width, rings and links alike. */
   --line: 1px;
-  --tilt: 80deg;
+  /* The floor's tilt with the pointer at the viewport's middle, or with no mouse to follow. */
+  --rest-tilt: 80deg;
+  --tilt: var(--rest-tilt);
   /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
      by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
      and the floor cuts it at no tilt short of edge-on. */
@@ -60,6 +70,15 @@
   );
 }
 
+/* A mouse tips the floor a little toward the viewer as it rises up the page and back as it falls, as if the eye looking
+   on followed it. Everything drawn on the floor reads the one tilt, so it moves as one piece. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .orbit {
+    --tilt: calc(var(--rest-tilt) + var(--pointer-y) * 3deg);
+    transition: --pointer-y 400ms ease-out;
+  }
+}
+
 /* Each ring's radius, as --<ring>-radius in units, comes with the layout. */
 .stage {
   /* The fallback holds the dots and links at rest where the clock is not registered. */
@@ -77,7 +96,7 @@
 /* A phone has height to spare under the form, so the floor stands nearly upright and in full view. */
 @media (max-width: 560px) {
   .orbit {
-    --tilt: 10deg;
+    --rest-tilt: 10deg;
     --drop: 0;
   }
 }
