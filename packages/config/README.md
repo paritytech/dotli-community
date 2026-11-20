@@ -46,7 +46,7 @@ Build-time and runtime configuration:
 | `resolveSettings`, `ResolvedSettings`, `Settings`, `SettingsSources`                           | Resolves settings at boot.    |
 | `getSharedSettings`, `SharedSettings`, `hasStoredSettings`, `writeLocalSettings`               | Stored settings.              |
 | `parseSettingsFromSearch`, `writeSettingsToSearch`, `ParsedUrlSettings`                        | Settings in URL params.       |
-| `getBackend`, `parseBackend`, `Backend`, `BACKEND_KEY`, `BACKEND_FACTS`                        | The backend setting.          |
+| `getBackend`, `getDefaultBackend`, `parseBackend`, `Backend`, `BACKEND_KEY`, `BACKEND_FACTS`   | The backend setting.          |
 | `hasLightClient`, `hasSharedWorker`, `isVerifiedSession`, `isSharedWorkerAvailable`            | What a backend can do.        |
 | `getCacheSettings`, `CacheSettings`, `CACHE_KEY`                                               | Cache switches.               |
 

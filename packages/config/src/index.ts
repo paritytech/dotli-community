@@ -17,6 +17,7 @@ export {
   BACKEND_FACTS,
   BACKEND_KEY,
   getBackend,
+  getDefaultBackend,
   hasLightClient,
   hasSharedWorker,
   isVerifiedSession,
