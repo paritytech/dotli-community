@@ -101,13 +101,13 @@
   }
 }
 
-/* A mouse tips the floor a little toward the viewer as it rises up the page and back as it falls, as if the eye looking
-   on followed it, and swings the floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a)
-   with y down, so a larger turn carries the near side left, and a pointer to the right turns it the other way. Everything
-   drawn on the floor reads the one tilt and turn, so it moves as one piece. */
+/* A mouse tips the floor a little back as it rises up the page and toward the viewer as it falls, and swings the
+   floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with y down, so a larger turn
+   carries the near side left, and a pointer to the right turns it the other way. Everything drawn on the floor reads the
+   one tilt and turn, so it moves as one piece. */
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .orbit {
-    --tilt: calc(var(--rest-tilt) + var(--pointer-y) * 3deg);
+    --tilt: calc(var(--rest-tilt) - var(--pointer-y) * 3deg);
     --pointer-turn: calc(var(--pointer-x) * -12deg);
     transition:
       --rest-tilt var(--reshape) ease-in-out,
