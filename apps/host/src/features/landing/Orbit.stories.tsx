@@ -13,13 +13,15 @@ type FrameProps = {
   server: boolean;
   /** The light client's peers when the story opens. */
   peers: number;
+  /** What turns each dot off its even place. */
+  seed: number;
 };
 
 /** The orbit behind a box the size of a small landing page, with controls that add and drop a peer. */
 function Frame(props: FrameProps): JSX.Element {
   const [peers, setPeers] = createSignal(() => props.peers);
   const layout = createMemo(() =>
-    getOrbitLayout(props.server ? { kind: 'server' } : { kind: 'lightClient', peers: peers() }),
+    getOrbitLayout(props.server ? { kind: 'server' } : { kind: 'lightClient', peers: peers() }, props.seed),
   );
   return (
     <div style={{ position: 'relative', isolation: 'isolate', height: '480px' }}>
@@ -37,7 +39,7 @@ function Frame(props: FrameProps): JSX.Element {
 const meta = {
   title: 'Host/Landing/Orbit',
   component: Frame,
-  args: { server: false, peers: 0 },
+  args: { server: false, peers: 0, seed: 1 },
 } satisfies Meta<typeof Frame>;
 
 export default meta;

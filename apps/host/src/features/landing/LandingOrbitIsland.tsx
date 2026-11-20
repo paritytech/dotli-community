@@ -18,6 +18,10 @@ import { Orbit } from './Orbit.js';
 /** What the orbit draws until boot sets the settings, the build render included. */
 const NO_PEERS: OrbitMode = { kind: 'lightClient', peers: 0 };
 
+// Drawn once per page load, so a dot keeps its place while peers come and go and each visit lays the dots out anew. The
+// build render draws no dot, so it reads none of it.
+const SEED = Math.random();
+
 // The monitor seeds its chains from the active network on its first read, so it is read only once boot has set the
 // settings.
 const orbitMode = computed([settingsState.store, networkMonitorState.version], (settings): OrbitMode => {
@@ -44,6 +48,6 @@ export function LandingOrbitIsland(): JSX.Element {
 function BoundOrbit(): JSX.Element {
   // The computed builds a new mode on every change the monitor counts, so an equal one keeps the layout.
   const mode = useStore(orbitMode, { initial: NO_PEERS, equals: isShallowEqual });
-  const layout = createMemo(() => getOrbitLayout(mode()));
+  const layout = createMemo(() => getOrbitLayout(mode(), SEED));
   return <Orbit layout={layout()} />;
 }

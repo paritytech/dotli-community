@@ -3,8 +3,10 @@
 
 // Which dots the landing page's orbit draws. CSS places and turns them, so a dot is only its ring, its angle at rest
 // and where its one link starts. What the visitor's centre really reaches the network through, its peers or one
-// server, takes fixed slots on the rings. Each of those grows a simulated cascade outward, like the peers of that peer,
-// so the picture reads as the network going on behind the real connections.
+// server, takes evenly spaced slots on the rings, each dot turned off its slot at random. Each of those grows a
+// simulated cascade outward, like the peers of that peer, so the picture reads as the network going on behind the real
+// connections. Every turn is drawn from a seed and the dot's key, so for one seed a dot stays put while others come and
+// go, and another seed lays out another picture.
 
 type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
 
@@ -47,88 +49,100 @@ const RINGS: readonly { ring: OrbitRing; offset: number }[] = [
   { ring: 'ring4', offset: 19 },
 ];
 
-/** The real nodes' slots in the order they fill: ring `k` from the centre holds `3 * (k + 1)`, evenly spaced. */
+/**
+ * The real nodes' slots in the order they fill: ring `k` from the centre holds `3 * (k + 1)`, evenly spaced. A real
+ * node turns off its slot by at most a third of the spacing either way, so two neighbours never meet or swap.
+ */
 const SLOTS = RINGS.flatMap(({ offset }, index) => {
   const count = 3 * (index + 1);
-  return Array.from({ length: count }, (_, slot) => ({ index, start: (offset + (slot * 360) / count) % 360 }));
+  const spacing = 360 / count;
+  return Array.from({ length: count }, (_, slot) => ({ index, start: offset + slot * spacing, spread: spacing / 3 }));
 });
 
-/** The least angle, in degrees, between a simulated node and any slot or other node on its ring. */
+/** How far, in degrees, a simulated node turns at most either way off the node it grew from. */
+const CASCADE_SPREAD = 40;
+
+/** The least angle, in degrees, between a simulated node and another node, or a place a real one takes, on its ring. */
 const MIN_GAP = 6;
 
 /**
- * Returns the orbit's dots for `mode`. Peer `i` always takes the same slot, filling from the inner ring outward, and
- * each peer's and the server's link starts at the centre. Each real node puts one or two simulated nodes on the next
- * ring out near its own angle, and each of those does the same up to the outermost ring, its link starting at the node
- * it came from. A cascade's shape follows from its root's key alone, and the cascades are laid in join order, so a peer
- * joining adds its own dots and changes no other. A simulated node keeps clear of every slot, so none ever sits on a
- * real one.
+ * Returns the orbit's dots for `mode`, every turn drawn from `seed`. Peer `i` always takes the same slot, filling from
+ * the inner ring outward, and each peer's and the server's link starts at the centre. Each real node puts one or two
+ * simulated nodes on the next ring out within the cascade spread of its own angle, and each of those does the same up
+ * to the outermost ring, its link starting at the node it came from, so a simulated link spans no more than that spread
+ * at rest. A simulated node too close to a place a real node can take, or to an earlier node, is left out with its own
+ * cascade. The cascades are laid in join order, so for one seed a peer joining adds its own dots and changes no other.
  */
-export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
-  const real = getRealNodes(mode);
-  const placed: Node[] = [...real];
-  for (const root of real) {
+export function getOrbitLayout(mode: OrbitMode, seed: number): OrbitLayout {
+  const { shown, possible } = getRealNodes(mode, seed);
+  const simulated: Node[] = [];
+  for (const root of shown) {
     const growing = [root];
     for (let parent = growing.pop(); parent; parent = growing.pop()) {
       const index = parent.index + 1;
       if (index === RINGS.length) {
         continue;
       }
-      for (const { key, start } of getCascadeChildren(parent)) {
-        if (placed.some(node => node.index === index && getAngleGap(node.dot.start, start) < MIN_GAP)) {
+      for (const { key, start } of getCascadeChildren(parent, seed)) {
+        const crowded = [...possible, ...simulated].some(
+          node => node.index === index && getAngleGap(node.dot.start, start) < MIN_GAP,
+        );
+        if (crowded) {
           continue;
         }
         const child: Node = { index, dot: { key, start, from: parent.dot.start, kind: 'simulated', label: null } };
-        placed.push(child);
+        simulated.push(child);
         growing.push(child);
       }
     }
   }
+  const nodes = [...shown, ...simulated];
   return {
     rings: RINGS.map(({ ring }, index) => ({
       ring,
-      dots: placed.filter(node => node.index === index).map(({ dot }) => dot),
+      dots: nodes.filter(node => node.index === index).map(({ dot }) => dot),
     })),
   };
 }
 
-function getRealNodes(mode: OrbitMode): Node[] {
+/**
+ * Returns the real nodes `mode` shows, and every real node its kind of mode can show, peers yet to join included, so
+ * the cascades keep clear of a place before its node arrives.
+ */
+function getRealNodes(mode: OrbitMode, seed: number): { shown: Node[]; possible: Node[] } {
   switch (mode.kind) {
-    case 'lightClient':
-      return SLOTS.slice(0, mode.peers).map(({ index, start }, peer) => {
+    case 'lightClient': {
+      const possible = SLOTS.map(({ index, start, spread }, peer): Node => {
         const label = `[peer#${String(peer + 1)}]`;
-        return { index, dot: { key: label, start, from: 0, kind: 'peer', label } };
+        const turned = getTurned(start, spread, getUnitHash(seed, label));
+        return { index, dot: { key: label, start: turned, from: 0, kind: 'peer', label } };
       });
-    case 'server':
-      return SLOTS.slice(0, 1).map(({ index, start }) => ({
-        index,
-        dot: { key: '[server]', start, from: 0, kind: 'server', label: '[server]' },
-      }));
+      return { shown: possible.slice(0, mode.peers), possible };
+    }
+    case 'server': {
+      const servers = SLOTS.slice(0, 1).map(({ index, start, spread }): Node => {
+        const label = '[server]';
+        const turned = getTurned(start, spread, getUnitHash(seed, label));
+        return { index, dot: { key: label, start: turned, from: 0, kind: 'server', label } };
+      });
+      return { shown: servers, possible: servers };
+    }
   }
 }
 
-/** Returns the one or two nodes `parent` puts on the next ring out, each turned a little off its angle. */
-function getCascadeChildren(parent: Node): { key: string; start: number }[] {
-  const count = getUnitHash(parent.dot.key) < 1 / 3 ? 2 : 1;
+/** Returns the one or two nodes `parent` puts on the next ring out, each within the cascade spread of its angle. */
+function getCascadeChildren(parent: Node, seed: number): { key: string; start: number }[] {
+  const count = getUnitHash(seed, `${parent.dot.key}:children`) < 1 / 3 ? 2 : 1;
   return Array.from({ length: count }, (_, child) => {
     const key = `${parent.dot.key}.${String(child)}`;
-    const share = getUnitHash(key);
-    // A lone child turns either way. Two children fan out to both sides, at least one gap apart.
-    const turn = count === 1 ? (share * 2 - 1) * 12 : (child === 0 ? -1 : 1) * (MIN_GAP / 2 + share * 10);
-    return { key, start: getClearOfSlots(parent.index + 1, Math.round(parent.dot.start + turn)) };
+    return { key, start: getTurned(parent.dot.start, CASCADE_SPREAD, getUnitHash(seed, key)) };
   });
 }
 
-/** Returns `start`, moved off the nearest slot on ring `index` when it falls within the gap of it. */
-function getClearOfSlots(index: number, start: number): number {
-  const angle = (start + 360) % 360;
-  for (const slot of SLOTS) {
-    const offset = ((angle - slot.start + 540) % 360) - 180;
-    if (slot.index === index && Math.abs(offset) < MIN_GAP) {
-      return (slot.start + (offset < 0 ? -MIN_GAP : MIN_GAP) + 360) % 360;
-    }
-  }
-  return angle;
+/** Returns `angle` turned by at most `spread` degrees either way, as `share` in [0, 1) says, in whole degrees. */
+function getTurned(angle: number, spread: number, share: number): number {
+  const turned = Math.round(angle + (share * 2 - 1) * spread);
+  return ((turned % 360) + 360) % 360;
 }
 
 /** Returns how far apart two angles are around the circle, in degrees. */
@@ -136,11 +150,11 @@ function getAngleGap(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
 
-/** Returns a number in [0, 1) that `text` fixes, spread evenly however alike two texts are. */
-function getUnitHash(text: string): number {
+/** Returns a number in [0, 1) that `seed` and `key` fix, spread evenly however alike two keys or seeds are. */
+function getUnitHash(seed: number, key: string): number {
   // FNV-1a, then the MurmurHash3 finaliser so that keys differing in one character land far apart.
   let hash = 0x811c9dc5;
-  for (const char of text) {
+  for (const char of `${String(seed)}:${key}`) {
     hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193);
   }
   hash = Math.imul(hash ^ (hash >>> 16), 0x85ebca6b);
