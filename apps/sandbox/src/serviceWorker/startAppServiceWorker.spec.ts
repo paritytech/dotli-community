@@ -25,6 +25,8 @@ type StartWorkerParams = {
   liveClients?: string[];
   /** Holds each client listing, in order, until its promise settles. A listing past the last one is not held. */
   holdListings?: Promise<undefined>[];
+  /** The ids of the clients the worker sees as a dedicated or shared worker. Every other id is a window. */
+  workerClients?: string[];
 };
 
 type PostFromPageParams = {
@@ -84,7 +86,7 @@ function postToInbox(message: unknown): void {
 /** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
 function startWorker(
   origin: Origin,
-  { devServer = false, liveClients = ['page-1'], holdListings = [] }: StartWorkerParams = {},
+  { devServer = false, liveClients = ['page-1'], holdListings = [], workerClients = [] }: StartWorkerParams = {},
 ): WorkerScope {
   let listings = 0;
   const scope = Object.assign(new EventTarget(), {
@@ -96,6 +98,8 @@ function startWorker(
         await holdListings[listings++];
         return liveClients.map(id => ({ id, postMessage: postToInbox }));
       },
+      // The worker reads only a client's type, to tell a product's own worker apart from a window.
+      get: (id: string) => Promise.resolve({ id, type: workerClients.includes(id) ? 'worker' : 'window' }),
     },
   });
   startAppServiceWorker({
@@ -709,7 +713,7 @@ describe('app service worker', () => {
 
   it('As a product developer whose browser names no worker client, I import a module in my worker and it comes from the newest archive', async () => {
     // Given a page that started a worker the browser named no client for, and another tab that handed over after
-    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'], workerClients: ['worker-1'] });
     await setArchive(scope, { 'index.html': '<html></html>', 'assets/lib.js': 'lib(1)' }, { clientId: 'page-1' });
     await request(scope, '/assets/worker.js', { clientId: 'page-1', destination: 'worker' });
     await setArchive(scope, { 'index.html': '<html></html>', 'assets/lib.js': 'lib(2)' }, { clientId: 'page-2' });
@@ -809,8 +813,9 @@ describe('app service worker', () => {
     ]);
   });
 
-  it('As a visitor with two tabs open, I hand over in both and a restarted worker serves a client it cannot place the archive handed last', async () => {
-    // Given the first tab's handoff held back while the second tab's goes through
+  it("As a visitor whose window the worker cannot place, I load a chunk and it reaches the network, not another tenant's newest archive", async () => {
+    // Given two tabs that handed over their archives, so the store holds a newest, and a restart (#5362: a window client
+    // with no archive of its own must never be served the newest archive)
     const firstListing = createDeferred<undefined>();
     const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'], holdListings: [firstListing.promise] });
     const firstHandoff = setArchive(
@@ -824,13 +829,29 @@ describe('app service worker', () => {
       { clientId: 'page-2' },
     );
 
-    // When the held handoff goes on after the later one, and a restarted worker is asked by a client it does not know
+    // When a restarted worker is asked by a window client it cannot place
     firstListing.resolve(undefined);
     await Promise.all([firstHandoff, secondHandoff]);
     const chunk = await request(startWorker(origin), '/late.js', { clientId: 'unknown' });
 
-    // Then it comes from the archive handed over last
-    expect(await chunk?.text()).toBe('second()');
+    // Then the worker leaves it to the network rather than serving another tenant's archive
+    expect(await chunk?.text()).toBe('<!doctype html>shell');
+    expect(network).toHaveBeenCalledOnce();
+  });
+
+  it("As an attacker who frames a victim product, I open a window with no archive and the warm worker never serves me the victim's", async () => {
+    // Given a warm worker already serving one tenant's archive, read back after a restart (#5362: once the worker is in
+    // its serving `read` state, a window with no archive of its own must not be served the newest archive)
+    const first = startWorker(origin);
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'victim()' });
+    const warm = startWorker(origin);
+    await request(warm, '/late.js', { clientId: 'page-1' });
+
+    // When a window client with no archive of its own asks for a path the newest archive holds
+    const chunk = await request(warm, '/late.js', { clientId: 'intruder' });
+
+    // Then the worker leaves it to the network rather than serving the victim's file
+    expect(await chunk?.text()).toBe('<!doctype html>shell');
   });
 
   it('As a visitor, I open two tabs that hand over their archives while the worker lists the open pages for an earlier handoff, and each tab is served its own', async () => {

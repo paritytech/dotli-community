@@ -72,7 +72,7 @@ type WorkerEvent =
 type WorkerEffect =
   /** A fetch answered from `archive` when it holds the path. */
   | { kind: 'serve'; event: FetchEvent; archive: ServedArchive; pathname: string }
-  /** A fetch answered once the read-back in flight ends. */
+  /** A fetch answered once the machine has settled, from the client's archive, a worker's newest, or the network. */
   | { kind: 'respondAfterRead'; event: FetchEvent; pathname: string }
   /** A read-back that failed, for the worker's log, and for the pages when it is the `first` to fail. */
   | { kind: 'restoreMissed'; error: unknown; first: boolean };
@@ -137,6 +137,23 @@ const dropClosed: HandlerOf<WorkerMachine, WorkerState['kind'], 'clientsClosed'>
 };
 
 /**
+ * Serves a client its own archive from memory. A client with none is answered once the machine has settled, so the
+ * newest archive reaches only a product's own worker and never another tenant's window.
+ */
+const serveOwnOrDefer: HandlerOf<WorkerMachine, 'reading' | 'read', 'requested'> = (
+  { archives },
+  { event, pathname },
+  { emitSideEffect },
+) => {
+  const own = getClientArchive(archives, event.clientId);
+  if (own !== null) {
+    emitSideEffect({ kind: 'serve', event, archive: own, pathname });
+    return;
+  }
+  emitSideEffect({ kind: 'respondAfterRead', event, pathname });
+};
+
+/**
  * Serves each page the archive it hands over, from this scope's events. Each call is a fresh worker start. Never
  * throws.
  */
@@ -188,14 +205,7 @@ export function startAppServiceWorker({
         clientsClosed: dropClosed,
       },
       reading: {
-        requested({ archives }, { event, pathname }, { emitSideEffect }) {
-          const own = getClientArchive(archives, event.clientId);
-          if (own !== null) {
-            emitSideEffect({ kind: 'serve', event, archive: own, pathname });
-            return;
-          }
-          emitSideEffect({ kind: 'respondAfterRead', event, pathname });
-        },
+        requested: serveOwnOrDefer,
         archivesRestored({ archives, sweep }, { restored }, { emitState }) {
           // What the store kept fills in only where memory has nothing, since a handoff during the read is newer.
           const merged: Archives = {
@@ -215,12 +225,7 @@ export function startAppServiceWorker({
         clientsClosed: dropClosed,
       },
       read: {
-        requested({ archives }, { event, pathname }, { emitSideEffect }) {
-          const archive = getClientArchive(archives, event.clientId) ?? archives.newest;
-          if (archive !== null) {
-            emitSideEffect({ kind: 'serve', event, archive, pathname });
-          }
-        },
+        requested: serveOwnOrDefer,
         archiveHanded: handArchive,
         workerLinked: linkWorker,
         sweepStarted: startSweep,
@@ -317,18 +322,40 @@ export function startAppServiceWorker({
   }
 
   /**
-   * Answers a fetch once the read-back ends, from its client's archive or the newest, and else from the network. Rejects
-   * as the network's fetch does, or with what the lookup throws.
+   * Answers a fetch once the machine has settled, from its client's archive, a product worker's newest archive, or the
+   * network. A window client with no archive of its own never receives the newest archive, so one tenant's sandbox is
+   * never served another tenant's content. Rejects as the network's fetch does, or with what the lookup throws.
    */
   function answerAfterRead({
     event: { request, clientId },
     pathname,
   }: Extract<WorkerEffect, { kind: 'respondAfterRead' }>): Promise<Response> {
-    return worker.await().then(() => {
+    return worker.await().then(async () => {
       const { archives } = worker.state.get();
-      const archive = getClientArchive(archives, clientId) ?? archives.newest;
-      return (archive === null ? null : lookupServedFile(archive, pathname, basePath)) ?? fetchFromNetwork(request);
+      const own = getClientArchive(archives, clientId);
+      if (own !== null) {
+        return lookupServedFile(own, pathname, basePath) ?? fetchFromNetwork(request);
+      }
+      // The newest archive is served only to a product's own worker client, so a window that hands over nothing cannot
+      // be served another tenant's archive.
+      const servedFromNewest =
+        (await isWorkerClient(clientId)) && archives.newest !== null
+          ? lookupServedFile(archives.newest, pathname, basePath)
+          : null;
+      return servedFromNewest ?? fetchFromNetwork(request);
     });
+  }
+
+  /**
+   * Whether the client is a product's own worker (a dedicated or shared worker). A client whose type cannot be read, or
+   * that is a window, counts as not a worker, so it is never served another tenant's newest archive.
+   */
+  async function isWorkerClient(clientId: string): Promise<boolean> {
+    const client = await scope.clients.get(clientId).then(
+      found => found ?? null,
+      () => null,
+    );
+    return client !== null && (client.type === 'worker' || client.type === 'sharedworker');
   }
 
   /**
