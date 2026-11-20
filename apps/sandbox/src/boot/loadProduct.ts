@@ -29,7 +29,7 @@ export type LoadStep =
   'init' | 'sw_register' | 'content_fetch' | 'verify' | 'decrypt' | 'sw_store' | 'archive_index' | 'render';
 
 export type LoadInput = {
-  /** The host's contract, read from the URL. */
+  /** The host's contract, received over the authenticated handshake. */
   params: SandboxParams;
   /** 1 for the page's first load, one more for each retry. */
   attempt: number;

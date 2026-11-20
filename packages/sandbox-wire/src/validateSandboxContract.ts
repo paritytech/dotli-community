@@ -31,9 +31,8 @@ const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 
 /**
  * Validates a parsed contract message against the host-to-sandbox contract and returns its params.
- * Throws a `SandboxContractError`: `recoverable` for an absent required field, so the host re-renders the iframe to fix
- * it, and fatal for a present but invalid one, which means a broken host build. A field dropped on receipt reads as
- * absent.
+ * Throws a `SandboxContractError`: flagged `recoverable` for an absent required field, and fatal for a present but
+ * invalid one, which means a broken host build. A field dropped on receipt reads as absent.
  */
 export function validateSandboxContract(contract: SandboxContractMessage): SandboxParams {
   const version = readRequired(contract.v, 'v', 'The host did not pin the contract version.');

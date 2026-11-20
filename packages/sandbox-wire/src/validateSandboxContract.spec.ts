@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { SANDBOX_SCHEMA_VERSION } from './contractParams.js';
 import { SandboxContractError } from './sandboxContractError.js';
 import type { SandboxContractMessage } from './sandboxMessages.js';
-import { validateSandboxContract } from './validateSandboxParams.js';
+import { validateSandboxContract } from './validateSandboxContract.js';
 
 const VALID_CID = 'bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 
