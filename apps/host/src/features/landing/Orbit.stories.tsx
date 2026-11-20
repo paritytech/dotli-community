@@ -45,11 +45,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Every dot, real or simulated. */
-function getDots(canvasElement: HTMLElement): Element[] {
-  return [...canvasElement.querySelectorAll('[data-testid="orbit"] [data-ring] > [data-kind]')];
-}
-
 /** The light client's peers. */
 function getPeerDots(canvasElement: HTMLElement): Element[] {
   return [...canvasElement.querySelectorAll('[data-testid="orbit"] [data-kind="peer"]')];
@@ -60,28 +55,22 @@ function isSameElements(actual: readonly Element[], expected: readonly Element[]
   return actual.length === expected.length && actual.every((element, index) => element === expected[index]);
 }
 
-/** Whether every element of `part` is one of `whole`, which a structural match does not tell. */
-function isSubset(part: readonly Element[], whole: readonly Element[]): boolean {
-  return part.every(element => whole.includes(element));
-}
-
 /** A light client with no peers yet: only the rings and the centre. */
 export const NoPeers: Story = {};
 
-/** As a visitor, I watch peers join with their cascades and leave with them, and the other dots keep their elements. */
+/** As a visitor, I watch peers join and leave, and the peers that stay keep their elements while they move. */
 export const Peers: Story = {
   args: { peers: 6 },
   play: async ({ canvas, canvasElement, userEvent, step }) => {
-    const before = getDots(canvasElement);
     const peersBefore = getPeerDots(canvasElement);
 
     await step('When a peer joins', async () => {
       await userEvent.click(canvas.getByRole('button', { name: 'Add a peer' }));
     });
 
-    await step('Then a peer joins and every dot drawn before keeps its element', async () => {
+    await step('Then a peer joins and every peer drawn before keeps its element', async () => {
       await expect(getPeerDots(canvasElement)).toHaveLength(7);
-      await expect(isSubset(before, getDots(canvasElement))).toBe(true);
+      await expect(isSameElements(getPeerDots(canvasElement).slice(0, 6), peersBefore)).toBe(true);
     });
 
     await step('When two peers leave', async () => {
@@ -89,11 +78,15 @@ export const Peers: Story = {
       await userEvent.click(canvas.getByRole('button', { name: 'Drop a peer' }));
     });
 
-    await step('Then the newest peer goes and every dot left keeps its element', async () => {
+    await step('Then the newest peers go and every peer left keeps its element', async () => {
       await expect(isSameElements(getPeerDots(canvasElement), peersBefore.slice(0, 5))).toBe(true);
-      await expect(isSubset(getDots(canvasElement), before)).toBe(true);
     });
   },
+};
+
+/** Peers on four rings, spread evenly around the circle together rather than ring by ring. */
+export const ManyPeers: Story = {
+  args: { peers: 20 },
 };
 
 /** A backend with no light client, which reaches the network through one server. */

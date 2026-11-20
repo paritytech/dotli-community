@@ -9,6 +9,24 @@
   initial-value: 0deg;
 }
 
+/* A dot's and a link's angles at rest, registered so that a dot that moves when the real nodes change glides to its new
+   place, its links following, rather than jumping. */
+@property --start {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --from-start {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --to-start {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 /* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. Its parts are solid,
    so none shows another through it. One opacity dims them together, and one mask fades the rings out toward the
    horizon. Lengths are in --unit, a 640th of the stage's width, so the whole orbit scales with the viewport. */
@@ -152,6 +170,14 @@
   .dot,
   .link {
     animation: enter 600ms ease-out;
+  }
+  .dot {
+    transition: --start 1s ease-in-out;
+  }
+  .link {
+    transition:
+      --from-start 1s ease-in-out,
+      --to-start 1s ease-in-out;
   }
 }
 

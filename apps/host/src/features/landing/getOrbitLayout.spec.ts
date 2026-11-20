@@ -7,6 +7,12 @@ import { getOrbitLayout, type OrbitDot, type OrbitLayout, type OrbitMode } from 
 /** One page load's seed. */
 const SEED = 1;
 
+/** The share of the real nodes' spacing a dot turns at most either way. */
+const JITTER = 0.3;
+
+/** Room for floating point error in an angle. */
+const EPSILON = 1e-9;
+
 describe('getOrbitLayout', () => {
   it('As a visitor whose light client has no peers yet, I see no dots', () => {
     // When
@@ -16,7 +22,7 @@ describe('getOrbitLayout', () => {
     expect(listDots(layout)).toEqual([]);
   });
 
-  it('As a visitor, I see peers fill 3, 6, 9, 12 and 15 slots on the rings from the centre outward', () => {
+  it('As a visitor, I see peers fill 3, 6, 9, 12 and 15 places on the rings from the centre outward', () => {
     // When
     const layouts = [5, 50].map(peers => getOrbitLayout(lightClient(peers), SEED));
 
@@ -27,19 +33,17 @@ describe('getOrbitLayout', () => {
     ]);
   });
 
-  it('As a visitor, I see the peers on each ring evenly spaced, each turned off its even place by at most a third of the spacing', () => {
+  it('As a visitor, I see the peers spread evenly around the circle whatever ring each takes, each off its even place by at most 0.3 of the spacing', () => {
     // When
-    const layout = getOrbitLayout(lightClient(45), SEED);
+    const layout = getOrbitLayout(lightClient(20), SEED);
 
     // Then
-    const offPlace = layout.rings.flatMap(({ dots }) => {
-      const peers = dots.filter(({ kind }) => kind === 'peer');
-      const spacing = 360 / peers.length;
-      // Each peer's angle less its even place, which is the ring's offset turned by the peer's own jitter.
-      const turns = peers.map((dot, slot) => dot.start - slot * spacing);
-      // Two turns of up to a third of the spacing either way differ by up to two thirds, and a degree of rounding.
-      return turns.filter(turn => getAngleGap(turn, turns[0] ?? turn) > (2 * spacing) / 3 + 1);
-    });
+    const peers = listPeersInJoinOrder(layout);
+    const spacing = 360 / peers.length;
+    // Each peer's angle less its even place past the first peer's, which leaves the first's place and its own turn.
+    const turns = peers.map((dot, order) => dot.start - order * spacing);
+    // Two turns of up to 0.3 of the spacing either way differ by up to 0.6 of it.
+    const offPlace = turns.filter(turn => getAngleGap(turn, turns[0] ?? turn) > 2 * JITTER * spacing + EPSILON);
     expect(offPlace).toEqual([]);
   });
 
@@ -48,24 +52,20 @@ describe('getOrbitLayout', () => {
     const layouts = [1, 2].map(seed => getOrbitLayout(lightClient(45), seed));
 
     // Then
-    const [first, second] = layouts.map(layout =>
-      listDots(layout).flatMap(dot => (dot.kind === 'peer' ? [dot.start] : [])),
-    );
+    const [first, second] = layouts.map(layout => listPeersInJoinOrder(layout).map(({ start }) => start));
     expect(first).not.toEqual(second);
   });
 
-  it('As a visitor, I see a joining peer add its own dot and cascade and change no other dot or link', () => {
+  it('As a visitor, I see a joining peer move the other peers to their new even places, each keeping its key', () => {
     // Given
-    const before = getOrbitLayout(lightClient(5), SEED);
+    const before = listPeersInJoinOrder(getOrbitLayout(lightClient(5), SEED));
 
     // When
-    const after = getOrbitLayout(lightClient(6), SEED);
+    const after = listPeersInJoinOrder(getOrbitLayout(lightClient(6), SEED));
 
     // Then
-    expect(after.rings.map(({ dots }) => dots.filter(dot => !isIn(dot, before)))).toEqual(
-      after.rings.map(({ dots }, index) => dots.filter(dot => findRoot(after, index, dot)?.label === '[peer#6]')),
-    );
-    expect(listDots(before).every(dot => isIn(dot, after))).toBe(true);
+    expect(after.map(({ key }) => key)).toEqual([...before.map(({ key }) => key), '[peer#6]']);
+    expect(after.slice(0, 5).map(({ start }) => start)).not.toEqual(before.map(({ start }) => start));
   });
 
   it('As a visitor, I see each peer labelled by its join order, and no simulated dot labelled', () => {
@@ -82,26 +82,26 @@ describe('getOrbitLayout', () => {
     expect(listDots(layout).filter(({ kind }) => kind === 'simulated')).not.toEqual([]);
   });
 
-  it('As a visitor, I see each simulated dot linked to a dot on the ring inside its own within 40 deg of it, back to a peer', () => {
+  it('As a visitor, I see each simulated dot linked to a dot on the ring inside its own within 0.3 of the peer spacing, back to a peer', () => {
     // When
     const layout = getOrbitLayout(lightClient(10), SEED);
 
     // Then
     const simulated = listDots(layout).filter(({ kind }) => kind === 'simulated');
-    expect(simulated.filter(dot => getAngleGap(dot.from, dot.start) > 40)).toEqual([]);
+    expect(simulated.filter(dot => getAngleGap(dot.from, dot.start) > (360 / 10) * JITTER + EPSILON)).toEqual([]);
     expect(listRoots(layout).every(root => root?.kind === 'peer')).toBe(true);
   });
 
-  it('As a visitor, I see no simulated dot within 6 deg of a place a peer can take', () => {
+  it('As a visitor, I see no simulated dot within 6 deg of another dot on its ring', () => {
     // When
-    const full = getOrbitLayout(lightClient(45), SEED);
     const layout = getOrbitLayout(lightClient(30), SEED);
 
     // Then
-    const crowded = layout.rings.flatMap(({ ring, dots }) => {
-      const slots = (full.rings.find(other => other.ring === ring)?.dots ?? []).filter(({ kind }) => kind === 'peer');
-      return dots.filter(dot => dot.kind === 'simulated' && slots.some(slot => getAngleGap(slot.start, dot.start) < 6));
-    });
+    const crowded = layout.rings.flatMap(({ dots }) =>
+      dots.filter(
+        dot => dot.kind === 'simulated' && dots.some(other => other !== dot && getAngleGap(other.start, dot.start) < 6),
+      ),
+    );
     expect(crowded).toEqual([]);
   });
 
@@ -125,12 +125,18 @@ function listDots(layout: OrbitLayout): OrbitDot[] {
   return layout.rings.flatMap(({ dots }) => dots);
 }
 
-function countRealByRing(layout: OrbitLayout): number[] {
-  return layout.rings.map(({ dots }) => dots.filter(({ kind }) => kind !== 'simulated').length);
+function listPeersInJoinOrder(layout: OrbitLayout): OrbitDot[] {
+  const peers = listDots(layout).filter(({ kind }) => kind === 'peer');
+  return peers.sort((a, b) => getJoinOrder(a) - getJoinOrder(b));
 }
 
-function isIn(dot: OrbitDot, layout: OrbitLayout): boolean {
-  return listDots(layout).some(other => JSON.stringify(other) === JSON.stringify(dot));
+/** Reads a peer's join order from its key, `[peer#<order>]`. */
+function getJoinOrder(peer: OrbitDot): number {
+  return Number(peer.key.slice('[peer#'.length, -1));
+}
+
+function countRealByRing(layout: OrbitLayout): number[] {
+  return layout.rings.map(({ dots }) => dots.filter(({ kind }) => kind !== 'simulated').length);
 }
 
 /** The real dot each simulated dot cascades from, or null where the chain breaks. */
@@ -150,5 +156,6 @@ function findRoot(layout: OrbitLayout, index: number, dot: OrbitDot): OrbitDot |
 }
 
 function getAngleGap(a: number, b: number): number {
-  return Math.abs(((a - b + 540) % 360) - 180);
+  const gap = Math.abs(a - b) % 360;
+  return Math.min(gap, 360 - gap);
 }

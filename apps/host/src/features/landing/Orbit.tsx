@@ -9,7 +9,7 @@ import s from './Orbit.module.css';
 /**
  * The landing page's backdrop: dots circling rings on a tilted floor, linked inward to the centre. CSS draws and turns
  * it, and the layout says only which dots exist, where each one's link starts and how a dot is labelled. A dot that
- * stays across layouts keeps its element and its link's.
+ * stays across layouts keeps its element and its link's, so it glides to a new angle rather than drawing anew.
  */
 export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
   return (
