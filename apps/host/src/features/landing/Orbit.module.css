@@ -72,7 +72,7 @@
   /* How long the floor takes to settle into a phone's or a wider screen's shape when the page crosses between them. */
   --reshape: 600ms;
   /* How long a dot that stays takes to glide to its new place when the real nodes change. */
-  --glide: 1s;
+  --glide: 1.5s;
   position: absolute;
   inset: 0;
   z-index: -1;
