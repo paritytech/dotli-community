@@ -25,6 +25,7 @@ const SANDBOX_SENDS: [string, SandboxToHostMessage][] = [
     },
   ],
   ['a recover request', { type: 'dotli:sandbox-recover' }],
+  ['a contract request', { type: 'dotli:sandbox-contract-request' }],
   ['a navigate to the landing', { type: 'dotli:sandbox-navigate', to: 'landing' }],
   ['a navigate to reload', { type: 'dotli:sandbox-navigate', to: 'reload' }],
   ['a block request', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX', frame: 'f-1' }],
@@ -99,6 +100,41 @@ describe('sandbox messages', () => {
 
     // Then
     expect(received).toEqual({ type: 'dotli:bitswap-result', id: 'r-1', ok: true, bytes });
+  });
+
+  it('As the sandbox, I read a contract reply with every host-written field', () => {
+    // Given what the host posts in reply to a contract request.
+    const sent = {
+      type: 'dotli:sandbox-contract',
+      cid: 'bafyX',
+      chainBackend: 'smoldot-direct',
+      network: 'paseo-next-v2',
+      fullReset: '1',
+      resolutionId: 'r-1',
+      v: '3',
+    };
+
+    // When
+    const received = parseHostToSandboxMessage(sent);
+
+    // Then
+    expect(received).toEqual(sent);
+  });
+
+  it('As the sandbox, I drop a contract field that is not a string and read the rest', () => {
+    // When the host posts a contract whose version rode as a number.
+    const received = parseHostToSandboxMessage({ type: 'dotli:sandbox-contract', cid: 'bafyX', v: 3 });
+
+    // Then the non-string field is dropped, so a later validation sees it as absent.
+    expect(received).toEqual({ type: 'dotli:sandbox-contract', cid: 'bafyX' });
+  });
+
+  it('As the sandbox, I drop a host message of an unknown type', () => {
+    // When
+    const received = parseHostToSandboxMessage({ type: 'dotli:unknown' });
+
+    // Then
+    expect(received).toBeNull();
   });
 
   it('As the sandbox, I read a failed fetch with its error class and code', () => {

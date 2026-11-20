@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export { removeContractParams, SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from './contractParams.js';
-export { validateSandboxParams } from './validateSandboxParams.js';
+export type { SandboxParams } from './validateSandboxParams.js';
+export { validateSandboxContract, validateSandboxParams } from './validateSandboxParams.js';
 export { SandboxContractError } from './sandboxContractError.js';
 export type {
   SandboxChannel,
@@ -16,6 +17,8 @@ export type {
   ApiViolationMessage,
   BitswapResultMessage,
   HostToSandboxMessage,
+  SandboxContractMessage,
+  SandboxContractRequestMessage,
   SandboxLoadOutcome,
   SandboxNavigateMessage,
   SandboxRecoverAcceptedMessage,

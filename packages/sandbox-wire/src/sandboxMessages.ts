@@ -48,6 +48,30 @@ export type SandboxRecoverMessage = {
   type: 'dotli:sandbox-recover';
 };
 
+/**
+ * The sandbox asks its direct parent for its whole contract, at boot and again on reload. It carries no payload: the
+ * host authenticates the asking frame and replies with a `SandboxContractMessage` to that frame alone.
+ */
+export type SandboxContractRequestMessage = {
+  type: 'dotli:sandbox-contract-request';
+};
+
+/**
+ * The host's reply to a contract request, posted only to the authenticated sandbox frame. Each field is the host-written
+ * contract value as a string, exactly as the URL once carried it; `validateSandboxContract` turns the set into a
+ * `SandboxParams`. A field of the wrong type is dropped on receipt and then reads as absent, so a missing required field
+ * surfaces at validation rather than here.
+ */
+export type SandboxContractMessage = {
+  type: 'dotli:sandbox-contract';
+  cid?: string;
+  chainBackend?: string;
+  network?: string;
+  fullReset?: string;
+  resolutionId?: string;
+  v?: string;
+};
+
 /** The host accepted a sandbox's recover ask and will render that frame again. */
 export type SandboxRecoverAcceptedMessage = {
   type: 'dotli:sandbox-recover-accepted';
@@ -97,11 +121,12 @@ export type SandboxToHostMessage =
   | LoadingStatusMessage
   | SandboxDebugEventMessage
   | SandboxRecoverMessage
+  | SandboxContractRequestMessage
   | SandboxNavigateMessage
   | BitswapGetMessage
   | BitswapAbortMessage;
 
-export type HostToSandboxMessage = BitswapResultMessage;
+export type HostToSandboxMessage = BitswapResultMessage | SandboxContractMessage;
 
 /**
  * A checker build's report that the product reached a browser API it should reach through the host. The product's page
@@ -163,6 +188,8 @@ export function parseSandboxToHostMessage(data: unknown): SandboxToHostMessage |
       return parseDebugEvent(record);
     case 'dotli:sandbox-recover':
       return { type: 'dotli:sandbox-recover' };
+    case 'dotli:sandbox-contract-request':
+      return { type: 'dotli:sandbox-contract-request' };
     case 'dotli:sandbox-navigate': {
       const { to } = record;
       return to === 'landing' || to === 'reload' ? { type: 'dotli:sandbox-navigate', to } : null;
@@ -204,13 +231,22 @@ export function parseApiViolationMessage(data: unknown): ApiViolationMessage | n
   };
 }
 
-/** What the sandbox accepts from its host, or null. A success without bytes is malformed, so it reads as a failure. */
+/** What the sandbox accepts from its host, or null for anything else. The source and origin checks are the caller's. */
 export function parseHostToSandboxMessage(data: unknown): HostToSandboxMessage | null {
   const record = asRecord(data);
-  if (record?.['type'] !== 'dotli:bitswap-result') {
-    return null;
+  switch (record?.['type']) {
+    case 'dotli:bitswap-result':
+      return parseBitswapResult(record);
+    case 'dotli:sandbox-contract':
+      return parseContract(record);
+    default:
+      return null;
   }
-  const { id, ok, bytes, error, errorName, code } = record;
+}
+
+/** A success without bytes is malformed, so it reads as a failure. */
+function parseBitswapResult(data: Record<string, unknown>): BitswapResultMessage | null {
+  const { id, ok, bytes, error, errorName, code } = data;
   if (typeof id !== 'string' || typeof ok !== 'boolean') {
     return null;
   }
@@ -224,6 +260,21 @@ export function parseHostToSandboxMessage(data: unknown): HostToSandboxMessage |
     ...(typeof error === 'string' ? { error } : {}),
     ...(typeof errorName === 'string' ? { errorName } : {}),
     ...(typeof code === 'number' ? { code } : {}),
+  };
+}
+
+// Each field rides as the string the host wrote; a non-string is dropped and reads as absent, so an incomplete contract
+// surfaces at `validateSandboxContract` as a recoverable failure, exactly as a URL missing the param once did.
+function parseContract(data: Record<string, unknown>): SandboxContractMessage {
+  const { cid, chainBackend, network, fullReset, resolutionId, v } = data;
+  return {
+    type: 'dotli:sandbox-contract',
+    ...(typeof cid === 'string' ? { cid } : {}),
+    ...(typeof chainBackend === 'string' ? { chainBackend } : {}),
+    ...(typeof network === 'string' ? { network } : {}),
+    ...(typeof fullReset === 'string' ? { fullReset } : {}),
+    ...(typeof resolutionId === 'string' ? { resolutionId } : {}),
+    ...(typeof v === 'string' ? { v } : {}),
   };
 }
 
