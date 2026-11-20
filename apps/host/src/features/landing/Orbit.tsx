@@ -8,7 +8,7 @@ import s from './Orbit.module.css';
 
 /**
  * The landing page's backdrop: dots circling rings on a tilted floor, linked inward to the centre. CSS draws and turns
- * it, and the layout says only which dots and links exist.
+ * it, and the layout says only which dots and links exist. A dot or link that stays across layouts keeps its element.
  */
 export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
   return (
@@ -19,7 +19,13 @@ export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
             {ring => (
               <div class={s['ring']} data-ring={ring().ring}>
                 <For each={ring().dots} keyed={dot => dot.key}>
-                  {dot => <div class={s['dot']} style={{ '--start': `${String(dot().start)}deg` }} />}
+                  {dot => (
+                    <div
+                      class={s['dot']}
+                      data-server={dot().server ? '' : undefined}
+                      style={{ '--start': `${String(dot().start)}deg` }}
+                    />
+                  )}
                 </For>
               </div>
             )}

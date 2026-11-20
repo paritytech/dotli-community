@@ -132,6 +132,22 @@
   }
 }
 
+/* The inner ring and its links come and go with the light client's peers, so they fade in as they join. A leaving one
+   goes at once. The simulated rings never change, so they stand from first paint. */
+@media (prefers-reduced-motion: no-preference) {
+  .ring[data-ring='inner'] .dot,
+  .link[data-from='centre'],
+  .link[data-from='inner'] {
+    animation: enter 600ms ease-out;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+  }
+}
+
 .dot {
   --angle: calc(var(--start) + var(--turn));
   position: absolute;
@@ -142,6 +158,12 @@
      viewer by more than the floor comes forward across the dot's lower half, so nothing on the floor draws over it. */
   transform: translate(calc(cos(var(--angle)) * var(--radius)), calc(sin(var(--angle)) * var(--radius)))
     rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
+}
+
+/* The one server a backend with no light client talks through, in the peers' place. */
+.dot[data-server] {
+  --size: calc(12 * var(--unit));
+  --dot-color: var(--neutral-solid);
 }
 
 /* A line flat on the floor from one dot to another, or from the centre. It runs under the dots, which cover its ends. */
