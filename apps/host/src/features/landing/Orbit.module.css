@@ -1,8 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* One clock for every ring, so a line between two rings follows both of its dots, registered so it animates as an angle
-   rather than flipping between its two ends. */
+/* One clock for the whole floor, so every ring turns as one piece and a line between two rings keeps the lean it was
+   laid out with. Registered so it animates as an angle rather than flipping between its two ends. */
 @property --clock {
   syntax: '<angle>';
   inherits: true;
@@ -81,14 +81,8 @@
   --ring2-radius: calc(260 * var(--unit));
   --ring3-radius: calc(340 * var(--unit));
   --ring4-radius: calc(430 * var(--unit));
-  /* Inner orbits turn a little faster, by one turn per ring per turn of the clock, so the rings barely drift apart and
-     a line between two rings rarely swings across another. Each ring makes whole turns per turn of the clock, so the
-     loop has no seam. The fallback holds the dots at rest where the clock is not registered. */
-  --inner-turn: calc(var(--clock, 0deg) * 15);
-  --ring1-turn: calc(var(--clock, 0deg) * 14);
-  --ring2-turn: calc(var(--clock, 0deg) * 13);
-  --ring3-turn: calc(var(--clock, 0deg) * 12);
-  --ring4-turn: calc(var(--clock, 0deg) * 11);
+  /* The fallback holds the dots at rest where the clock is not registered. */
+  --turn: var(--clock, 0deg);
   position: absolute;
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
@@ -110,43 +104,34 @@
    field thins toward the horizon. A dot's size is in units. */
 .ring[data-ring='inner'] {
   --radius: var(--inner-radius);
-  --turn: var(--inner-turn);
   --ring-color: var(--text-faint);
   --ring-style: solid;
   --dot: 7.5;
 }
 .ring[data-ring='ring1'] {
   --radius: var(--ring1-radius);
-  --turn: var(--ring1-turn);
   --parent-radius: var(--inner-radius);
-  --parent-turn: var(--inner-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: solid;
   --dot: 5.5;
 }
 .ring[data-ring='ring2'] {
   --radius: var(--ring2-radius);
-  --turn: var(--ring2-turn);
   --parent-radius: var(--ring1-radius);
-  --parent-turn: var(--ring1-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 3.5;
 }
 .ring[data-ring='ring3'] {
   --radius: var(--ring3-radius);
-  --turn: var(--ring3-turn);
   --parent-radius: var(--ring2-radius);
-  --parent-turn: var(--ring2-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 3;
 }
 .ring[data-ring='ring4'] {
   --radius: var(--ring4-radius);
-  --turn: var(--ring4-turn);
   --parent-radius: var(--ring3-radius);
-  --parent-turn: var(--ring3-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 2.5;
@@ -154,7 +139,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .plane {
-    animation: turn 3600s linear infinite;
+    animation: turn 270s linear infinite;
   }
 }
 
@@ -225,10 +210,10 @@
 }
 
 /* A dot's one link, a line flat on the floor from the centre to a peer or the server, or from the dot a simulated one
-   grew from. It sits in its dot's ring, so its outer end takes that ring's radius and turn. It runs under the dots,
-   which cover its ends. */
+   grew from. It sits in its dot's ring, so its outer end takes that ring's radius. It runs under the dots, which cover
+   its ends. */
 .link {
-  --from-angle: calc(var(--from-start) + var(--from-turn));
+  --from-angle: calc(var(--from-start) + var(--turn));
   --to-angle: calc(var(--to-start) + var(--turn));
   --dx: calc(cos(var(--to-angle)) * var(--radius) - cos(var(--from-angle)) * var(--from-radius));
   --dy: calc(sin(var(--to-angle)) * var(--radius) - sin(var(--from-angle)) * var(--from-radius));
@@ -247,12 +232,10 @@
 .link[data-link='peer'],
 .link[data-link='server'] {
   --from-radius: 0px;
-  --from-turn: 0deg;
   background: var(--text-faint);
 }
 .link[data-link='simulated'] {
   --from-radius: var(--parent-radius);
-  --from-turn: var(--parent-turn);
   background: var(--chrome-action-dim);
 }
 
