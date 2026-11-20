@@ -122,12 +122,12 @@
   max-width: var(--w-landing);
 }
 
-/* At the foot of the column, over the orbit's centre. */
+/* Just under the name form. The suggestions open over it. */
 .invite {
   display: flex;
   justify-content: center;
   width: 100%;
-  margin: auto 0 0;
+  margin: 0;
   padding: 0;
 }
 
