@@ -8,8 +8,9 @@ import s from './Orbit.module.css';
 
 /**
  * The landing page's backdrop: dots circling rings on a tilted floor, linked inward to the centre. CSS draws and turns
- * it, and the layout says only which dots exist, where each one's link starts and how a dot is labelled. A dot that
- * stays across layouts keeps its element and its link's, so it glides to a new angle rather than drawing anew.
+ * it, and the layout says only how far out each ring lies, which dots exist, where each one's link starts and how a
+ * dot is labelled. A dot that stays across layouts keeps its element and its link's, so it glides to a new angle rather
+ * than drawing anew.
  */
 export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
   // Each layout with whether the one before it had no dots. Its dots then join an empty floor, where nothing glides out
@@ -21,7 +22,15 @@ export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
   return (
     <div class={s['orbit']} aria-hidden="true" data-testid="orbit">
       <div class={s['stage']}>
-        <div class={s['plane']}>
+        <div
+          class={s['plane']}
+          style={Object.fromEntries(
+            shown().layout.rings.map(({ ring, radius }) => [
+              `--${ring}-radius`,
+              `calc(${String(radius)} * var(--unit))`,
+            ]),
+          )}
+        >
           <For each={shown().layout.rings} keyed={ring => ring.ring}>
             {ring => (
               <div class={s['ring']} data-ring={ring().ring}>

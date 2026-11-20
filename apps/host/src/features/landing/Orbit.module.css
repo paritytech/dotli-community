@@ -75,14 +75,10 @@
 }
 
 /* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. The two outermost
-   rings run past the floor's edge and out of view, so the field reads as going on beyond the horizon. */
+   rings run past the floor's edge and out of view, so the field reads as going on beyond the horizon. Each ring's
+   radius, as --<ring>-radius, comes with the layout. */
 .plane {
   --floor: calc(293 * var(--unit));
-  --inner-radius: calc(110 * var(--unit));
-  --ring1-radius: calc(190 * var(--unit));
-  --ring2-radius: calc(260 * var(--unit));
-  --ring3-radius: calc(340 * var(--unit));
-  --ring4-radius: calc(430 * var(--unit));
   /* The fallback holds the dots at rest where the clock is not registered. */
   --turn: var(--clock, 0deg);
   position: absolute;

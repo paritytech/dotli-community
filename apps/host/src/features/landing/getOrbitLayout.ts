@@ -34,8 +34,8 @@ export type OrbitDot = {
 };
 
 export type OrbitLayout = {
-  /** From the centre outward. */
-  readonly rings: readonly { readonly ring: OrbitRing; readonly dots: readonly OrbitDot[] }[];
+  /** From the centre outward, each with its radius in the orbit's length unit, which the renderer scales. */
+  readonly rings: readonly { readonly ring: OrbitRing; readonly radius: number; readonly dots: readonly OrbitDot[] }[];
 };
 
 /** What the centre reaches the network through: the light client's peers, or one server. */
@@ -61,9 +61,9 @@ type Growth = {
 };
 
 /**
- * The rings from the centre outward, each with its radius in the unit `MIN_GAP` is in and the most simulated nodes it
- * holds. Each ring holds twice the one inside it, so the trees branch ring by ring, and the whole field stays light
- * enough to sit behind the page.
+ * The rings from the centre outward, each with its radius in the orbit's length unit, which `MIN_GAP` is in too, and
+ * the most simulated nodes it holds. Each ring holds twice the one inside it, so the trees branch ring by ring, and the
+ * whole field stays light enough to sit behind the page.
  */
 const RINGS: readonly { readonly ring: OrbitRing; readonly radius: number; readonly budget: number }[] = [
   { ring: 'inner', radius: 110, budget: 0 },
@@ -146,8 +146,9 @@ export function getOrbitLayout(mode: OrbitMode, seed: number): OrbitLayout {
     }
   }
   return {
-    rings: RINGS.map(({ ring }, index) => ({
+    rings: RINGS.map(({ ring, radius }, index) => ({
       ring,
+      radius,
       dots: nodes.filter(node => node.index === index).map(({ dot }) => dot),
     })),
   };

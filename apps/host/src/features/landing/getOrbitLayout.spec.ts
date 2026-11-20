@@ -19,9 +19,6 @@ const COUNTS = Array.from({ length: 45 }, (_, index) => index + 1);
 /** A few page loads' seeds, for a case about every picture rather than one. */
 const SEEDS = [1, 2, 3, 4, 5];
 
-/** Each ring's radius, from the centre outward, in the unit of the least distance between two dots on a ring. */
-const RADII = [110, 190, 260, 340, 430];
-
 /** The least distance along a ring between a simulated dot and another dot on that ring. */
 const MIN_GAP = 10;
 
@@ -166,12 +163,11 @@ describe('getOrbitLayout', () => {
 
     // Then
     const crowded = layouts.flatMap(layout =>
-      layout.rings.flatMap(({ dots }, index) =>
+      layout.rings.flatMap(({ dots, radius }) =>
         dots.filter(dot =>
           dots.some(
             other =>
-              other !== dot &&
-              (getAngleGap(other.start, dot.start) / 180) * Math.PI * (RADII[index] ?? 0) < MIN_GAP - EPSILON,
+              other !== dot && (getAngleGap(other.start, dot.start) / 180) * Math.PI * radius < MIN_GAP - EPSILON,
           ),
         ),
       ),
