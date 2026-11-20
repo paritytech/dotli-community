@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Which dots the landing page's orbit draws. CSS places and turns them, so a dot is only its ring, its angle at rest
-// and where its one link starts. What the visitor's centre really reaches the network through, its peers or one server, takes fixed
-// slots on the rings. Each of those grows a simulated cascade outward, like the peers of that peer, so the picture reads
-// as the network going on behind the real connections.
+// and where its one link starts. What the visitor's centre really reaches the network through, its peers or one
+// server, takes fixed slots on the rings. Each of those grows a simulated cascade outward, like the peers of that peer,
+// so the picture reads as the network going on behind the real connections.
 
 type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
 
