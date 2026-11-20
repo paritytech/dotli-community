@@ -51,13 +51,13 @@ type Node = { readonly index: number; readonly dot: OrbitDot };
 type Growth = {
   readonly tree: Node[];
   readonly parents: readonly [Node, ...Node[]];
-  readonly lo: number;
-  readonly hi: number;
+  readonly low: number;
+  readonly high: number;
   /**
    * How far in from each end of its part the outermost place sits, as a share of the spacing between places: half at
    * an end it shares with a neighbour, so the two trees' places keep that spacing too, and none at the end of its reach.
    */
-  readonly insets: { readonly lo: number; readonly hi: number };
+  readonly insets: { readonly low: number; readonly high: number };
 };
 
 /**
@@ -114,22 +114,22 @@ export function getOrbitLayout(mode: OrbitMode, seed: number): OrbitLayout {
   for (const [index, { radius, budget }] of RINGS.entries()) {
     const clearance = (MIN_GAP / radius) * (180 / Math.PI);
     const growing = getGrowth(trees, index, bound);
-    const reached = growing.reduce((sum, { lo, hi }) => sum + hi - lo, 0);
+    const reached = growing.reduce((sum, { low, high }) => sum + high - low, 0);
     // Every tree takes one place, so none stops, and the rest of the budget goes by the part each spreads across.
     // Each share is rounded on the running total, so the shares add up to the budget.
     const rest = budget - growing.length;
     let share = 0;
-    for (const { tree, parents, lo, hi, insets } of growing) {
+    for (const { tree, parents, low, high, insets } of growing) {
       const before = Math.round(share);
-      share += (rest * (hi - lo)) / reached;
+      share += (rest * (high - low)) / reached;
       // No more places than keep two neighbours, each turned off its place, at least the clearance apart, though one
       // place always fits.
-      const room = Math.floor(((hi - lo) * (1 - 2 * JITTER)) / clearance + 1 - insets.lo - insets.hi);
+      const room = Math.floor(((high - low) * (1 - 2 * JITTER)) / clearance + 1 - insets.low - insets.high);
       const count = Math.min(1 + Math.round(share) - before, Math.max(1, room));
-      const width = count === 1 ? hi - lo : (hi - lo) / (count - 1 + insets.lo + insets.hi);
+      const width = count === 1 ? high - low : (high - low) / (count - 1 + insets.low + insets.high);
       const children = new Map<Node, number>();
       for (let place = 0; place < count; place += 1) {
-        const centre = count === 1 ? (lo + hi) / 2 : lo + width * (place + insets.lo);
+        const centre = count === 1 ? (low + high) / 2 : low + width * (place + insets.low);
         const parent = getNearest(parents, centre);
         const child = children.get(parent) ?? 0;
         children.set(parent, child + 1);
@@ -209,7 +209,7 @@ function getGrowth(trees: readonly Node[][], index: number, bound: number): Grow
       return [];
     }
     const reach = (index - root.index) * bound;
-    return [{ tree, parents, lo: root.dot.start - reach, hi: root.dot.start + reach }];
+    return [{ tree, parents, low: root.dot.start - reach, high: root.dot.start + reach }];
   });
   return reaching.flatMap((growth, order): Growth[] => {
     const [first, ...others] = growth.parents;
@@ -217,12 +217,12 @@ function getGrowth(trees: readonly Node[][], index: number, bound: number): Grow
       return [];
     }
     // The first tree's previous and the last's next are its neighbours round the circle, a turn away.
-    const previous = (reaching.at(order - 1)?.hi ?? growth.hi) - (order === 0 ? 360 : 0);
-    const next = reaching[order + 1]?.lo ?? (reaching[0]?.lo ?? growth.lo) + 360;
-    const lo = Math.max(growth.lo, (previous + growth.lo) / 2);
-    const hi = Math.min(growth.hi, (growth.hi + next) / 2);
-    const insets = { lo: lo > growth.lo ? 0.5 : 0, hi: hi < growth.hi ? 0.5 : 0 };
-    return [{ tree: growth.tree, parents: [first, ...others], lo, hi, insets }];
+    const previous = (reaching.at(order - 1)?.high ?? growth.high) - (order === 0 ? 360 : 0);
+    const next = reaching[order + 1]?.low ?? (reaching[0]?.low ?? growth.low) + 360;
+    const low = Math.max(growth.low, (previous + growth.low) / 2);
+    const high = Math.min(growth.high, (growth.high + next) / 2);
+    const insets = { low: low > growth.low ? 0.5 : 0, high: high < growth.high ? 0.5 : 0 };
+    return [{ tree: growth.tree, parents: [first, ...others], low, high, insets }];
   });
 }
 

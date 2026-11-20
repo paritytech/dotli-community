@@ -40,7 +40,7 @@ describe('followPointerY', () => {
     expect(shifts).toEqual([0.5]);
   });
 
-  it('As a visitor who leaves the landing page mid-frame, I leave no frame or listener behind', () => {
+  it('As a visitor who leaves the landing page mid-frame, I leave no frame behind', () => {
     // Given
     const { view, frames, shifts, move, runFrame } = setup();
     const stop = followPointerY({ onShift: shift => shifts.push(shift), view, frames });
@@ -48,6 +48,20 @@ describe('followPointerY', () => {
 
     // When
     stop();
+    move(800);
+    runFrame();
+
+    // Then
+    expect(shifts).toEqual([]);
+  });
+
+  it('As a visitor who left the landing page, I move the pointer and tilt no orbit', () => {
+    // Given
+    const { view, frames, shifts, move, runFrame } = setup();
+    const stop = followPointerY({ onShift: shift => shifts.push(shift), view, frames });
+    stop();
+
+    // When
     move(800);
     runFrame();
 

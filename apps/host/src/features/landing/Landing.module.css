@@ -122,7 +122,7 @@
   max-width: var(--w-landing);
 }
 
-/* Just under the name form. The suggestions open over it. */
+/* Just under the name form. */
 .invite {
   display: flex;
   justify-content: center;
