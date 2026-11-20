@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Which dots and links the landing page's orbit draws. CSS places and turns them, so a dot is only its ring and its
-// angle at rest. Each ring has fixed slots. What the visitor's centre reaches the network through fills them from the
-// inner ring outward, and a slot nothing fills shows a simulated dot, so the field reads as the network going on.
+// angle at rest. What the visitor's centre really reaches the network through, its peers or one server, takes fixed
+// slots on the rings. Each of those grows a simulated cascade outward, like the peers of that peer, so the picture reads
+// as the network going on behind the real connections.
 
 export type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
 
-/** A peer of the light client, the one server a backend with no light client talks through, or neither. */
+/** A peer of the light client, the one server a backend with no light client talks through, or a simulated node. */
 type OrbitDotKind = 'peer' | 'server' | 'simulated';
 
 export type OrbitDot = {
-  /** Stays the same while the slot exists, whatever fills it, so a renderer keeps its element. */
+  /** Stays the same while the dot exists, so a renderer keeps its element. A dot never changes kind. */
   readonly key: string;
   /** Its angle at rest, in degrees. */
   readonly start: number;
@@ -26,7 +27,7 @@ export type OrbitEnd = {
   readonly start: number;
 };
 
-/** A real connection from the centre to a peer or the server, or one between simulated dots. */
+/** A real connection from the centre to a peer or the server, or a simulated one out to a simulated node. */
 type OrbitLinkKind = 'real' | 'simulated';
 
 export type OrbitLink = {
@@ -47,6 +48,9 @@ export type OrbitLayout = {
 /** What the centre reaches the network through: the light client's peers, or one server. */
 export type OrbitMode = { readonly kind: 'lightClient'; readonly peers: number } | { readonly kind: 'server' };
 
+/** A dot with the ring it sits on, counted from the centre. */
+type Node = { readonly index: number; readonly ring: OrbitRing; readonly dot: OrbitDot };
+
 // The rings from the centre outward, each with the angle of its first slot. The offsets keep one ring's slots off the
 // line of its neighbours', and put the first peer, or the server, on the far side of the floor.
 const RINGS: readonly { ring: OrbitRing; offset: number }[] = [
@@ -57,65 +61,119 @@ const RINGS: readonly { ring: OrbitRing; offset: number }[] = [
   { ring: 'ring4', offset: 19 },
 ];
 
+/** The real nodes' slots in the order they fill: ring `k` from the centre holds `3 * (k + 1)`, evenly spaced. */
+const SLOTS = RINGS.flatMap(({ ring, offset }, index) => {
+  const count = 3 * (index + 1);
+  return Array.from({ length: count }, (_, slot) => ({ index, ring, start: (offset + (slot * 360) / count) % 360 }));
+});
+
+/** The least angle, in degrees, between a simulated node and any slot or other node on its ring. */
+const MIN_GAP = 6;
+
+const CENTRE: OrbitEnd = { ring: 'centre', start: 0 };
+
 /**
- * Returns the orbit's dots and links for `mode`. Ring `k` from the centre has `3 * (k + 1)` slots, and peer `i` always
- * takes the same one, filling from the inner ring outward, so a peer joining moves no other dot and fewer peers empty
- * the newest slots first. The centre links straight to each peer and to the server, which link to nothing else. A
- * simulated dot links to the nearest simulated dot on the ring inside its own, or to none while that ring has none.
+ * Returns the orbit's dots and links for `mode`. Peer `i` always takes the same slot, filling from the inner ring
+ * outward, and the centre links straight to each peer and to the server. Each real node puts one or two simulated nodes
+ * on the next ring out near its own angle, and each of those does the same up to the outermost ring, linked back to
+ * the node it came from. A cascade's shape follows from its root's key alone, and the cascades are laid in join order,
+ * so a peer joining adds its own dots and links and changes no other. A simulated node keeps clear of every slot, so
+ * none ever sits on a real one.
  */
 export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
-  const rings = RINGS.map(({ ring, offset }, index) => {
-    const slots = 3 * (index + 1);
-    // The slots of the rings inside this one, which the peers before this ring's first take.
-    const filledInside = (3 * index * (index + 1)) / 2;
-    const dots = Array.from({ length: slots }, (_, slot): OrbitDot => {
-      const start = (offset + (slot * 360) / slots) % 360;
-      return { key: getEndKey({ ring, start }), start, ...getSlotFill(mode, filledInside + slot) };
-    });
-    return { ring, dots };
-  });
-  const links = rings.flatMap(({ ring, dots }, index) => {
-    const inside = rings[index - 1];
-    const simulatedInside: OrbitEnd[] = inside
-      ? inside.dots.filter(({ kind }) => kind === 'simulated').map(({ start }) => ({ ring: inside.ring, start }))
-      : [];
-    return dots.flatMap(dot => {
-      const to = { ring, start: dot.start };
-      if (dot.kind !== 'simulated') {
-        return [createLink({ ring: 'centre', start: 0 }, to, 'real')];
+  const real = getRealNodes(mode);
+  const placed: Node[] = [...real];
+  const links: OrbitLink[] = real.map(node => ({
+    key: `centre>${node.dot.key}`,
+    from: CENTRE,
+    to: getEnd(node),
+    kind: 'real',
+  }));
+  for (const root of real) {
+    const growing = [root];
+    for (let parent = growing.pop(); parent; parent = growing.pop()) {
+      const outer = RINGS[parent.index + 1];
+      if (!outer) {
+        continue;
       }
-      const nearest = simulatedInside.reduce<OrbitEnd | null>(
-        (best, other) =>
-          best === null || getAngleGap(other.start, dot.start) < getAngleGap(best.start, dot.start) ? other : best,
-        null,
-      );
-      return nearest === null ? [] : [createLink(nearest, to, 'simulated')];
-    });
-  });
-  return { rings, links };
+      for (const { key, start } of getCascadeChildren(parent)) {
+        if (placed.some(node => node.ring === outer.ring && getAngleGap(node.dot.start, start) < MIN_GAP)) {
+          continue;
+        }
+        const child: Node = {
+          index: parent.index + 1,
+          ring: outer.ring,
+          dot: { key, start, kind: 'simulated', label: null },
+        };
+        placed.push(child);
+        links.push({ key: `${parent.dot.key}>${key}`, from: getEnd(parent), to: getEnd(child), kind: 'simulated' });
+        growing.push(child);
+      }
+    }
+  }
+  return {
+    rings: RINGS.map(({ ring }) => ({ ring, dots: placed.filter(node => node.ring === ring).map(({ dot }) => dot) })),
+    links,
+  };
 }
 
-/** Returns what fills the slot that peer `index`, counted from 0, takes. */
-function getSlotFill(mode: OrbitMode, index: number): Pick<OrbitDot, 'kind' | 'label'> {
+function getRealNodes(mode: OrbitMode): Node[] {
   switch (mode.kind) {
     case 'lightClient':
-      return index < mode.peers
-        ? { kind: 'peer', label: `[peer#${String(index + 1)}]` }
-        : { kind: 'simulated', label: null };
+      return SLOTS.slice(0, mode.peers).map(({ index, ring, start }, peer) => {
+        const label = `[peer#${String(peer + 1)}]`;
+        return { index, ring, dot: { key: label, start, kind: 'peer', label } };
+      });
     case 'server':
-      return index === 0 ? { kind: 'server', label: '[server]' } : { kind: 'simulated', label: null };
+      return SLOTS.slice(0, 1).map(({ index, ring, start }) => ({
+        index,
+        ring,
+        dot: { key: '[server]', start, kind: 'server', label: '[server]' },
+      }));
   }
 }
 
-function createLink(from: OrbitEnd, to: OrbitEnd, kind: OrbitLinkKind): OrbitLink {
-  return { key: `${getEndKey(from)}>${getEndKey(to)}`, from, to, kind };
+/** Returns the one or two nodes `parent` puts on the next ring out, each turned a little off its angle. */
+function getCascadeChildren(parent: Node): { key: string; start: number }[] {
+  const count = getUnitHash(parent.dot.key) < 1 / 3 ? 2 : 1;
+  return Array.from({ length: count }, (_, child) => {
+    const key = `${parent.dot.key}.${String(child)}`;
+    const share = getUnitHash(key);
+    // A lone child turns either way. Two children fan out to both sides, at least one gap apart.
+    const turn = count === 1 ? (share * 2 - 1) * 12 : (child === 0 ? -1 : 1) * (MIN_GAP / 2 + share * 10);
+    return { key, start: getClearOfSlots(parent.index + 1, Math.round(parent.dot.start + turn)) };
+  });
 }
 
-function getEndKey({ ring, start }: OrbitEnd): string {
-  return `${ring}:${String(start)}`;
+/** Returns `start`, moved off the nearest slot on ring `index` when it falls within the gap of it. */
+function getClearOfSlots(index: number, start: number): number {
+  const angle = (start + 360) % 360;
+  for (const slot of SLOTS) {
+    const offset = ((angle - slot.start + 540) % 360) - 180;
+    if (slot.index === index && Math.abs(offset) < MIN_GAP) {
+      return (slot.start + (offset < 0 ? -MIN_GAP : MIN_GAP) + 360) % 360;
+    }
+  }
+  return angle;
+}
+
+function getEnd({ ring, dot }: Node): OrbitEnd {
+  return { ring, start: dot.start };
 }
 
 /** Returns how far apart two angles are around the circle, in degrees. */
 function getAngleGap(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+/** Returns a number in [0, 1) that `text` fixes, spread evenly however alike two texts are. */
+function getUnitHash(text: string): number {
+  // FNV-1a, then the MurmurHash3 finaliser so that keys differing in one character land far apart.
+  let hash = 0x811c9dc5;
+  for (const char of text) {
+    hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193);
+  }
+  hash = Math.imul(hash ^ (hash >>> 16), 0x85ebca6b);
+  hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35);
+  return ((hash ^ (hash >>> 16)) >>> 0) / 2 ** 32;
 }

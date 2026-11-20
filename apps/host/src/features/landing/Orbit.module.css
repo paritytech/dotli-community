@@ -152,15 +152,12 @@
   }
 }
 
-/* A slot lights up as a peer fills it, and its caption and its link from the centre fade in. One that empties dims at
-   once. The slots never change, so they stand from first paint. */
+/* Dots and links come and go with the real nodes and their cascades, so they fade in as they join. A leaving one goes
+   at once. The rings never change, so they stand from first paint. */
 @media (prefers-reduced-motion: no-preference) {
-  .label,
-  .link[data-kind='real'] {
+  .dot,
+  .link {
     animation: enter 600ms ease-out;
-  }
-  .dot[data-kind='peer'] {
-    transition: background-color 600ms ease-out;
   }
 }
 

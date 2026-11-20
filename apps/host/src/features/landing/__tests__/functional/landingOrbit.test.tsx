@@ -66,6 +66,6 @@ describe('landing orbit', () => {
     mountBooted();
 
     // Then
-    expect(getInnerDots().map(dot => dot.getAttribute('data-kind'))).toEqual(['server', 'simulated', 'simulated']);
+    expect(getInnerDots().map(dot => dot.getAttribute('data-kind'))).toEqual(['server']);
   });
 });
