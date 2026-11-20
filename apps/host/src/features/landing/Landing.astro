@@ -2,21 +2,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Static but for its six islands. The logo renders here with no directive, so it ships no code.
+// Static but for its seven islands. The logo renders here with no directive, so it ships no code.
 import { Logo } from '@dotli/ui/brand';
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
 import { LandingAuthIsland } from './LandingAuthIsland.jsx';
 import { LandingNetworkIsland } from './LandingNetworkIsland.jsx';
 import { LandingNoticeIsland } from './LandingNoticeIsland.jsx';
+import { LandingOrbitIsland } from './LandingOrbitIsland.jsx';
 import { LandingSettingsIsland } from './LandingSettingsIsland.jsx';
 import { LandingNavIsland } from './LandingNavIsland.jsx';
 import { LandingSuggestIsland } from './LandingSuggestIsland.jsx';
-import Orbit from './Orbit.astro';
 import s from './Landing.module.css';
 ---
 
 <div class={s['landing']} data-testid="landing">
-  <Orbit />
+  <LandingOrbitIsland client:idle />
   <header class={s['header']}>
     <a class={s['home']} href="/">
       <Logo variant="full" beta height={28} />
