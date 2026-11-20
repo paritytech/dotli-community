@@ -12,6 +12,7 @@ import { createReporter } from '@dotli/metrics';
 import { startPage } from './startPage.js';
 import { startHost } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
+import { framePeerCounts } from '../features/network/index.js';
 
 const report = createReporter({ flow: 'boot' });
 
@@ -22,6 +23,8 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Before the frame boots, since the feed keeps no replay and the frame replays its counts when the feed opens.
+  framePeerCounts.start();
   const { bridge } = await startHost({ bootFlowId: createRandomId(), role: 'landing' });
   // Idle, so the core boot never competes with the page's first paint or its boot.
   runWhenIdle(() => {
