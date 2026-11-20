@@ -62,6 +62,8 @@
 
 /* Each ring's radius, as --<ring>-radius in units, comes with the layout. */
 .stage {
+  /* The fallback holds the dots and links at rest where the clock is not registered. */
+  --turn: var(--clock, 0deg);
   --floor: calc(293 * var(--unit));
   position: absolute;
   bottom: 0;
@@ -80,9 +82,9 @@
   }
 }
 
-/* The floor and the plane its dots ride, both tilted back the same way, with the rings' lines drawn flat between
-   them. The plane keeps its children in 3D, so the dots can stand upright on it again. The two outermost rings run past
-   the floor's edge and out of view, so the field reads as going on beyond the horizon. */
+/* The floor and the plane its dots ride, both tilted back the same way, with the rings' and links' lines drawn flat
+   between them. The plane keeps its children in 3D, so the dots can stand upright on it again. The two outermost rings
+   run past the floor's edge and out of view, so the field reads as going on beyond the horizon. */
 .floor,
 .plane {
   position: absolute;
@@ -93,12 +95,10 @@
   background: radial-gradient(closest-side, var(--surface), var(--bg-page));
 }
 .plane {
-  /* The fallback holds the dots at rest where the clock is not registered. */
-  --turn: var(--clock, 0deg);
   transform-style: preserve-3d;
 }
 
-/* The rings' lines, flat between the floor and its dots. */
+/* The rings' and links' lines, flat between the floor and its dots, which draw over them. A link draws over rings. */
 .lines {
   position: absolute;
   inset: 0;
@@ -122,7 +122,7 @@
   border-radius: 50%;
 }
 
-/* A ring's dots and links, around the floor's centre. */
+/* A ring's dots, around the floor's centre. */
 .ring {
   --radius: calc(var(--r) * var(--unit));
   position: absolute;
@@ -131,38 +131,38 @@
 }
 
 /* Inner orbits carry larger dots, and the innermost ring is brightest. A ring's radius and a dot's size are in units. */
-:is(.oval, .ring)[data-ring='inner'] {
+:is(.oval, .ring, .link)[data-ring='inner'] {
   --r: var(--inner-radius);
   --ring-color: var(--text-faint);
   --dot: 7.5;
 }
-:is(.oval, .ring)[data-ring='ring1'] {
+:is(.oval, .ring, .link)[data-ring='ring1'] {
   --r: var(--ring1-radius);
-  --parent-radius: calc(var(--inner-radius) * var(--unit));
+  --parent-r: var(--inner-radius);
   --ring-color: var(--chrome-action-dim);
   --dot: 5.5;
 }
-:is(.oval, .ring)[data-ring='ring2'] {
+:is(.oval, .ring, .link)[data-ring='ring2'] {
   --r: var(--ring2-radius);
-  --parent-radius: calc(var(--ring1-radius) * var(--unit));
+  --parent-r: var(--ring1-radius);
   --ring-color: var(--chrome-action-dim);
   --dot: 3.5;
 }
-:is(.oval, .ring)[data-ring='ring3'] {
+:is(.oval, .ring, .link)[data-ring='ring3'] {
   --r: var(--ring3-radius);
-  --parent-radius: calc(var(--ring2-radius) * var(--unit));
+  --parent-r: var(--ring2-radius);
   --ring-color: var(--chrome-action-dim);
   --dot: 3;
 }
-:is(.oval, .ring)[data-ring='ring4'] {
+:is(.oval, .ring, .link)[data-ring='ring4'] {
   --r: var(--ring4-radius);
-  --parent-radius: calc(var(--ring3-radius) * var(--unit));
+  --parent-r: var(--ring3-radius);
   --ring-color: var(--chrome-action-dim);
   --dot: 2.5;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .plane {
+  .stage {
     animation: turn 270s linear infinite;
   }
 }
@@ -239,39 +239,41 @@
   white-space: nowrap;
 }
 
-/* A dot's one link, a line flat on the floor from the centre to a peer or the server, or from the dot a simulated one
-   grew from. It sits in its dot's ring, so its outer end takes that ring's radius. It runs under the dots, which cover
-   its ends. */
+/* A dot's one link, from the centre to a peer or the server, or from the dot a simulated one grew from. It carries its
+   dot's ring, so its outer end takes that ring's radius. Drawn flat with one width end to end rather than on the tilted
+   floor: perspective keeps a line straight, so the segment between its two ends' projections is the floor's line. A
+   floor point at angle a on radius r projects, around the floor's centre, to r cos(a) s across and r sin(a) cos(tilt) s
+   down, with s = 1 / (1 - r sin(a) sin(tilt) / depth). A dot lifted toward the viewer and placed in by the lift's share
+   of the perspective projects there exactly, as does the centre, so the link meets its dots' centres. */
 .link {
   --from-angle: calc(var(--from-start) + var(--turn));
   --to-angle: calc(var(--to-start) + var(--turn));
-  --dx: calc(cos(var(--to-angle)) * var(--radius) - cos(var(--from-angle)) * var(--from-radius));
-  --dy: calc(sin(var(--to-angle)) * var(--radius) - sin(var(--from-angle)) * var(--from-radius));
+  --from-scale: calc(var(--unit) / (1 - var(--from-r) * sin(var(--from-angle)) * sin(var(--tilt)) / var(--depth)));
+  --to-scale: calc(var(--unit) / (1 - var(--r) * sin(var(--to-angle)) * sin(var(--tilt)) / var(--depth)));
+  --from-x: calc(var(--from-r) * cos(var(--from-angle)) * var(--from-scale));
+  --from-y: calc(var(--from-r) * sin(var(--from-angle)) * cos(var(--tilt)) * var(--from-scale));
+  --dx: calc(var(--r) * cos(var(--to-angle)) * var(--to-scale) - var(--from-x));
+  --dy: calc(var(--r) * sin(var(--to-angle)) * cos(var(--tilt)) * var(--to-scale) - var(--from-y));
   position: absolute;
   top: calc(50% - var(--line) / 2);
   left: 50%;
   width: hypot(var(--dx), var(--dy));
   height: var(--line);
   transform-origin: 0 50%;
-  transform: translate(
-      calc(cos(var(--from-angle)) * var(--from-radius)),
-      calc(sin(var(--from-angle)) * var(--from-radius))
-    )
-    rotate(atan2(var(--dy), var(--dx)));
+  transform: translate(var(--from-x), var(--from-y)) rotate(atan2(var(--dy), var(--dx)));
 }
 .link[data-link='peer'],
 .link[data-link='server'] {
-  --from-radius: 0px;
+  --from-r: 0;
   background: var(--text-faint);
 }
 .link[data-link='simulated'] {
-  --from-radius: var(--parent-radius);
+  --from-r: var(--parent-r);
   background: var(--chrome-action-dim);
 }
 
-/* The visitor's light client, a dot inside a thin ring. Upright and moved toward the viewer like the dots, so the
-   lines that meet in it end under it. The ring is the box's own border, since Chrome can drop what a 3D layer paints
-   outside its box. */
+/* The visitor's light client, a dot inside a thin ring. Upright and moved toward the viewer like the dots. The ring is
+   the box's own border, since Chrome can drop what a 3D layer paints outside its box. */
 .centre {
   --size: calc(17 * var(--unit));
   position: absolute;
