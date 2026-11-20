@@ -16,6 +16,18 @@ const EPSILON = 1e-9;
 /** Every count of peers the rings hold. */
 const COUNTS = Array.from({ length: 45 }, (_, index) => index + 1);
 
+/** A few page loads' seeds, for a case about every picture rather than one. */
+const SEEDS = [1, 2, 3, 4, 5];
+
+/** Each ring's radius, from the centre outward, in the unit of the least distance between two dots on a ring. */
+const RADII = [110, 190, 260, 340, 430];
+
+/** The least distance along a ring between a simulated dot and another dot on that ring. */
+const MIN_GAP = 10;
+
+/** The most simulated dots the orbit draws. */
+const MAX_SIMULATED = 120;
+
 describe('getOrbitLayout', () => {
   it('As a visitor whose light client has no peers yet, I see no dots', () => {
     // When
@@ -119,25 +131,83 @@ describe('getOrbitLayout', () => {
 
   it('As a visitor, I see each simulated dot linked to a dot on the ring inside its own within 0.3 of the peer spacing, back to a peer', () => {
     // When
-    const layout = getOrbitLayout(lightClient(10), SEED);
+    const layouts = COUNTS.flatMap(count =>
+      SEEDS.map(seed => ({ count, layout: getOrbitLayout(lightClient(count), seed) })),
+    );
 
     // Then
-    const simulated = listDots(layout).filter(({ kind }) => kind === 'simulated');
-    expect(simulated.filter(dot => getAngleGap(dot.from, dot.start) > (360 / 10) * JITTER + EPSILON)).toEqual([]);
-    expect(listRoots(layout).every(root => root?.kind === 'peer')).toBe(true);
+    const far = layouts.flatMap(({ count, layout }) =>
+      listDots(layout).filter(
+        dot => dot.kind === 'simulated' && getAngleGap(dot.from, dot.start) > (360 / count) * JITTER + EPSILON,
+      ),
+    );
+    expect(far).toEqual([]);
+    expect(layouts.every(({ layout }) => listRoots(layout).every(root => root?.kind === 'peer'))).toBe(true);
   });
 
-  it('As a visitor, I see no simulated dot within 6 deg of another dot on its ring', () => {
+  it('As a visitor, I see each peer on the two inner rings grow a tree that branches', () => {
     // When
-    const layout = getOrbitLayout(lightClient(30), SEED);
+    const layouts = [3, 7, 20].flatMap(count => SEEDS.map(seed => getOrbitLayout(lightClient(count), seed)));
 
     // Then
-    const crowded = layout.rings.flatMap(({ dots }) =>
-      dots.filter(
-        dot => dot.kind === 'simulated' && dots.some(other => other !== dot && getAngleGap(other.start, dot.start) < 6),
+    const unbranched = layouts.flatMap(layout => {
+      const branching = listDots(layout).filter(dot => countChildren(layout, dot) >= 2);
+      return layout.rings
+        .slice(0, 2)
+        .flatMap(({ dots }) => dots.filter(({ kind }) => kind === 'peer'))
+        .filter(peer => !branching.some(dot => dot === peer || dot.key.startsWith(`${peer.key}.`)));
+    });
+    expect(unbranched).toEqual([]);
+  });
+
+  it('As a visitor, I see no dot closer to another on its ring than the least distance between two dots', () => {
+    // When
+    const layouts = COUNTS.flatMap(count => SEEDS.map(seed => getOrbitLayout(lightClient(count), seed)));
+
+    // Then
+    const crowded = layouts.flatMap(layout =>
+      layout.rings.flatMap(({ dots }, index) =>
+        dots.filter(dot =>
+          dots.some(
+            other =>
+              other !== dot &&
+              (getAngleGap(other.start, dot.start) / 180) * Math.PI * (RADII[index] ?? 0) < MIN_GAP - EPSILON,
+          ),
+        ),
       ),
     );
     expect(crowded).toEqual([]);
+  });
+
+  it('As a visitor with the most peers the rings hold, I see the simulated dots kept within their budget', () => {
+    // When
+    const layouts = SEEDS.map(seed => getOrbitLayout(lightClient(45), seed));
+
+    // Then
+    const counts = layouts.map(layout => listDots(layout).filter(({ kind }) => kind === 'simulated').length);
+    expect(counts.filter(count => count > MAX_SIMULATED)).toEqual([]);
+  });
+
+  it('As a visitor, I see no wide empty wedge on the outer rings, between two trees or within one', () => {
+    // When
+    const layouts = [3, 7, 12, 20].flatMap(count =>
+      SEEDS.map(seed => ({ count, layout: getOrbitLayout(lightClient(count), seed) })),
+    );
+
+    // Then
+    const wedges = layouts.flatMap(({ count, layout }) =>
+      layout.rings.slice(2).flatMap(({ dots }) => {
+        const angles = dots.map(({ start }) => ((start % 360) + 360) % 360).sort((a, b) => a - b);
+        const gaps = angles.map((angle, index) => angle - (angles[index - 1] ?? (angles.at(-1) ?? angle) - 360));
+        // Two trees whose real nodes turned apart can leave a hole no link reaches across: two neighbours are at most
+        // 1.6 of the peer spacing apart, and each tree reaches at least 0.3 of it past its own, so the hole is at most
+        // one spacing. The dots either side of it sit about one place from its edges, a place being about the ring's even
+        // spacing.
+        const widest = 360 / count + 2 * (360 / dots.length);
+        return gaps.filter(gap => gap > widest);
+      }),
+    );
+    expect(wedges).toEqual([]);
   });
 
   it('As a visitor on a server backend, I see one server, labelled as the server, and every simulated dot cascading from it', () => {
@@ -175,6 +245,12 @@ function listPeersRoundTheCircle(layout: OrbitLayout): OrbitDot[] {
 /** Reads a peer's join order from its key, `[peer#<order>]`. */
 function getJoinOrder(peer: OrbitDot): number {
   return Number(peer.key.slice('[peer#'.length, -1));
+}
+
+/** Counts the simulated dots linked to `dot` from the ring outside its own. */
+function countChildren(layout: OrbitLayout, dot: OrbitDot): number {
+  const index = layout.rings.findIndex(({ dots }) => dots.includes(dot));
+  return (layout.rings[index + 1]?.dots ?? []).filter(({ from }) => from === dot.start).length;
 }
 
 function countRealByRing(layout: OrbitLayout): number[] {
