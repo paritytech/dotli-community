@@ -35,8 +35,8 @@ const stop = followScroll(({ x, y }) => view.setOffset(x, y));
 
 ## Cases
 
-- A landing graphic turned with the pointer's horizontal position through a helper that reported that axis once per
-  frame. To follow the vertical axis too, the helper became one pointer follower reporting both axes per frame.
-  (docs/_plans/orbit-pointer-turn-design.md)
+- A landing graphic tilted with the pointer's vertical position through a helper that reported that axis once per
+  frame. To also turn the graphic with the horizontal position, the helper became one pointer follower reporting both
+  axes per frame. (branch feat/orbit-pointer-turn)
 
 Status: active
