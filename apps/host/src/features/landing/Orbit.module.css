@@ -167,6 +167,11 @@
       --from-start var(--glide) ease-in-out,
       --to-start var(--glide) ease-in-out;
   }
+  /* One that joins an empty floor, as at page load, has nothing to wait for. */
+  .dot[data-join='first'],
+  .link[data-join='first'] {
+    animation-delay: 0s;
+  }
 }
 
 @keyframes enter {

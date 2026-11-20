@@ -55,8 +55,48 @@ function isSameElements(actual: readonly Element[], expected: readonly Element[]
   return actual.length === expected.length && actual.every((element, index) => element === expected[index]);
 }
 
-/** A light client with no peers yet: only the rings and the centre. */
-export const NoPeers: Story = {};
+/** Every dot and link the orbit draws. */
+function getJoined(canvasElement: HTMLElement): Element[] {
+  return [...canvasElement.querySelectorAll('[data-testid="orbit"] :is([data-kind], [data-link])')];
+}
+
+/** How long an element waits before it fades in, in milliseconds. */
+function getEnterDelay(element: Element): number {
+  const [enter] = element.getAnimations().filter(animation => animation instanceof CSSAnimation);
+  return enter?.effect?.getTiming().delay ?? Number.NaN;
+}
+
+/**
+ * A light client with no peers yet: only the rings and the centre.
+ *
+ * As a visitor, I see the first peer and its tree appear at once, since nothing moves out of their way, and a later
+ * peer's dots wait for the others to glide.
+ */
+export const NoPeers: Story = {
+  play: async ({ canvas, canvasElement, userEvent, step }) => {
+    await step('When the first peer joins', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Add a peer' }));
+    });
+
+    const first = getJoined(canvasElement);
+    await step('Then its dots and links fade in at once', async () => {
+      await expect(first).not.toHaveLength(0);
+      await expect(first.map(getEnterDelay)).toEqual(first.map(() => 0));
+    });
+
+    await step('When a second peer joins', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Add a peer' }));
+    });
+
+    await step('Then its dots and links wait for the glide, and the first ones still show at once', async () => {
+      const later = getJoined(canvasElement).filter(element => !first.includes(element));
+      await expect(later).not.toHaveLength(0);
+      await expect(later.filter(element => getEnterDelay(element) <= 0)).toEqual([]);
+      const kept = first.filter(element => element.isConnected);
+      await expect(kept.map(getEnterDelay)).toEqual(kept.map(() => 0));
+    });
+  },
+};
 
 /** As a visitor, I watch peers join and leave, and the peers that stay keep their elements while they move. */
 export const Peers: Story = {
