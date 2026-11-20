@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// For a page that loads no product, whose load progress would otherwise record the peers. It only listens to the
-// telemetry feed the protocol client already follows, so it opens no chain, lease or feed of its own.
+// Records the frame's per-chain peer counts by listening only, so it opens no chain, lease or feed of its own.
 
 import { getProtocolClient, type ProtocolClient } from '@dotli/protocol';
 import { createSharedRun } from '@dotli/shared';
@@ -21,7 +20,7 @@ export function createFramePeerCounts() {
   return {
     /**
      * Records each chain's peer count the frame reports in `monitor`, until the last caller's stop. A call while it runs
-     * joins that run and ignores its params. Each returned stop acts once. Never throws.
+     * joins that run and ignores its params. Each returned stop acts once.
      */
     start,
   };

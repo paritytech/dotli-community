@@ -8,7 +8,14 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool, pageLocalStorage } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import { markAndReload, type Continuation } from '../../kit/createContinuation.js';
-import { getSharedSettings, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
+import {
+  getSettings,
+  getSharedSettings,
+  writeLocalSettings,
+  writeSettingsToSearch,
+  type Backend,
+  type Settings,
+} from '@dotli/config';
 import { blockCache, cidCache } from '@dotli/storage';
 
 import { isResetRunning, type SettingsResetStatus } from './settings.js';
@@ -20,8 +27,8 @@ const storageReport = createReporter({ flow: 'storage' });
 const uiReport = createReporter({ flow: 'ui' });
 
 /**
- * One settings reset: Save & Apply or Clear all in the settings, a link that changes a saved choice, or the failure
- * screen's backend switch, counted once. Tagged `outcome` and, on error, `reason` (the first step that failed: `wipe`,
+ * One settings reset: Save & Apply or Clear all in the settings, a link that changes a saved choice, or a backend
+ * switch, counted once. Tagged `outcome` and, on error, `reason` (the first step that failed: `wipe`,
  * `cid_cache`, `block_cache` or `pending_reset`, or `fault` for a step that threw), as the reload follows either way.
  */
 const settingsApplyMetric = defineCount<'error' | 'ok'>('settings.apply');
@@ -110,6 +117,11 @@ export function createSettingsActions({
     });
   }
 
+  function switchBackend(next: Backend): Promise<void> {
+    const settings = getSettings();
+    return applyAndReset({ ...settings, backend: next }, settings, { reason: 'switch_backend' });
+  }
+
   /** Wipes every cache, then saves, since the wipe would erase the saved settings. Counts the reset once. */
   async function wipeAndSave(next: Settings): Promise<void> {
     const failed: ApplyStep | null = (await wipeOrigin()).length > 0 ? 'wipe' : null;
@@ -170,6 +182,11 @@ export function createSettingsActions({
      * resolves once the running one settles.
      */
     applyAndReset,
+    /**
+     * Applies the active settings with `next` as their backend, as Save does without clearing anything, and reloads
+     * onto it. Rejects as `applyAndReset` does.
+     */
+    switchBackend,
     /** The running reset, `idle` until one starts. It never returns to `idle`, since the reload follows. */
     reset,
   };

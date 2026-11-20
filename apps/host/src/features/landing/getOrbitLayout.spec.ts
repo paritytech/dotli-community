@@ -52,7 +52,7 @@ describe('getOrbitLayout', () => {
     expect(listSourcesOf(layout, 'ring1')).toEqual(getInner(layout).map(({ start }) => `inner:${String(start)}`));
   });
 
-  it('As a visitor, I see a dot just past 0 deg linked to the nearest dot just before it, around the circle', () => {
+  it('As a visitor, I see a dot near 0 deg linked to the nearest inner dot across 0 deg, even one given as a negative angle', () => {
     // When
     const layout = getOrbitLayout(lightClient(0));
 

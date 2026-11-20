@@ -5,7 +5,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { getDefaultBackend, getSettings, hasLightClient } from '@dotli/config';
+import { getDefaultBackend, hasLightClient } from '@dotli/config';
 import { useStore } from '@dotli/stores-solid';
 import { isResetRunning, pageSettingsActions, settingsState } from '../settings/index.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
@@ -29,16 +29,10 @@ function BoundInvite(): JSX.Element {
   const switching = useStore(pageSettingsActions.reset, isResetRunning, { initial: 'idle' });
   return (
     <Show when={server()}>
-      <LightClientInvite switching={switching()} onSwitch={switchToLightClient} />
+      <LightClientInvite
+        switching={switching()}
+        onSwitch={() => void pageSettingsActions.switchBackend(getDefaultBackend())}
+      />
     </Show>
   );
-}
-
-/** Saves the default backend, a light client, as Save does, without clearing anything, and reloads onto it. */
-function switchToLightClient(): void {
-  const settings = getSettings();
-  // The reset counts and reports its own failures, and reloads whatever failed.
-  void pageSettingsActions.applyAndReset({ ...settings, backend: getDefaultBackend() }, settings, {
-    reason: 'switch_backend',
-  });
 }

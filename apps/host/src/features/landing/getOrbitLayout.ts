@@ -79,7 +79,7 @@ export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
         return [];
       }
       const nearest = inside.dots.reduce((best, other) =>
-        gap(other.start, start) < gap(best.start, start) ? other : best,
+        getAngleGap(other.start, start) < getAngleGap(best.start, start) ? other : best,
       );
       return [createLink({ ring: inside.ring, start: nearest.start }, to)];
     });
@@ -111,6 +111,6 @@ function getEndKey({ ring, start }: OrbitEnd): string {
 }
 
 /** Returns how far apart two angles are around the circle, in degrees. */
-function gap(a: number, b: number): number {
+function getAngleGap(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
