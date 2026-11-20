@@ -11,7 +11,7 @@ import { useStore } from '@dotli/stores-solid';
 import { computed } from 'nanostores';
 import { networkMonitorState } from '../network/index.js';
 import { settingsState } from '../settings/index.js';
-import { followPointerY } from './followPointerY.js';
+import { followPointer } from './followPointer.js';
 import { getOrbitLayout, type OrbitMode } from './getOrbitLayout.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
 import { Orbit } from './Orbit.js';
@@ -51,6 +51,6 @@ function BoundOrbit(): JSX.Element {
   const mode = useStore(orbitMode, { initial: NO_PEERS, equals: isShallowEqual });
   const layout = createMemo(() => getOrbitLayout(mode(), SEED));
   const [pointerY, setPointerY] = createSignal(0);
-  onSettled(() => followPointerY({ onShift: setPointerY }));
+  onSettled(() => followPointer({ onShift: ({ y }) => setPointerY(y) }));
   return <Orbit layout={layout()} pointerY={pointerY()} />;
 }
