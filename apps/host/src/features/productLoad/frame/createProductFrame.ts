@@ -7,7 +7,12 @@
 
 import { createMessagePortProvider, type ProductId } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import type { SandboxChannel, SandboxRecoverAcceptedMessage, SandboxSender } from '@dotli/sandbox-wire';
+import type {
+  SandboxChannel,
+  SandboxContractMessage,
+  SandboxRecoverAcceptedMessage,
+  SandboxSender,
+} from '@dotli/sandbox-wire';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createRandomId,
@@ -26,7 +31,7 @@ import type { PermissionAuthorizations } from '../../permissions/index.js';
 import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
 import { pipeProviders, type PipeProvidersParams } from './pipeProviders.js';
-import { buildFrameUrl, getAppOrigin, getFrameSandbox } from './productFrameUrl.js';
+import { buildFrameUrl, getAppOrigin, getFrameSandbox, type FrameTarget } from './productFrameUrl.js';
 import { registerProductChat } from '../../chat/index.js';
 import { traceProductRender, type RenderTrace } from './traceProductRender.js';
 import { productState } from '../../page/index.js';
@@ -175,6 +180,8 @@ type RunParts = {
   origin: RunOrigin;
   /** Built once as the run starts, since building it takes a scheduled sandbox reset. */
   url: URL;
+  /** The contract the host wrote for a subdomain product, which that frame asks back for, or null for an iframe. */
+  contract: SandboxContractMessage | null;
   flows: { render: string; bridge: string };
   /** When the run began, which its `bridge.setup` time counts from. */
   setupStartedAt: number;
@@ -184,7 +191,14 @@ type RunParts = {
 type Run = RunParts & Step;
 
 /** The product on screen. `attempt` is the key a recover ask and a core-down event match it by. */
-type Shown = { attempt: Attempt; link: Link; iframeHost: IframeHost; core: CoreSide };
+type Shown = {
+  attempt: Attempt;
+  link: Link;
+  iframeHost: IframeHost;
+  core: CoreSide;
+  /** The contract the frame loaded, which it is answered with when it asks, or null for an iframe product. */
+  contract: SandboxContractMessage | null;
+};
 
 /** What the frame holds from its first render until it halts. */
 type Lively = {
@@ -588,7 +602,7 @@ export function createProductFrame({
             return;
           }
           const { loadCheckerPanel } = view;
-          const shown: Shown = { attempt, link: run.link, iframeHost, core: run.core };
+          const shown: Shown = { attempt, link: run.link, iframeHost, core: run.core, contract: run.contract };
           const { iframe } = iframeHost;
           transition.emitSideEffect({ kind: 'frameAttached', iframe });
           if (previous !== null) {
@@ -703,6 +717,7 @@ export function createProductFrame({
         case 'unsubscribed':
           stopPermissionChanges();
           stopRecoverAsks();
+          stopContractAsks();
           stopNavigateAsks();
           return;
         case 'statusShown':
@@ -766,6 +781,23 @@ export function createProductFrame({
     shown.iframeHost.iframe.contentWindow?.postMessage(accepted, { targetOrigin: sender.origin });
   });
 
+  // The sandbox asks its direct parent for its contract at boot and on reload. Only the authenticated frame on screen
+  // is answered, at its own origin, so one product's embedder cannot read or forge another's contract. A post that
+  // throws reaches the channel's report.
+  const stopContractAsks = channel.on('dotli:sandbox-contract-request', (_message, sender) => {
+    const shown = findAskingFrame(sender);
+    if (shown === null) {
+      return;
+    }
+    const { contract } = shown;
+    // A subdomain frame on screen always carries a contract; this only satisfies the type for the iframe case, which
+    // findAskingFrame never returns.
+    if (contract === null) {
+      return;
+    }
+    shown.iframeHost.iframe.contentWindow?.postMessage(contract, { targetOrigin: sender.origin });
+  });
+
   // An error page in the sandbox offers the visitor a way on, which only the host page can take.
   const stopNavigateAsks = channel.on('dotli:sandbox-navigate', ({ to }, sender) => {
     if (findAskingFrame(sender) === null) {
@@ -795,7 +827,7 @@ export function createProductFrame({
      */
     halt,
     /**
-     * Stops hearing permission changes and the sandbox's recover and navigate asks, takes down the product on screen
+     * Stops hearing permission changes and the sandbox's recover, contract and navigate asks, takes down the product on screen
      * with its core and ends every render and wait in flight, so a render asked from above resolves as superseded and
      * neither it nor a later render mounts anything. Safe to call twice or after a failed render.
      */
@@ -867,15 +899,25 @@ export function createProductFrame({
     }
     const product = lively.target;
     const setupStartedAt = timers.now();
-    let url: URL;
+    let built: FrameTarget;
     try {
-      url = buildFrameUrl(product, page.location());
+      built = buildFrameUrl(product, page.location());
     } catch (error) {
       failRun({ ...lively, kind: from.kind }, { origin, error }, transition);
       return;
     }
+    const { url, contract } = built;
     const flows = { render: createRandomId(), bridge: createRandomId() };
-    const run: Run = { product, origin, url, flows, setupStartedAt, kind: 'leasing', attempt: createAttempt(1) };
+    const run: Run = {
+      product,
+      origin,
+      url,
+      contract,
+      flows,
+      setupStartedAt,
+      kind: 'leasing',
+      attempt: createAttempt(1),
+    };
     moveTo(from, { ...lively, kind: 'connecting', run }, transition);
     transition.emitSideEffect({ kind: 'traced', milestone: 'begun', run });
     // A direct iframe has no loading overlay to keep.
@@ -1107,8 +1149,8 @@ function getLively({ target, shown, deaths, recover, replacement }: Lively): Liv
 }
 
 /** The parts every step of `run` keeps, so a run that steps on carries no field of the step it left. */
-function getRunParts({ product, origin, url, flows, setupStartedAt }: Run): RunParts {
-  return { product, origin, url, flows, setupStartedAt };
+function getRunParts({ product, origin, url, contract, flows, setupStartedAt }: Run): RunParts {
+  return { product, origin, url, contract, flows, setupStartedAt };
 }
 
 /** Marks the core under the run down, so the product goes on to the replacement once it is on screen. */

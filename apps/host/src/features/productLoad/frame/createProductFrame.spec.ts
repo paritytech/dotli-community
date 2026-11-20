@@ -223,6 +223,8 @@ function createHarness({
     settle,
     /** The sandbox in a frame asking to be rebuilt, as it does after a reload, or another window of its origin asking. */
     askToRecover,
+    /** The sandbox in a frame asking the host for its contract, as it does at boot and on reload, or another window asking. */
+    askForContract,
     /** The sandbox in a frame asking the page to navigate `to`, or another window asking. */
     askToNavigate,
     /** Answers the connection the render on a replacement core asks for, and waits until the product is back on screen. */
@@ -288,6 +290,10 @@ function createHarness({
 
   function askToRecover(params: SandboxAskParams = {}): void {
     postFromSandbox({ type: 'dotli:sandbox-recover' }, params);
+  }
+
+  function askForContract(params: SandboxAskParams = {}): void {
+    postFromSandbox({ type: 'dotli:sandbox-contract-request' }, params);
   }
 
   function askToNavigate({ to, ...params }: AskToNavigateParams): void {
@@ -1338,6 +1344,61 @@ describe('product frame rebuilds', () => {
     // Then
     expect(fakes.readLastStatus()).toBe('connected');
     expect(fakes.connections).toHaveLength(1);
+  });
+});
+
+describe('product frame contract', () => {
+  it('As a reloaded sandbox, I ask the host for my contract and the frame on screen is answered with the one it loaded', async () => {
+    // Given a subdomain product on screen
+    const fakes = createHarness();
+    await fakes.settle(buildSubdomainProduct('contracted', { cid: 'real-cid' }), 0);
+    const { iframe, options } = nth(fakes.hosts, 0);
+    const url = new URL(options.iframeUrl);
+
+    // When its frame asks the host for its contract
+    fakes.askForContract();
+    // Then the frame is answered, at the origin the ask came from, with the same contract its URL carries
+    expect(readFramePosts(iframe)).toEqual([
+      {
+        message: {
+          type: 'dotli:sandbox-contract',
+          cid: 'real-cid',
+          chainBackend: url.searchParams.get('chainBackend'),
+          network: url.searchParams.get('network'),
+          v: url.searchParams.get('v'),
+        },
+        targetOrigin: options.allowedOrigin,
+      },
+    ]);
+  });
+
+  it('As a dApp user, I keep my app while a nested window of its origin asks the host for the contract and nothing is answered', async () => {
+    // Given a product on screen and another window on its origin, such as a frame the product nested in itself
+    const fakes = createHarness();
+    await fakes.settle(buildSubdomainProduct('nested'), 0);
+    const nested = {};
+
+    // When that window, not the frame on screen, asks the host for the contract
+    fakes.askForContract({ from: nested });
+
+    // Then the frame on screen is answered with nothing
+    expect(readFramePosts(nth(fakes.hosts, 0).iframe)).toEqual([]);
+  });
+
+  it('As a reloaded sandbox after a scheduled reset, I ask the host for my contract and it still carries the reset the URL got', async () => {
+    // Given a reset scheduled before the product renders
+    const fakes = createHarness();
+    pendingResets.schedule(['sandbox']);
+    await fakes.settle(buildSubdomainProduct('reset'), 0);
+    const { iframe, options } = nth(fakes.hosts, 0);
+
+    // When its frame asks the host for its contract
+    fakes.askForContract();
+
+    // Then the URL carried the reset and the reply carries the same one, the one-shot taken once for the render
+    expect(new URL(options.iframeUrl).searchParams.getAll('fullReset')).toEqual(['1']);
+    const [post] = readFramePosts(iframe);
+    expect(post?.message).toMatchObject({ type: 'dotli:sandbox-contract', fullReset: '1' });
   });
 });
 

@@ -6,7 +6,12 @@
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
 import { getResolutionId } from '@dotli/metrics';
 import { getSandboxLabel } from '@dotli/resolver';
-import { removeContractParams, SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
+import {
+  removeContractParams,
+  SANDBOX_CONTRACT_PARAMS,
+  SANDBOX_SCHEMA_VERSION,
+  type SandboxContractMessage,
+} from '@dotli/sandbox-wire';
 import { ERRORS } from '../../../kit/errors.js';
 import { pendingResets } from '../../../kit/createPendingResets.js';
 import { getAskedProductId, toProductId } from '../../../kit/getAskedProductId.js';
@@ -18,16 +23,44 @@ const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-pointe
 const SUBDOMAIN_SANDBOX = `${IFRAME_SANDBOX} allow-popups`;
 
 /**
- * The URL the frame loads `product` from. Building a subdomain's takes a scheduled sandbox reset. Throws when an app
- * subdomain's deep path leaves its origin.
+ * Where the frame loads `product` from, and the contract the host wrote for a subdomain, or null for an iframe. The
+ * contract is built once here, since it takes a scheduled sandbox reset, so the frame can be answered with the same
+ * value its URL carries when it asks for its contract.
  */
-export function buildFrameUrl(product: FrameProduct, location: PageLocation): URL {
+export type FrameTarget = { url: URL; contract: SandboxContractMessage | null };
+
+/** A host-written contract, with the fields the host always writes present. Assignable to the wire message. */
+type SandboxContract = SandboxContractMessage &
+  Required<Pick<SandboxContractMessage, 'cid' | 'chainBackend' | 'network' | 'v'>>;
+
+/**
+ * The URL the frame loads `product` from and its contract. Building a subdomain's takes a scheduled sandbox reset.
+ * Throws when an app subdomain's deep path leaves its origin.
+ */
+export function buildFrameUrl(product: FrameProduct, location: PageLocation): FrameTarget {
   switch (product.mode) {
     case 'iframe':
-      return new URL(product.url, location.href);
+      return { url: new URL(product.url, location.href), contract: null };
     case 'subdomain':
       return buildSandboxUrl(product, location);
   }
+}
+
+/**
+ * The contract the host writes for a subdomain `product`, each field the string the wire carries. Takes a scheduled
+ * sandbox reset, so it runs once per render and the same value feeds the URL and the contract reply.
+ */
+function buildSandboxContract(product: Extract<FrameProduct, { mode: 'subdomain' }>): SandboxContract {
+  const resolutionId = getResolutionId();
+  return {
+    type: 'dotli:sandbox-contract',
+    cid: product.cid,
+    v: String(SANDBOX_SCHEMA_VERSION),
+    chainBackend: getBackend(),
+    network: getNetwork(),
+    ...(pendingResets.take('sandbox') ? { fullReset: '1' } : {}),
+    ...(resolutionId !== null ? { resolutionId } : {}),
+  };
 }
 
 /** The product id `product` asks the core for. */
@@ -61,30 +94,30 @@ export function getAppOrigin(label: string, location: PageLocation): string {
 }
 
 /** The sandbox validator rejects unknown params. */
-function buildSandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, location: PageLocation): URL {
+function buildSandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, location: PageLocation): FrameTarget {
   const origin = getAppOrigin(product.label, location);
   const deepPath = getDeepPath(location, product.base ?? '');
   const url = new URL(deepPath ? `${origin}${deepPath}` : origin);
   if (url.origin !== origin) {
     throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
   }
+  const contract = buildSandboxContract(product);
   // Only the host writes the sandbox's params. A visitor's link that carried them could purge the sandbox origin or
-  // name a resolution.
-  const contract = new URLSearchParams();
-  contract.set(SANDBOX_CONTRACT_PARAMS.cid, product.cid);
-  contract.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));
-  contract.set(SANDBOX_CONTRACT_PARAMS.chainBackend, getBackend());
-  contract.set(SANDBOX_CONTRACT_PARAMS.network, getNetwork());
-  if (pendingResets.take('sandbox')) {
-    contract.set(SANDBOX_CONTRACT_PARAMS.fullReset, '1');
+  // name a resolution. The URL carries the same contract the frame is answered with, so the two never disagree.
+  const params = new URLSearchParams();
+  params.set(SANDBOX_CONTRACT_PARAMS.cid, contract.cid);
+  params.set(SANDBOX_CONTRACT_PARAMS.v, contract.v);
+  params.set(SANDBOX_CONTRACT_PARAMS.chainBackend, contract.chainBackend);
+  params.set(SANDBOX_CONTRACT_PARAMS.network, contract.network);
+  if (contract.fullReset !== undefined) {
+    params.set(SANDBOX_CONTRACT_PARAMS.fullReset, contract.fullReset);
   }
-  const resolutionId = getResolutionId();
-  if (resolutionId !== null) {
-    contract.set(SANDBOX_CONTRACT_PARAMS.resolutionId, resolutionId);
+  if (contract.resolutionId !== undefined) {
+    params.set(SANDBOX_CONTRACT_PARAMS.resolutionId, contract.resolutionId);
   }
   const productQuery = removeContractParams(url.search);
-  url.search = [productQuery, contract.toString()].filter(part => part !== '').join('&');
-  return url;
+  url.search = [productQuery, params.toString()].filter(part => part !== '').join('&');
+  return { url, contract };
 }
 
 function getDeepPath(location: PageLocation, productBase: string): string {
