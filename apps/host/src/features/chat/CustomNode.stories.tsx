@@ -97,9 +97,9 @@ const ALL_KINDS: RendererNode = {
         },
       },
       {
-        tag: 'Effect',
+        tag: 'Materials',
         value: {
-          props: { effect: 'Rainbow' },
+          props: { layers: [] },
           children: [
             {
               tag: 'Box',
@@ -145,7 +145,7 @@ export const AllNodeKinds: Story = {
   play: async ({ canvas, step }) => {
     const root = within(canvas.getByTestId('chat-custom-column'));
     const row = root.getByTestId('chat-custom-row');
-    const effect = root.getByTestId('chat-custom-effect');
+    const materials = root.getByTestId('chat-custom-materials');
     await step('Then every layout node maps onto a host element', async () => {
       await expect(root.getByTestId('chat-custom-text')).toHaveTextContent('Poll results');
       await expect(root.getAllByTestId('chat-custom-box')).toHaveLength(2);
@@ -154,9 +154,8 @@ export const AllNodeKinds: Story = {
       await expect(within(row).queryAllByTestId(/^chat-custom-/)).toHaveLength(1);
       await expect(within(row).getByTestId('chat-custom-spacer')).toBeInTheDocument();
     });
-    await step('Then an effect names its kind and an image is empty space, never a URL', async () => {
-      await expect(effect).toHaveAttribute('data-effect', 'rainbow');
-      const image = within(effect).getByTestId('chat-custom-image');
+    await step('Then a materials node draws its children and an image is empty space, never a URL', async () => {
+      const image = within(materials).getByTestId('chat-custom-image');
       await expect(image.childNodes).toHaveLength(0);
       await expect(image.querySelector('img')).toBeNull();
     });

@@ -40,32 +40,12 @@
   padding: 0;
 }
 
-.effect {
+.materials {
   display: inline-block;
   box-sizing: border-box;
   max-width: 100%;
   margin: 0;
   padding: 0;
-}
-
-/* Raw Berlin palette steps on purpose: a decorative constant, the same in both themes. */
-.effect[data-effect='rainbow'] {
-  background: linear-gradient(90deg, #fb7185, #fdba74, #6ee7b7, #78a9ff, #a78bfa, #fb7185);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: rainbow-shift 6s linear infinite;
-}
-@keyframes rainbow-shift {
-  to {
-    background-position: 200% 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .effect[data-effect='rainbow'] {
-    animation: none;
-  }
 }
 
 .text {

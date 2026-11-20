@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createMemoryStorage } from '@dotli/shared/testing';
@@ -49,6 +50,41 @@ describe('local-storage host callbacks', () => {
 
     // Then
     expect(readBack).toBeUndefined();
+  });
+
+  it('As a dotli integrator, I clear one product and only its values go, while a product whose id starts with it keeps its own', async () => {
+    // Given
+    const { read, write, clearProduct } = createLocalStorageCallbacks(params);
+    const longerId = 'truapi:product-storage:v1:10:myapp.dot2:key';
+    await write(KEY, new Uint8Array([1]));
+    await write(WATCHED, new Uint8Array([2]));
+    await write(longerId, new Uint8Array([3]));
+
+    // When
+    await clearProduct(asProductId('myapp.dot'));
+
+    // Then
+    expect(await read(KEY)).toBeUndefined();
+    expect(await read(WATCHED)).toBeUndefined();
+    expect(Array.from((await read(longerId)) ?? [])).toEqual([3]);
+  });
+
+  it('As a product developer, I subscribe to a key and hear it empty once the host clears my product', async () => {
+    // Given
+    const callbacks = createLocalStorageCallbacks(params);
+    await callbacks.write(WATCHED, new Uint8Array([1]));
+    const items = callbacks.subscribeStorage(WATCHED)[Symbol.asyncIterator]();
+    onTestFinished(async () => {
+      await items.return?.();
+    });
+    await items.next();
+
+    // When
+    await callbacks.clearProduct(asProductId('myapp.dot'));
+    const cleared = await items.next();
+
+    // Then
+    expect(yielded(cleared)._unsafeUnwrap()).toEqual({});
   });
 
   it('As a product developer, I subscribe to a key and see the current value, then each write and clear', async () => {

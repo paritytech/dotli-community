@@ -208,9 +208,10 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
         {value => <div class={s['image']} data-testid="chat-custom-image" style={modifierStyle(value().modifiers)} />}
       </Match>
 
-      <Match when={valueOf(props.node, 'Effect')}>
+      {/* The host has no materials renderer yet, so the children draw without the layers. */}
+      <Match when={valueOf(props.node, 'Materials')}>
         {value => (
-          <div class={s['effect']} data-testid="chat-custom-effect" data-effect={value().props.effect.toLowerCase()}>
+          <div class={s['materials']} data-testid="chat-custom-materials">
             <Children nodes={value().children} onAction={props.onAction} />
           </div>
         )}

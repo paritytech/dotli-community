@@ -26,6 +26,6 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@parity/trinity-stack": "0.2.1"
+    "@parity/trinity-stack": "0.3.0"
   }
 }
