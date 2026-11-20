@@ -13,6 +13,9 @@ const JITTER = 0.3;
 /** Room for floating point error in an angle. */
 const EPSILON = 1e-9;
 
+/** Every count of peers the rings hold. */
+const COUNTS = Array.from({ length: 45 }, (_, index) => index + 1);
+
 describe('getOrbitLayout', () => {
   it('As a visitor whose light client has no peers yet, I see no dots', () => {
     // When
@@ -35,16 +38,48 @@ describe('getOrbitLayout', () => {
 
   it('As a visitor, I see the peers spread evenly around the circle whatever ring each takes, each off its even place by at most 0.3 of the spacing', () => {
     // When
-    const layout = getOrbitLayout(lightClient(20), SEED);
+    const layouts = COUNTS.map(count => getOrbitLayout(lightClient(count), SEED));
 
     // Then
-    const peers = listPeersInJoinOrder(layout);
-    const spacing = 360 / peers.length;
-    // Each peer's angle less its even place past the first peer's, which leaves the first's place and its own turn.
-    const turns = peers.map((dot, order) => dot.start - order * spacing);
-    // Two turns of up to 0.3 of the spacing either way differ by up to 0.6 of it.
-    const offPlace = turns.filter(turn => getAngleGap(turn, turns[0] ?? turn) > 2 * JITTER * spacing + EPSILON);
+    const offPlace = layouts.flatMap(layout => {
+      const peers = listPeersRoundTheCircle(layout);
+      const spacing = 360 / peers.length;
+      // Each peer's angle less its even place past the first peer's, which leaves the first's place and its own turn.
+      const turns = peers.map((dot, place) => dot.start - place * spacing);
+      // Two turns of up to 0.3 of the spacing either way differ by up to 0.6 of it.
+      return turns.filter(turn => getAngleGap(turn, turns[0] ?? turn) > 2 * JITTER * spacing + EPSILON);
+    });
     expect(offPlace).toEqual([]);
+  });
+
+  it('As a visitor, I see the peers on the inner ring spread round it however many peers there are', () => {
+    // When
+    const layouts = COUNTS.map(count => getOrbitLayout(lightClient(count), SEED));
+
+    // Then
+    const crowded = layouts.flatMap(layout => {
+      const inner = layout.rings[0]?.dots ?? [];
+      const count = listDots(layout).filter(({ kind }) => kind === 'peer').length;
+      // The whole places of an even split among the inner peers, less two turns of up to 0.3 of a spacing. A count that
+      // does not split in three leaves a third up to 2/3 of a spacing short of 120 deg, the least even places allow.
+      const least = (Math.floor(count / inner.length) - 2 * JITTER) * (360 / count);
+      return inner.filter(dot => inner.some(other => other !== dot && getAngleGap(other.start, dot.start) < least));
+    });
+    expect(crowded).toEqual([]);
+  });
+
+  it('As a visitor, I see a joining peer land between two peers already shown, which keep their order round the circle', () => {
+    // Given
+    const before = COUNTS.slice(0, -1).map(count => listPeersRoundTheCircle(getOrbitLayout(lightClient(count), SEED)));
+
+    // When
+    const after = COUNTS.slice(0, -1).map(count =>
+      listPeersRoundTheCircle(getOrbitLayout(lightClient(count + 1), SEED)),
+    );
+
+    // Then
+    const joined = after.map((peers, index) => peers.filter(({ key }) => key !== `[peer#${String(index + 2)}]`));
+    expect(joined.map(peers => peers.map(({ key }) => key))).toEqual(before.map(peers => peers.map(({ key }) => key)));
   });
 
   it('As a visitor who opens the page again, I see the peers turned to other places', () => {
@@ -128,6 +163,13 @@ function listDots(layout: OrbitLayout): OrbitDot[] {
 function listPeersInJoinOrder(layout: OrbitLayout): OrbitDot[] {
   const peers = listDots(layout).filter(({ kind }) => kind === 'peer');
   return peers.sort((a, b) => getJoinOrder(a) - getJoinOrder(b));
+}
+
+/** Lists the peers by angle from the first's place, which no turn of under half a spacing can reorder. */
+function listPeersRoundTheCircle(layout: OrbitLayout): OrbitDot[] {
+  return listDots(layout)
+    .filter(({ kind }) => kind === 'peer')
+    .sort((a, b) => a.start - b.start);
 }
 
 /** Reads a peer's join order from its key, `[peer#<order>]`. */

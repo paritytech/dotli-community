@@ -4,7 +4,8 @@
 // Which dots the landing page's orbit draws. CSS places and turns them, so a dot is only its ring, its angle at rest
 // and where its one link starts. What the visitor's centre really reaches the network through, its peers or one
 // server, is spread evenly around the whole circle, whatever ring each node takes, and each is turned off its even
-// place at random. Each of those grows a simulated cascade outward, like the peers of that peer, so the picture reads as
+// place at random. Each node that joins takes a place between the ones already shown, so the first few stay spread
+// round the circle however many follow. Each of those grows a simulated cascade outward, like the peers of that peer, so the picture reads as
 // the network going on behind the real connections. Every turn is a share of the real nodes' spacing, drawn from a seed
 // and the dot's key, so for one seed a dot keeps its share while others come and go, and another seed lays out another
 // picture.
@@ -62,10 +63,10 @@ const JITTER = 0.3;
 const MIN_GAP = 6;
 
 /**
- * Returns the orbit's dots for `mode`, every turn drawn from `seed`. Real node `i` of `count` sits at `360 / count * i`
- * past the first's place, turned by at most `JITTER` of that spacing, so the angles of the real nodes that stay move
- * when one joins or leaves. Peers take rings from the centre outward in join order, and each peer's and the server's
- * link starts at the centre. Each real node puts one or two simulated nodes on the next ring out within the same turn
+ * Returns the orbit's dots for `mode`, every turn drawn from `seed`. The `count` real nodes take the places
+ * `360 / count * k` past the first's, each turned by at most `JITTER` of that spacing. A node that joins takes a place
+ * between two neighbours, and the others keep their order round the circle and close up by little. Peers take rings from
+ * the centre outward in join order, and each peer's and the server's link starts at the centre. Each real node puts one or two simulated nodes on the next ring out within the same turn
  * of its own angle, and each of those does the same up to the outermost ring, its link starting at the node it came
  * from, so a cascade stays within its real node's share of the circle. A simulated node too close to a node placed
  * before it on its ring is left out with its own cascade.
@@ -75,7 +76,7 @@ export function getOrbitLayout(mode: OrbitMode, seed: number): OrbitLayout {
   const spacing = 360 / real.length;
   const spread = spacing * JITTER;
   const roots = real.map(({ index, key, kind }, order): Node => {
-    const start = getTurned(OFFSET + order * spacing, spread, getUnitHash(seed, key));
+    const start = getTurned(OFFSET + getEvenPlace(order, real.length) * spacing, spread, getUnitHash(seed, key));
     return { index, dot: { key, start, from: 0, kind, label: key } };
   });
   const nodes = [...roots];
@@ -116,6 +117,31 @@ function getRealNodes(mode: OrbitMode): { index: number; key: string; kind: 'pee
     case 'server':
       return [{ index: 0, key: '[server]', kind: 'server' }];
   }
+}
+
+/**
+ * Returns which of `count` even places, counted round the circle from the first's, the real node that joined
+ * `order`th takes: the rank of its point in a sequence that splits the circle into thirds, then ninths, and so on.
+ * Ranks of fixed points keep their order as points are added, so a new node always lands between two others.
+ */
+function getEvenPlace(order: number, count: number): number {
+  const own = getThirdsPoint(order);
+  return Array.from({ length: count }, (_, other) => getThirdsPoint(other)).filter(point => point < own).length;
+}
+
+/**
+ * Returns a point in [0, 1) for `order`: its base 3 digits mirrored behind the point. Orders 0 to 2 fall on thirds,
+ * and each later run of three takes one gap in each third, so the inner ring's three nodes stay a third of a turn
+ * apart within one spacing at every count.
+ */
+function getThirdsPoint(order: number): number {
+  let point = 0;
+  let weight = 1 / 3;
+  for (let rest = order; rest > 0; rest = Math.floor(rest / 3)) {
+    point += (rest % 3) * weight;
+    weight /= 3;
+  }
+  return point;
 }
 
 /** Returns the one or two nodes `parent` puts on the next ring out, each within `spread` degrees of its angle. */
