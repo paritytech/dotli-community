@@ -9,8 +9,8 @@ import { getOrbitLayout } from './getOrbitLayout.js';
 import { Orbit } from './Orbit.js';
 
 type FrameProps = {
-  /** Whether the backend reaches the network through one server rather than a light client. */
-  server: boolean;
+  /** Whether the backend reaches the network through one trusted provider rather than a light client. */
+  trustedProvider: boolean;
   /** The light client's peers when the story opens. */
   peers: number;
   /** What turns each dot off its even place. */
@@ -23,7 +23,10 @@ type FrameProps = {
 function Frame(props: FrameProps): JSX.Element {
   const [peers, setPeers] = createSignal(() => props.peers);
   const layout = createMemo(() =>
-    getOrbitLayout(props.server ? { kind: 'server' } : { kind: 'lightClient', peers: peers() }, props.seed),
+    getOrbitLayout(
+      props.trustedProvider ? { kind: 'trustedProvider' } : { kind: 'lightClient', peers: peers() },
+      props.seed,
+    ),
   );
   return (
     <div style={{ position: 'relative', isolation: 'isolate', height: '480px' }}>
@@ -41,7 +44,7 @@ function Frame(props: FrameProps): JSX.Element {
 const meta = {
   title: 'Host/Landing/Orbit',
   component: Frame,
-  args: { server: false, peers: 0, seed: 1, pointerY: 0 },
+  args: { trustedProvider: false, peers: 0, seed: 1, pointerY: 0 },
   argTypes: { pointerY: { control: { type: 'range', min: -1, max: 1, step: 0.1 } } },
   parameters: {
     // Contrast is unnecessary for background graphics: the orbit is decorative and hidden from assistive technology.
@@ -137,9 +140,9 @@ export const ManyPeers: Story = {
 };
 
 /**
- * A backend with no light client, which reaches the network through one server: one small tree from the server among
+ * A backend with no light client, which reaches the network through one trusted provider: one small tree from the trusted provider among
  * loose dots linked to nothing.
  */
-export const Server: Story = {
-  args: { server: true },
+export const TrustedProvider: Story = {
+  args: { trustedProvider: true },
 };

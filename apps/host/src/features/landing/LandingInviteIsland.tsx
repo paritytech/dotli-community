@@ -25,10 +25,13 @@ export function LandingInviteIsland(): JSX.Element {
 
 // Inside the part, so a failure reading the stores shows the error page as a failure rendering the invitation does.
 function BoundInvite(): JSX.Element {
-  const server = useStore(settingsState.store, settings => settings !== null && !hasLightClient(settings.backend));
+  const trustedProvider = useStore(
+    settingsState.store,
+    settings => settings !== null && !hasLightClient(settings.backend),
+  );
   const switching = useStore(pageSettingsActions.reset, isResetRunning, { initial: 'idle' });
   return (
-    <Show when={server()}>
+    <Show when={trustedProvider()}>
       <LightClientInvite
         switching={switching()}
         onSwitch={() => void pageSettingsActions.switchBackend(getDefaultBackend())}

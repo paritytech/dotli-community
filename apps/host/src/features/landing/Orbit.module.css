@@ -264,8 +264,8 @@
     rotateX(calc(-1 * var(--tilt))) translateZ(calc(var(--rise) * var(--size)));
 }
 
-/* The one server a backend with no light client talks through, in the first peer's place. */
-.dot[data-kind='server'] {
+/* The one trusted provider a backend with no light client talks through, in the first peer's place. */
+.dot[data-kind='trustedProvider'] {
   --dot: 9;
   background: var(--text-muted);
 }
@@ -290,7 +290,7 @@
   white-space: nowrap;
 }
 
-/* A dot's one link, from the centre to a peer or the server, or from the dot a simulated one grew from. It carries its
+/* A dot's one link, from the centre to a peer or the trusted provider, or from the dot a simulated one grew from. It carries its
    dot's ring, so its outer end takes that ring's radius. Drawn flat with one width end to end rather than on the tilted
    floor: perspective keeps a line straight, so the segment between its two ends' projections is the floor's line. A
    floor point at angle a on radius r projects, around the floor's centre, to r cos(a) s across and r sin(a) cos(tilt) s
@@ -314,7 +314,7 @@
   transform: translate(var(--from-x), var(--from-y)) rotate(atan2(var(--dy), var(--dx)));
 }
 .link[data-link='peer'],
-.link[data-link='server'] {
+.link[data-link='trustedProvider'] {
   --from-r: 0;
   background: var(--text-faint);
 }

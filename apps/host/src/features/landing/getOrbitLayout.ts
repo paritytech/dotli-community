@@ -3,11 +3,11 @@
 
 // Which dots the landing page's orbit draws. CSS places and turns them, so a dot is only its ring, its angle at rest
 // and where its one link starts. What the visitor's centre really reaches the network through, its peers or one
-// server, is spread evenly around the whole circle, whatever ring each node takes, and each is turned off its even
+// trusted provider, is spread evenly around the whole circle, whatever ring each node takes, and each is turned off its even
 // place at random. Each node that joins takes a place between the ones already shown, so the first few stay spread
 // round the circle however many follow. Each of those grows a simulated tree outward, like the peers of that peer.
 // A light client's trees tile the circle, so the picture reads as the network going on behind the real connections.
-// The server's one tree stays a narrow fan, and loose dots linked to nothing fill the rings around it, so a server
+// The trusted provider's one tree stays a narrow fan, and loose dots linked to nothing fill the rings around it, so a trusted provider
 // backend's floor looks full but reads as one connection, not a network of its own. Every turn is drawn from a seed
 // and the dot's key, so for one seed a dot keeps its turn while others come and go, and another seed lays out another
 // picture.
@@ -15,10 +15,10 @@
 type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
 
 /**
- * A peer of the light client, the one server a backend with no light client talks through, a simulated node of a real
+ * A peer of the light client, the one trusted provider a backend with no light client talks through, a simulated node of a real
  * node's tree, or a loose simulated dot linked to nothing.
  */
-type OrbitDotKind = 'peer' | 'server' | 'simulated' | 'loose';
+type OrbitDotKind = 'peer' | 'trustedProvider' | 'simulated' | 'loose';
 
 export type OrbitDot = {
   /** Stays the same while the dot exists, so a renderer keeps its element. A dot never changes kind. */
@@ -30,11 +30,11 @@ export type OrbitDot = {
   readonly start: number;
   /**
    * The angle at rest its one link starts from: the dot it grew from, on the ring one in, for a simulated dot, or the
-   * centre, at 0, for a peer or the server. Null for a loose dot, which has no link.
+   * centre, at 0, for a peer or the trusted provider. Null for a loose dot, which has no link.
    */
   readonly from: number | null;
   readonly kind: OrbitDotKind;
-  /** The caption beside a peer, naming it by its join order, or beside the server. A simulated or loose dot has none. */
+  /** The caption beside a peer, naming it by its join order, or beside the trusted provider. A simulated or loose dot has none. */
   readonly label: string | null;
 };
 
@@ -43,8 +43,8 @@ export type OrbitLayout = {
   readonly rings: readonly { readonly ring: OrbitRing; readonly radius: number; readonly dots: readonly OrbitDot[] }[];
 };
 
-/** What the centre reaches the network through: the light client's peers, or one server. */
-export type OrbitMode = { readonly kind: 'lightClient'; readonly peers: number } | { readonly kind: 'server' };
+/** What the centre reaches the network through: the light client's peers, or one trusted provider. */
+export type OrbitMode = { readonly kind: 'lightClient'; readonly peers: number } | { readonly kind: 'trustedProvider' };
 
 /** A dot with the index of the ring it sits on, counted from the centre. */
 type Node = { readonly index: number; readonly dot: OrbitDot };
@@ -68,7 +68,7 @@ type Growth = {
 /**
  * The rings from the centre outward, each with its radius in the orbit's length unit, which `MIN_GAP` is in too, and
  * for each mode the most simulated nodes the trees hold on it and the loose dots it spreads round the whole circle. A
- * light client's ring holds twice the one inside it, so its trees branch ring by ring. The server's tree stays small,
+ * light client's ring holds twice the one inside it, so its trees branch ring by ring. The trusted provider's tree stays small,
  * and its loose dots and tree together never outnumber the light client's simulated nodes, so either field stays light
  * enough to sit behind the page.
  */
@@ -78,11 +78,36 @@ const RINGS: readonly {
   readonly budget: Record<OrbitMode['kind'], number>;
   readonly loose: Record<OrbitMode['kind'], number>;
 }[] = [
-  { ring: 'inner', radius: 110, budget: { lightClient: 0, server: 0 }, loose: { lightClient: 0, server: 5 } },
-  { ring: 'ring1', radius: 190, budget: { lightClient: 8, server: 2 }, loose: { lightClient: 0, server: 10 } },
-  { ring: 'ring2', radius: 260, budget: { lightClient: 16, server: 4 }, loose: { lightClient: 0, server: 16 } },
-  { ring: 'ring3', radius: 340, budget: { lightClient: 32, server: 6 }, loose: { lightClient: 0, server: 24 } },
-  { ring: 'ring4', radius: 430, budget: { lightClient: 64, server: 8 }, loose: { lightClient: 0, server: 36 } },
+  {
+    ring: 'inner',
+    radius: 110,
+    budget: { lightClient: 0, trustedProvider: 0 },
+    loose: { lightClient: 0, trustedProvider: 5 },
+  },
+  {
+    ring: 'ring1',
+    radius: 190,
+    budget: { lightClient: 8, trustedProvider: 2 },
+    loose: { lightClient: 0, trustedProvider: 10 },
+  },
+  {
+    ring: 'ring2',
+    radius: 260,
+    budget: { lightClient: 16, trustedProvider: 4 },
+    loose: { lightClient: 0, trustedProvider: 16 },
+  },
+  {
+    ring: 'ring3',
+    radius: 340,
+    budget: { lightClient: 32, trustedProvider: 6 },
+    loose: { lightClient: 0, trustedProvider: 24 },
+  },
+  {
+    ring: 'ring4',
+    radius: 430,
+    budget: { lightClient: 64, trustedProvider: 8 },
+    loose: { lightClient: 0, trustedProvider: 36 },
+  },
 ];
 
 /** The ring each real node takes in join order: ring `k` from the centre holds `3 * (k + 1)`, filled from the centre. */
@@ -100,10 +125,10 @@ const OFFSET = 282;
 const JITTER = 0.3;
 
 /**
- * How far, in degrees, the server's tree reaches further either way on each ring out, which is also the most a node of
+ * How far, in degrees, the trusted provider's tree reaches further either way on each ring out, which is also the most a node of
  * it sits from the node it grew from. Small, so the tree grows out in one narrow fan.
  */
-const SERVER_REACH = 8;
+const TRUSTED_PROVIDER_REACH = 8;
 
 /** The least distance along its ring between a simulated node and another node on that ring. */
 const MIN_GAP = 10;
@@ -112,15 +137,15 @@ const MIN_GAP = 10;
  * Returns the orbit's dots for `mode`, every turn drawn from `seed`. The `count` real nodes take the places
  * `360 / count * k` past the first's, each turned by at most `JITTER` of that spacing. A node that joins takes a place
  * between two neighbours, and the others keep their order round the circle and close up by little. Peers take rings from
- * the centre outward in join order, and each peer's and the server's link starts at the centre.
+ * the centre outward in join order, and each peer's and the trusted provider's link starts at the centre.
  *
  * Each real node grows a tree of simulated nodes outward to the last ring, its link starting at the node it grew from.
  * Ring by ring, the trees split the ring between them, each tree takes a share of the ring's budget in proportion to its
  * part, spreads its share evenly across it, and links each to its nearest node on the ring inside, moved to at most the
- * mode's reach from it: `JITTER` of the peers' spacing, or `SERVER_REACH`. A tree so reaches further on each ring out,
+ * mode's reach from it: `JITTER` of the peers' spacing, or `TRUSTED_PROVIDER_REACH`. A tree so reaches further on each ring out,
  * and fans wider the further out.
  *
- * The server's rings then spread loose dots, with no link, over even places round the whole circle from a turn of the
+ * The trusted provider's rings then spread loose dots, with no link, over even places round the whole circle from a turn of the
  * seed's, each turned by at most `JITTER` of their spacing. A place within a tree's reach on its ring, and one reach
  * more so the tree stands apart, is left empty.
  *
@@ -194,7 +219,7 @@ export function getOrbitLayout(mode: OrbitMode, seed: number): OrbitLayout {
 }
 
 /** Returns the real nodes `mode` shows in join order, each with its ring and its key, which is also its caption. */
-function getRealNodes(mode: OrbitMode): { index: number; key: string; kind: 'peer' | 'server' }[] {
+function getRealNodes(mode: OrbitMode): { index: number; key: string; kind: 'peer' | 'trustedProvider' }[] {
   switch (mode.kind) {
     case 'lightClient':
       return REAL_RINGS.slice(0, mode.peers).map((index, peer) => ({
@@ -202,8 +227,8 @@ function getRealNodes(mode: OrbitMode): { index: number; key: string; kind: 'pee
         key: `[peer#${String(peer + 1)}]`,
         kind: 'peer',
       }));
-    case 'server':
-      return [{ index: 0, key: '[server]', kind: 'server' }];
+    case 'trustedProvider':
+      return [{ index: 0, key: '[trusted provider]', kind: 'trustedProvider' }];
   }
 }
 
@@ -215,8 +240,8 @@ function getReach(mode: OrbitMode, spacing: number): number {
   switch (mode.kind) {
     case 'lightClient':
       return spacing * JITTER;
-    case 'server':
-      return SERVER_REACH;
+    case 'trustedProvider':
+      return TRUSTED_PROVIDER_REACH;
   }
 }
 

@@ -26,14 +26,14 @@ const MIN_GAP = 10;
 /** The most simulated dots the orbit draws. */
 const MAX_SIMULATED = 120;
 
-/** A backend with no light client, which reaches the network through one server. */
-const SERVER: OrbitMode = { kind: 'server' };
+/** A backend with no light client, which reaches the network through one trusted provider. */
+const TRUSTED_PROVIDER: OrbitMode = { kind: 'trustedProvider' };
 
-/** How far, in degrees, the server's tree reaches further either way on each ring out. */
-const SERVER_REACH = 8;
+/** How far, in degrees, the trusted provider's tree reaches further either way on each ring out. */
+const TRUSTED_PROVIDER_REACH = 8;
 
-/** The most simulated nodes the server's tree holds. */
-const SERVER_TREE = 20;
+/** The most simulated nodes the trusted provider's tree holds. */
+const TRUSTED_PROVIDER_TREE = 20;
 
 describe('getOrbitLayout', () => {
   it('As a visitor whose light client has no peers yet, I see no dots', () => {
@@ -208,45 +208,45 @@ describe('getOrbitLayout', () => {
     expect(wedges).toEqual([]);
   });
 
-  it('As a visitor on a server backend, I see one server, labelled as the server, and every simulated dot cascading from it', () => {
+  it('As a visitor on a trusted provider backend, I see one trusted provider, labelled as the trusted provider, and every simulated dot cascading from it', () => {
     // When
-    const layout = getOrbitLayout(SERVER, SEED);
+    const layout = getOrbitLayout(TRUSTED_PROVIDER, SEED);
 
     // Then
     expect(listDots(layout).filter(({ kind }) => kind !== 'simulated' && kind !== 'loose')).toEqual([
-      expect.objectContaining({ kind: 'server', label: '[server]' }),
+      expect.objectContaining({ kind: 'trustedProvider', label: '[trusted provider]' }),
     ]);
-    expect(listDots(layout).filter(({ kind, label }) => kind !== 'server' && label !== null)).toEqual([]);
-    expect(listRoots(layout).every(root => root?.kind === 'server')).toBe(true);
+    expect(listDots(layout).filter(({ kind, label }) => kind !== 'trustedProvider' && label !== null)).toEqual([]);
+    expect(listRoots(layout).every(root => root?.kind === 'trustedProvider')).toBe(true);
   });
 
-  it("As a visitor on a server backend, I see the server grow one small tree that branches within its narrow fan, each dot linked to its parent within the server's reach", () => {
+  it("As a visitor on a trusted provider backend, I see the trusted provider grow one small tree that branches within its narrow fan, each dot linked to its parent within the trusted provider's reach", () => {
     // When
-    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+    const layouts = SEEDS.map(seed => getOrbitLayout(TRUSTED_PROVIDER, seed));
 
     // Then
     const astray = layouts.flatMap(layout => {
-      const server = findServer(layout);
+      const trustedProvider = findTrustedProvider(layout);
       return layout.rings.flatMap(({ dots }, index) =>
         dots.filter(
           dot =>
             dot.kind === 'simulated' &&
-            (getAngleGap(dot.start, server.start) > index * SERVER_REACH + EPSILON ||
+            (getAngleGap(dot.start, trustedProvider.start) > index * TRUSTED_PROVIDER_REACH + EPSILON ||
               dot.from === null ||
-              getAngleGap(dot.from, dot.start) > SERVER_REACH + EPSILON),
+              getAngleGap(dot.from, dot.start) > TRUSTED_PROVIDER_REACH + EPSILON),
         ),
       );
     });
     expect(astray).toEqual([]);
     const trees = layouts.map(layout => listDots(layout).filter(({ kind }) => kind === 'simulated'));
-    expect(trees.filter(tree => tree.length > SERVER_TREE)).toEqual([]);
+    expect(trees.filter(tree => tree.length > TRUSTED_PROVIDER_TREE)).toEqual([]);
     const branching = layouts.map(layout => listDots(layout).some(dot => countChildren(layout, dot) >= 2));
     expect(branching).toEqual(layouts.map(() => true));
   });
 
-  it("As a visitor on a server backend, I see loose dots on every ring, linked to nothing and outside the server's tree", () => {
+  it("As a visitor on a trusted provider backend, I see loose dots on every ring, linked to nothing and outside the trusted provider's tree", () => {
     // When
-    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+    const layouts = SEEDS.map(seed => getOrbitLayout(TRUSTED_PROVIDER, seed));
 
     // Then
     const looseByRing = layouts.map(layout =>
@@ -254,37 +254,38 @@ describe('getOrbitLayout', () => {
     );
     expect(looseByRing).toEqual(layouts.map(layout => layout.rings.map(() => true)));
     const misplaced = layouts.flatMap(layout => {
-      const server = findServer(layout);
+      const trustedProvider = findTrustedProvider(layout);
       return layout.rings.flatMap(({ dots }, index) =>
         dots.filter(
           dot =>
-            dot.kind === 'loose' && (dot.from !== null || getAngleGap(dot.start, server.start) <= index * SERVER_REACH),
+            dot.kind === 'loose' &&
+            (dot.from !== null || getAngleGap(dot.start, trustedProvider.start) <= index * TRUSTED_PROVIDER_REACH),
         ),
       );
     });
     expect(misplaced).toEqual([]);
   });
 
-  it('As a visitor on a server backend, I see no dot closer to another on its ring than the least distance between two dots', () => {
+  it('As a visitor on a trusted provider backend, I see no dot closer to another on its ring than the least distance between two dots', () => {
     // When
-    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+    const layouts = SEEDS.map(seed => getOrbitLayout(TRUSTED_PROVIDER, seed));
 
     // Then
     expect(layouts.flatMap(layout => listCrowded(layout))).toEqual([]);
   });
 
-  it('As a visitor on a server backend, I see no more simulated and loose dots than the most a light client shows', () => {
+  it('As a visitor on a trusted provider backend, I see no more simulated and loose dots than the most a light client shows', () => {
     // When
-    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+    const layouts = SEEDS.map(seed => getOrbitLayout(TRUSTED_PROVIDER, seed));
 
     // Then
-    const counts = layouts.map(layout => listDots(layout).filter(({ kind }) => kind !== 'server').length);
+    const counts = layouts.map(layout => listDots(layout).filter(({ kind }) => kind !== 'trustedProvider').length);
     expect(counts.filter(count => count > MAX_SIMULATED)).toEqual([]);
   });
 
-  it('As a visitor on a server backend who opens the page again, I see the loose dots in other places', () => {
+  it('As a visitor on a trusted provider backend who opens the page again, I see the loose dots in other places', () => {
     // When
-    const layouts = [1, 2].map(seed => getOrbitLayout(SERVER, seed));
+    const layouts = [1, 2].map(seed => getOrbitLayout(TRUSTED_PROVIDER, seed));
 
     // Then
     const [first, second] = layouts.map(layout =>
@@ -296,11 +297,11 @@ describe('getOrbitLayout', () => {
   });
 });
 
-/** Returns the server of a server backend's layout. */
-function findServer(layout: OrbitLayout): OrbitDot {
+/** Returns the trusted provider of a trusted provider backend's layout. */
+function findTrustedProvider(layout: OrbitLayout): OrbitDot {
   return must(
-    listDots(layout).find(({ kind }) => kind === 'server'),
-    'server',
+    listDots(layout).find(({ kind }) => kind === 'trustedProvider'),
+    'trustedProvider',
   );
 }
 

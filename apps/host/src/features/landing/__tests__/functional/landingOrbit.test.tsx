@@ -61,7 +61,7 @@ describe('landing orbit', () => {
     expect(getPeerDots()).toHaveLength(5);
   });
 
-  it('As a visitor on trusted providers, I see the one server in the inner ring', () => {
+  it('As a visitor on trusted providers, I see the one trusted provider in the inner ring', () => {
     // Given
     onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
 
@@ -69,6 +69,6 @@ describe('landing orbit', () => {
     mountBooted();
 
     // Then
-    expect(getInnerLinkedDots().map(dot => dot.getAttribute('data-kind'))).toEqual(['server']);
+    expect(getInnerLinkedDots().map(dot => dot.getAttribute('data-kind'))).toEqual(['trustedProvider']);
   });
 });

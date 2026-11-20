@@ -30,13 +30,13 @@ const orbitMode = computed([settingsState.store, networkMonitorState.version], (
     return NO_PEERS;
   }
   if (!hasLightClient(settings.backend)) {
-    return { kind: 'server' };
+    return { kind: 'trustedProvider' };
   }
   const peers = networkMonitorState.getNetworkStatus().reduce((total, chain) => total + (chain.peers ?? 0), 0);
   return { kind: 'lightClient', peers };
 });
 
-/** The landing page's orbit backdrop, its inner ring drawn from the light client's peers or the one server. */
+/** The landing page's orbit backdrop, its inner ring drawn from the light client's peers or the one trusted provider. */
 export function LandingOrbitIsland(): JSX.Element {
   return (
     <LandingPartIsland>
