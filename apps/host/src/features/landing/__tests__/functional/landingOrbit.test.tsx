@@ -27,6 +27,10 @@ function getInnerDots(): Element[] {
   return [...must(page.querySelector('[data-ring="inner"]'), 'inner ring').children];
 }
 
+function getPeerDots(): Element[] {
+  return [...page.querySelectorAll('[data-kind="peer"]')];
+}
+
 beforeEach(() => {
   page = document.createElement('div');
   document.body.append(page);
@@ -40,7 +44,7 @@ afterEach(() => {
 });
 
 describe('landing orbit', () => {
-  it('As a visitor whose light client finds peers on two chains, I see one inner dot for each peer', () => {
+  it('As a visitor whose light client finds peers on two chains, I see one peer dot for each peer', () => {
     // Given
     mountBooted();
     const [first, second] = getActiveChainRoles();
@@ -51,7 +55,7 @@ describe('landing orbit', () => {
     flush();
 
     // Then
-    expect(getInnerDots()).toHaveLength(5);
+    expect(getPeerDots()).toHaveLength(5);
   });
 
   it('As a visitor on trusted providers, I see the one server in the inner ring', () => {
@@ -62,6 +66,6 @@ describe('landing orbit', () => {
     mountBooted();
 
     // Then
-    expect(getInnerDots().map(dot => dot.hasAttribute('data-server'))).toEqual([true]);
+    expect(getInnerDots().map(dot => dot.getAttribute('data-kind'))).toEqual(['server', 'simulated', 'simulated']);
   });
 });

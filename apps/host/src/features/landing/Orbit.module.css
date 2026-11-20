@@ -91,15 +91,14 @@
   transform-style: preserve-3d;
 }
 
-/* Inner orbits carry larger dots, the innermost brightest. The simulated rings past the first are dashed, as a plot
-   draws what it does not measure. A dot's size is in units. */
+/* Inner orbits carry larger dots, and the innermost ring is brightest. The rings past the first are dashed, so the
+   field thins toward the horizon. A dot's size is in units. */
 .ring[data-ring='inner'] {
   --radius: var(--inner-radius);
   --turn: var(--inner-turn);
   --ring-color: var(--text-faint);
   --ring-style: solid;
   --dot: 7.5;
-  --dot-color: var(--neutral-solid);
 }
 .ring[data-ring='ring1'] {
   --radius: var(--ring1-radius);
@@ -107,7 +106,6 @@
   --ring-color: var(--chrome-action-dim);
   --ring-style: solid;
   --dot: 5.5;
-  --dot-color: var(--text-faint);
 }
 .ring[data-ring='ring2'] {
   --radius: var(--ring2-radius);
@@ -115,7 +113,6 @@
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 3.5;
-  --dot-color: var(--chrome-action-dim);
 }
 .ring[data-ring='ring3'] {
   --radius: var(--ring3-radius);
@@ -123,7 +120,6 @@
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 3;
-  --dot-color: var(--chrome-action-dim);
 }
 .ring[data-ring='ring4'] {
   --radius: var(--ring4-radius);
@@ -131,7 +127,6 @@
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 2.5;
-  --dot-color: var(--chrome-action-dim);
 }
 
 /* Fine ticks round the inner ring's outer edge, like a dial's. */
@@ -157,13 +152,15 @@
   }
 }
 
-/* The inner ring and its links come and go with the light client's peers, so they fade in as they join. A leaving one
-   goes at once. The simulated rings never change, so they stand from first paint. */
+/* A slot lights up as a peer fills it, and its caption and its link from the centre fade in. One that empties dims at
+   once. The slots never change, so they stand from first paint. */
 @media (prefers-reduced-motion: no-preference) {
-  .ring[data-ring='inner'] .dot,
-  .link[data-from='centre'],
-  .link[data-from='inner'] {
+  .label,
+  .link[data-kind='real'] {
     animation: enter 600ms ease-out;
+  }
+  .dot[data-kind='peer'] {
+    transition: background-color 600ms ease-out;
   }
 }
 
@@ -182,17 +179,20 @@
   position: absolute;
   inset: calc(50% - var(--size) / 2);
   border-radius: 50%;
-  background: var(--dot-color);
+  background: var(--neutral-solid);
   /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then moved toward the
      viewer by more than the floor comes forward across the dot's lower half, so nothing on the floor draws over it. */
   transform: translate(calc(cos(var(--angle)) * var(--place)), calc(sin(var(--angle)) * var(--place)))
     rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
 }
 
-/* The one server a backend with no light client talks through, in the peers' place. */
-.dot[data-server] {
+/* The one server a backend with no light client talks through, in the first peer's place. */
+.dot[data-kind='server'] {
   --dot: 9;
-  --dot-color: var(--text-muted);
+  background: var(--text-muted);
+}
+.dot[data-kind='simulated'] {
+  background: var(--chrome-action-dim);
 }
 
 /* A caption that stands beside its dot and turns with it, above the line its dot rides. */
@@ -207,7 +207,8 @@
   white-space: nowrap;
 }
 
-/* A line flat on the floor from one dot to another, or from the centre. It runs under the dots, which cover its ends. */
+/* A line flat on the floor from the centre to a peer or the server, or between simulated dots. It runs under the dots,
+   which cover its ends. */
 .link {
   --from-angle: calc(var(--from-start) + var(--from-turn));
   --to-angle: calc(var(--to-start) + var(--to-turn));
@@ -218,7 +219,6 @@
   left: 50%;
   width: hypot(var(--dx), var(--dy));
   height: var(--line);
-  background: var(--chrome-action-dim);
   transform-origin: 0 50%;
   transform: translate(
       calc(cos(var(--from-angle)) * var(--from-radius)),
@@ -229,7 +229,12 @@
 .link[data-from='centre'] {
   --from-radius: 0px;
   --from-turn: 0deg;
+}
+.link[data-kind='real'] {
   background: var(--text-faint);
+}
+.link[data-kind='simulated'] {
+  background: var(--chrome-action-dim);
 }
 .link[data-from='inner'] {
   --from-radius: var(--inner-radius);

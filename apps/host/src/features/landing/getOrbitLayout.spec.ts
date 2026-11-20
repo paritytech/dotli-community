@@ -2,76 +2,110 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { getOrbitLayout, type OrbitLayout, type OrbitMode, type OrbitRing } from './getOrbitLayout.js';
+import {
+  getOrbitLayout,
+  type OrbitDot,
+  type OrbitEnd,
+  type OrbitLayout,
+  type OrbitMode,
+  type OrbitRing,
+} from './getOrbitLayout.js';
 
 describe('getOrbitLayout', () => {
-  it('As a visitor whose light client has peers, I see every dot linked once, inward from the ring inside its own or from the centre', () => {
+  it('As a visitor, I see 3, 6, 9, 12 and 15 slots on the rings from the centre outward, filled by peers from the inner ring out', () => {
     // When
     const layout = getOrbitLayout(lightClient(5));
 
     // Then
-    expect(listLinkedEnds(layout)).toEqual(listDots(layout));
+    expect(layout.rings.map(({ dots }) => dots.map(({ kind }) => kind).join(','))).toEqual([
+      'peer,peer,peer',
+      'peer,peer,simulated,simulated,simulated,simulated',
+      Array(9).fill('simulated').join(','),
+      Array(12).fill('simulated').join(','),
+      Array(15).fill('simulated').join(','),
+    ]);
   });
 
-  it('As a visitor, I see one inner dot per peer, and a peer joining moves no other dot', () => {
+  it('As a visitor, I see a joining peer fill the next slot and every other dot stay as it was', () => {
     // Given
-    const before = getOrbitLayout(lightClient(5));
+    const before = listAllDots(getOrbitLayout(lightClient(5)));
 
     // When
-    const after = getOrbitLayout(lightClient(6));
+    const after = listAllDots(getOrbitLayout(lightClient(6)));
 
     // Then
-    expect(getInner(before)).toHaveLength(5);
-    expect(getInner(after).slice(0, 5)).toEqual(getInner(before));
+    expect(after.filter((dot, index) => JSON.stringify(dot) !== JSON.stringify(before[index]))).toEqual([
+      { ...before[5], kind: 'peer', label: '[peer#6]' },
+    ]);
   });
 
-  it('As a visitor, I see each inner dot labelled by its peer join order, and no simulated dot labelled', () => {
+  it('As a visitor whose light client has more peers than slots, I see all 45 slots filled', () => {
     // When
-    const layout = getOrbitLayout(lightClient(3));
+    const layout = getOrbitLayout(lightClient(50));
+
+    // Then
+    expect(listAllDots(layout).filter(({ kind }) => kind === 'peer')).toHaveLength(45);
+  });
+
+  it('As a visitor, I see each peer labelled by its join order, and no simulated dot labelled', () => {
+    // When
+    const layout = getOrbitLayout(lightClient(4));
 
     // Then
     expect(layout.rings.map(({ dots }) => dots.map(({ label }) => label).filter(label => label !== null))).toEqual([
       ['[peer#1]', '[peer#2]', '[peer#3]'],
-      [],
+      ['[peer#4]'],
       [],
       [],
       [],
     ]);
   });
 
-  it('As a visitor whose light client has many peers, I see at most 24 inner dots', () => {
+  it('As a visitor whose light client has peers, I see the centre linked straight to each peer, and no peer linked to anything else', () => {
     // When
-    const layout = getOrbitLayout(lightClient(30));
+    const layout = getOrbitLayout(lightClient(4));
 
     // Then
-    expect(getInner(layout)).toHaveLength(24);
+    const peers = listPeers(layout);
+    expect(listLinks(layout).filter(link => link.split(/[> ]/).some(end => peers.includes(end)))).toEqual(
+      peers.map(peer => `centre:0>${peer} real`),
+    );
   });
 
-  it('As a visitor whose light client has no peers yet, I see an empty inner ring and the ring outside it unlinked', () => {
+  it('As a visitor, I see each simulated dot linked from the nearest simulated dot on the ring inside, and one with none there unlinked', () => {
+    // When
+    const layout = getOrbitLayout(lightClient(3));
+
+    // Then
+    expect(listSimulatedLinkEnds(layout)).toEqual(listSimulated(layout).filter(dot => !dot.startsWith('ring1:')));
+  });
+
+  it('As a visitor whose light client has no peers yet, I see every slot simulated and nothing linked from the centre', () => {
     // When
     const layout = getOrbitLayout(lightClient(0));
 
     // Then
-    expect(getInner(layout)).toEqual([]);
-    expect(listLinkedEnds(layout)).toEqual(listDots(layout).filter(dot => !dot.startsWith('ring1:')));
+    expect(listPeers(layout)).toEqual([]);
+    expect(listLinks(layout).filter(link => link.startsWith('centre:'))).toEqual([]);
   });
 
-  it('As a visitor on a server backend, I see one server, labelled as the server, in the inner ring that every link out of the centre routes through', () => {
+  it('As a visitor on a server backend, I see one server, labelled as the server, in the inner ring and linked from the centre', () => {
     // When
     const layout = getOrbitLayout({ kind: 'server' });
 
     // Then
-    expect(getInner(layout)).toEqual([expect.objectContaining({ server: true, label: '[server]' })]);
-    expect(listLinkedEnds(layout)).toEqual(listDots(layout));
-    expect(listSourcesOf(layout, 'ring1')).toEqual(getInner(layout).map(({ start }) => `inner:${String(start)}`));
+    expect(listAllDots(layout).filter(({ kind }) => kind !== 'simulated')).toEqual([
+      expect.objectContaining({ kind: 'server', label: '[server]' }),
+    ]);
+    expect(listLinks(layout).filter(link => link.endsWith(' real'))).toEqual(['centre:0>inner:282 real']);
   });
 
-  it('As a visitor, I see a dot near 0 deg linked to the nearest inner dot across 0 deg, even one given as a negative angle', () => {
+  it('As a visitor, I see a simulated dot just short of 360 deg linked to the nearest one inside across 0 deg', () => {
     // When
     const layout = getOrbitLayout(lightClient(0));
 
     // Then
-    expect(findLinkFrom(layout, 'ring2', 344)).toEqual({ ring: 'ring1', start: -34 });
+    expect(findLinkFrom(layout, 'ring2', 353)).toEqual({ ring: 'ring1', start: 15 });
   });
 });
 
@@ -79,29 +113,44 @@ function lightClient(peers: number): OrbitMode {
   return { kind: 'lightClient', peers };
 }
 
-function getInner(layout: OrbitLayout) {
-  return layout.rings.find(({ ring }) => ring === 'inner')?.dots ?? [];
+function listAllDots(layout: OrbitLayout) {
+  return layout.rings.flatMap(({ dots }) => dots);
 }
 
-function listDots(layout: OrbitLayout): string[] {
-  return layout.rings.flatMap(({ ring, dots }) => dots.map(({ start }) => `${ring}:${String(start)}`)).sort();
+/** The peers, in join order. */
+function listPeers(layout: OrbitLayout): string[] {
+  return listOfKind(layout, 'peer');
 }
 
-/** Each link's outer end, with the ring it links in from, which must be the ring inside its own. */
-function listLinkedEnds(layout: OrbitLayout): string[] {
-  const order: (OrbitRing | 'centre')[] = ['centre', ...layout.rings.map(({ ring }) => ring)];
+/** The simulated dots, from the centre outward. */
+function listSimulated(layout: OrbitLayout): string[] {
+  return listOfKind(layout, 'simulated');
+}
+
+function listOfKind(layout: OrbitLayout, kind: OrbitDot['kind']): string[] {
+  return layout.rings.flatMap(({ ring, dots }) =>
+    dots.filter(dot => dot.kind === kind).map(({ start }) => getEnd({ ring, start })),
+  );
+}
+
+/** Each link as its two ends and its kind, in the layout's order. */
+function listLinks(layout: OrbitLayout): string[] {
+  return layout.links.map(({ from, to, kind }) => `${getEnd(from)}>${getEnd(to)} ${kind}`);
+}
+
+/** The outer ends of the links between simulated dots, each only when its inner end is simulated too. */
+function listSimulatedLinkEnds(layout: OrbitLayout): string[] {
+  const simulated = listSimulated(layout);
   return layout.links
-    .filter(({ from, to }) => order.indexOf(from.ring) === order.indexOf(to.ring) - 1)
-    .map(({ to }) => `${to.ring}:${String(to.start)}`)
-    .sort();
+    .filter(
+      ({ from, to, kind }) =>
+        kind === 'simulated' && simulated.includes(getEnd(from)) && simulated.includes(getEnd(to)),
+    )
+    .map(({ to }) => getEnd(to));
 }
 
-/** The ends the links into `ring` come from, each once. */
-function listSourcesOf(layout: OrbitLayout, ring: OrbitRing): string[] {
-  const sources = layout.links
-    .filter(({ to }) => to.ring === ring)
-    .map(({ from }) => `${from.ring}:${String(from.start)}`);
-  return [...new Set(sources)];
+function getEnd({ ring, start }: OrbitEnd): string {
+  return `${ring}:${String(start)}`;
 }
 
 function findLinkFrom(layout: OrbitLayout, ring: OrbitRing, start: number) {

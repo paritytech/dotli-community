@@ -21,11 +21,7 @@ export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
               <div class={s['ring']} data-ring={ring().ring}>
                 <For each={ring().dots} keyed={dot => dot.key}>
                   {dot => (
-                    <div
-                      class={s['dot']}
-                      data-server={dot().server ? '' : undefined}
-                      style={{ '--start': `${String(dot().start)}deg` }}
-                    >
+                    <div class={s['dot']} data-kind={dot().kind} style={{ '--start': `${String(dot().start)}deg` }}>
                       <Show when={dot().label}>{label => <span class={s['label']}>{label()}</span>}</Show>
                     </div>
                   )}
@@ -39,6 +35,7 @@ export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
                 class={s['link']}
                 data-from={link().from.ring}
                 data-to={link().to.ring}
+                data-kind={link().kind}
                 style={{
                   '--from-start': `${String(link().from.start)}deg`,
                   '--to-start': `${String(link().to.start)}deg`,
