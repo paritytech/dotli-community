@@ -38,6 +38,10 @@
   /* Every line's width, rings and links alike. */
   --line: 1.5px;
   --tilt: 80deg;
+  /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
+     by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
+     and the floor cuts it at no tilt short of edge-on. */
+  --rise: calc((tan(var(--tilt)) + 1) / 2);
   /* How far the stage sits below the page's foot, as a share of its height. */
   --drop: 0.2;
   --fade: calc(430 * var(--unit));
@@ -181,15 +185,15 @@
   --size: calc(var(--dot) * var(--unit));
   /* Its lift toward the viewer pushes it outward from the centre by the lift's share of the perspective, so it is
      placed that much further in to show on its ring's line. */
-  --place: calc(var(--radius) * (1 - 2 * var(--dot) / var(--depth)));
+  --place: calc(var(--radius) * (1 - var(--rise) * var(--dot) / var(--depth)));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
   border-radius: 50%;
   background: var(--neutral-solid);
-  /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then moved toward the
-     viewer by more than the floor comes forward across the dot's lower half, so nothing on the floor draws over it. */
+  /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then lifted toward the
+     viewer, so nothing on the floor draws over it. */
   transform: translate(calc(cos(var(--angle)) * var(--place)), calc(sin(var(--angle)) * var(--place)))
-    rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
+    rotateX(calc(-1 * var(--tilt))) translateZ(calc(var(--rise) * var(--size)));
 }
 
 /* The one server a backend with no light client talks through, in the first peer's place. */
@@ -253,7 +257,7 @@
   box-sizing: border-box;
   border: var(--line) solid var(--neutral-solid);
   border-radius: 50%;
-  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
+  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(var(--rise) * var(--size)));
 }
 .centre::after {
   content: '';
