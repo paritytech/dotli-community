@@ -63,13 +63,14 @@
   --ring2-radius: calc(260 * var(--unit));
   --ring3-radius: calc(340 * var(--unit));
   --ring4-radius: calc(430 * var(--unit));
-  /* Inner orbits turn faster. Each ring makes whole turns per turn of the clock, so the loop has no seam. The fallback
-     holds the dots at rest where the clock is not registered. */
+  /* Inner orbits turn a little faster, by one turn per ring per turn of the clock, so the rings barely drift apart and
+     a line between two rings rarely swings across another. Each ring makes whole turns per turn of the clock, so the
+     loop has no seam. The fallback holds the dots at rest where the clock is not registered. */
   --inner-turn: calc(var(--clock, 0deg) * 15);
-  --ring1-turn: calc(var(--clock, 0deg) * 10);
-  --ring2-turn: calc(var(--clock, 0deg) * 7);
-  --ring3-turn: calc(var(--clock, 0deg) * 5);
-  --ring4-turn: calc(var(--clock, 0deg) * 4);
+  --ring1-turn: calc(var(--clock, 0deg) * 14);
+  --ring2-turn: calc(var(--clock, 0deg) * 13);
+  --ring3-turn: calc(var(--clock, 0deg) * 12);
+  --ring4-turn: calc(var(--clock, 0deg) * 11);
   position: absolute;
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
@@ -127,7 +128,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .plane {
-    animation: turn 1800s linear infinite;
+    animation: turn 3600s linear infinite;
   }
 }
 
