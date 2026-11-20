@@ -15,12 +15,18 @@ type Params = {
   requestId: string;
   method: PhoneMethod;
   result: PhoneResult;
+  /** The envelope version to answer at, the method's newest when absent. */
+  version?: string;
 };
 
 /** A response frame for `result`. Throws when the frame does not encode. */
-export function encodePhoneResponseFrame({ requestId, method, result }: Params): Uint8Array {
-  const { ids, response, version } = PHONE_METHODS[method];
-  return encodeResponseFrame({ requestId, method: ids, value: response.enc(buildResponsePayload(result, version)) });
+export function encodePhoneResponseFrame({ requestId, method, result, version }: Params): Uint8Array {
+  const { ids, response, version: newest } = PHONE_METHODS[method];
+  return encodeResponseFrame({
+    requestId,
+    method: ids,
+    value: response.enc(buildResponsePayload(result, version ?? newest)),
+  });
 }
 
 function buildResponsePayload(result: PhoneResult, version: string) {

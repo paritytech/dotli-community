@@ -3,7 +3,7 @@
 
 // Reads a relayed frame's header without decoding it, and the body of a phone-bound request.
 
-import { getKeys, isRecord } from '@dotli/shared';
+import { getKeys } from '@dotli/shared';
 import { compact } from '@parity/truapi/scale';
 import { PHONE_METHODS, type PhoneMethod } from './phoneMethods.js';
 
@@ -52,13 +52,8 @@ export function peekFrameHeader(message: Uint8Array): FrameHeader | undefined {
 }
 
 /**
- * The unwrapped body of a `method` request's payload. Throws when it does not decode or is not the method's version.
+ * The unwrapped body of a `method` request's payload, at any version the method serves. Throws when it does not decode.
  */
 export function decodePhoneRequestBody(method: PhoneMethod, payload: Uint8Array): unknown {
-  const versioned = PHONE_METHODS[method].request.dec(payload);
-  const version = isRecord(versioned) ? versioned['tag'] : undefined;
-  if (!isRecord(versioned) || version !== PHONE_METHODS[method].version) {
-    throw new Error(`unsupported request version ${String(version)}`);
-  }
-  return versioned['value'];
+  return PHONE_METHODS[method].request.dec(payload).value;
 }

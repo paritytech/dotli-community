@@ -4,15 +4,16 @@
 // Temporary: the core does not report phone requests to the host, so this infers them from relayed frames. Remove once https://github.com/paritytech/trinity-user-agents/issues/1552 lands.
 
 import {
+  HostCreateTransactionError,
+  HostCreateTransactionResponse,
+  ProductAccountTxPayload,
+  V01HostCreateTransactionError,
   VersionedHostAccountGetError,
   VersionedHostAccountGetRequest,
   VersionedHostAccountGetResponse,
   VersionedHostAccountSignVrfError,
   VersionedHostAccountSignVrfRequest,
   VersionedHostAccountSignVrfResponse,
-  VersionedHostCreateTransactionError,
-  VersionedHostCreateTransactionRequest,
-  VersionedHostCreateTransactionResponse,
   VersionedHostCreateTransactionWithLegacyAccountError,
   VersionedHostCreateTransactionWithLegacyAccountRequest,
   VersionedHostCreateTransactionWithLegacyAccountResponse,
@@ -46,7 +47,7 @@ import {
   SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
   SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
 } from '@parity/truapi/wire-table';
-import { CallError, Result, type CallErrorValue, type Codec } from '@parity/truapi/scale';
+import { CallError, indexedTaggedUnion, Result, type CallErrorValue, type Codec } from '@parity/truapi/scale';
 
 /** What the phone is asked to do, which words the waiting step. */
 export type PhoneAsk = 'sign' | 'approve';
@@ -55,27 +56,33 @@ export type PhoneMethod = keyof typeof PHONE_METHODS;
 
 type ResponseCodec = Codec<Result<unknown, CallErrorValue<unknown>>>;
 
+/** A request envelope: the version it was sent at and the body it carries. */
+type VersionedRequest = {
+  tag: string;
+  value?: unknown;
+};
+
 /** One phone-bound method: its wire ids, its codecs and what the phone is asked to do. */
 type PhoneMethodEntry = {
   ids: MethodIds;
-  /** The method's `Versioned...Request` codec. */
-  request: Codec<unknown>;
-  /** The envelope version the request codec speaks. */
+  /** The method's request envelope. Every version it decodes carries the same body. */
+  request: Codec<VersionedRequest>;
+  /** The newest envelope version the request codec speaks, which a body is encoded at. */
   version: string;
-  /** The method's response, as the generated wire decode table pairs it. */
+  /** The method's response: its ok and error envelopes inside the call result. */
   response: ResponseCodec;
   ask: PhoneAsk;
 };
 
 type Params<Request, Ok, Failure> = {
   ids: MethodIds;
-  /** The method's `Versioned...Request` codec. */
+  /** The method's request envelope, with a variant for each version the core serves. */
   request: Codec<Request>;
-  /** The envelope version the request codec speaks, checked against the codec. */
+  /** The newest envelope version the request codec speaks. The type admits only versions the codec speaks. */
   version: Request extends { tag: infer Version extends string } ? Version : never;
-  /** The method's `Versioned...Response` codec. */
+  /** The method's response envelope, with a variant for each version the core serves. */
   ok: Codec<Ok>;
-  /** The method's `Versioned...Error` codec. */
+  /** The method's error envelope, with a variant for each version the core serves. */
   error: Codec<Failure>;
   ask: PhoneAsk;
 };
@@ -100,10 +107,11 @@ export const PHONE_METHODS = {
   }),
   createTransaction: buildMethodEntry({
     ids: SIGNING_CREATE_TRANSACTION,
-    request: VersionedHostCreateTransactionRequest,
+    // Composed here, since products built with an older SDK still send V1, which the core still serves.
+    request: indexedTaggedUnion({ V1: [0, ProductAccountTxPayload], V2: [1, ProductAccountTxPayload] }),
     version: 'V2',
-    ok: VersionedHostCreateTransactionResponse,
-    error: VersionedHostCreateTransactionError,
+    ok: indexedTaggedUnion({ V1: [0, HostCreateTransactionResponse], V2: [1, HostCreateTransactionResponse] }),
+    error: indexedTaggedUnion({ V1: [0, V01HostCreateTransactionError], V2: [1, HostCreateTransactionError] }),
     ask: 'sign',
   }),
   createTransactionWithLegacyAccount: buildMethodEntry({
@@ -173,10 +181,10 @@ export const PHONE_METHODS = {
 } satisfies Record<string, PhoneMethodEntry>;
 
 /**
- * The response codec must be the generated client's exact composition, as a bare codec would decode real response
- * bytes as garbage.
+ * The response codec wraps the ok and error envelopes in the call result as the wire does, since any other composition
+ * decodes real response bytes as garbage.
  */
-function buildMethodEntry<Request, Ok, Failure>({
+function buildMethodEntry<Request extends VersionedRequest, Ok, Failure>({
   ids,
   request,
   version,
@@ -187,7 +195,7 @@ function buildMethodEntry<Request, Ok, Failure>({
   return {
     ids,
     // Erases the method's request type, so one table holds every method's request codec.
-    request: request as Codec<unknown>,
+    request: request as unknown as Codec<VersionedRequest>,
     version,
     // Erases the method's ok and error types, so one table holds every method's response codec.
     response: Result(ok, CallError(error)) as unknown as ResponseCodec,
