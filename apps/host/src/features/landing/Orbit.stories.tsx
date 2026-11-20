@@ -67,17 +67,16 @@ function getJoined(canvasElement: HTMLElement): Element[] {
   return [...canvasElement.querySelectorAll('[data-testid="orbit"] :is([data-kind], [data-link])')];
 }
 
-/** How long an element waits before it fades in, in milliseconds. */
-function getEnterDelay(element: Element): number {
-  const [enter] = element.getAnimations().filter(animation => animation instanceof CSSAnimation);
-  return enter?.effect?.getTiming().delay ?? Number.NaN;
+/** How a dot or link joined the orbit: onto an empty floor, or onto one that held dots. */
+function getJoin(element: Element): string | null {
+  return element.getAttribute('data-join');
 }
 
 /**
  * A light client with no peers yet: only the rings and the centre.
  *
- * As a visitor, I see the first peer and its tree appear at once, since nothing moves out of their way, and a later
- * peer's dots wait for the others to glide.
+ * As a visitor, I see the first peer and its tree join an empty floor, and a later peer's dots and links join a floor
+ * that holds dots.
  */
 export const NoPeers: Story = {
   play: async ({ canvas, canvasElement, userEvent, step }) => {
@@ -86,21 +85,22 @@ export const NoPeers: Story = {
     });
 
     const first = getJoined(canvasElement);
-    await step('Then its dots and links fade in at once', async () => {
+    await step('Then its dots and links join an empty floor', async () => {
       await expect(first).not.toHaveLength(0);
-      await expect(first.map(getEnterDelay)).toEqual(first.map(() => 0));
+      await expect(first.map(getJoin)).toEqual(first.map(() => 'first'));
     });
 
     await step('When a second peer joins', async () => {
       await userEvent.click(canvas.getByRole('button', { name: 'Add a peer' }));
     });
 
-    await step('Then its dots and links wait for the glide, and the first ones still show at once', async () => {
+    await step('Then its dots and links join a floor with dots, and the first ones keep their join', async () => {
       const later = getJoined(canvasElement).filter(element => !first.includes(element));
       await expect(later).not.toHaveLength(0);
-      await expect(later.filter(element => getEnterDelay(element) <= 0)).toEqual([]);
+      await expect(later.map(getJoin)).toEqual(later.map(() => 'later'));
       const kept = first.filter(element => element.isConnected);
-      await expect(kept.map(getEnterDelay)).toEqual(kept.map(() => 0));
+      await expect(kept).not.toHaveLength(0);
+      await expect(kept.map(getJoin)).toEqual(kept.map(() => 'first'));
     });
   },
 };
