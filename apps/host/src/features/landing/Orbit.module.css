@@ -130,34 +130,35 @@
   transform-style: preserve-3d;
 }
 
-/* Inner orbits carry larger dots, and the innermost ring is brightest. A ring's radius and a dot's size are in units. */
+/* Inner orbits carry larger dots, and the innermost ring is brightest. The rings stay dimmer than the links, so the
+   connections read first and the orbits sit behind them. A ring's radius and a dot's size are in units. */
 :is(.oval, .ring, .link)[data-ring='inner'] {
   --r: var(--inner-radius);
-  --ring-color: var(--text-faint);
+  --ring-color: var(--border);
   --dot: 7.5;
 }
 :is(.oval, .ring, .link)[data-ring='ring1'] {
   --r: var(--ring1-radius);
   --parent-r: var(--inner-radius);
-  --ring-color: var(--chrome-action-dim);
+  --ring-color: var(--chrome-solid);
   --dot: 5.5;
 }
 :is(.oval, .ring, .link)[data-ring='ring2'] {
   --r: var(--ring2-radius);
   --parent-r: var(--ring1-radius);
-  --ring-color: var(--chrome-action-dim);
+  --ring-color: var(--chrome-solid);
   --dot: 3.5;
 }
 :is(.oval, .ring, .link)[data-ring='ring3'] {
   --r: var(--ring3-radius);
   --parent-r: var(--ring2-radius);
-  --ring-color: var(--chrome-action-dim);
+  --ring-color: var(--chrome-solid);
   --dot: 3;
 }
 :is(.oval, .ring, .link)[data-ring='ring4'] {
   --r: var(--ring4-radius);
   --parent-r: var(--ring3-radius);
-  --ring-color: var(--chrome-action-dim);
+  --ring-color: var(--chrome-solid);
   --dot: 2.5;
 }
 
