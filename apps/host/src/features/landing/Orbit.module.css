@@ -15,6 +15,10 @@
 .orbit {
   --width: min(1500px, 220vw);
   --unit: calc(var(--width) / 640);
+  /* The perspective, in units. Long, so the floor reads close to isometric while near dots still grow a little. */
+  --depth: 1920;
+  /* Every line's width, rings and links alike. */
+  --line: 1.5px;
   --tilt: 74deg;
   /* How far the stage sits below the page's foot, as a share of its height. */
   --drop: 0.3;
@@ -39,8 +43,7 @@
   width: var(--width);
   aspect-ratio: 12 / 5;
   translate: -50% calc(var(--drop) * 100%);
-  /* Long, so the floor reads close to isometric while near dots still grow a little. */
-  perspective: calc(1920 * var(--unit));
+  perspective: calc(var(--depth) * var(--unit));
 }
 
 /* A phone has height to spare under the form, so the floor stands nearly upright and in full view. */
@@ -71,53 +74,75 @@
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
   transform-style: preserve-3d;
-  background: radial-gradient(closest-side, var(--surface), var(--bg-page));
+  /* Two axes cross at the centre, like a plot's, over the floor's glow. */
+  background:
+    linear-gradient(var(--chrome-action-dim), var(--chrome-action-dim)) center / var(--line) 100% no-repeat,
+    linear-gradient(var(--chrome-action-dim), var(--chrome-action-dim)) center / 100% var(--line) no-repeat,
+    radial-gradient(closest-side, var(--surface), var(--bg-page));
 }
 
+/* A ring's line is centred on its radius, where its dots and the ends of its links sit. */
 .ring {
   position: absolute;
-  inset: calc(50% - var(--radius));
+  inset: calc(50% - var(--radius) - var(--line) / 2);
   box-sizing: border-box;
-  border: 2px solid var(--ring-color);
+  border: var(--line) var(--ring-style) var(--ring-color);
   border-radius: 50%;
   transform-style: preserve-3d;
 }
 
-/* Inner orbits carry larger dots, the innermost brightest. */
+/* Inner orbits carry larger dots, the innermost brightest. The simulated rings past the first are dashed, as a plot
+   draws what it does not measure. A dot's size is in units. */
 .ring[data-ring='inner'] {
   --radius: var(--inner-radius);
   --turn: var(--inner-turn);
-  --ring-color: var(--chrome-solid);
-  --size: calc(10 * var(--unit));
-  --dot-color: var(--text-faint);
+  --ring-color: var(--text-faint);
+  --ring-style: solid;
+  --dot: 7.5;
+  --dot-color: var(--neutral-solid);
 }
 .ring[data-ring='ring1'] {
   --radius: var(--ring1-radius);
   --turn: var(--ring1-turn);
-  --ring-color: var(--chrome-solid);
-  --size: calc(7 * var(--unit));
-  --dot-color: var(--chrome-action-dim);
+  --ring-color: var(--chrome-action-dim);
+  --ring-style: solid;
+  --dot: 5.5;
+  --dot-color: var(--text-faint);
 }
 .ring[data-ring='ring2'] {
   --radius: var(--ring2-radius);
   --turn: var(--ring2-turn);
-  --ring-color: var(--surface);
-  --size: calc(4.5 * var(--unit));
+  --ring-color: var(--chrome-action-dim);
+  --ring-style: dashed;
+  --dot: 3.5;
   --dot-color: var(--chrome-action-dim);
 }
 .ring[data-ring='ring3'] {
   --radius: var(--ring3-radius);
   --turn: var(--ring3-turn);
-  --ring-color: var(--surface);
-  --size: calc(4 * var(--unit));
+  --ring-color: var(--chrome-action-dim);
+  --ring-style: dashed;
+  --dot: 3;
   --dot-color: var(--chrome-action-dim);
 }
 .ring[data-ring='ring4'] {
   --radius: var(--ring4-radius);
   --turn: var(--ring4-turn);
-  --ring-color: var(--surface);
-  --size: calc(3.5 * var(--unit));
+  --ring-color: var(--chrome-action-dim);
+  --ring-style: dashed;
+  --dot: 2.5;
   --dot-color: var(--chrome-action-dim);
+}
+
+/* Fine ticks round the inner ring's outer edge, like a dial's. */
+.ring[data-ring='inner']::before {
+  --tick: calc(4 * var(--unit));
+  content: '';
+  position: absolute;
+  inset: calc(-1 * (var(--line) + var(--tick)));
+  border-radius: 50%;
+  background: repeating-conic-gradient(var(--text-faint) 0 0.3deg, transparent 0 5deg);
+  mask-image: radial-gradient(closest-side, transparent calc(100% - var(--tick)), #000 0);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -150,25 +175,40 @@
 
 .dot {
   --angle: calc(var(--start) + var(--turn));
+  --size: calc(var(--dot) * var(--unit));
+  /* Its lift toward the viewer pushes it outward from the centre by the lift's share of the perspective, so it is
+     placed that much further in to show on its ring's line. */
+  --place: calc(var(--radius) * (1 - 2 * var(--dot) / var(--depth)));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
   border-radius: 50%;
   background: var(--dot-color);
   /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then moved toward the
      viewer by more than the floor comes forward across the dot's lower half, so nothing on the floor draws over it. */
-  transform: translate(calc(cos(var(--angle)) * var(--radius)), calc(sin(var(--angle)) * var(--radius)))
+  transform: translate(calc(cos(var(--angle)) * var(--place)), calc(sin(var(--angle)) * var(--place)))
     rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
 }
 
 /* The one server a backend with no light client talks through, in the peers' place. */
 .dot[data-server] {
-  --size: calc(12 * var(--unit));
-  --dot-color: var(--neutral-solid);
+  --dot: 9;
+  --dot-color: var(--text-muted);
+}
+
+/* A caption that stands beside its dot and turns with it, above the line its dot rides. */
+.label {
+  position: absolute;
+  bottom: 50%;
+  left: calc(100% + 2 * var(--unit));
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  line-height: 1;
+  color: var(--neutral-solid);
+  white-space: nowrap;
 }
 
 /* A line flat on the floor from one dot to another, or from the centre. It runs under the dots, which cover its ends. */
 .link {
-  --line: 2px;
   --from-angle: calc(var(--from-start) + var(--from-turn));
   --to-angle: calc(var(--to-start) + var(--to-turn));
   --dx: calc(cos(var(--to-angle)) * var(--to-radius) - cos(var(--from-angle)) * var(--from-radius));
@@ -178,7 +218,7 @@
   left: 50%;
   width: hypot(var(--dx), var(--dy));
   height: var(--line);
-  background: var(--chrome-solid);
+  background: var(--chrome-action-dim);
   transform-origin: 0 50%;
   transform: translate(
       calc(cos(var(--from-angle)) * var(--from-radius)),
@@ -189,7 +229,7 @@
 .link[data-from='centre'] {
   --from-radius: 0px;
   --from-turn: 0deg;
-  background: var(--chrome-action-dim);
+  background: var(--text-faint);
 }
 .link[data-from='inner'] {
   --from-radius: var(--inner-radius);
@@ -232,12 +272,32 @@
   --to-turn: var(--ring4-turn);
 }
 
-/* Upright and moved toward the viewer like the dots, so the lines that meet in it end under it. */
+/* The visitor's light client, framed by a reticle: a circle round it and four ticks outside that. Upright like the
+   dots, and moved toward the viewer by more than the floor comes forward across the reticle's lower half, so the lines
+   that meet in it end under it. The box spans the whole reticle, since Chrome can drop what a 3D layer paints outside its
+   box. */
 .centre {
-  --size: calc(15 * var(--unit));
+  --dot-size: calc(11 * var(--unit));
+  --size: calc(3 * var(--dot-size));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
+  transform: rotateX(calc(-1 * var(--tilt))) translateZ(var(--size));
+}
+.centre::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(var(--neutral-solid), var(--neutral-solid)) center / var(--line) 100% no-repeat,
+    linear-gradient(var(--neutral-solid), var(--neutral-solid)) center / 100% var(--line) no-repeat;
+  mask-image: radial-gradient(closest-side, transparent 70%, #000 0);
+}
+.centre::after {
+  content: '';
+  position: absolute;
+  inset: calc(50% - var(--dot-size) / 2);
   border-radius: 50%;
-  background: var(--neutral-solid);
-  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
+  background: var(--text-muted);
+  outline: var(--line) solid var(--neutral-solid);
+  outline-offset: calc(3 * var(--unit));
 }

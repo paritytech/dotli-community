@@ -25,6 +25,20 @@ describe('getOrbitLayout', () => {
     expect(getInner(after).slice(0, 5)).toEqual(getInner(before));
   });
 
+  it('As a visitor, I see each inner dot labelled by its peer join order, and no simulated dot labelled', () => {
+    // When
+    const layout = getOrbitLayout(lightClient(3));
+
+    // Then
+    expect(layout.rings.map(({ dots }) => dots.map(({ label }) => label).filter(label => label !== null))).toEqual([
+      ['[peer#1]', '[peer#2]', '[peer#3]'],
+      [],
+      [],
+      [],
+      [],
+    ]);
+  });
+
   it('As a visitor whose light client has many peers, I see at most 24 inner dots', () => {
     // When
     const layout = getOrbitLayout(lightClient(30));
@@ -42,12 +56,12 @@ describe('getOrbitLayout', () => {
     expect(listLinkedEnds(layout)).toEqual(listDots(layout).filter(dot => !dot.startsWith('ring1:')));
   });
 
-  it('As a visitor on a server backend, I see one server in the inner ring that every link out of the centre routes through', () => {
+  it('As a visitor on a server backend, I see one server, labelled as the server, in the inner ring that every link out of the centre routes through', () => {
     // When
     const layout = getOrbitLayout({ kind: 'server' });
 
     // Then
-    expect(getInner(layout)).toEqual([expect.objectContaining({ server: true })]);
+    expect(getInner(layout)).toEqual([expect.objectContaining({ server: true, label: '[server]' })]);
     expect(listLinkedEnds(layout)).toEqual(listDots(layout));
     expect(listSourcesOf(layout, 'ring1')).toEqual(getInner(layout).map(({ start }) => `inner:${String(start)}`));
   });

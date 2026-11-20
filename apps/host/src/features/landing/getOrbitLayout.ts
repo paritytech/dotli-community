@@ -14,6 +14,8 @@ export type OrbitDot = {
   readonly start: number;
   /** The one server a backend with no light client reaches the network through. */
   readonly server: boolean;
+  /** The caption beside an inner dot, naming the peer by its join order or the server. Simulated dots have none. */
+  readonly label: string | null;
 };
 
 /** One end of a link: the centre, or a dot on a ring. */
@@ -66,7 +68,7 @@ const CENTRE: OrbitEnd = { ring: 'centre', start: 0 };
 export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
   const rings: { ring: OrbitRing; dots: OrbitDot[] }[] = [
     { ring: 'inner', dots: getInnerDots(mode) },
-    ...OUTER_RINGS.map(({ ring, starts }) => ({ ring, dots: starts.map(start => createDot(ring, start, false)) })),
+    ...OUTER_RINGS.map(({ ring, starts }) => ({ ring, dots: starts.map(start => createDot(ring, start)) })),
   ];
   const links = rings.flatMap(({ ring, dots }, index) => {
     const inside = rings[index - 1];
@@ -91,15 +93,19 @@ function getInnerDots(mode: OrbitMode): OrbitDot[] {
   switch (mode.kind) {
     case 'lightClient':
       return Array.from({ length: Math.min(mode.peers, MAX_PEERS) }, (_, index) =>
-        createDot('inner', (FIRST_START + index * GOLDEN_ANGLE) % 360, false),
+        createDot('inner', (FIRST_START + index * GOLDEN_ANGLE) % 360, { label: `[peer#${String(index + 1)}]` }),
       );
     case 'server':
-      return [createDot('inner', FIRST_START, true)];
+      return [createDot('inner', FIRST_START, { server: true, label: '[server]' })];
   }
 }
 
-function createDot(ring: OrbitRing, start: number, server: boolean): OrbitDot {
-  return { key: getEndKey({ ring, start }), start, server };
+function createDot(
+  ring: OrbitRing,
+  start: number,
+  { server = false, label = null }: Partial<Pick<OrbitDot, 'server' | 'label'>> = {},
+): OrbitDot {
+  return { key: getEndKey({ ring, start }), start, server, label };
 }
 
 function createLink(from: OrbitEnd, to: OrbitEnd): OrbitLink {

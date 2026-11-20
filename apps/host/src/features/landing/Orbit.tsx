@@ -1,14 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For } from 'solid-js';
+import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { OrbitLayout } from './getOrbitLayout.js';
 import s from './Orbit.module.css';
 
 /**
  * The landing page's backdrop: dots circling rings on a tilted floor, linked inward to the centre. CSS draws and turns
- * it, and the layout says only which dots and links exist. A dot or link that stays across layouts keeps its element.
+ * it, and the layout says only which dots and links exist and how a dot is labelled. A dot or link that stays across
+ * layouts keeps its element.
  */
 export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
   return (
@@ -24,7 +25,9 @@ export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
                       class={s['dot']}
                       data-server={dot().server ? '' : undefined}
                       style={{ '--start': `${String(dot().start)}deg` }}
-                    />
+                    >
+                      <Show when={dot().label}>{label => <span class={s['label']}>{label()}</span>}</Show>
+                    </div>
                   )}
                 </For>
               </div>
