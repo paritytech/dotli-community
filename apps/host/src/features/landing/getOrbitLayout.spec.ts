@@ -2,23 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import {
-  getOrbitLayout,
-  type OrbitDot,
-  type OrbitEnd,
-  type OrbitLayout,
-  type OrbitMode,
-  type OrbitRing,
-} from './getOrbitLayout.js';
+import { getOrbitLayout, type OrbitDot, type OrbitLayout, type OrbitMode } from './getOrbitLayout.js';
 
 describe('getOrbitLayout', () => {
-  it('As a visitor whose light client has no peers yet, I see no dots and no links', () => {
+  it('As a visitor whose light client has no peers yet, I see no dots', () => {
     // When
     const layout = getOrbitLayout(lightClient(0));
 
     // Then
     expect(listDots(layout)).toEqual([]);
-    expect(layout.links).toEqual([]);
   });
 
   it('As a visitor, I see peers fill 3, 6, 9, 12 and 15 slots on the rings from the centre outward', () => {
@@ -41,12 +33,9 @@ describe('getOrbitLayout', () => {
 
     // Then
     expect(after.rings.map(({ dots }) => dots.filter(dot => !isIn(dot, before)))).toEqual(
-      after.rings.map(({ dots }) => dots.filter(dot => isFrom(after, dot, '[peer#6]'))),
+      after.rings.map(({ dots }, index) => dots.filter(dot => findRoot(after, index, dot)?.label === '[peer#6]')),
     );
     expect(listDots(before).every(dot => isIn(dot, after))).toBe(true);
-    expect(before.links.every(link => after.links.some(other => JSON.stringify(other) === JSON.stringify(link)))).toBe(
-      true,
-    );
   });
 
   it('As a visitor, I see each peer labelled by its join order, and no simulated dot labelled', () => {
@@ -63,37 +52,12 @@ describe('getOrbitLayout', () => {
     expect(listDots(layout).filter(({ kind }) => kind === 'simulated')).not.toEqual([]);
   });
 
-  it('As a visitor whose light client has peers, I see the centre linked straight to each peer and no peer linked to another', () => {
+  it('As a visitor, I see each simulated dot grow from a dot on the ring inside its own, back to a peer', () => {
     // When
     const layout = getOrbitLayout(lightClient(10));
 
     // Then
-    const real = listEnds(layout, dot => dot.kind !== 'simulated');
-    expect(
-      layout.links
-        .filter(({ from, to }) => real.includes(getEndText(from)) || real.includes(getEndText(to)))
-        .filter(({ kind }) => kind === 'real')
-        .map(({ from, to }) => `${getEndText(from)}>${getEndText(to)}`),
-    ).toEqual(real.map(end => `centre:0>${end}`));
-    expect(
-      layout.links.filter(({ from, to }) => real.includes(getEndText(from)) && real.includes(getEndText(to))),
-    ).toEqual([]);
-  });
-
-  it('As a visitor, I see each simulated dot linked once, dimly, from a dot on the ring inside its own', () => {
-    // When
-    const layout = getOrbitLayout(lightClient(10));
-
-    // Then
-    const simulated = listEnds(layout, dot => dot.kind === 'simulated');
-    const order: (OrbitRing | 'centre')[] = ['centre', ...layout.rings.map(({ ring }) => ring)];
-    const into = layout.links.filter(({ to }) => simulated.includes(getEndText(to)));
-    expect(into.map(({ to }) => getEndText(to)).sort()).toEqual([...simulated].sort());
-    expect(
-      into.every(
-        ({ from, to, kind }) => kind === 'simulated' && order.indexOf(from.ring) === order.indexOf(to.ring) - 1,
-      ),
-    ).toBe(true);
+    expect(listRoots(layout).every(root => root?.kind === 'peer')).toBe(true);
   });
 
   it('As a visitor, I see no simulated dot within 6 deg of a slot a peer can take', () => {
@@ -109,7 +73,7 @@ describe('getOrbitLayout', () => {
     expect(crowded).toEqual([]);
   });
 
-  it('As a visitor on a server backend, I see one server, labelled as the server, linked from the centre, and every simulated dot cascading from it', () => {
+  it('As a visitor on a server backend, I see one server, labelled as the server, and every simulated dot cascading from it', () => {
     // When
     const layout = getOrbitLayout({ kind: 'server' });
 
@@ -117,10 +81,7 @@ describe('getOrbitLayout', () => {
     expect(listDots(layout).filter(({ kind }) => kind !== 'simulated')).toEqual([
       expect.objectContaining({ kind: 'server', label: '[server]' }),
     ]);
-    expect(layout.links.filter(({ kind }) => kind === 'real')).toEqual([
-      expect.objectContaining({ from: { ring: 'centre', start: 0 }, to: { ring: 'inner', start: 282 } }),
-    ]);
-    expect(listEnds(layout, dot => dot.kind === 'simulated').map(end => findRoot(layout, end))).not.toContain(null);
+    expect(listRoots(layout).every(root => root?.kind === 'server')).toBe(true);
   });
 });
 
@@ -136,38 +97,24 @@ function countRealByRing(layout: OrbitLayout): number[] {
   return layout.rings.map(({ dots }) => dots.filter(({ kind }) => kind !== 'simulated').length);
 }
 
-/** The ends of the dots `pick` selects, as text. */
-function listEnds(layout: OrbitLayout, pick: (dot: OrbitDot) => boolean): string[] {
-  return layout.rings.flatMap(({ ring, dots }) => dots.filter(pick).map(({ start }) => getEndText({ ring, start })));
-}
-
 function isIn(dot: OrbitDot, layout: OrbitLayout): boolean {
   return listDots(layout).some(other => JSON.stringify(other) === JSON.stringify(dot));
 }
 
-/** Whether `dot` is the real dot labelled `label` or descends from it through the links. */
-function isFrom(layout: OrbitLayout, dot: OrbitDot, label: string): boolean {
-  const ring = layout.rings.find(({ dots }) => dots.includes(dot))?.ring;
-  return ring !== undefined && findRoot(layout, getEndText({ ring, start: dot.start }))?.label === label;
+/** The real dot each simulated dot cascades from, or null where the chain breaks. */
+function listRoots(layout: OrbitLayout): (OrbitDot | null)[] {
+  return layout.rings.flatMap(({ dots }, index) =>
+    dots.filter(({ kind }) => kind === 'simulated').map(dot => findRoot(layout, index, dot)),
+  );
 }
 
-/** Returns the real dot a dot cascades from, following its links inward, or null when the chain breaks. */
-function findRoot(layout: OrbitLayout, end: string): OrbitDot | null {
-  const dot = layout.rings.flatMap(({ ring, dots }) =>
-    dots.filter(({ start }) => getEndText({ ring, start }) === end),
-  )[0];
-  if (!dot) {
-    return null;
-  }
+/** Returns the real dot `dot` on ring `index` cascades from, following each link inward, or null when it breaks. */
+function findRoot(layout: OrbitLayout, index: number, dot: OrbitDot): OrbitDot | null {
   if (dot.kind !== 'simulated') {
     return dot;
   }
-  const from = layout.links.find(({ to }) => getEndText(to) === end)?.from;
-  return from ? findRoot(layout, getEndText(from)) : null;
-}
-
-function getEndText({ ring, start }: OrbitEnd): string {
-  return `${ring}:${String(start)}`;
+  const parent = layout.rings[index - 1]?.dots.find(({ start }) => start === dot.from);
+  return parent ? findRoot(layout, index - 1, parent) : null;
 }
 
 function getAngleGap(a: number, b: number): number {

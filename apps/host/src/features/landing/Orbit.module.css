@@ -100,6 +100,8 @@
 .ring[data-ring='ring1'] {
   --radius: var(--ring1-radius);
   --turn: var(--ring1-turn);
+  --parent-radius: var(--inner-radius);
+  --parent-turn: var(--inner-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: solid;
   --dot: 5.5;
@@ -107,6 +109,8 @@
 .ring[data-ring='ring2'] {
   --radius: var(--ring2-radius);
   --turn: var(--ring2-turn);
+  --parent-radius: var(--ring1-radius);
+  --parent-turn: var(--ring1-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 3.5;
@@ -114,6 +118,8 @@
 .ring[data-ring='ring3'] {
   --radius: var(--ring3-radius);
   --turn: var(--ring3-turn);
+  --parent-radius: var(--ring2-radius);
+  --parent-turn: var(--ring2-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 3;
@@ -121,6 +127,8 @@
 .ring[data-ring='ring4'] {
   --radius: var(--ring4-radius);
   --turn: var(--ring4-turn);
+  --parent-radius: var(--ring3-radius);
+  --parent-turn: var(--ring3-turn);
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 2.5;
@@ -190,13 +198,14 @@
   white-space: nowrap;
 }
 
-/* A line flat on the floor from the centre to a peer or the server, or between simulated dots. It runs under the dots,
+/* A dot's one link, a line flat on the floor from the centre to a peer or the server, or from the dot a simulated one
+   grew from. It sits in its dot's ring, so its outer end takes that ring's radius and turn. It runs under the dots,
    which cover its ends. */
 .link {
   --from-angle: calc(var(--from-start) + var(--from-turn));
-  --to-angle: calc(var(--to-start) + var(--to-turn));
-  --dx: calc(cos(var(--to-angle)) * var(--to-radius) - cos(var(--from-angle)) * var(--from-radius));
-  --dy: calc(sin(var(--to-angle)) * var(--to-radius) - sin(var(--from-angle)) * var(--from-radius));
+  --to-angle: calc(var(--to-start) + var(--turn));
+  --dx: calc(cos(var(--to-angle)) * var(--radius) - cos(var(--from-angle)) * var(--from-radius));
+  --dy: calc(sin(var(--to-angle)) * var(--radius) - sin(var(--from-angle)) * var(--from-radius));
   position: absolute;
   top: calc(50% - var(--line) / 2);
   left: 50%;
@@ -209,55 +218,16 @@
     )
     rotate(atan2(var(--dy), var(--dx)));
 }
-.link[data-from='centre'] {
+.link[data-link='peer'],
+.link[data-link='server'] {
   --from-radius: 0px;
   --from-turn: 0deg;
-}
-.link[data-kind='real'] {
   background: var(--text-faint);
 }
-.link[data-kind='simulated'] {
+.link[data-link='simulated'] {
+  --from-radius: var(--parent-radius);
+  --from-turn: var(--parent-turn);
   background: var(--chrome-action-dim);
-}
-.link[data-from='inner'] {
-  --from-radius: var(--inner-radius);
-  --from-turn: var(--inner-turn);
-}
-.link[data-from='ring1'] {
-  --from-radius: var(--ring1-radius);
-  --from-turn: var(--ring1-turn);
-}
-.link[data-from='ring2'] {
-  --from-radius: var(--ring2-radius);
-  --from-turn: var(--ring2-turn);
-}
-.link[data-from='ring3'] {
-  --from-radius: var(--ring3-radius);
-  --from-turn: var(--ring3-turn);
-}
-.link[data-from='ring4'] {
-  --from-radius: var(--ring4-radius);
-  --from-turn: var(--ring4-turn);
-}
-.link[data-to='inner'] {
-  --to-radius: var(--inner-radius);
-  --to-turn: var(--inner-turn);
-}
-.link[data-to='ring1'] {
-  --to-radius: var(--ring1-radius);
-  --to-turn: var(--ring1-turn);
-}
-.link[data-to='ring2'] {
-  --to-radius: var(--ring2-radius);
-  --to-turn: var(--ring2-turn);
-}
-.link[data-to='ring3'] {
-  --to-radius: var(--ring3-radius);
-  --to-turn: var(--ring3-turn);
-}
-.link[data-to='ring4'] {
-  --to-radius: var(--ring4-radius);
-  --to-turn: var(--ring4-turn);
 }
 
 /* The visitor's light client, a dot inside a thin ring. Upright and moved toward the viewer like the dots, so the

@@ -45,7 +45,7 @@ type Story = StoryObj<typeof meta>;
 
 /** Every dot, real or simulated. */
 function getDots(canvasElement: HTMLElement): Element[] {
-  return [...canvasElement.querySelectorAll('[data-testid="orbit"] [data-ring] > *')];
+  return [...canvasElement.querySelectorAll('[data-testid="orbit"] [data-ring] > [data-kind]')];
 }
 
 /** The light client's peers. */

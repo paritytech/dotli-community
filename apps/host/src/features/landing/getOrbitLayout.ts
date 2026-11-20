@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Which dots and links the landing page's orbit draws. CSS places and turns them, so a dot is only its ring and its
-// angle at rest. What the visitor's centre really reaches the network through, its peers or one server, takes fixed
+// Which dots the landing page's orbit draws. CSS places and turns them, so a dot is only its ring, its angle at rest
+// and where its one link starts. What the visitor's centre really reaches the network through, its peers or one server, takes fixed
 // slots on the rings. Each of those grows a simulated cascade outward, like the peers of that peer, so the picture reads
 // as the network going on behind the real connections.
 
-export type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
+type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
 
 /** A peer of the light client, the one server a backend with no light client talks through, or a simulated node. */
 type OrbitDotKind = 'peer' | 'server' | 'simulated';
@@ -16,33 +16,19 @@ export type OrbitDot = {
   readonly key: string;
   /** Its angle at rest, in degrees. */
   readonly start: number;
+  /**
+   * The angle at rest its one link starts from: the dot it grew from, on the ring one in, for a simulated dot, or the
+   * centre, at 0, for a peer or the server.
+   */
+  readonly from: number;
   readonly kind: OrbitDotKind;
   /** The caption beside a peer, naming it by its join order, or beside the server. A simulated dot has none. */
   readonly label: string | null;
 };
 
-/** One end of a link: the centre, or a dot on a ring. */
-export type OrbitEnd = {
-  readonly ring: OrbitRing | 'centre';
-  readonly start: number;
-};
-
-/** A real connection from the centre to a peer or the server, or a simulated one out to a simulated node. */
-type OrbitLinkKind = 'real' | 'simulated';
-
-export type OrbitLink = {
-  /** Stays the same while the link exists, so a renderer keeps its element. */
-  readonly key: string;
-  /** The end nearer the centre. */
-  readonly from: OrbitEnd;
-  readonly to: OrbitEnd;
-  readonly kind: OrbitLinkKind;
-};
-
 export type OrbitLayout = {
   /** From the centre outward. */
   readonly rings: readonly { readonly ring: OrbitRing; readonly dots: readonly OrbitDot[] }[];
-  readonly links: readonly OrbitLink[];
 };
 
 /** What the centre reaches the network through: the light client's peers, or one server. */
@@ -70,25 +56,17 @@ const SLOTS = RINGS.flatMap(({ ring, offset }, index) => {
 /** The least angle, in degrees, between a simulated node and any slot or other node on its ring. */
 const MIN_GAP = 6;
 
-const CENTRE: OrbitEnd = { ring: 'centre', start: 0 };
-
 /**
- * Returns the orbit's dots and links for `mode`. Peer `i` always takes the same slot, filling from the inner ring
- * outward, and the centre links straight to each peer and to the server. Each real node puts one or two simulated nodes
- * on the next ring out near its own angle, and each of those does the same up to the outermost ring, linked back to
- * the node it came from. A cascade's shape follows from its root's key alone, and the cascades are laid in join order,
- * so a peer joining adds its own dots and links and changes no other. A simulated node keeps clear of every slot, so
+ * Returns the orbit's dots for `mode`. Peer `i` always takes the same slot, filling from the inner ring outward, and
+ * each peer's and the server's link starts at the centre. Each real node puts one or two simulated nodes on the next
+ * ring out near its own angle, and each of those does the same up to the outermost ring, its link starting at the node
+ * it came from. A cascade's shape follows from its root's key alone, and the cascades are laid in join order, so a peer
+ * joining adds its own dots and changes no other. A simulated node keeps clear of every slot, so
  * none ever sits on a real one.
  */
 export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
   const real = getRealNodes(mode);
   const placed: Node[] = [...real];
-  const links: OrbitLink[] = real.map(node => ({
-    key: `centre>${node.dot.key}`,
-    from: CENTRE,
-    to: getEnd(node),
-    kind: 'real',
-  }));
   for (const root of real) {
     const growing = [root];
     for (let parent = growing.pop(); parent; parent = growing.pop()) {
@@ -103,17 +81,15 @@ export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
         const child: Node = {
           index: parent.index + 1,
           ring: outer.ring,
-          dot: { key, start, kind: 'simulated', label: null },
+          dot: { key, start, from: parent.dot.start, kind: 'simulated', label: null },
         };
         placed.push(child);
-        links.push({ key: `${parent.dot.key}>${key}`, from: getEnd(parent), to: getEnd(child), kind: 'simulated' });
         growing.push(child);
       }
     }
   }
   return {
     rings: RINGS.map(({ ring }) => ({ ring, dots: placed.filter(node => node.ring === ring).map(({ dot }) => dot) })),
-    links,
   };
 }
 
@@ -122,13 +98,13 @@ function getRealNodes(mode: OrbitMode): Node[] {
     case 'lightClient':
       return SLOTS.slice(0, mode.peers).map(({ index, ring, start }, peer) => {
         const label = `[peer#${String(peer + 1)}]`;
-        return { index, ring, dot: { key: label, start, kind: 'peer', label } };
+        return { index, ring, dot: { key: label, start, from: 0, kind: 'peer', label } };
       });
     case 'server':
       return SLOTS.slice(0, 1).map(({ index, ring, start }) => ({
         index,
         ring,
-        dot: { key: '[server]', start, kind: 'server', label: '[server]' },
+        dot: { key: '[server]', start, from: 0, kind: 'server', label: '[server]' },
       }));
   }
 }
@@ -155,10 +131,6 @@ function getClearOfSlots(index: number, start: number): number {
     }
   }
   return angle;
-}
-
-function getEnd({ ring, dot }: Node): OrbitEnd {
-  return { ring, start: dot.start };
 }
 
 /** Returns how far apart two angles are around the circle, in degrees. */

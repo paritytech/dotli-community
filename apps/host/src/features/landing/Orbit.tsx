@@ -8,8 +8,8 @@ import s from './Orbit.module.css';
 
 /**
  * The landing page's backdrop: dots circling rings on a tilted floor, linked inward to the centre. CSS draws and turns
- * it, and the layout says only which dots and links exist and how a dot is labelled. A dot or link that stays across
- * layouts keeps its element.
+ * it, and the layout says only which dots exist, where each one's link starts and how a dot is labelled. A dot that
+ * stays across layouts keeps its element and its link's.
  */
 export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
   return (
@@ -21,26 +21,22 @@ export function Orbit(props: { layout: OrbitLayout }): JSX.Element {
               <div class={s['ring']} data-ring={ring().ring}>
                 <For each={ring().dots} keyed={dot => dot.key}>
                   {dot => (
-                    <div class={s['dot']} data-kind={dot().kind} style={{ '--start': `${String(dot().start)}deg` }}>
-                      <Show when={dot().label}>{label => <span class={s['label']}>{label()}</span>}</Show>
-                    </div>
+                    <>
+                      <div
+                        class={s['link']}
+                        data-link={dot().kind}
+                        style={{
+                          '--from-start': `${String(dot().from)}deg`,
+                          '--to-start': `${String(dot().start)}deg`,
+                        }}
+                      />
+                      <div class={s['dot']} data-kind={dot().kind} style={{ '--start': `${String(dot().start)}deg` }}>
+                        <Show when={dot().label}>{label => <span class={s['label']}>{label()}</span>}</Show>
+                      </div>
+                    </>
                   )}
                 </For>
               </div>
-            )}
-          </For>
-          <For each={props.layout.links} keyed={link => link.key}>
-            {link => (
-              <div
-                class={s['link']}
-                data-from={link().from.ring}
-                data-to={link().to.ring}
-                data-kind={link().kind}
-                style={{
-                  '--from-start': `${String(link().from.start)}deg`,
-                  '--to-start': `${String(link().to.start)}deg`,
-                }}
-              />
             )}
           </For>
           <div class={s['centre']} />

@@ -24,7 +24,7 @@ function mountBooted(): void {
 }
 
 function getInnerDots(): Element[] {
-  return [...must(page.querySelector('[data-ring="inner"]'), 'inner ring').children];
+  return [...page.querySelectorAll('[data-ring="inner"] > [data-kind]')];
 }
 
 function getPeerDots(): Element[] {
