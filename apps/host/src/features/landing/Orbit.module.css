@@ -74,11 +74,7 @@
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
   transform-style: preserve-3d;
-  /* Two axes cross at the centre, like a plot's, over the floor's glow. */
-  background:
-    linear-gradient(var(--chrome-action-dim), var(--chrome-action-dim)) center / var(--line) 100% no-repeat,
-    linear-gradient(var(--chrome-action-dim), var(--chrome-action-dim)) center / 100% var(--line) no-repeat,
-    radial-gradient(closest-side, var(--surface), var(--bg-page));
+  background: radial-gradient(closest-side, var(--surface), var(--bg-page));
 }
 
 /* A ring's line is centred on its radius, where its dots and the ends of its links sit. */
@@ -127,17 +123,6 @@
   --ring-color: var(--chrome-action-dim);
   --ring-style: dashed;
   --dot: 2.5;
-}
-
-/* Fine ticks round the inner ring's outer edge, like a dial's. */
-.ring[data-ring='inner']::before {
-  --tick: calc(4 * var(--unit));
-  content: '';
-  position: absolute;
-  inset: calc(-1 * (var(--line) + var(--tick)));
-  border-radius: 50%;
-  background: repeating-conic-gradient(var(--text-faint) 0 0.3deg, transparent 0 5deg);
-  mask-image: radial-gradient(closest-side, transparent calc(100% - var(--tick)), #000 0);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -274,32 +259,22 @@
   --to-turn: var(--ring4-turn);
 }
 
-/* The visitor's light client, framed by a reticle: a circle round it and four ticks outside that. Upright like the
-   dots, and moved toward the viewer by more than the floor comes forward across the reticle's lower half, so the lines
-   that meet in it end under it. The box spans the whole reticle, since Chrome can drop what a 3D layer paints outside its
-   box. */
+/* The visitor's light client, a dot inside a thin ring. Upright and moved toward the viewer like the dots, so the
+   lines that meet in it end under it. The ring is the box's own border, since Chrome can drop what a 3D layer paints
+   outside its box. */
 .centre {
-  --dot-size: calc(11 * var(--unit));
-  --size: calc(3 * var(--dot-size));
+  --size: calc(17 * var(--unit));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
-  transform: rotateX(calc(-1 * var(--tilt))) translateZ(var(--size));
-}
-.centre::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(var(--neutral-solid), var(--neutral-solid)) center / var(--line) 100% no-repeat,
-    linear-gradient(var(--neutral-solid), var(--neutral-solid)) center / 100% var(--line) no-repeat;
-  mask-image: radial-gradient(closest-side, transparent 70%, #000 0);
+  box-sizing: border-box;
+  border: var(--line) solid var(--neutral-solid);
+  border-radius: 50%;
+  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
 }
 .centre::after {
   content: '';
   position: absolute;
-  inset: calc(50% - var(--dot-size) / 2);
+  inset: calc(2.5 * var(--unit));
   border-radius: 50%;
   background: var(--text-muted);
-  outline: var(--line) solid var(--neutral-solid);
-  outline-offset: calc(3 * var(--unit));
 }
