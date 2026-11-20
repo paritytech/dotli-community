@@ -40,7 +40,7 @@
   --tilt: 80deg;
   /* How far the stage sits below the page's foot, as a share of its height. */
   --drop: 0.2;
-  --fade: calc(400 * var(--unit));
+  --fade: calc(430 * var(--unit));
   /* How long a dot that stays takes to glide to its new place when the real nodes change. */
   --glide: 1s;
   position: absolute;
