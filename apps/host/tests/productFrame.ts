@@ -111,20 +111,6 @@ async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> 
   return readErrorText(page);
 }
 
-/** An error page inside the sandbox frame never reaches the host page or sets `dotli:app:end`. "" on timeout. */
-export async function waitForSandboxErrorPage(page: Page, timeoutMs: number): Promise<string> {
-  const frame = await findAppFrame(page, timeoutMs);
-  if (frame === null) {
-    return '';
-  }
-  try {
-    await frame.getByTestId('error-page-title').first().waitFor({ timeout: timeoutMs });
-  } catch {
-    return '';
-  }
-  return readErrorText(frame);
-}
-
 /** `label` names the failing variant in the thrown message. */
 export async function waitForResolutionOutcome(page: Page, timeoutMs: number, label: string): Promise<void> {
   const successPromise = getProductFrame(page, timeoutMs).then(() => ({

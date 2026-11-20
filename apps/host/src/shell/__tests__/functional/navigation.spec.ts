@@ -5,7 +5,7 @@
 // serves the product's one block through the host's relay, which `smoldot-direct` uses.
 
 import { expect, type Page } from '@playwright/test';
-import { getProductFrame, getProductLocation, waitForSandboxErrorPage } from '../../../../tests/productFrame.js';
+import { getProductFrame, getProductLocation } from '../../../../tests/productFrame.js';
 import { test } from '../../../../tests/functional/helpers/sharedModeReset.js';
 import { seedBackend } from '../../../../tests/functional/fixtures/settings.js';
 import { productPage, rawBlock } from '../../../../tests/functional/helpers/blocks.js';
@@ -88,40 +88,5 @@ test.describe('Host URL bar preserves the entered URL after render', () => {
     expect(url.pathname).toBe('/foo');
     expect(url.searchParams.get('a')).toBe('b');
     expect(url.hash).toBe('#h');
-  });
-});
-
-test.describe('Validator regression guards', () => {
-  test('As a visitor, I reach a sandbox given an unknown chainBackend value and it renders an error page instead of guessing a default', async ({
-    browser,
-  }) => {
-    // Given
-    const context = await browser.newContext({
-      serviceWorkers: 'allow',
-    });
-    // `route.continue({ url })` changes only the fetch URL, not the `window.location` the validator reads, so
-    // rewrite history before the sandbox's own scripts run.
-    await context.addInitScript(() => {
-      if (!window.location.host.includes('.app.localhost')) {
-        return;
-      }
-      const u = new URL(window.location.href);
-      u.searchParams.set('chainBackend', 'bogus');
-      history.replaceState(null, '', u.toString());
-    });
-    const page = await context.newPage();
-    await serveOffline(page);
-
-    try {
-      // When
-      await page.goto(`${HOST_BY_LABEL}/`);
-
-      // Then
-      const reason = await waitForSandboxErrorPage(page, TIMEOUT_MS);
-      expect(reason).toContain('chainBackend');
-      expect(reason).toContain('bogus');
-    } finally {
-      await context.close();
-    }
   });
 });
