@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest';
 import {
   parseApiViolationMessage,
   parseHostToSandboxMessage,
-  parseRecoverAcceptedMessage,
   parseSandboxToHostMessage,
   type SandboxToHostMessage,
 } from './sandboxMessages.js';
@@ -24,7 +23,7 @@ const SANDBOX_SENDS: [string, SandboxToHostMessage][] = [
       event: { layer: 'sandbox', event: 'document_written', flowId: 'f-1', timestamp: 1, payload: { cid: 'bafy' } },
     },
   ],
-  ['a recover request', { type: 'dotli:sandbox-recover' }],
+  ['a contract request', { type: 'dotli:sandbox-contract-request' }],
   ['a navigate to the landing', { type: 'dotli:sandbox-navigate', to: 'landing' }],
   ['a navigate to reload', { type: 'dotli:sandbox-navigate', to: 'reload' }],
   ['a block request', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX', frame: 'f-1' }],
@@ -101,6 +100,41 @@ describe('sandbox messages', () => {
     expect(received).toEqual({ type: 'dotli:bitswap-result', id: 'r-1', ok: true, bytes });
   });
 
+  it('As the sandbox, I read a contract reply with every host-written field', () => {
+    // Given what the host posts in reply to a contract request.
+    const sent = {
+      type: 'dotli:sandbox-contract',
+      cid: 'bafyX',
+      chainBackend: 'smoldot-direct',
+      network: 'paseo-next-v2',
+      fullReset: '1',
+      resolutionId: 'r-1',
+      v: '3',
+    };
+
+    // When
+    const received = parseHostToSandboxMessage(sent);
+
+    // Then
+    expect(received).toEqual(sent);
+  });
+
+  it('As the sandbox, I drop a contract field that is not a string and read the rest', () => {
+    // When the host posts a contract whose version rode as a number.
+    const received = parseHostToSandboxMessage({ type: 'dotli:sandbox-contract', cid: 'bafyX', v: 3 });
+
+    // Then the non-string field is dropped, so a later validation sees it as absent.
+    expect(received).toEqual({ type: 'dotli:sandbox-contract', cid: 'bafyX' });
+  });
+
+  it('As the sandbox, I drop a host message of an unknown type', () => {
+    // When
+    const received = parseHostToSandboxMessage({ type: 'dotli:unknown' });
+
+    // Then
+    expect(received).toBeNull();
+  });
+
   it('As the sandbox, I read a failed fetch with its error class and code', () => {
     // When
     const received = parseHostToSandboxMessage({
@@ -134,26 +168,6 @@ describe('sandbox messages', () => {
   it('As the sandbox, I drop a result without an id', () => {
     // When
     const received = parseHostToSandboxMessage({ type: 'dotli:bitswap-result', ok: true });
-
-    // Then
-    expect(received).toBeNull();
-  });
-
-  it("As the sandbox, I read the host's acceptance of my recover ask", () => {
-    // When
-    const received = parseRecoverAcceptedMessage({ type: 'dotli:sandbox-recover-accepted', extra: 1 });
-
-    // Then
-    expect(received).toEqual({ type: 'dotli:sandbox-recover-accepted' });
-  });
-
-  it.each([
-    ['a block result', { type: 'dotli:bitswap-result', id: 'r-1', ok: true }],
-    ['null', null],
-    ['a bare type string', 'dotli:sandbox-recover-accepted'],
-  ])('As the sandbox, I drop %s as no acceptance', (_name, data) => {
-    // When
-    const received = parseRecoverAcceptedMessage(data);
 
     // Then
     expect(received).toBeNull();

@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The sandbox's entry. It loads the content for the CID the host passes in the URL contract and wires each step to the
-// page's real browser APIs. No name resolution happens here.
+// The sandbox's entry. It loads the content for the CID the host passes over the authenticated contract handshake and
+// wires each step to the page's real browser APIs. No name resolution happens here.
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot/boot.js';
@@ -21,12 +21,11 @@ import { createSandboxUi } from './screens/createSandboxUi.js';
 import { showPasswordPrompt } from './screens/showPasswordPrompt.js';
 import { createHostMessages } from './hostLink/createHostMessages.js';
 import { getHostUrls } from './hostLink/getHostUrls.js';
-import { stripContractParams } from './boot/stripContractParams.js';
 import { createBitswapBridge, createHostOriginRule, type BitswapBridge } from './hostLink/createBitswapBridge.js';
 import { loadProduct, type SandboxParams } from './boot/loadProduct.js';
 import { purgeSandboxOriginState } from './boot/purgeSandboxOriginState.js';
 import { runSandbox } from './boot/runSandbox.js';
-import { waitForRecoverAccepted } from './hostLink/waitForRecoverAccepted.js';
+import { waitForContract } from './hostLink/waitForContract.js';
 import { listenForArchiveFailures } from './archive/listenForArchiveFailures.js';
 import { offerReloadNotice } from './screens/offerReloadNotice.js';
 import { registerAppServiceWorker, type AppServiceWorker } from './archive/registerAppServiceWorker.js';
@@ -73,15 +72,9 @@ function measureSinceStart(): number {
   return Math.round(performance.now() - STARTED_AT);
 }
 
-/** The dApp sees only the user's own query params. */
-function stripContractParamsFromUrl(): void {
-  history.replaceState(null, '', stripContractParams(window.location.href));
-}
-
 /** Replaces this document with the product's page. */
 function writeProductPage(html: string): void {
   ui.dispose();
-  stripContractParamsFromUrl();
   document.open();
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
   document.write(html);
@@ -164,8 +157,14 @@ runSandbox(
       },
     },
     ui,
-    waitForRecoverAccepted: () =>
-      waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, ms: SANDBOX_TIMEOUTS.RECOVER }),
+    requestContract: () =>
+      waitForContract({
+        window,
+        parent: window.parent,
+        isHostOrigin,
+        ms: SANDBOX_TIMEOUTS.CONTRACT,
+        intervalMs: SANDBOX_TIMEOUTS.CONTRACT_RETRY_INTERVAL,
+      }),
     getGatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
   },

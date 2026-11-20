@@ -7,7 +7,7 @@
 
 import { createMessagePortProvider, type ProductId } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import type { SandboxChannel, SandboxRecoverAcceptedMessage, SandboxSender } from '@dotli/sandbox-wire';
+import type { SandboxChannel, SandboxContractMessage, SandboxSender } from '@dotli/sandbox-wire';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createRandomId,
@@ -26,7 +26,7 @@ import type { PermissionAuthorizations } from '../../permissions/index.js';
 import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
 import { pipeProviders, type PipeProvidersParams } from './pipeProviders.js';
-import { buildFrameUrl, getAppOrigin, getFrameSandbox } from './productFrameUrl.js';
+import { buildFrameUrl, getAppOrigin, getFrameSandbox, type FrameTarget } from './productFrameUrl.js';
 import { registerProductChat } from '../../chat/index.js';
 import { traceProductRender, type RenderTrace } from './traceProductRender.js';
 import { productState } from '../../page/index.js';
@@ -41,8 +41,8 @@ const walletReport = createReporter({ flow: 'wallet' });
 const uiReport = createReporter({ flow: 'ui' });
 
 /**
- * A render the product frame started on its own: on a replacement core, after a device permission change or at a
- * reloaded sandbox's ask. Tagged `outcome` (ok, error, or aborted when a newer render or a core loss took over) and
+ * A render the product frame started on its own: on a replacement core or after a device permission change. Tagged
+ * `outcome` (ok, error, or aborted when a newer render or a core loss took over) and
  * `reason` (which of those, or `core_deaths` once the frame stopped rendering on cores that kept dying), as no caller
  * is there to report it.
  */
@@ -135,7 +135,7 @@ export type ProductFramePage = {
 export type ProductFrame = ReturnType<typeof createProductFrame>;
 
 /** Why the frame rendered the product again on its own. */
-type RerenderReason = 'replacement' | 'permission' | 'recover';
+type RerenderReason = 'replacement' | 'permission';
 
 type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void };
 
@@ -175,6 +175,8 @@ type RunParts = {
   origin: RunOrigin;
   /** Built once as the run starts, since building it takes a scheduled sandbox reset. */
   url: URL;
+  /** The contract the host wrote for a subdomain product, which that frame asks back for, or null for an iframe. */
+  contract: SandboxContractMessage | null;
   flows: { render: string; bridge: string };
   /** When the run began, which its `bridge.setup` time counts from. */
   setupStartedAt: number;
@@ -183,8 +185,15 @@ type RunParts = {
 /** One render, nested in `connecting`. Its kind is the step it is at. */
 type Run = RunParts & Step;
 
-/** The product on screen. `attempt` is the key a recover ask and a core-down event match it by. */
-type Shown = { attempt: Attempt; link: Link; iframeHost: IframeHost; core: CoreSide };
+/** The product on screen. `attempt` is the key a core-down event matches it by. */
+type Shown = {
+  attempt: Attempt;
+  link: Link;
+  iframeHost: IframeHost;
+  core: CoreSide;
+  /** The contract the frame loaded, which it is answered with when it asks, or null for an iframe product. */
+  contract: SandboxContractMessage | null;
+};
 
 /** What the frame holds from its first render until it halts. */
 type Lively = {
@@ -193,11 +202,6 @@ type Lively = {
   shown: Shown | null;
   /** Quick core deaths in a row, and when the render on the latest replacement core began. */
   deaths: { count: number; replacedAt: number | null };
-  /** Spaces the rebuilds a reloaded sandbox asks for. `waiting` is the one newer ask, by the attempt it came from. */
-  recover:
-    | { kind: 'ready' }
-    | { kind: 'running'; waiting: Attempt | null }
-    | { kind: 'spacing'; timer: unknown; waiting: Attempt | null };
   /** Spaces the renders on a replacement core. */
   replacement: { kind: 'ready' } | { kind: 'spacing'; timer: unknown };
 };
@@ -235,8 +239,6 @@ type FrameEvent =
   | { kind: 'stepFailed'; attempt: Attempt; error: unknown }
   | { kind: 'renderAsked'; product: FrameProduct; reply: Reply<void> }
   | { kind: 'permissionsChanged'; change: PermissionsChange }
-  | { kind: 'recoverAsked'; asking: Attempt }
-  | { kind: 'recoverSpaced'; timer: unknown }
   | { kind: 'replacementSpaced'; timer: unknown }
   | { kind: 'halted' }
   | { kind: 'disposed' };
@@ -265,8 +267,7 @@ type FrameMachine = MachineTypes<FrameState, FrameEvent, FrameEffect>;
 
 type RunMachine = MachineTypes<Run, FrameEvent, FrameEffect>;
 
-// Spaces the rebuilds a reloaded sandbox asks for and the renders after a core death, so a product that keeps reloading
-// or keeps taking its core down cannot pin the host.
+// Spaces the renders after a core death, so a product that keeps taking its core down cannot pin the host.
 const RECOVER_MIN_INTERVAL_MS = 5_000;
 // A core that dies this soon after the render on it began counts toward the budget below.
 const CORE_DEATH_WINDOW_MS = 60_000;
@@ -425,7 +426,6 @@ export function createProductFrame({
         target: product,
         shown: state.kind === 'halted' ? state.shown : null,
         deaths: { count: 0, replacedAt: null },
-        recover: { kind: 'ready' },
         replacement: { kind: 'ready' },
       },
       { kind: 'asked', reply },
@@ -453,37 +453,6 @@ export function createProductFrame({
       return;
     }
     startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
-  };
-
-  // The newer ask wins, since a frame rebuilt meanwhile asks with itself as the frame on screen.
-  const askRecover: HandlerOf<FrameMachine, LivelyKind, 'recoverAsked'> = (state, { asking }, transition) => {
-    const { recover } = state;
-    if (recover.kind === 'ready') {
-      startRun(
-        { ...state, recover: { kind: 'running', waiting: null } },
-        { kind: 'rerender', reason: 'recover' },
-        transition,
-      );
-      return;
-    }
-    moveTo(state, { ...state, recover: { ...recover, waiting: asking } }, transition);
-  };
-
-  const spaceRecover: HandlerOf<FrameMachine, LivelyKind, 'recoverSpaced'> = (state, { timer }, transition) => {
-    const { recover } = state;
-    if (recover.kind !== 'spacing' || recover.timer !== timer) {
-      return;
-    }
-    // A rebuild since the ask already answered it.
-    if (recover.waiting !== state.shown?.attempt) {
-      moveTo(state, { ...state, recover: { kind: 'ready' } }, transition);
-      return;
-    }
-    startRun(
-      { ...state, recover: { kind: 'running', waiting: null } },
-      { kind: 'rerender', reason: 'recover' },
-      transition,
-    );
   };
 
   // A render since the death already answered it.
@@ -564,8 +533,6 @@ export function createProductFrame({
       connecting: {
         renderAsked: renderAgain,
         permissionsChanged: changePermissions,
-        recoverAsked: askRecover,
-        recoverSpaced: spaceRecover,
         replacementSpaced: spaceReplacement,
         coreDown(state, event, transition) {
           const { shown } = state;
@@ -588,7 +555,7 @@ export function createProductFrame({
             return;
           }
           const { loadCheckerPanel } = view;
-          const shown: Shown = { attempt, link: run.link, iframeHost, core: run.core };
+          const shown: Shown = { attempt, link: run.link, iframeHost, core: run.core, contract: run.contract };
           const { iframe } = iframeHost;
           transition.emitSideEffect({ kind: 'frameAttached', iframe });
           if (previous !== null) {
@@ -640,8 +607,6 @@ export function createProductFrame({
       connected: {
         renderAsked: renderAgain,
         permissionsChanged: changePermissions,
-        recoverAsked: askRecover,
-        recoverSpaced: spaceRecover,
         replacementSpaced: spaceReplacement,
         coreDown: hearCoreDown,
         halted: stopRendering,
@@ -650,8 +615,6 @@ export function createProductFrame({
       lost: {
         renderAsked: renderAgain,
         permissionsChanged: changePermissions,
-        recoverAsked: askRecover,
-        recoverSpaced: spaceRecover,
         replacementSpaced: renderOnSpacedReplacement,
         halted: stopRendering,
         disposed: endFrame,
@@ -659,8 +622,6 @@ export function createProductFrame({
       failed: {
         renderAsked: renderAgain,
         permissionsChanged: changePermissions,
-        recoverAsked: askRecover,
-        recoverSpaced: spaceRecover,
         replacementSpaced: spaceReplacement,
         coreDown: hearCoreDown,
         halted: stopRendering,
@@ -702,7 +663,7 @@ export function createProductFrame({
           return;
         case 'unsubscribed':
           stopPermissionChanges();
-          stopRecoverAsks();
+          stopContractAsks();
           stopNavigateAsks();
           return;
         case 'statusShown':
@@ -754,16 +715,21 @@ export function createProductFrame({
     machine.update({ kind: 'permissionsChanged', change });
   });
 
-  // The sandbox strips its contract params after boot, so a reloaded sandbox asks the host to rebuild it.
-  const stopRecoverAsks = channel.on('dotli:sandbox-recover', (_message, sender) => {
+  // The sandbox asks its direct parent for its contract at boot and on reload. Only the authenticated frame on screen
+  // is answered, at its own origin, so one product's embedder cannot read or forge another's contract. A post that
+  // throws reaches the channel's report.
+  const stopContractAsks = channel.on('dotli:sandbox-contract-request', (_message, sender) => {
     const shown = findAskingFrame(sender);
     if (shown === null) {
       return;
     }
-    machine.update({ kind: 'recoverAsked', asking: shown.attempt });
-    // Told before the rebuild, which can wait a long time for a core. A post that throws reaches the channel's report.
-    const accepted = { type: 'dotli:sandbox-recover-accepted' } satisfies SandboxRecoverAcceptedMessage;
-    shown.iframeHost.iframe.contentWindow?.postMessage(accepted, { targetOrigin: sender.origin });
+    const { contract } = shown;
+    // A subdomain frame on screen always carries a contract; this only satisfies the type for the iframe case, which
+    // findAskingFrame never returns.
+    if (contract === null) {
+      return;
+    }
+    shown.iframeHost.iframe.contentWindow?.postMessage(contract, { targetOrigin: sender.origin });
   });
 
   // An error page in the sandbox offers the visitor a way on, which only the host page can take.
@@ -795,7 +761,7 @@ export function createProductFrame({
      */
     halt,
     /**
-     * Stops hearing permission changes and the sandbox's recover and navigate asks, takes down the product on screen
+     * Stops hearing permission changes and the sandbox's contract and navigate asks, takes down the product on screen
      * with its core and ends every render and wait in flight, so a render asked from above resolves as superseded and
      * neither it nor a later render mounts anything. Safe to call twice or after a failed render.
      */
@@ -867,15 +833,25 @@ export function createProductFrame({
     }
     const product = lively.target;
     const setupStartedAt = timers.now();
-    let url: URL;
+    let built: FrameTarget;
     try {
-      url = buildFrameUrl(product, page.location());
+      built = buildFrameUrl(product, page.location());
     } catch (error) {
       failRun({ ...lively, kind: from.kind }, { origin, error }, transition);
       return;
     }
+    const { url, contract } = built;
     const flows = { render: createRandomId(), bridge: createRandomId() };
-    const run: Run = { product, origin, url, flows, setupStartedAt, kind: 'leasing', attempt: createAttempt(1) };
+    const run: Run = {
+      product,
+      origin,
+      url,
+      contract,
+      flows,
+      setupStartedAt,
+      kind: 'leasing',
+      attempt: createAttempt(1),
+    };
     moveTo(from, { ...lively, kind: 'connecting', run }, transition);
     transition.emitSideEffect({ kind: 'traced', milestone: 'begun', run });
     // A direct iframe has no loading overlay to keep.
@@ -934,8 +910,8 @@ export function createProductFrame({
   }
 
   /**
-   * Tells a run's origin its outcome. A recover or a replacement then spaces the next one. Returns `state`'s lively
-   * part with that spacer moved.
+   * Tells a run's origin its outcome. A replacement then spaces the next one. Returns `state`'s lively part with that
+   * spacer moved.
    */
   function settleRun(
     state: Lively,
@@ -950,13 +926,6 @@ export function createProductFrame({
     switch (origin.reason) {
       case 'permission':
         return lively;
-      case 'recover': {
-        const timer = timers.setTimeout(() => {
-          update({ kind: 'recoverSpaced', timer });
-        }, RECOVER_MIN_INTERVAL_MS);
-        const waiting = lively.recover.kind === 'ready' ? null : lively.recover.waiting;
-        return { ...lively, recover: { kind: 'spacing', timer, waiting } };
-      }
       case 'replacement': {
         const timer = timers.setTimeout(() => {
           update({ kind: 'replacementSpaced', timer });
@@ -1037,10 +1006,7 @@ export function createProductFrame({
     clearSpacers(state, transition);
   }
 
-  function clearSpacers({ recover, replacement }: Lively, { emitSideEffect }: Transition<FrameMachine>): void {
-    if (recover.kind === 'spacing') {
-      emitSideEffect({ kind: 'spacerCleared', timer: recover.timer });
-    }
+  function clearSpacers({ replacement }: Lively, { emitSideEffect }: Transition<FrameMachine>): void {
     if (replacement.kind === 'spacing') {
       emitSideEffect({ kind: 'spacerCleared', timer: replacement.timer });
     }
@@ -1102,13 +1068,13 @@ function getStatus({ kind }: Pick<FrameState, 'kind'>): ProductFrameStatus | nul
 }
 
 /** `state`'s lively part, so a state that moves on carries no field of the kind it left. */
-function getLively({ target, shown, deaths, recover, replacement }: Lively): Lively {
-  return { target, shown, deaths, recover, replacement };
+function getLively({ target, shown, deaths, replacement }: Lively): Lively {
+  return { target, shown, deaths, replacement };
 }
 
 /** The parts every step of `run` keeps, so a run that steps on carries no field of the step it left. */
-function getRunParts({ product, origin, url, flows, setupStartedAt }: Run): RunParts {
-  return { product, origin, url, flows, setupStartedAt };
+function getRunParts({ product, origin, url, contract, flows, setupStartedAt }: Run): RunParts {
+  return { product, origin, url, contract, flows, setupStartedAt };
 }
 
 /** Marks the core under the run down, so the product goes on to the replacement once it is on screen. */

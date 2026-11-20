@@ -40,11 +40,6 @@ export function createHostMessages({ parent, timers = realTimers }: Params) {
      * whether the panel is open. Throws what posting to the host throws.
      */
     reportDebug,
-    /**
-     * Asks the host to render this frame again with its params, and says so on its loading screen. Throws what posting
-     * to the host throws.
-     */
-    askRerender,
     /** Asks the host to move its page: to the landing, or reload it. Throws what posting to the host throws. */
     askNavigate,
   };
@@ -72,11 +67,6 @@ export function createHostMessages({ parent, timers = realTimers }: Params) {
         payload,
       },
     });
-  }
-
-  function askRerender(): void {
-    showStatus('Restoring app...');
-    postToHost(parent, { type: 'dotli:sandbox-recover' });
   }
 
   function askNavigate(to: SandboxNavigateMessage['to']): void {

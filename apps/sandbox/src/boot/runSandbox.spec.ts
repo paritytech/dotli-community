@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 
-import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
+import { SANDBOX_SCHEMA_VERSION, type SandboxContractMessage } from '@dotli/sandbox-wire';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { CONTENT_ERRORS } from '@dotli/content';
@@ -11,7 +11,7 @@ import { bindLogSink, createDeferred, setErrorName } from '@dotli/shared';
 
 import type { HostMessages } from '../hostLink/createHostMessages.js';
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
-import type { SandboxPage } from './readSandboxContract.js';
+import type { SandboxPage } from './readSandboxFraming.js';
 import type { SandboxAction } from '../screens/createSandboxUi.js';
 import type { SandboxStep } from './describeSandboxFailure.js';
 import { DecryptionCancelledError } from '../kit/errors.js';
@@ -31,10 +31,18 @@ type ActionCase = {
   cause: string;
   page: SandboxPage;
   outcomes: LoadOutcome[];
+  /** The host's reply to the contract request, when the run gets far enough to ask. */
+  contract?: (() => Promise<SandboxContractMessage>) | undefined;
   goal: string;
   /** The last thing the run did once the action was pressed. */
   event: string;
   loads: number;
+};
+
+type HarnessOptions = {
+  /** The host's reply to the contract request. Resolves a valid contract unless the case needs otherwise. */
+  contract?: (() => Promise<SandboxContractMessage>) | undefined;
+  askNavigate?: HostMessages['askNavigate'] | undefined;
 };
 
 type Harness = {
@@ -49,40 +57,35 @@ type Harness = {
   readonly run: Run;
   /** Presses the action of the latest failure. Resolves once the run has settled. */
   press: () => Promise<void>;
-  /** The host accepts the recover ask, which settles the run's wait for it. */
-  accept: () => void;
-  /** The wait for the host's acceptance passes its deadline with `reason`. */
-  giveUp: (reason: Error) => void;
 };
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 
-function createSandboxUrl({
-  overrides = {},
-  host = 'myapp.app.localhost',
-}: { overrides?: Record<string, string>; host?: string } = {}): string {
-  const search = new URLSearchParams({
-    [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
-    [SANDBOX_CONTRACT_PARAMS.cid]: CID,
-    [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'rpc-gateway',
-    [SANDBOX_CONTRACT_PARAMS.network]: 'paseo-next-v2',
+/** A framed sandbox URL on a product subdomain, which clears the run to ask its host for the contract. */
+function createSandboxUrl({ host = 'myapp.app.localhost' }: { host?: string } = {}): string {
+  return `https://${host}/`;
+}
+
+/** The host's contract reply, as it rides the handshake, with `overrides` for the field a case bends. */
+function createContractMessage(overrides: Partial<SandboxContractMessage> = {}): SandboxContractMessage {
+  return {
+    type: 'dotli:sandbox-contract',
+    v: String(SANDBOX_SCHEMA_VERSION),
+    cid: CID,
+    chainBackend: 'rpc-gateway',
+    network: 'paseo-next-v2',
     ...overrides,
-  });
-  return `https://${host}/?${search.toString()}`;
+  };
 }
 
 /**
- * A sandbox whose every load ends with the next of `outcomes`, then with the last one. `askRerender` and `askNavigate`
- * replace its asks to the host when given.
+ * A sandbox whose every load ends with the next of `outcomes`, then with the last one, and whose host replies to the
+ * contract request with a valid contract unless `contract` says otherwise. `askNavigate` replaces its ask to the host.
  */
-function createHarness(
-  outcomes: LoadOutcome[],
-  { askRerender, askNavigate }: Partial<Pick<HostMessages, 'askRerender' | 'askNavigate'>> = {},
-): Harness {
+function createHarness(outcomes: LoadOutcome[], { contract, askNavigate }: HarnessOptions = {}): Harness {
   const loads: LoadInput[] = [];
   const failures: Failure[] = [];
   const events: string[] = [];
-  const acceptance = createDeferred<undefined>();
   let started: Run | undefined;
   const deps: RunSandboxDeps = {
     configure: params => {
@@ -94,6 +97,7 @@ function createHarness(
       const outcome = outcomes[loads.length - 1] ?? outcomes.at(-1) ?? { outcome: 'loaded' };
       return Promise.resolve(outcome);
     },
+    requestContract: contract ?? (() => Promise.resolve(createContractMessage())),
     hostMessages: {
       notifyLoadingDone(result) {
         if (result.outcome === 'failed') {
@@ -101,11 +105,6 @@ function createHarness(
           failures.push({ step: result.failedStep, title: '', message: '', action: undefined });
         }
       },
-      askRerender:
-        askRerender ??
-        (() => {
-          events.push('ask rerender');
-        }),
       askNavigate:
         askNavigate ??
         (to => {
@@ -131,10 +130,6 @@ function createHarness(
         events.push('retrying');
       },
     },
-    waitForRecoverAccepted() {
-      events.push('wait');
-      return acceptance.promise;
-    },
     getGatewayHost: () => 'ipfs.example',
     baseDomain: 'dot.li',
   };
@@ -154,12 +149,6 @@ function createHarness(
       return started;
     },
     press: pressLatest,
-    accept: () => {
-      acceptance.resolve(undefined);
-    },
-    giveUp: reason => {
-      acceptance.reject(reason);
-    },
   };
 
   function pressLatest(): Promise<void> {
@@ -202,19 +191,66 @@ afterEach(() => {
 
 describe('runSandbox contract', () => {
   it('As an operator, I serve a host contract this sandbox cannot use and see it reported while nothing loads', async () => {
-    // Given
-    const sandbox = createHarness([{ outcome: 'loaded' }]);
+    // Given a host whose reply pins the wrong contract version
+    const sandbox = createHarness([{ outcome: 'loaded' }], {
+      contract: () => Promise.resolve(createContractMessage({ v: '999' })),
+    });
 
     // When
-    await sandbox.start(toFramedPage(createSandboxUrl({ overrides: { [SANDBOX_CONTRACT_PARAMS.v]: '999' } }))).await();
+    await sandbox.start(toFramedPage(createSandboxUrl())).await();
 
     // Then
-    expect(sandbox.failures).toMatchObject([{ step: 'contract_params', title: 'Invalid sandbox URL' }]);
+    expect(sandbox.failures).toMatchObject([{ step: 'contract_params', title: "Couldn't start the app" }]);
     expect(captured).toMatchObject([
       {
         error: { name: 'SandboxContractError', cause: { name: 'SandboxContractError', recoverable: false } },
         context: { step: 'contract_params' },
       },
+    ]);
+    expect(sandbox.loads).toEqual([]);
+  });
+
+  it('As an operator whose host omits a required contract field, I see it fail terminally with no recover path', async () => {
+    // Given a host whose reply is missing the content id, a field a reload once recovered
+    const sandbox = createHarness([{ outcome: 'loaded' }], {
+      contract: () =>
+        Promise.resolve({
+          type: 'dotli:sandbox-contract',
+          v: String(SANDBOX_SCHEMA_VERSION),
+          chainBackend: 'rpc-gateway',
+          network: 'paseo-next-v2',
+        }),
+    });
+
+    // When
+    await sandbox.start(toFramedPage(createSandboxUrl())).await();
+
+    // Then the once-recoverable error is now terminal, reported at contract_params, and offers only a reload
+    expect(sandbox.failures).toMatchObject([{ step: 'contract_params', action: { label: 'Reload' } }]);
+    expect(captured).toMatchObject([
+      { error: { cause: { name: 'SandboxContractError', recoverable: true } }, context: { step: 'contract_params' } },
+    ]);
+    expect(sandbox.loads).toEqual([]);
+  });
+
+  it('As a visitor whose host never delivers the contract, I see the handshake fail as the host’s fault', async () => {
+    // Given a host that never replies, so the handshake wait rejects at its deadline
+    const deadline = new Error('The host did not deliver the sandbox contract within 6000ms');
+    const sandbox = createHarness([{ outcome: 'loaded' }], { contract: () => Promise.reject(deadline) });
+
+    // When
+    await sandbox.start(toFramedPage(createSandboxUrl())).await();
+
+    // Then
+    expect(sandbox.failures).toMatchObject([
+      {
+        step: 'contract_handshake',
+        title: "Couldn't start the app",
+        message: 'The host did not deliver the sandbox contract.',
+      },
+    ]);
+    expect(captured).toMatchObject([
+      { error: { name: 'SandboxContractError', cause: deadline }, context: { step: 'contract_handshake' } },
     ]);
     expect(sandbox.loads).toEqual([]);
   });
@@ -245,6 +281,7 @@ describe('runSandbox contract', () => {
     // Then
     expect(sandbox.failures).toMatchObject([{ step: 'contract_origin' }]);
     expect(captured).toMatchObject([{ context: { step: 'contract_origin' } }]);
+    expect(sandbox.loads).toEqual([]);
   });
 
   it('As a developer on local.host, I open my sandbox on its app subdomain and it loads the product', async () => {
@@ -269,94 +306,18 @@ describe('runSandbox contract', () => {
     // Then it fails the origin contract
     expect(sandbox.failures).toMatchObject([{ step: 'contract_origin' }]);
   });
-
-  it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see the load fail if it never accepts my ask', async () => {
-    // Given a reload that stripped the params
-    const sandbox = createHarness([{ outcome: 'loaded' }]);
-    sandbox.start(toFramedPage('https://myapp.app.localhost/'));
-    const failuresBeforeTheWait = sandbox.failures.length;
-    const deadline = new Error('The host did not accept the recover ask in time');
-
-    // When the host does not answer before the wait's deadline
-    sandbox.giveUp(deadline);
-    await sandbox.run.await();
-
-    // Then
-    expect(sandbox.events).toEqual(['ask rerender', 'wait', 'failed contract_rerender']);
-    expect(failuresBeforeTheWait).toBe(0);
-    expect(sandbox.failures).toMatchObject([{ step: 'contract_rerender', title: 'Invalid sandbox URL' }]);
-    expect(captured).toMatchObject([
-      { error: { name: 'SandboxContractError', cause: deadline }, context: { step: 'contract_rerender' } },
-    ]);
-  });
-
-  it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see no failure once it accepted', async () => {
-    // Given a reload that stripped the params
-    const sandbox = createHarness([{ outcome: 'loaded' }]);
-    sandbox.start(toFramedPage('https://myapp.app.localhost/'));
-
-    // When the host accepts the recover ask
-    sandbox.accept();
-    await sandbox.run.await();
-
-    // Then the wait ended with the acceptance and nothing failed
-    expect(sandbox.events).toEqual(['ask rerender', 'wait']);
-    expect(sandbox.failures).toEqual([]);
-    expect(captured).toEqual([]);
-  });
-
-  it('As a visitor whose sandbox reloaded without its params and cannot reach its host, I see the load fail at once and no wait is started', async () => {
-    // Given a sandbox whose ask to the host throws
-    const unreachable = new Error('The host window is gone');
-    const sandbox = createHarness([{ outcome: 'loaded' }], {
-      askRerender: () => {
-        throw unreachable;
-      },
-    });
-
-    // When the run starts on a URL the reload stripped
-    await sandbox.start(toFramedPage('https://myapp.app.localhost/')).await();
-
-    // Then the ask's failure is shown and reported, and no wait is started
-    expect(sandbox.failures).toMatchObject([{ step: 'contract_rerender', title: 'Invalid sandbox URL' }]);
-    expect(sandbox.events).not.toContain('wait');
-    expect(captured).toMatchObject([
-      { error: { name: 'SandboxContractError', cause: unreachable }, context: { step: 'contract_rerender' } },
-    ]);
-    expect(captured).toHaveLength(1);
-  });
-
-  it('As a visitor whose sandbox reloaded without its params, I see the load fail at once when the wait for the host cannot start', async () => {
-    // Given a sandbox whose wait for the host's acceptance throws as it starts
-    const sandbox = createHarness([{ outcome: 'loaded' }]);
-    const broken = new Error('The wait could not start');
-    sandbox.deps.waitForRecoverAccepted = () => {
-      throw broken;
-    };
-
-    // When the run starts on a URL the reload stripped, and no time passes
-    await sandbox.start(toFramedPage('https://myapp.app.localhost/')).await();
-
-    // Then the ask went out, and the failure is shown and reported without waiting out the deadline
-    expect(sandbox.events).toEqual(['ask rerender', 'failed contract_rerender']);
-    expect(sandbox.failures).toMatchObject([{ step: 'contract_rerender', title: 'Invalid sandbox URL' }]);
-    expect(captured).toMatchObject([{ context: { step: 'contract_rerender' } }]);
-    expect(captured[0]?.error).toMatchObject({ cause: broken });
-  });
 });
 
 describe('runSandbox load failures', () => {
   it('As an operator, I watch a load fail and see it reported with its step, its backend and its attempt', async () => {
-    // Given
+    // Given a host whose contract selects the light-client backend
     const error = new Error('bitswap_v1_get failed (code=-32602): invalid');
-    const sandbox = createHarness([{ outcome: 'failed', step: 'content_fetch', error }]);
+    const sandbox = createHarness([{ outcome: 'failed', step: 'content_fetch', error }], {
+      contract: () => Promise.resolve(createContractMessage({ chainBackend: 'smoldot-direct' })),
+    });
 
     // When
-    await sandbox
-      .start(
-        toFramedPage(createSandboxUrl({ overrides: { [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'smoldot-direct' } })),
-      )
-      .await();
+    await sandbox.start(toFramedPage(createSandboxUrl())).await();
 
     // Then
     expect(captured).toMatchObject([
@@ -544,8 +505,9 @@ describe('runSandbox failure actions', () => {
     },
     {
       cause: 'a contract this sandbox cannot read',
-      page: toFramedPage(createSandboxUrl({ overrides: { [SANDBOX_CONTRACT_PARAMS.v]: '999' } })),
+      page: toFramedPage(createSandboxUrl()),
       outcomes: [],
+      contract: () => Promise.resolve(createContractMessage({ v: '999' })),
       goal: 'the host reloads its page',
       event: 'navigate reload',
       loads: 0,
@@ -566,9 +528,9 @@ describe('runSandbox failure actions', () => {
       event: 'open app',
       loads: 0,
     },
-  ])('As a visitor facing $cause, I press its action and $goal', async ({ page, outcomes, event, loads }) => {
+  ])('As a visitor facing $cause, I press its action and $goal', async ({ page, outcomes, contract, event, loads }) => {
     // Given a failure on screen
-    const sandbox = createHarness(outcomes);
+    const sandbox = createHarness(outcomes, { contract });
     await sandbox.start(page).await();
 
     // When its action is pressed

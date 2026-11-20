@@ -63,6 +63,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   second one, often a callback, used only when the first is set, so a caller without the first passes a stand-in.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
   callbacks each serve a different feature.
+- [security-critical-config-to-a-sandboxed-child](security-critical-config-to-a-sandboxed-child.md): a sandboxed child
+  reads config from its parent through URL params any embedder can write, and one value is security-critical.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
   value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
