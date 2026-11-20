@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ProductStorage } from '@parity/truapi-host';
-import type { HostLocalStorageChangeItem } from '@parity/truapi';
+import type { HostLocalStorageChangeItem, ProductId } from '@parity/truapi';
 import { base64 } from '@scure/base';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createListenerSet, toHex } from '@dotli/shared';
@@ -33,7 +33,7 @@ export type LocalStorageCallbacksParams = {
    * Reached on every call, as the page's localStorage throws where the browser blocks it. The page's localStorage by
    * default.
    */
-  storage?: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  storage?: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>;
   /** Where other tabs' `storage` events arrive. The page's window by default. */
   events?: () => StorageEventTarget;
 };
@@ -74,6 +74,27 @@ export function createLocalStorageCallbacks({
     try {
       storage().removeItem(getStorageKey(key));
       listeners.emit(key);
+      return Promise.resolve();
+    } catch (cause) {
+      return Promise.reject(new Error(ERRORS.STORAGE_CLEAR_FAILED, { cause }));
+    }
+  }
+
+  function clearProduct(productId: ProductId): ReturnType<ProductStorage['clearProduct']> {
+    try {
+      const store = storage();
+      const ownerPrefix = getStorageKey(getProductKeyPrefix(productId));
+      const owned: string[] = [];
+      for (let index = 0; index < store.length; index += 1) {
+        const name = store.key(index);
+        if (name?.startsWith(ownerPrefix) === true) {
+          owned.push(name);
+        }
+      }
+      for (const name of owned) {
+        store.removeItem(name);
+        listeners.emit(name.slice(STORAGE_KEY_PREFIX.length));
+      }
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error(ERRORS.STORAGE_CLEAR_FAILED, { cause }));
@@ -133,6 +154,11 @@ export function createLocalStorageCallbacks({
     /** Removes the value at `key` and tells this instance's subscribers. Rejects with the clear failure text. */
     clear,
     /**
+     * Removes every value `productId` owns and tells this instance's subscribers. Values of other products stay.
+     * Idempotent. Rejects with the clear failure text.
+     */
+    clearProduct,
+    /**
      * Streams the value at `key` now and after each write or clear through this instance or in another tab. A read
      * that fails yields one error item with the read failure text, and the stream then ends.
      */
@@ -143,6 +169,18 @@ export function createLocalStorageCallbacks({
 /** The page's product storage, which every core on the page shares. */
 export const localStorageCallbacks = createLocalStorageCallbacks();
 
+const STORAGE_KEY_PREFIX = 'dotli:';
+
+const textEncoder = new TextEncoder();
+
 function getStorageKey(key: string): string {
-  return `dotli:${key}`;
+  return `${STORAGE_KEY_PREFIX}${key}`;
+}
+
+/**
+ * The start of every key the core namespaces for `productId`. The id's length in UTF-8 bytes leads it, so a product
+ * whose id merely starts with another's never matches.
+ */
+function getProductKeyPrefix(productId: ProductId): string {
+  return `truapi:product-storage:v1:${String(textEncoder.encode(productId).length)}:${productId}:`;
 }

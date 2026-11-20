@@ -15,7 +15,7 @@ import {
   VersionedHostAccountSignVrfRequest,
   VersionedHostAccountSignVrfResponse,
   VersionedHostCreateTransactionWithLegacyAccountError,
-  VersionedHostCreateTransactionWithLegacyAccountRequest,
+  VersionedLegacyAccountTxPayload,
   VersionedHostCreateTransactionWithLegacyAccountResponse,
   VersionedHostRequestResourceAllocationError,
   VersionedHostRequestResourceAllocationRequest,
@@ -116,7 +116,7 @@ export const PHONE_METHODS = {
   }),
   createTransactionWithLegacyAccount: buildMethodEntry({
     ids: SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
-    request: VersionedHostCreateTransactionWithLegacyAccountRequest,
+    request: VersionedLegacyAccountTxPayload,
     version: 'V1',
     ok: VersionedHostCreateTransactionWithLegacyAccountResponse,
     error: VersionedHostCreateTransactionWithLegacyAccountError,

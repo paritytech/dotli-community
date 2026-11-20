@@ -7,7 +7,7 @@ import {
   decodeWireMessage,
   scale,
   VersionedHostCreateTransactionError,
-  VersionedHostCreateTransactionRequest,
+  VersionedProductAccountTxPayload,
   VersionedHostCreateTransactionResponse,
   type CallErrorValue,
   type HostCreateTransactionError,
@@ -89,7 +89,7 @@ function createFakeCore(answers: CreateAnswer[]) {
       }
       const { requestId, payload } = decoded.value;
       if (payload.traitId === CREATE.trait && payload.methodId === CREATE.method) {
-        requests.push(VersionedHostCreateTransactionRequest.dec(payload.value).value);
+        requests.push(VersionedProductAccountTxPayload.dec(payload.value).value);
         const answer = must(answers.shift(), 'a transaction answer');
         queueMicrotask(() => {
           provider.listener?.(encodeResponseFrame({ requestId, method: CREATE, value: encodeCreateResponse(answer) }));

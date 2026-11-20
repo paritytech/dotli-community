@@ -4,10 +4,16 @@
 import type { Features } from '@parity/truapi-host';
 import { isRemoteChainSupported } from '@dotli/protocol';
 
-/** Answers whether the backend in force serves the chain a product asks about. Never rejects. */
+/** Answers whether the host serves the chain or draws the materials a product asks about. Never rejects. */
 export function getFeatureSupport(
   request: Parameters<Features['featureSupported']>[0],
 ): ReturnType<Features['featureSupported']> {
-  // The curated gateway set under `rpc-gateway`, otherwise every chain the light client runs.
-  return Promise.resolve({ supported: isRemoteChainSupported(request.value.genesisHash) });
+  switch (request.tag) {
+    // The curated gateway set under `rpc-gateway`, otherwise every chain the light client runs.
+    case 'Chain':
+      return Promise.resolve({ supported: isRemoteChainSupported(request.value.genesisHash) });
+    // The chat draws a `Materials` node's children without its layers.
+    case 'Materials':
+      return Promise.resolve({ supported: false });
+  }
 }

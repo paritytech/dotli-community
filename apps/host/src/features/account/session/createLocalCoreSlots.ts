@@ -197,6 +197,9 @@ function getSlotName(key: LocalCoreKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}app-manifest:${key.value.productLabel}`;
     case 'FundingSupport':
       return `${CORE_LOCAL_STORAGE_PREFIX}funding-support`;
+    // Per stack, so each network keeps the descriptor it last verified.
+    case 'StackRecord':
+      return `${CORE_LOCAL_STORAGE_PREFIX}stack-record:${key.value.stackId}`;
   }
 }
 
@@ -218,6 +221,7 @@ function isSecretMaterialSlot(key: LocalCoreKey): boolean {
     case 'WorkerManifest':
     case 'AppManifest':
     case 'FundingSupport':
+    case 'StackRecord':
       return false;
   }
 }

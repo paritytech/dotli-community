@@ -25,6 +25,8 @@ type WireCodec = {
 type ChainLinkage = {
   wireTableKey: keyof typeof WIRE_TABLE;
   stem: string;
+  /** The request codec's export, for a method whose request is named for its payload rather than its stem. */
+  request?: string;
 };
 
 type Leg = 'request' | 'response' | 'start' | 'receive' | 'interrupt' | 'stop';
@@ -76,8 +78,16 @@ const WALLET_LINKAGE: readonly ChainLinkage[] = [
   { wireTableKey: 'SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT', stem: 'SignPayloadWithLegacyAccount' },
   { wireTableKey: 'SIGNING_SIGN_RAW', stem: 'SignRaw' },
   { wireTableKey: 'SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT', stem: 'SignRawWithLegacyAccount' },
-  { wireTableKey: 'SIGNING_CREATE_TRANSACTION', stem: 'CreateTransaction' },
-  { wireTableKey: 'SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT', stem: 'CreateTransactionWithLegacyAccount' },
+  {
+    wireTableKey: 'SIGNING_CREATE_TRANSACTION',
+    stem: 'CreateTransaction',
+    request: 'VersionedProductAccountTxPayload',
+  },
+  {
+    wireTableKey: 'SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT',
+    stem: 'CreateTransactionWithLegacyAccount',
+    request: 'VersionedLegacyAccountTxPayload',
+  },
   { wireTableKey: 'RESOURCE_ALLOCATION_REQUEST', stem: 'RequestResourceAllocation' },
 ];
 
@@ -154,11 +164,15 @@ function buildFrames(): Map<number, FrameEntry> {
       });
     }
   }
-  for (const { wireTableKey, stem } of WALLET_LINKAGE) {
+  for (const { wireTableKey, stem, request } of WALLET_LINKAGE) {
     for (const [wireId, leg] of listLegs(WIRE_TABLE[wireTableKey])) {
       const entry = frames.get(wireId);
       if (entry !== undefined) {
-        frames.set(wireId, { ...entry, walletCodec: resolveLegCodec(`VersionedHost${stem}`, leg) });
+        const walletCodec =
+          leg === 'request' && request !== undefined
+            ? resolveCodec(request)
+            : resolveLegCodec(`VersionedHost${stem}`, leg);
+        frames.set(wireId, { ...entry, walletCodec });
       }
     }
   }
