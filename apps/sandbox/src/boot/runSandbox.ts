@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The sandbox's run: read the host's contract from the URL once, then load the product, and again on each retry the
-// visitor asks for, up to a limit. Every failure is reported and shown.
+// The sandbox's run: ask the host for the contract over the authenticated handshake, then load the product, and again
+// on each retry the visitor asks for, up to a limit. Every failure is reported and shown.
 
 import { hasLightClient } from '@dotli/config';
-import type { SandboxContractError } from '@dotli/sandbox-wire';
+import { SandboxContractError, validateSandboxContract, type SandboxContractMessage } from '@dotli/sandbox-wire';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, setErrorName, type MachineTypes, type Transition } from '@dotli/shared';
 
@@ -45,17 +45,14 @@ export type RunSandboxDeps = {
   configure: (params: SandboxParams) => void;
   /** One load of the product. A rejection is reported and shown as a failed `init`. */
   load: (input: LoadInput) => Promise<LoadOutcome>;
-  /**
-   * Ends the host's loading screen with the failed step, and asks the host to render this frame again or to move its
-   * page.
-   */
-  hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askRerender' | 'askNavigate'>;
+  /** Ends the host's loading screen with the failed step, and asks the host to move its page. */
+  hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askNavigate'>;
   /** Takes the visitor to dot.li from a sandbox no dot.li host frames: the app in this tab, or the landing in a new one. */
   tab: { openApp: () => void; openLanding: () => void };
   /** Shows a failure, with the action that recovers from it, and that a retry started. */
   ui: Pick<SandboxUi, 'showError' | 'showRetryScreen'>;
-  /** Resolves once the host accepted the recover ask, and rejects once its deadline passed first. */
-  waitForRecoverAccepted: () => Promise<void>;
+  /** Asks the host for the contract and resolves with its reply, or rejects once the handshake deadline passed. */
+  requestContract: () => Promise<SandboxContractMessage>;
   /** The IPFS gateway's host, named when it cannot be reached. */
   getGatewayHost: () => string | undefined;
   /** The host's root domain, whose `app.` subdomains serve products. */
@@ -66,12 +63,12 @@ export type RunSandboxDeps = {
 type ContractFailure = Extract<SandboxFailure, { kind: 'offOrigin' | 'unreadable' }>;
 
 /**
- * Where the run is. It starts with the contract, waits for the host when the contract was stripped, then loads, and
- * waits for a retry after each failed attempt. It ends once a load ends or nothing more can run.
+ * Where the run is. It starts with the framing self-check, asks the host for the contract, then loads, and waits for a
+ * retry after each failed attempt. It ends once a load ends or nothing more can run.
  */
 type RunState =
   | { kind: 'starting' }
-  | { kind: 'awaitingRecover'; error: SandboxContractError }
+  | { kind: 'awaitingContract' }
   | { kind: 'loading'; params: SandboxParams; attempt: number }
   | FailedRun
   | { kind: 'ended' };
@@ -80,9 +77,9 @@ type FailedRun = { kind: 'failed'; params: SandboxParams; attempt: number };
 
 type RunEvent =
   | { kind: 'started'; contract: SandboxContract }
-  | { kind: 'recoverAccepted' }
-  /** `cause` is what ended the wait: its deadline, or what the ask or the wait threw. */
-  | { kind: 'recoverFailed'; cause: unknown }
+  | { kind: 'contractReceived'; contract: SandboxContractMessage }
+  /** `cause` is what ended the wait: its deadline, or what the ask threw. */
+  | { kind: 'contractTimedOut'; cause: unknown }
   | { kind: 'loadSettled'; outcome: LoadOutcome }
   | { kind: 'loadRejected'; error: unknown }
   /** A press of the retry that the failure `from` offered. */
@@ -94,8 +91,7 @@ type RunEffect =
   | { kind: 'topLevel' }
   /** `cause` is what the check or the ask threw, kept on the captured error. */
   | { kind: 'contractFailed'; failure: ContractFailure; cause: unknown }
-  | { kind: 'recoverAsked'; reason: string }
-  | { kind: 'recoverAccepted' }
+  | { kind: 'contractRequested' }
   | { kind: 'loadRejected'; error: unknown }
   | { kind: 'loadFailed'; step: LoadStep; error: unknown; attempt: number; dependency: LoadDependency }
   | { kind: 'retryRefused' }
@@ -106,9 +102,8 @@ type RunEffect =
 type RunMachine = MachineTypes<RunState, RunEvent, RunEffect>;
 
 /**
- * Runs the sandbox: reads the host's contract from the URL, then loads the product, and again on each retry the
- * visitor asks for, up to a limit. A failure is shown, never thrown. Throws when `href` is no URL, or when the
- * contract check fails with anything but a contract error.
+ * Runs the sandbox: asks the host for the contract over the handshake, then loads the product, and again on each retry
+ * the visitor asks for, up to a limit. A failure is shown, never thrown. Throws when `href` is no URL.
  */
 export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
   const machine = createStateMachine<RunMachine>({
@@ -126,30 +121,39 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
             case 'offOrigin':
               failContract({ kind: 'offOrigin' }, undefined, transition);
               return;
-            case 'unreadable': {
-              const { error } = contract;
-              if (error.recoverable) {
-                askHostToRecover(error, transition);
-                return;
-              }
-              failContract({ kind: 'unreadable', step: 'contract_params', reason: error.message }, error, transition);
-              return;
-            }
-            case 'readable':
-              // Before the first load, which reads the settings it applies.
-              transition.emitSideEffect({ kind: 'configure', params: contract.params });
-              startAttempt(contract.params, 1, transition);
+            case 'onOrigin':
+              requestContract(transition);
               return;
           }
         },
       },
-      awaitingRecover: {
-        recoverAccepted(_state, _event, { emitState, emitSideEffect }) {
-          emitState({ kind: 'ended' });
-          emitSideEffect({ kind: 'recoverAccepted' });
+      awaitingContract: {
+        contractReceived(_state, { contract }, transition) {
+          let params: SandboxParams;
+          try {
+            params = validateSandboxContract(contract);
+          } catch (error) {
+            if (!(error instanceof SandboxContractError)) {
+              throw error;
+            }
+            // Authenticated but unusable: with no recover path, a reload would re-ask and get the same reply, so it ends.
+            failContract({ kind: 'unreadable', step: 'contract_params', reason: error.message }, error, transition);
+            return;
+          }
+          // Before the first load, which reads the settings it applies.
+          transition.emitSideEffect({ kind: 'configure', params });
+          startAttempt(params, 1, transition);
         },
-        recoverFailed({ error }, { cause }, transition) {
-          failContract({ kind: 'unreadable', step: 'contract_rerender', reason: error.message }, cause, transition);
+        contractTimedOut(_state, { cause }, transition) {
+          failContract(
+            {
+              kind: 'unreadable',
+              step: 'contract_handshake',
+              reason: 'The host did not deliver the sandbox contract.',
+            },
+            cause,
+            transition,
+          );
         },
       },
       loading: {
@@ -203,25 +207,19 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     await: () => machine.await(),
   };
 
-  /** Asks the host to render this frame again, and waits a bounded time for it to accept. */
-  function askHostToRecover(
-    error: SandboxContractError,
-    { emitState, emitSideEffect, update }: Transition<RunMachine>,
-  ): void {
-    emitState({ kind: 'awaitingRecover', error });
-    emitSideEffect({ kind: 'recoverAsked', reason: error.message });
-    // A reload of this window boots without the contract params, which were stripped after the last load. The host
-    // can render it again with the params it last sent. Its rebuild can take long, so only an ask it never accepts
-    // in time fails the load. The wait starts with the ask, since the host's answer arrives as a later message.
+  /** Asks the host for the contract and waits a bounded time for its reply. */
+  function requestContract({ emitState, emitSideEffect, update }: Transition<RunMachine>): void {
+    emitState({ kind: 'awaitingContract' });
+    emitSideEffect({ kind: 'contractRequested' });
+    // The host drops a request that arrives before its frame is on screen, so the ask re-posts on an interval until a
+    // reply arrives or the deadline passes. On a reload the host's rebuild can take long, so only a deadline it never
+    // answers in time fails the load.
     update(
       Promise.resolve()
-        .then(() => {
-          deps.hostMessages.askRerender();
-          return deps.waitForRecoverAccepted();
-        })
+        .then(() => deps.requestContract())
         .then(
-          () => ({ kind: 'recoverAccepted' }),
-          (cause: unknown) => ({ kind: 'recoverFailed', cause }),
+          contract => ({ kind: 'contractReceived', contract }),
+          (cause: unknown) => ({ kind: 'contractTimedOut', cause }),
         ),
     );
   }
@@ -307,11 +305,8 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         report.capture(error, { step: getFailureStep(effect.failure), tags: { surface: 'sandbox_main' } });
         return;
       }
-      case 'recoverAsked':
-        report.log.event('Asking the host to re-render the sandbox', { reason: effect.reason });
-        return;
-      case 'recoverAccepted':
-        report.log.event('The host accepted the recover ask');
+      case 'contractRequested':
+        report.log.event('Asking the host for the sandbox contract');
         return;
       case 'loadRejected':
         report.log.error(`${APP_LOG_TAG} The load rejected instead of returning its outcome`, effect.error);

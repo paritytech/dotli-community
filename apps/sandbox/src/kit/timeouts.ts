@@ -3,8 +3,10 @@
 
 /** The sandbox's own waits, in milliseconds. */
 export const SANDBOX_TIMEOUTS = {
-  /** How long the host has to accept a recover ask. */
-  RECOVER: 6_000,
+  /** How long the host has to deliver the contract after the sandbox first asks for it. */
+  CONTRACT: 6_000,
+  /** How often the sandbox re-asks the host for its contract until a valid reply arrives. */
+  CONTRACT_RETRY_INTERVAL: 250,
   /** `controllerchange` after the service worker registers. */
   SW_READY: 10_000,
   /** The service worker's acknowledgement of the archive the sandbox hands it. */

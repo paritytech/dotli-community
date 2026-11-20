@@ -41,21 +41,6 @@ describe('host messages', () => {
     ]);
   });
 
-  it("As a visitor, I reload the product's page and the sandbox asks the host to render it again and says so", () => {
-    // Given
-    const parent = createRecordingParent();
-    const hostMessages = createHostMessages({ parent, timers: createManualTimers() });
-
-    // When
-    hostMessages.askRerender();
-
-    // Then
-    expect(parent.posted).toEqual([
-      { message: { type: 'dotli:loading-status', message: 'Restoring app...' }, targetOrigin: '*' },
-      { message: { type: 'dotli:sandbox-recover' }, targetOrigin: '*' },
-    ]);
-  });
-
   it('As a visitor on an error page, I pick its action and the sandbox asks the host to open the landing', () => {
     // Given
     const parent = createRecordingParent();

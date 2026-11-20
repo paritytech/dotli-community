@@ -278,13 +278,6 @@ function parseContract(data: Record<string, unknown>): SandboxContractMessage {
   };
 }
 
-/** The host's acceptance of a recover ask, or null for anything else. The source and origin checks are the caller's. */
-export function parseRecoverAcceptedMessage(data: unknown): SandboxRecoverAcceptedMessage | null {
-  return asRecord(data)?.['type'] === 'dotli:sandbox-recover-accepted'
-    ? { type: 'dotli:sandbox-recover-accepted' }
-    : null;
-}
-
 /** To any origin, since the sandbox cannot tell which host origin framed it and nothing it sends is secret. */
 export function postToHost(host: Pick<Window, 'postMessage'>, message: SandboxToHostMessage): void {
   host.postMessage(message, '*');

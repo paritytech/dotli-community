@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest';
 import {
   parseApiViolationMessage,
   parseHostToSandboxMessage,
-  parseRecoverAcceptedMessage,
   parseSandboxToHostMessage,
   type SandboxToHostMessage,
 } from './sandboxMessages.js';
@@ -170,26 +169,6 @@ describe('sandbox messages', () => {
   it('As the sandbox, I drop a result without an id', () => {
     // When
     const received = parseHostToSandboxMessage({ type: 'dotli:bitswap-result', ok: true });
-
-    // Then
-    expect(received).toBeNull();
-  });
-
-  it("As the sandbox, I read the host's acceptance of my recover ask", () => {
-    // When
-    const received = parseRecoverAcceptedMessage({ type: 'dotli:sandbox-recover-accepted', extra: 1 });
-
-    // Then
-    expect(received).toEqual({ type: 'dotli:sandbox-recover-accepted' });
-  });
-
-  it.each([
-    ['a block result', { type: 'dotli:bitswap-result', id: 'r-1', ok: true }],
-    ['null', null],
-    ['a bare type string', 'dotli:sandbox-recover-accepted'],
-  ])('As the sandbox, I drop %s as no acceptance', (_name, data) => {
-    // When
-    const received = parseRecoverAcceptedMessage(data);
 
     // Then
     expect(received).toBeNull();

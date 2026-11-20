@@ -90,7 +90,8 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
       return;
     }
     const reply = parseHostToSandboxMessage(event.data);
-    if (reply === null) {
+    // The host-to-sandbox union also carries the contract reply, which the contract handshake reads, not this bridge.
+    if (reply?.type !== 'dotli:bitswap-result') {
       return;
     }
     if (reply.ok) {

@@ -9,7 +9,7 @@ import type { LoadStep } from './loadProduct.js';
 
 /** Each step names the failure wherever it is reported. */
 export type SandboxStep =
-  LoadStep | 'contract_top_level' | 'contract_origin' | 'contract_params' | 'contract_rerender' | 'retry_limit';
+  LoadStep | 'contract_top_level' | 'contract_origin' | 'contract_params' | 'contract_handshake' | 'retry_limit';
 
 /** The backend a load read its content through, named in its failure. */
 export type LoadDependency = 'smoldot-bitswap' | 'ipfs-gateway';
@@ -32,8 +32,8 @@ export type SandboxFailure =
   | { kind: 'topLevel'; host: string }
   /** The page is not on an app subdomain. */
   | { kind: 'offOrigin' }
-  /** The contract could not be read at `step`, for `reason`. */
-  | { kind: 'unreadable'; step: 'contract_params' | 'contract_rerender'; reason: string }
+  /** The contract could not be obtained at `step`, for `reason`. */
+  | { kind: 'unreadable'; step: 'contract_params' | 'contract_handshake'; reason: string }
   /** The visitor asked for more than `attempts` loads. */
   | { kind: 'retryLimit'; attempts: number }
   /** A load failed at `step`. */
@@ -99,7 +99,7 @@ export function describeSandboxFailure(
         message: `This page must load as a dotns app subdomain (e.g. myapp.app.${baseDomain}) through dot.li.`,
       };
     case 'unreadable':
-      return { title: 'Invalid sandbox URL', message: failure.reason };
+      return { title: "Couldn't start the app", message: failure.reason };
     case 'retryLimit':
       return {
         title: 'Too many retry attempts',
