@@ -11,7 +11,7 @@ import { bindLogSink, createDeferred, setErrorName } from '@dotli/shared';
 
 import type { HostMessages } from '../hostLink/createHostMessages.js';
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
-import type { SandboxPage } from './readSandboxContract.js';
+import type { SandboxPage } from './readSandboxFraming.js';
 import type { SandboxAction } from '../screens/createSandboxUi.js';
 import type { SandboxStep } from './describeSandboxFailure.js';
 import { DecryptionCancelledError } from '../kit/errors.js';

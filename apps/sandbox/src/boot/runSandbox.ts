@@ -24,7 +24,7 @@ import {
   type SandboxRecovery,
 } from './describeSandboxFailure.js';
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
-import { readSandboxContract, type SandboxContract, type SandboxPage } from './readSandboxContract.js';
+import { readSandboxFraming, type SandboxFraming, type SandboxPage } from './readSandboxFraming.js';
 import { appRunMetric } from '../kit/appRunMetric.js';
 import { DecryptionCancelledError } from '../kit/errors.js';
 
@@ -76,7 +76,7 @@ type RunState =
 type FailedRun = { kind: 'failed'; params: SandboxParams; attempt: number };
 
 type RunEvent =
-  | { kind: 'started'; contract: SandboxContract }
+  | { kind: 'started'; framing: SandboxFraming }
   | { kind: 'contractReceived'; contract: SandboxContractMessage }
   /** `cause` is what ended the wait: its deadline, or what the ask threw. */
   | { kind: 'contractTimedOut'; cause: unknown }
@@ -110,13 +110,13 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     initial: { kind: 'starting' },
     handlers: {
       starting: {
-        started(_state, { contract }, transition) {
-          switch (contract.kind) {
+        started(_state, { framing }, transition) {
+          switch (framing.kind) {
             case 'topLevel':
               transition.emitState({ kind: 'ended' });
               transition.emitSideEffect({ kind: 'topLevel' });
               // A top-level load has no bridge for account, signing or storage calls, so it fails rather than half-works.
-              transition.emitSideEffect({ kind: 'showFailure', failure: { kind: 'topLevel', host: contract.host } });
+              transition.emitSideEffect({ kind: 'showFailure', failure: { kind: 'topLevel', host: framing.host } });
               return;
             case 'offOrigin':
               failContract({ kind: 'offOrigin' }, undefined, transition);
@@ -200,7 +200,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
       });
     },
   });
-  machine.update({ kind: 'started', contract: readSandboxContract(page, deps.baseDomain) });
+  machine.update({ kind: 'started', framing: readSandboxFraming(page, deps.baseDomain) });
 
   return {
     /** Resolves once no load and no wait for the host is in flight. */

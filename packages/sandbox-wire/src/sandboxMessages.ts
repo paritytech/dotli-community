@@ -43,11 +43,6 @@ export type SandboxDebugEventMessage = {
   event: SandboxDebugEvent;
 };
 
-/** A reloaded sandbox lost its contract params, so it asks the host to render it again. */
-export type SandboxRecoverMessage = {
-  type: 'dotli:sandbox-recover';
-};
-
 /**
  * The sandbox asks its direct parent for its whole contract, at boot and again on reload. It carries no payload: the
  * host authenticates the asking frame and replies with a `SandboxContractMessage` to that frame alone.
@@ -70,11 +65,6 @@ export type SandboxContractMessage = {
   fullReset?: string;
   resolutionId?: string;
   v?: string;
-};
-
-/** The host accepted a sandbox's recover ask and will render that frame again. */
-export type SandboxRecoverAcceptedMessage = {
-  type: 'dotli:sandbox-recover-accepted';
 };
 
 /** The sandbox asks the host to move its page: to the landing, or reload it. */
@@ -120,7 +110,6 @@ export type BitswapResultMessage =
 export type SandboxToHostMessage =
   | LoadingStatusMessage
   | SandboxDebugEventMessage
-  | SandboxRecoverMessage
   | SandboxContractRequestMessage
   | SandboxNavigateMessage
   | BitswapGetMessage
@@ -186,8 +175,6 @@ export function parseSandboxToHostMessage(data: unknown): SandboxToHostMessage |
       return parseLoadingStatus(record);
     case 'dotli:debug-event':
       return parseDebugEvent(record);
-    case 'dotli:sandbox-recover':
-      return { type: 'dotli:sandbox-recover' };
     case 'dotli:sandbox-contract-request':
       return { type: 'dotli:sandbox-contract-request' };
     case 'dotli:sandbox-navigate': {

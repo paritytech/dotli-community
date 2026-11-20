@@ -21,7 +21,6 @@ import { createSandboxUi } from './screens/createSandboxUi.js';
 import { showPasswordPrompt } from './screens/showPasswordPrompt.js';
 import { createHostMessages } from './hostLink/createHostMessages.js';
 import { getHostUrls } from './hostLink/getHostUrls.js';
-import { stripContractParams } from './boot/stripContractParams.js';
 import { createBitswapBridge, createHostOriginRule, type BitswapBridge } from './hostLink/createBitswapBridge.js';
 import { loadProduct, type SandboxParams } from './boot/loadProduct.js';
 import { purgeSandboxOriginState } from './boot/purgeSandboxOriginState.js';
@@ -73,15 +72,9 @@ function measureSinceStart(): number {
   return Math.round(performance.now() - STARTED_AT);
 }
 
-/** The dApp sees only the user's own query params. */
-function stripContractParamsFromUrl(): void {
-  history.replaceState(null, '', stripContractParams(window.location.href));
-}
-
 /** Replaces this document with the product's page. */
 function writeProductPage(html: string): void {
   ui.dispose();
-  stripContractParamsFromUrl();
   document.open();
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
   document.write(html);

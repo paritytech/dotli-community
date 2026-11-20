@@ -23,7 +23,6 @@ const SANDBOX_SENDS: [string, SandboxToHostMessage][] = [
       event: { layer: 'sandbox', event: 'document_written', flowId: 'f-1', timestamp: 1, payload: { cid: 'bafy' } },
     },
   ],
-  ['a recover request', { type: 'dotli:sandbox-recover' }],
   ['a contract request', { type: 'dotli:sandbox-contract-request' }],
   ['a navigate to the landing', { type: 'dotli:sandbox-navigate', to: 'landing' }],
   ['a navigate to reload', { type: 'dotli:sandbox-navigate', to: 'reload' }],

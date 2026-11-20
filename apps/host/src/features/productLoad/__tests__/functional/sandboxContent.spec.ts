@@ -79,7 +79,6 @@ test('As a user who reset everything, my product loads on the retry, and only th
   await waitForAppEnd(sandbox, 15_000);
   await expect(sandbox.getByTestId('e2e-product')).toHaveText('reset');
   expect(sandboxDocuments).toHaveLength(1);
-  expect(new URL(sandboxDocuments[0] ?? '').searchParams.get('fullReset')).toBe('1');
   expect(await databaseNames(sandbox)).toContain(MARKER_DB);
 });
 

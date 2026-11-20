@@ -33,7 +33,7 @@ After:  child  -> parent   "request-config"      (at boot, and again on reload)
 
 ## Cases
 
-- A product sandbox did not authenticate its embedder and bound its content id to its label through URL params; moved
+- A product sandbox did not authenticate its embedder and bound its content id to its label through URL params. It moved
   the content id and its companion settings (backend, network, reset, version) to a boot handshake
   (fix/sandbox-tenant-isolation-5362, security finding #5362)
 

@@ -13,14 +13,14 @@ export type SandboxPage = {
 };
 
 /** What the page's own framing and origin say before the host contract is fetched. */
-export type SandboxContract = { kind: 'topLevel'; host: string } | { kind: 'offOrigin' } | { kind: 'onOrigin' };
+export type SandboxFraming = { kind: 'topLevel'; host: string } | { kind: 'offOrigin' } | { kind: 'onOrigin' };
 
 /**
  * Reads the page's framing and origin. A page opened as the top-level document is `topLevel`, a framed page off a
  * product subdomain is `offOrigin`, and a framed page on one is `onOrigin`, cleared to fetch its contract from the host.
  * Throws when `href` is no URL.
  */
-export function readSandboxContract({ href, framed }: SandboxPage, baseDomain: string): SandboxContract {
+export function readSandboxFraming({ href, framed }: SandboxPage, baseDomain: string): SandboxFraming {
   const url = new URL(href);
   if (!framed) {
     return { kind: 'topLevel', host: url.host };

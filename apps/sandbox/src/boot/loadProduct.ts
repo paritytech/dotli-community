@@ -6,7 +6,7 @@
 
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
-import type { validateSandboxParams } from '@dotli/sandbox-wire';
+import type { validateSandboxContract } from '@dotli/sandbox-wire';
 import { createStateMachine, getErrorName, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 
 import { APP_LOG_TAG } from '../kit/appLogTag.js';
@@ -19,7 +19,7 @@ const report = createReporter({ flow: 'content' });
 /** Count. A transition of a sandbox load threw, a bug. Tagged `outcome` (error) and `reason` (the error's name). */
 const loadTransitionMetric = defineCount<'error'>('sandbox.load_transition');
 
-export type SandboxParams = ReturnType<typeof validateSandboxParams>;
+export type SandboxParams = ReturnType<typeof validateSandboxContract>;
 
 /**
  * Each step names the failure wherever it is reported. `verify` is never entered: a content mismatch is attributed to

@@ -89,7 +89,7 @@ describe('sandbox channel', () => {
   it('As the host, I do not hand a message to the consumers of other types', () => {
     // Given
     const heard: unknown[] = [];
-    startChannel().on('dotli:sandbox-recover', message => {
+    startChannel().on('dotli:sandbox-contract-request', message => {
       heard.push(message);
     });
 
@@ -139,13 +139,13 @@ describe('sandbox channel', () => {
   it('As a consumer, I unsubscribe and later messages no longer reach me', () => {
     // Given
     const heard: unknown[] = [];
-    const unsubscribe = startChannel().on('dotli:sandbox-recover', message => {
+    const unsubscribe = startChannel().on('dotli:sandbox-contract-request', message => {
       heard.push(message);
     });
 
     // When
     unsubscribe();
-    post({ type: 'dotli:sandbox-recover' }, SANDBOX);
+    post({ type: 'dotli:sandbox-contract-request' }, SANDBOX);
 
     // Then
     expect(heard).toEqual([]);
@@ -154,13 +154,13 @@ describe('sandbox channel', () => {
   it('As the host, I stop the channel and it stops listening to the window', () => {
     // Given
     const heard: unknown[] = [];
-    startChannel().on('dotli:sandbox-recover', message => {
+    startChannel().on('dotli:sandbox-contract-request', message => {
       heard.push(message);
     });
 
     // When
     channel?.stop();
-    post({ type: 'dotli:sandbox-recover' }, SANDBOX);
+    post({ type: 'dotli:sandbox-contract-request' }, SANDBOX);
 
     // Then
     expect(heard).toEqual([]);
