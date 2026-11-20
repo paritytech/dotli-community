@@ -1,6 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* A translucent panel, so the orbit behind it does not fight the text. */
 .invite {
   display: flex;
   flex-direction: column;
@@ -9,8 +10,12 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 400px;
-  margin: 0;
-  padding: var(--sp-10) 0 var(--sp-8);
+  margin: var(--sp-5) 0 var(--sp-3);
+  padding: var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--chrome-well-strong);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
   text-align: center;
 }
 
