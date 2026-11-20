@@ -37,10 +37,10 @@
   --depth: 1920;
   /* Every line's width, rings and links alike. */
   --line: 1.5px;
-  --tilt: 74deg;
+  --tilt: 80deg;
   /* How far the stage sits below the page's foot, as a share of its height. */
-  --drop: 0.3;
-  --fade: calc(560 * var(--unit));
+  --drop: 0.2;
+  --fade: calc(400 * var(--unit));
   position: absolute;
   inset: 0;
   z-index: -1;
