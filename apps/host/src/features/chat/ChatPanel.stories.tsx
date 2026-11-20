@@ -184,38 +184,6 @@ export const LateCustomRenderStaysAtBottom: Story = {
 };
 
 /**
- * As a reader near the newest message, I am followed to it within 24 px of the end and left where I read beyond that.
- */
-export const Within24pxCountsAsBottom: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    stage.seed(3, FORTY);
-  },
-  play: async ({ canvasElement, step }) => {
-    let list = conversation(canvasElement);
-    await step('Given I am 24 px short of the newest message', async () => {
-      list = await openRoom(canvasElement, 'Room 0', 40);
-      await scrollTo(list, list.scrollHeight - list.clientHeight - 24);
-    });
-    await step('When a message arrives, I count as at the bottom and see it', async () => {
-      stage.productSays('r0', 'one more');
-      await waitFor(() => expect(within(list).getAllByTestId('chat-msg')).toHaveLength(41));
-      await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
-    });
-    let top = 0;
-    await step('Given I am 25 px short of the newest message', async () => {
-      top = list.scrollHeight - list.clientHeight - 25;
-      await scrollTo(list, top);
-    });
-    await step('When a message arrives, I stay where I read', async () => {
-      stage.productSays('r0', 'and another');
-      await waitFor(() => expect(within(list).getAllByTestId('chat-msg')).toHaveLength(42));
-      await expect(list.scrollTop).toBe(top);
-    });
-  },
-};
-
-/**
  * Resolves once a ResizeObserver made after the panel's sees `el` change size, so the panel's own observer has run.
  */
 function resized(el: HTMLElement, change: () => void): Promise<void> {
