@@ -36,7 +36,7 @@
   /* The perspective, in units. Long, so the floor reads close to isometric while near dots still grow a little. */
   --depth: 1920;
   /* Every line's width, rings and links alike. */
-  --line: 1.5px;
+  --line: 1px;
   --tilt: 80deg;
   /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
      by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
