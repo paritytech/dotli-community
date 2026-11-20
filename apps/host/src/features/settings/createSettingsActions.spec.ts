@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
-import { getSettings, type Settings } from '@dotli/config';
+import type { Settings } from '@dotli/config';
 import type { Continuation } from '../../kit/createContinuation.js';
 import { createSettingsActions, type SettingsActionsParams } from './createSettingsActions.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
@@ -273,7 +273,8 @@ describe('applyAndReset', () => {
 
   it('As a visitor, I switch backend and my choice is saved over my other settings and carried in the URL while nothing is wiped and the reload says why', async () => {
     // Given
-    const { params, steps, saved, reasons, readPage } = setupReset();
+    const current: Settings = { ...PRIOR, network: 'previewnet', cache: { ...CACHE_ON, skipCidCache: true } };
+    const { params, steps, saved, reasons, readPage } = setupReset({ readSettings: () => current });
     const { switchBackend } = createSettingsActions(params);
 
     // When
@@ -281,8 +282,8 @@ describe('applyAndReset', () => {
 
     // Then
     expect(steps).toEqual(['reload']);
-    expect(saved).toEqual([{ ...getSettings(), backend: 'rpc-gateway' }]);
-    expect(readPage().search).toBe('?chainBackend=rpc-gateway');
+    expect(saved).toEqual([{ ...current, backend: 'rpc-gateway' }]);
+    expect(readPage().search).toBe('?network=previewnet&chainBackend=rpc-gateway&skipCidCache=1');
     expect(reasons).toEqual(['switch_backend']);
   });
 

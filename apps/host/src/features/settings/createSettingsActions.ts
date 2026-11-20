@@ -51,6 +51,8 @@ export type SettingsActionsParams = {
   settleSharedWrites: () => Promise<void>;
   /** The page URL, which carries the settings into the reload. */
   url: SettingsUrl;
+  /** The settings a backend switch keeps, this context's own unless given. */
+  readSettings?: () => Settings;
 };
 
 type SettingsUrl = {
@@ -81,6 +83,7 @@ export function createSettingsActions({
   save,
   settleSharedWrites: settleShared,
   url,
+  readSettings = getSettings,
 }: SettingsActionsParams) {
   const resetStatus = atom<SettingsResetStatus>('idle');
   const reset: ReadableAtom<SettingsResetStatus> = resetStatus;
@@ -118,7 +121,7 @@ export function createSettingsActions({
   }
 
   function switchBackend(next: Backend): Promise<void> {
-    const settings = getSettings();
+    const settings = readSettings();
     return applyAndReset({ ...settings, backend: next }, settings, { reason: 'switch_backend' });
   }
 
