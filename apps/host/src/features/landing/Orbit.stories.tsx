@@ -136,7 +136,10 @@ export const ManyPeers: Story = {
   args: { peers: 20 },
 };
 
-/** A backend with no light client, which reaches the network through one server. */
+/**
+ * A backend with no light client, which reaches the network through one server: one small tree from the server among
+ * loose dots linked to nothing.
+ */
 export const Server: Story = {
   args: { server: true },
 };

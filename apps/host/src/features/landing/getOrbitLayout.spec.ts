@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { must } from '@dotli/shared/testing';
 import { getOrbitLayout, type OrbitDot, type OrbitLayout, type OrbitMode } from './getOrbitLayout.js';
 
 /** One page load's seed. */
@@ -24,6 +25,15 @@ const MIN_GAP = 10;
 
 /** The most simulated dots the orbit draws. */
 const MAX_SIMULATED = 120;
+
+/** A backend with no light client, which reaches the network through one server. */
+const SERVER: OrbitMode = { kind: 'server' };
+
+/** How far, in degrees, the server's tree reaches further either way on each ring out. */
+const SERVER_REACH = 8;
+
+/** The most simulated nodes the server's tree holds. */
+const SERVER_TREE = 20;
 
 describe('getOrbitLayout', () => {
   it('As a visitor whose light client has no peers yet, I see no dots', () => {
@@ -135,7 +145,9 @@ describe('getOrbitLayout', () => {
     // Then
     const far = layouts.flatMap(({ count, layout }) =>
       listDots(layout).filter(
-        dot => dot.kind === 'simulated' && getAngleGap(dot.from, dot.start) > (360 / count) * JITTER + EPSILON,
+        dot =>
+          dot.kind === 'simulated' &&
+          (dot.from === null || getAngleGap(dot.from, dot.start) > (360 / count) * JITTER + EPSILON),
       ),
     );
     expect(far).toEqual([]);
@@ -162,17 +174,7 @@ describe('getOrbitLayout', () => {
     const layouts = COUNTS.flatMap(count => SEEDS.map(seed => getOrbitLayout(lightClient(count), seed)));
 
     // Then
-    const crowded = layouts.flatMap(layout =>
-      layout.rings.flatMap(({ dots, radius }) =>
-        dots.filter(dot =>
-          dots.some(
-            other =>
-              other !== dot && (getAngleGap(other.start, dot.start) / 180) * Math.PI * radius < MIN_GAP - EPSILON,
-          ),
-        ),
-      ),
-    );
-    expect(crowded).toEqual([]);
+    expect(layouts.flatMap(layout => listCrowded(layout))).toEqual([]);
   });
 
   it('As a visitor with the most peers the rings hold, I see the simulated dots kept within their budget', () => {
@@ -208,15 +210,110 @@ describe('getOrbitLayout', () => {
 
   it('As a visitor on a server backend, I see one server, labelled as the server, and every simulated dot cascading from it', () => {
     // When
-    const layout = getOrbitLayout({ kind: 'server' }, SEED);
+    const layout = getOrbitLayout(SERVER, SEED);
 
     // Then
-    expect(listDots(layout).filter(({ kind }) => kind !== 'simulated')).toEqual([
+    expect(listDots(layout).filter(({ kind }) => kind !== 'simulated' && kind !== 'loose')).toEqual([
       expect.objectContaining({ kind: 'server', label: '[server]' }),
     ]);
+    expect(listDots(layout).filter(({ kind, label }) => kind !== 'server' && label !== null)).toEqual([]);
     expect(listRoots(layout).every(root => root?.kind === 'server')).toBe(true);
   });
+
+  it("As a visitor on a server backend, I see the server grow one small tree that branches within its narrow fan, each dot linked to its parent within the server's reach", () => {
+    // When
+    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+
+    // Then
+    const astray = layouts.flatMap(layout => {
+      const server = findServer(layout);
+      return layout.rings.flatMap(({ dots }, index) =>
+        dots.filter(
+          dot =>
+            dot.kind === 'simulated' &&
+            (getAngleGap(dot.start, server.start) > index * SERVER_REACH + EPSILON ||
+              dot.from === null ||
+              getAngleGap(dot.from, dot.start) > SERVER_REACH + EPSILON),
+        ),
+      );
+    });
+    expect(astray).toEqual([]);
+    const trees = layouts.map(layout => listDots(layout).filter(({ kind }) => kind === 'simulated'));
+    expect(trees.filter(tree => tree.length > SERVER_TREE)).toEqual([]);
+    const branching = layouts.map(layout => listDots(layout).some(dot => countChildren(layout, dot) >= 2));
+    expect(branching).toEqual(layouts.map(() => true));
+  });
+
+  it("As a visitor on a server backend, I see loose dots on every ring, linked to nothing and outside the server's tree", () => {
+    // When
+    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+
+    // Then
+    const looseByRing = layouts.map(layout =>
+      layout.rings.map(({ dots }) => dots.filter(({ kind }) => kind === 'loose').length > 0),
+    );
+    expect(looseByRing).toEqual(layouts.map(layout => layout.rings.map(() => true)));
+    const misplaced = layouts.flatMap(layout => {
+      const server = findServer(layout);
+      return layout.rings.flatMap(({ dots }, index) =>
+        dots.filter(
+          dot =>
+            dot.kind === 'loose' && (dot.from !== null || getAngleGap(dot.start, server.start) <= index * SERVER_REACH),
+        ),
+      );
+    });
+    expect(misplaced).toEqual([]);
+  });
+
+  it('As a visitor on a server backend, I see no dot closer to another on its ring than the least distance between two dots', () => {
+    // When
+    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+
+    // Then
+    expect(layouts.flatMap(layout => listCrowded(layout))).toEqual([]);
+  });
+
+  it('As a visitor on a server backend, I see no more simulated and loose dots than the most a light client shows', () => {
+    // When
+    const layouts = SEEDS.map(seed => getOrbitLayout(SERVER, seed));
+
+    // Then
+    const counts = layouts.map(layout => listDots(layout).filter(({ kind }) => kind !== 'server').length);
+    expect(counts.filter(count => count > MAX_SIMULATED)).toEqual([]);
+  });
+
+  it('As a visitor on a server backend who opens the page again, I see the loose dots in other places', () => {
+    // When
+    const layouts = [1, 2].map(seed => getOrbitLayout(SERVER, seed));
+
+    // Then
+    const [first, second] = layouts.map(layout =>
+      listDots(layout)
+        .filter(({ kind }) => kind === 'loose')
+        .map(({ start }) => start),
+    );
+    expect(first).not.toEqual(second);
+  });
 });
+
+/** Returns the server of a server backend's layout. */
+function findServer(layout: OrbitLayout): OrbitDot {
+  return must(
+    listDots(layout).find(({ kind }) => kind === 'server'),
+    'server',
+  );
+}
+
+/** Lists the dots closer to another on their ring than `MIN_GAP` along it. */
+function listCrowded(layout: OrbitLayout): OrbitDot[] {
+  return layout.rings.flatMap(({ dots, radius }) =>
+    dots.filter(dot =>
+      dots.some(
+        other => other !== dot && (getAngleGap(other.start, dot.start) / 180) * Math.PI * radius < MIN_GAP - EPSILON,
+      ),
+    ),
+  );
+}
 
 function lightClient(peers: number): OrbitMode {
   return { kind: 'lightClient', peers };

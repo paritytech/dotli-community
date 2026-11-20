@@ -272,6 +272,11 @@
 .dot[data-kind='simulated'] {
   background: var(--chrome-action-dim);
 }
+/* A dot linked to nothing, dimmer than a linked one, so the linked tree reads first. Mixed toward a darker colour
+   rather than made see-through, since the ring it rides would show through it. */
+.dot[data-kind='loose'] {
+  background: color-mix(in srgb, var(--chrome-action-dim), var(--chrome-solid));
+}
 
 /* A caption that stands beside its dot and turns with it, above the line its dot rides. */
 .label {

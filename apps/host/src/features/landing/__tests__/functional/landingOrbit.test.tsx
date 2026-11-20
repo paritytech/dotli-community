@@ -23,8 +23,11 @@ function mountBooted(): void {
   flush();
 }
 
-function getInnerDots(): Element[] {
-  return [...page.querySelectorAll('[data-ring="inner"] > [data-kind]')];
+/** The dots on the inner ring that something links to, leaving out the loose ones linked to nothing. */
+function getInnerLinkedDots(): Element[] {
+  return [...page.querySelectorAll('[data-ring="inner"] > [data-kind]')].filter(
+    dot => dot.getAttribute('data-kind') !== 'loose',
+  );
 }
 
 function getPeerDots(): Element[] {
@@ -66,6 +69,6 @@ describe('landing orbit', () => {
     mountBooted();
 
     // Then
-    expect(getInnerDots().map(dot => dot.getAttribute('data-kind'))).toEqual(['server']);
+    expect(getInnerLinkedDots().map(dot => dot.getAttribute('data-kind'))).toEqual(['server']);
   });
 });

@@ -7,11 +7,11 @@ import type { OrbitLayout } from './getOrbitLayout.js';
 import s from './Orbit.module.css';
 
 /**
- * The landing page's backdrop: dots circling rings on a tilted floor, linked inward to the centre. The rings' and
+ * The landing page's backdrop: dots circling rings on a tilted floor, most linked inward to the centre. The rings' and
  * links' lines lie flat in a layer under the dots, drawn where the floor's perspective shows them. CSS draws and turns
- * it, and the layout says only how far out each ring lies, which dots exist, where each one's link starts and how a
- * dot is labelled. A dot that stays across layouts keeps its element and its link's, so it glides to a new angle rather
- * than drawing anew. Where the pointer is up the viewport, from -1 at its top to 1 at its foot, tilts the floor a little.
+ * it, and the layout says only how far out each ring lies, which dots exist, where each one's link starts, if it has
+ * one, and how a dot is labelled. A dot that stays across layouts keeps its element and its link's, so it glides to a
+ * new angle rather than drawing anew. Where the pointer is up the viewport, from -1 at its top to 1 at its foot, tilts the floor a little.
  */
 export function Orbit(props: { layout: OrbitLayout; pointerY: number }): JSX.Element {
   // Each layout with whether the one before it had no dots. Its dots then join an empty floor, where nothing glides out
@@ -41,16 +41,18 @@ export function Orbit(props: { layout: OrbitLayout; pointerY: number }): JSX.Ele
                 {dot => {
                   const join = getJoin();
                   return (
-                    <div
-                      class={s['link']}
-                      data-ring={ring().ring}
-                      data-link={dot().kind}
-                      data-join={join}
-                      style={{
-                        '--from-start': `${String(dot().from)}deg`,
-                        '--to-start': `${String(dot().start)}deg`,
-                      }}
-                    />
+                    <Show when={dot().from !== null}>
+                      <div
+                        class={s['link']}
+                        data-ring={ring().ring}
+                        data-link={dot().kind}
+                        data-join={join}
+                        style={{
+                          '--from-start': `${String(dot().from)}deg`,
+                          '--to-start': `${String(dot().start)}deg`,
+                        }}
+                      />
+                    </Show>
                   );
                 }}
               </For>
