@@ -34,8 +34,8 @@ export type OrbitLayout = {
 /** What the centre reaches the network through: the light client's peers, or one server. */
 export type OrbitMode = { readonly kind: 'lightClient'; readonly peers: number } | { readonly kind: 'server' };
 
-/** A dot with the ring it sits on, counted from the centre. */
-type Node = { readonly index: number; readonly ring: OrbitRing; readonly dot: OrbitDot };
+/** A dot with the index of the ring it sits on, counted from the centre. */
+type Node = { readonly index: number; readonly dot: OrbitDot };
 
 // The rings from the centre outward, each with the angle of its first slot. The offsets keep one ring's slots off the
 // line of its neighbours', and put the first peer, or the server, on the far side of the floor.
@@ -48,9 +48,9 @@ const RINGS: readonly { ring: OrbitRing; offset: number }[] = [
 ];
 
 /** The real nodes' slots in the order they fill: ring `k` from the centre holds `3 * (k + 1)`, evenly spaced. */
-const SLOTS = RINGS.flatMap(({ ring, offset }, index) => {
+const SLOTS = RINGS.flatMap(({ offset }, index) => {
   const count = 3 * (index + 1);
-  return Array.from({ length: count }, (_, slot) => ({ index, ring, start: (offset + (slot * 360) / count) % 360 }));
+  return Array.from({ length: count }, (_, slot) => ({ index, start: (offset + (slot * 360) / count) % 360 }));
 });
 
 /** The least angle, in degrees, between a simulated node and any slot or other node on its ring. */
@@ -61,8 +61,8 @@ const MIN_GAP = 6;
  * each peer's and the server's link starts at the centre. Each real node puts one or two simulated nodes on the next
  * ring out near its own angle, and each of those does the same up to the outermost ring, its link starting at the node
  * it came from. A cascade's shape follows from its root's key alone, and the cascades are laid in join order, so a peer
- * joining adds its own dots and changes no other. A simulated node keeps clear of every slot, so
- * none ever sits on a real one.
+ * joining adds its own dots and changes no other. A simulated node keeps clear of every slot, so none ever sits on a
+ * real one.
  */
 export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
   const real = getRealNodes(mode);
@@ -70,40 +70,38 @@ export function getOrbitLayout(mode: OrbitMode): OrbitLayout {
   for (const root of real) {
     const growing = [root];
     for (let parent = growing.pop(); parent; parent = growing.pop()) {
-      const outer = RINGS[parent.index + 1];
-      if (!outer) {
+      const index = parent.index + 1;
+      if (index === RINGS.length) {
         continue;
       }
       for (const { key, start } of getCascadeChildren(parent)) {
-        if (placed.some(node => node.ring === outer.ring && getAngleGap(node.dot.start, start) < MIN_GAP)) {
+        if (placed.some(node => node.index === index && getAngleGap(node.dot.start, start) < MIN_GAP)) {
           continue;
         }
-        const child: Node = {
-          index: parent.index + 1,
-          ring: outer.ring,
-          dot: { key, start, from: parent.dot.start, kind: 'simulated', label: null },
-        };
+        const child: Node = { index, dot: { key, start, from: parent.dot.start, kind: 'simulated', label: null } };
         placed.push(child);
         growing.push(child);
       }
     }
   }
   return {
-    rings: RINGS.map(({ ring }) => ({ ring, dots: placed.filter(node => node.ring === ring).map(({ dot }) => dot) })),
+    rings: RINGS.map(({ ring }, index) => ({
+      ring,
+      dots: placed.filter(node => node.index === index).map(({ dot }) => dot),
+    })),
   };
 }
 
 function getRealNodes(mode: OrbitMode): Node[] {
   switch (mode.kind) {
     case 'lightClient':
-      return SLOTS.slice(0, mode.peers).map(({ index, ring, start }, peer) => {
+      return SLOTS.slice(0, mode.peers).map(({ index, start }, peer) => {
         const label = `[peer#${String(peer + 1)}]`;
-        return { index, ring, dot: { key: label, start, from: 0, kind: 'peer', label } };
+        return { index, dot: { key: label, start, from: 0, kind: 'peer', label } };
       });
     case 'server':
-      return SLOTS.slice(0, 1).map(({ index, ring, start }) => ({
+      return SLOTS.slice(0, 1).map(({ index, start }) => ({
         index,
-        ring,
         dot: { key: '[server]', start, from: 0, kind: 'server', label: '[server]' },
       }));
   }
