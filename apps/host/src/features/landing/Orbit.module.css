@@ -168,12 +168,11 @@
   border-radius: 50%;
 }
 
-/* A ring's dots, around the floor's centre. */
+/* Gives its dots their ring's radius and size. It has no box, so its dots stand in the plane's own 3D space, since
+   WebKit can draw the dots of an untransformed wrapper flat on the plane. */
 .ring {
   --radius: calc(var(--r) * var(--unit));
-  position: absolute;
-  inset: calc(50% - var(--radius));
-  transform-style: preserve-3d;
+  display: contents;
 }
 
 /* Inner orbits carry larger dots, and the innermost ring is brightest. The rings stay dimmer than the links, so the

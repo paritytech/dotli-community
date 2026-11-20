@@ -43,6 +43,10 @@ const meta = {
   component: Frame,
   args: { server: false, peers: 0, seed: 1, pointerY: 0 },
   argTypes: { pointerY: { control: { type: 'range', min: -1, max: 1, step: 0.1 } } },
+  parameters: {
+    // Contrast is unnecessary for background graphics: the orbit is decorative and hidden from assistive technology.
+    a11y: { config: { rules: [{ id: 'color-contrast', enabled: false }] } },
+  },
 } satisfies Meta<typeof Frame>;
 
 export default meta;
