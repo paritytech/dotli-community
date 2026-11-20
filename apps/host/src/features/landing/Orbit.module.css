@@ -60,7 +60,9 @@
   );
 }
 
+/* Each ring's radius, as --<ring>-radius in units, comes with the layout. */
 .stage {
+  --floor: calc(293 * var(--unit));
   position: absolute;
   bottom: 0;
   left: 50%;
@@ -78,64 +80,84 @@
   }
 }
 
-/* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. The two outermost
-   rings run past the floor's edge and out of view, so the field reads as going on beyond the horizon. Each ring's
-   radius, as --<ring>-radius, comes with the layout. */
+/* The floor and the plane its dots ride, both tilted back the same way, with the rings' lines drawn flat between
+   them. The plane keeps its children in 3D, so the dots can stand upright on it again. The two outermost rings run past
+   the floor's edge and out of view, so the field reads as going on beyond the horizon. */
+.floor,
 .plane {
-  --floor: calc(293 * var(--unit));
-  /* The fallback holds the dots at rest where the clock is not registered. */
-  --turn: var(--clock, 0deg);
   position: absolute;
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
-  transform-style: preserve-3d;
+}
+.floor {
   background: radial-gradient(closest-side, var(--surface), var(--bg-page));
 }
-
-/* A ring's line is centred on its radius, where its dots and the ends of its links sit. */
-.ring {
-  position: absolute;
-  inset: calc(50% - var(--radius) - var(--line) / 2);
-  box-sizing: border-box;
-  border: var(--line) var(--ring-style) var(--ring-color);
-  border-radius: 50%;
+.plane {
+  /* The fallback holds the dots at rest where the clock is not registered. */
+  --turn: var(--clock, 0deg);
   transform-style: preserve-3d;
 }
 
-/* Inner orbits carry larger dots, and the innermost ring is brightest. The rings past the first are dashed, so the
-   field thins toward the horizon. A dot's size is in units. */
-.ring[data-ring='inner'] {
-  --radius: var(--inner-radius);
+/* The rings' lines, flat between the floor and its dots. */
+.lines {
+  position: absolute;
+  inset: 0;
+}
+
+/* A ring's line, drawn flat with one stroke all round rather than on the tilted floor, where the perspective would thin
+   it toward the horizon. It is the ellipse the floor's circle of radius r projects to: with k = r sin(tilt) / depth,
+   its half-width is r / sqrt(1 - k * k), its half-height r * cos(tilt) / (1 - k * k), and its centre sits k times its
+   half-height below the floor's, since the near half comes closer to the viewer. The line is centred on that ellipse. */
+.oval {
+  --k: calc(var(--r) * sin(var(--tilt)) / var(--depth));
+  --a: calc(var(--r) / sqrt(1 - var(--k) * var(--k)) * var(--unit));
+  --b: calc(var(--r) * cos(var(--tilt)) / (1 - var(--k) * var(--k)) * var(--unit));
+  position: absolute;
+  top: calc(50% + var(--k) * var(--b) - var(--b) - var(--line) / 2);
+  left: calc(50% - var(--a) - var(--line) / 2);
+  box-sizing: border-box;
+  width: calc(2 * var(--a) + var(--line));
+  height: calc(2 * var(--b) + var(--line));
+  border: var(--line) solid var(--ring-color);
+  border-radius: 50%;
+}
+
+/* A ring's dots and links, around the floor's centre. */
+.ring {
+  --radius: calc(var(--r) * var(--unit));
+  position: absolute;
+  inset: calc(50% - var(--radius));
+  transform-style: preserve-3d;
+}
+
+/* Inner orbits carry larger dots, and the innermost ring is brightest. A ring's radius and a dot's size are in units. */
+:is(.oval, .ring)[data-ring='inner'] {
+  --r: var(--inner-radius);
   --ring-color: var(--text-faint);
-  --ring-style: solid;
   --dot: 7.5;
 }
-.ring[data-ring='ring1'] {
-  --radius: var(--ring1-radius);
-  --parent-radius: var(--inner-radius);
+:is(.oval, .ring)[data-ring='ring1'] {
+  --r: var(--ring1-radius);
+  --parent-radius: calc(var(--inner-radius) * var(--unit));
   --ring-color: var(--chrome-action-dim);
-  --ring-style: solid;
   --dot: 5.5;
 }
-.ring[data-ring='ring2'] {
-  --radius: var(--ring2-radius);
-  --parent-radius: var(--ring1-radius);
+:is(.oval, .ring)[data-ring='ring2'] {
+  --r: var(--ring2-radius);
+  --parent-radius: calc(var(--ring1-radius) * var(--unit));
   --ring-color: var(--chrome-action-dim);
-  --ring-style: dashed;
   --dot: 3.5;
 }
-.ring[data-ring='ring3'] {
-  --radius: var(--ring3-radius);
-  --parent-radius: var(--ring2-radius);
+:is(.oval, .ring)[data-ring='ring3'] {
+  --r: var(--ring3-radius);
+  --parent-radius: calc(var(--ring2-radius) * var(--unit));
   --ring-color: var(--chrome-action-dim);
-  --ring-style: dashed;
   --dot: 3;
 }
-.ring[data-ring='ring4'] {
-  --radius: var(--ring4-radius);
-  --parent-radius: var(--ring3-radius);
+:is(.oval, .ring)[data-ring='ring4'] {
+  --r: var(--ring4-radius);
+  --parent-radius: calc(var(--ring3-radius) * var(--unit));
   --ring-color: var(--chrome-action-dim);
-  --ring-style: dashed;
   --dot: 2.5;
 }
 
