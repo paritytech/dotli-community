@@ -16,13 +16,16 @@ describe('getPointerShift', () => {
     { client: 200, shift: -0.5 },
     { client: -120, shift: -1 },
     { client: 950, shift: 1 },
-  ])('As a visitor with the pointer at $client of 800, I tilt the orbit by $shift', ({ client, shift }) => {
-    // When
-    const actual = getPointerShift(client, 800);
+  ])(
+    'As a visitor with the pointer at $client down a viewport 800 tall, I move the orbit by $shift',
+    ({ client, shift }) => {
+      // When
+      const actual = getPointerShift(client, HEIGHT);
 
-    // Then
-    expect(actual).toBe(shift);
-  });
+      // Then
+      expect(actual).toBe(shift);
+    },
+  );
 });
 
 describe('followPointer', () => {
@@ -56,7 +59,7 @@ describe('followPointer', () => {
     expect(shifts).toEqual([]);
   });
 
-  it('As a visitor who left the landing page, I move the pointer and tilt no orbit', () => {
+  it('As a visitor who left the landing page, I move the pointer and move no orbit', () => {
     // Given
     const { view, frames, shifts, move, runFrame } = setup();
     const stop = followPointer({ onShift: shift => shifts.push(shift), view, frames });
