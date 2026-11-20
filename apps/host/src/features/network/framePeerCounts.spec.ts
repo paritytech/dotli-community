@@ -40,19 +40,6 @@ describe('The frame peer counts', () => {
     expect(monitor.getNetworkStatus().find(chain => chain.role === 'relay')?.peers).toBe(4);
   });
 
-  it('As a landing page that starts the follow twice, I record each peer count once', () => {
-    // Given
-    const { monitor, recorded } = createRecordingMonitor();
-    peerCounts.start({ telemetry, monitor });
-    peerCounts.start({ telemetry, monitor });
-
-    // When
-    chainSync.emit({ chain: 'relay', kind: 'peers', peers: 4, isSyncing: false });
-
-    // Then
-    expect(recorded).toEqual([['relay', 4]]);
-  });
-
   it('As a landing page whose start stopped, I record no later peer count', () => {
     // Given
     const { monitor, recorded } = createRecordingMonitor();

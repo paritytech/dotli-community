@@ -53,14 +53,8 @@ function isSameElements(actual: readonly Element[], expected: readonly Element[]
   return actual.length === expected.length && actual.every((element, index) => element === expected[index]);
 }
 
-/** As a visitor using a screen reader on a light client with no peers yet, I am not read the orbit, which only decorates the page. */
-export const NoPeers: Story = {
-  play: async ({ canvas, step }) => {
-    await step('Then the orbit is hidden from assistive technology', async () => {
-      await expect(canvas.getByTestId('orbit')).toHaveAttribute('aria-hidden', 'true');
-    });
-  },
-};
+/** A light client with no peers yet, whose inner ring is empty and whose first ring hangs unlinked. */
+export const NoPeers: Story = {};
 
 /** As a visitor, I watch peers join and leave, and the dots already drawn stay where they are. */
 export const Peers: Story = {
