@@ -122,6 +122,15 @@
   max-width: var(--w-landing);
 }
 
+/* Just under the name form. */
+.invite {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 .footer {
   display: flex;
   flex-wrap: wrap;

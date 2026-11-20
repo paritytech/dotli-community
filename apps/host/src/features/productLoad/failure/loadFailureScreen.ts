@@ -3,7 +3,7 @@
 
 // The failure screen on this page: what its buttons do here.
 
-import { getActiveServicesConfig, getSettings, type Backend } from '@dotli/config';
+import { getActiveServicesConfig } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { getEndpointHost } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
@@ -33,7 +33,7 @@ export const loadFailureScreen = {
       openSettings: settingsIntent.open,
       goHome: openLanding,
       reload: reloadAfterFailure,
-      switchBackend: switchBackendAndReload,
+      switchBackend: next => void pageSettingsActions.switchBackend(next),
       resetProtocolOnReload,
       sightings: sessionErrorSightings,
       trustedProviderHosts: getTrustedProviderHosts,
@@ -46,12 +46,6 @@ export const loadFailureScreen = {
 
 function reloadAfterFailure(): void {
   markAndReload('reload_button');
-}
-
-/** Saves the other backend as Save does, without clearing anything, and reloads onto it. */
-function switchBackendAndReload(nextBackend: Backend): void {
-  const settings = getSettings();
-  void pageSettingsActions.applyAndReset({ ...settings, backend: nextBackend }, settings, { reason: 'switch_backend' });
 }
 
 function resetProtocolOnReload(): void {

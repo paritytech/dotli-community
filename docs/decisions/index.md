@@ -77,11 +77,16 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [capacity-stories-near-the-test-timeout](capacity-stories-near-the-test-timeout.md): a story file drives a component
   at full capacity, and the preview's a11y check over the large DOM pushes its stories near the browser test timeout.
+- [contrast-check-on-a-decorative-graphic](contrast-check-on-a-decorative-graphic.md): a story's axe contrast rule fails
+  on text inside a decorative, `aria-hidden` background graphic.
 
 ## UI
 
 - [component-shown-in-several-forms](component-shown-in-several-forms.md): a piece of UI, such as a logo, appears in
   several forms that callers assemble from part components, and an optional decoration's place depends on the form.
+- [decorative-graphic-draws-real-entities](decorative-graphic-draws-real-entities.md): a decorative graphic shows live
+  entities the app observes beside simulated filler, and the question is how real entities come into view, how they
+  may be linked and how the filler relates to them.
 - [design-gives-px-line-heights](design-gives-px-line-heights.md): a design's type scale pairs each size with a fixed px
   line height, and the tokens hold a few line-height ratios that places pair with sizes.
 - [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound

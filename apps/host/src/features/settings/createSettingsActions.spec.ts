@@ -271,18 +271,19 @@ describe('applyAndReset', () => {
     expect(reasons).toEqual(['settings_change']);
   });
 
-  it('As a visitor, I switch backend from a failure screen and my choice is saved and carried in the URL while nothing is wiped and the reload says why', async () => {
+  it('As a visitor, I switch backend and my choice is saved over my other settings and carried in the URL while nothing is wiped and the reload says why', async () => {
     // Given
-    const { params, steps, saved, reasons, readPage } = setupReset();
-    const { applyAndReset } = createSettingsActions(params);
+    const current: Settings = { ...PRIOR, network: 'previewnet', cache: { ...CACHE_ON, skipCidCache: true } };
+    const { params, steps, saved, reasons, readPage } = setupReset({ readSettings: () => current });
+    const { switchBackend } = createSettingsActions(params);
 
     // When
-    await applyAndReset({ ...PRIOR, backend: 'rpc-gateway' }, PRIOR, { reason: 'switch_backend' });
+    await switchBackend('rpc-gateway');
 
     // Then
     expect(steps).toEqual(['reload']);
-    expect(saved).toEqual([{ ...PRIOR, backend: 'rpc-gateway' }]);
-    expect(readPage().search).toBe('?chainBackend=rpc-gateway');
+    expect(saved).toEqual([{ ...current, backend: 'rpc-gateway' }]);
+    expect(readPage().search).toBe('?network=previewnet&chainBackend=rpc-gateway&skipCidCache=1');
     expect(reasons).toEqual(['switch_backend']);
   });
 

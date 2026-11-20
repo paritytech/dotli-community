@@ -1,12 +1,52 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* One clock for every ring, so a line between two rings follows both of its dots, registered so it animates as an angle
-   rather than flipping between its two ends. */
+/* One clock for the whole floor, so every ring turns as one piece and a line between two rings keeps the lean it was
+   laid out with. Registered so it animates as an angle rather than flipping between its two ends. */
 @property --clock {
   syntax: '<angle>';
   inherits: true;
   initial-value: 0deg;
+}
+
+/* A dot's and a link's angles at rest, registered so that a dot that moves when the real nodes change glides to its new
+   place, its links following, rather than jumping. */
+@property --start {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --from-start {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --to-start {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* The floor's resting tilt and how far it sits below the page's foot, which differ between a phone and a wider screen.
+   Registered so that crossing between the two, as a window is resized or a device turned, glides the floor over rather
+   than jumping. They inherit, since the stage reads the drop. */
+@property --rest-tilt {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 80deg;
+}
+@property --drop {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0.2;
+}
+
+/* Where the pointer is up the viewport, from -1 at its top to 1 at its foot. Registered so the floor glides to its new
+   tilt rather than jumping with every move. */
+@property --pointer-y {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
 }
 
 /* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. Its parts are solid,
@@ -15,10 +55,24 @@
 .orbit {
   --width: min(1500px, 220vw);
   --unit: calc(var(--width) / 640);
-  --tilt: 74deg;
+  /* The perspective, in units. Long, so the floor reads close to isometric while near dots still grow a little. */
+  --depth: 1920;
+  /* Every line's width, rings and links alike. */
+  --line: 1px;
+  /* The floor's tilt with the pointer at the viewport's middle, or with no mouse to follow. */
+  --rest-tilt: 80deg;
+  --tilt: var(--rest-tilt);
+  /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
+     by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
+     and the floor cuts it at no tilt short of edge-on. */
+  --rise: calc((tan(var(--tilt)) + 1) / 2);
   /* How far the stage sits below the page's foot, as a share of its height. */
-  --drop: 0.3;
-  --fade: calc(560 * var(--unit));
+  --drop: 0.2;
+  --fade: calc(370 * var(--unit));
+  /* How long the floor takes to settle into a phone's or a wider screen's shape when the page crosses between them. */
+  --reshape: 600ms;
+  /* How long a dot that stays takes to glide to its new place when the real nodes change. */
+  --glide: 1.5s;
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -32,97 +86,130 @@
   );
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .orbit {
+    transition:
+      --rest-tilt var(--reshape) ease-in-out,
+      --drop var(--reshape) ease-in-out;
+  }
+}
+
+/* A mouse tips the floor a little toward the viewer as it rises up the page and back as it falls, as if the eye looking
+   on followed it. Everything drawn on the floor reads the one tilt, so it moves as one piece. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .orbit {
+    --tilt: calc(var(--rest-tilt) + var(--pointer-y) * 3deg);
+    transition:
+      --rest-tilt var(--reshape) ease-in-out,
+      --drop var(--reshape) ease-in-out,
+      --pointer-y 400ms ease-out;
+  }
+}
+
+/* Each ring's radius, as --<ring>-radius in units, comes with the layout. */
 .stage {
+  /* The fallback holds the dots and links at rest where the clock is not registered. */
+  --turn: var(--clock, 0deg);
+  --floor: calc(293 * var(--unit));
   position: absolute;
   bottom: 0;
   left: 50%;
   width: var(--width);
   aspect-ratio: 12 / 5;
   translate: -50% calc(var(--drop) * 100%);
-  /* Long, so the floor reads close to isometric while near dots still grow a little. */
-  perspective: calc(1920 * var(--unit));
+  perspective: calc(var(--depth) * var(--unit));
 }
 
 /* A phone has height to spare under the form, so the floor stands nearly upright and in full view. */
 @media (max-width: 560px) {
   .orbit {
-    --tilt: 10deg;
+    --rest-tilt: 10deg;
     --drop: 0;
   }
 }
 
-/* The floor, tilted back. It keeps its children in 3D, so the dots can stand upright on it again. The two outermost
-   rings run past the floor's edge and out of view, so the field reads as going on beyond the horizon. */
+/* The floor and the plane its dots ride, both tilted back the same way, with the rings' and links' lines drawn flat
+   between them. The plane keeps its children in 3D, so the dots can stand upright on it again. The two outermost rings
+   run past the floor's edge and out of view, so the field reads as going on beyond the horizon. */
+.floor,
 .plane {
-  --floor: calc(293 * var(--unit));
-  --inner-radius: calc(110 * var(--unit));
-  --ring1-radius: calc(190 * var(--unit));
-  --ring2-radius: calc(260 * var(--unit));
-  --ring3-radius: calc(340 * var(--unit));
-  --ring4-radius: calc(430 * var(--unit));
-  /* Inner orbits turn faster. Each ring makes whole turns per turn of the clock, so the loop has no seam. The fallback
-     holds the dots at rest where the clock is not registered. */
-  --inner-turn: calc(var(--clock, 0deg) * 15);
-  --ring1-turn: calc(var(--clock, 0deg) * 10);
-  --ring2-turn: calc(var(--clock, 0deg) * 7);
-  --ring3-turn: calc(var(--clock, 0deg) * 5);
-  --ring4-turn: calc(var(--clock, 0deg) * 4);
   position: absolute;
   inset: calc(50% - var(--floor));
   transform: rotateX(var(--tilt));
-  transform-style: preserve-3d;
+}
+.floor {
   background: radial-gradient(closest-side, var(--surface), var(--bg-page));
 }
-
-.ring {
-  position: absolute;
-  inset: calc(50% - var(--radius));
-  box-sizing: border-box;
-  border: 2px solid var(--ring-color);
-  border-radius: 50%;
+.plane {
   transform-style: preserve-3d;
 }
 
-/* Inner orbits carry larger dots, the innermost brightest. */
-.ring[data-ring='inner'] {
-  --radius: var(--inner-radius);
-  --turn: var(--inner-turn);
+/* The rings' and links' lines, flat between the floor and its dots, which draw over them. A link draws over rings. */
+.lines {
+  position: absolute;
+  inset: 0;
+}
+
+/* A ring's line, drawn flat with one stroke all round rather than on the tilted floor, where the perspective would thin
+   it toward the horizon. It is the ellipse the floor's circle of radius r projects to: with k = r sin(tilt) / depth,
+   its half-width is r / sqrt(1 - k * k), its half-height r * cos(tilt) / (1 - k * k), and its centre sits k times its
+   half-height below the floor's, since the near half comes closer to the viewer. The line is centred on that ellipse. */
+.oval {
+  --k: calc(var(--r) * sin(var(--tilt)) / var(--depth));
+  --a: calc(var(--r) / sqrt(1 - var(--k) * var(--k)) * var(--unit));
+  --b: calc(var(--r) * cos(var(--tilt)) / (1 - var(--k) * var(--k)) * var(--unit));
+  position: absolute;
+  top: calc(50% + var(--k) * var(--b) - var(--b) - var(--line) / 2);
+  left: calc(50% - var(--a) - var(--line) / 2);
+  box-sizing: border-box;
+  width: calc(2 * var(--a) + var(--line));
+  height: calc(2 * var(--b) + var(--line));
+  border: var(--line) solid var(--ring-color);
+  border-radius: 50%;
+}
+
+/* Gives its dots their ring's radius and size. It has no box, so its dots stand in the plane's own 3D space, since
+   WebKit can draw the dots of an untransformed wrapper flat on the plane. */
+.ring {
+  --radius: calc(var(--r) * var(--unit));
+  display: contents;
+}
+
+/* Inner orbits carry larger dots, and the innermost ring is brightest. The rings stay dimmer than the links, so the
+   connections read first and the orbits sit behind them. A ring's radius and a dot's size are in units. */
+:is(.oval, .ring, .link)[data-ring='inner'] {
+  --r: var(--inner-radius);
+  --ring-color: var(--border);
+  --dot: 7.5;
+}
+:is(.oval, .ring, .link)[data-ring='ring1'] {
+  --r: var(--ring1-radius);
+  --parent-r: var(--inner-radius);
   --ring-color: var(--chrome-solid);
-  --size: calc(10 * var(--unit));
-  --dot-color: var(--text-faint);
+  --dot: 5.5;
 }
-.ring[data-ring='ring1'] {
-  --radius: var(--ring1-radius);
-  --turn: var(--ring1-turn);
+:is(.oval, .ring, .link)[data-ring='ring2'] {
+  --r: var(--ring2-radius);
+  --parent-r: var(--ring1-radius);
   --ring-color: var(--chrome-solid);
-  --size: calc(7 * var(--unit));
-  --dot-color: var(--chrome-action-dim);
+  --dot: 3.5;
 }
-.ring[data-ring='ring2'] {
-  --radius: var(--ring2-radius);
-  --turn: var(--ring2-turn);
-  --ring-color: var(--surface);
-  --size: calc(4.5 * var(--unit));
-  --dot-color: var(--chrome-action-dim);
+:is(.oval, .ring, .link)[data-ring='ring3'] {
+  --r: var(--ring3-radius);
+  --parent-r: var(--ring2-radius);
+  --ring-color: var(--chrome-solid);
+  --dot: 3;
 }
-.ring[data-ring='ring3'] {
-  --radius: var(--ring3-radius);
-  --turn: var(--ring3-turn);
-  --ring-color: var(--surface);
-  --size: calc(4 * var(--unit));
-  --dot-color: var(--chrome-action-dim);
-}
-.ring[data-ring='ring4'] {
-  --radius: var(--ring4-radius);
-  --turn: var(--ring4-turn);
-  --ring-color: var(--surface);
-  --size: calc(3.5 * var(--unit));
-  --dot-color: var(--chrome-action-dim);
+:is(.oval, .ring, .link)[data-ring='ring4'] {
+  --r: var(--ring4-radius);
+  --parent-r: var(--ring3-radius);
+  --ring-color: var(--chrome-solid);
+  --dot: 2.5;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .plane {
-    animation: turn 1800s linear infinite;
+  .stage {
+    animation: turn 270s linear infinite;
   }
 }
 
@@ -132,90 +219,125 @@
   }
 }
 
+/* Dots and links come and go with the real nodes and their trees, so they fade in as they join. A joining one stays
+   unseen until the ones already shown have glided out of its way, then appears in place. A leaving one goes at once.
+   The rings never change, so they stand from first paint. */
+@media (prefers-reduced-motion: no-preference) {
+  .dot,
+  .link {
+    animation: enter 600ms ease-out var(--glide) backwards;
+  }
+  .dot {
+    transition: --start var(--glide) ease-in-out;
+  }
+  .link {
+    transition:
+      --from-start var(--glide) ease-in-out,
+      --to-start var(--glide) ease-in-out;
+  }
+  /* One that joins an empty floor, as at page load, has nothing to wait for. */
+  .dot[data-join='first'],
+  .link[data-join='first'] {
+    animation-delay: 0s;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+  }
+}
+
 .dot {
   --angle: calc(var(--start) + var(--turn));
+  --size: calc(var(--dot) * var(--unit));
+  /* Its lift toward the viewer pushes it outward from the centre by the lift's share of the perspective, so it is
+     placed that much further in to show on its ring's line. */
+  --place: calc(var(--radius) * (1 - var(--rise) * var(--dot) / var(--depth)));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
   border-radius: 50%;
-  background: var(--dot-color);
-  /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then moved toward the
-     viewer by more than the floor comes forward across the dot's lower half, so nothing on the floor draws over it. */
-  transform: translate(calc(cos(var(--angle)) * var(--radius)), calc(sin(var(--angle)) * var(--radius)))
-    rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
+  background: var(--neutral-solid);
+  /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then lifted toward the
+     viewer, so nothing on the floor draws over it. */
+  transform: translate(calc(cos(var(--angle)) * var(--place)), calc(sin(var(--angle)) * var(--place)))
+    rotateX(calc(-1 * var(--tilt))) translateZ(calc(var(--rise) * var(--size)));
 }
 
-/* A line flat on the floor from one dot to another, or from the centre. It runs under the dots, which cover its ends. */
+/* The one trusted provider a backend with no light client talks through, in the first peer's place. */
+.dot[data-kind='trustedProvider'] {
+  --dot: 9;
+  background: var(--text-muted);
+}
+.dot[data-kind='simulated'] {
+  background: var(--chrome-action-dim);
+}
+/* A dot linked to nothing, dimmer than a linked one, so the linked tree reads first. Mixed toward a darker colour
+   rather than made see-through, since the ring it rides would show through it. */
+.dot[data-kind='loose'] {
+  background: color-mix(in srgb, var(--chrome-action-dim), var(--chrome-solid));
+}
+
+/* A caption that stands beside its dot and turns with it, above the line its dot rides. */
+.label {
+  position: absolute;
+  bottom: 50%;
+  left: calc(100% + 2 * var(--unit));
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  line-height: 1;
+  color: var(--neutral-solid);
+  white-space: nowrap;
+}
+
+/* A dot's one link, from the centre to a peer or the trusted provider, or from the dot a simulated one grew from. It carries its
+   dot's ring, so its outer end takes that ring's radius. Drawn flat with one width end to end rather than on the tilted
+   floor: perspective keeps a line straight, so the segment between its two ends' projections is the floor's line. A
+   floor point at angle a on radius r projects, around the floor's centre, to r cos(a) s across and r sin(a) cos(tilt) s
+   down, with s = 1 / (1 - r sin(a) sin(tilt) / depth). A dot lifted toward the viewer and placed in by the lift's share
+   of the perspective projects there exactly, as does the centre, so the link meets its dots' centres. */
 .link {
-  --line: 2px;
-  --from-angle: calc(var(--from-start) + var(--from-turn));
-  --to-angle: calc(var(--to-start) + var(--to-turn));
-  --dx: calc(cos(var(--to-angle)) * var(--to-radius) - cos(var(--from-angle)) * var(--from-radius));
-  --dy: calc(sin(var(--to-angle)) * var(--to-radius) - sin(var(--from-angle)) * var(--from-radius));
+  --from-angle: calc(var(--from-start) + var(--turn));
+  --to-angle: calc(var(--to-start) + var(--turn));
+  --from-scale: calc(var(--unit) / (1 - var(--from-r) * sin(var(--from-angle)) * sin(var(--tilt)) / var(--depth)));
+  --to-scale: calc(var(--unit) / (1 - var(--r) * sin(var(--to-angle)) * sin(var(--tilt)) / var(--depth)));
+  --from-x: calc(var(--from-r) * cos(var(--from-angle)) * var(--from-scale));
+  --from-y: calc(var(--from-r) * sin(var(--from-angle)) * cos(var(--tilt)) * var(--from-scale));
+  --dx: calc(var(--r) * cos(var(--to-angle)) * var(--to-scale) - var(--from-x));
+  --dy: calc(var(--r) * sin(var(--to-angle)) * cos(var(--tilt)) * var(--to-scale) - var(--from-y));
   position: absolute;
   top: calc(50% - var(--line) / 2);
   left: 50%;
   width: hypot(var(--dx), var(--dy));
   height: var(--line);
-  background: var(--chrome-solid);
   transform-origin: 0 50%;
-  transform: translate(
-      calc(cos(var(--from-angle)) * var(--from-radius)),
-      calc(sin(var(--from-angle)) * var(--from-radius))
-    )
-    rotate(atan2(var(--dy), var(--dx)));
+  transform: translate(var(--from-x), var(--from-y)) rotate(atan2(var(--dy), var(--dx)));
 }
-.link[data-from='centre'] {
-  --from-radius: 0px;
-  --from-turn: 0deg;
+.link[data-link='peer'],
+.link[data-link='trustedProvider'] {
+  --from-r: 0;
+  background: var(--text-faint);
+}
+.link[data-link='simulated'] {
+  --from-r: var(--parent-r);
   background: var(--chrome-action-dim);
 }
-.link[data-from='inner'] {
-  --from-radius: var(--inner-radius);
-  --from-turn: var(--inner-turn);
-}
-.link[data-from='ring1'] {
-  --from-radius: var(--ring1-radius);
-  --from-turn: var(--ring1-turn);
-}
-.link[data-from='ring2'] {
-  --from-radius: var(--ring2-radius);
-  --from-turn: var(--ring2-turn);
-}
-.link[data-from='ring3'] {
-  --from-radius: var(--ring3-radius);
-  --from-turn: var(--ring3-turn);
-}
-.link[data-from='ring4'] {
-  --from-radius: var(--ring4-radius);
-  --from-turn: var(--ring4-turn);
-}
-.link[data-to='inner'] {
-  --to-radius: var(--inner-radius);
-  --to-turn: var(--inner-turn);
-}
-.link[data-to='ring1'] {
-  --to-radius: var(--ring1-radius);
-  --to-turn: var(--ring1-turn);
-}
-.link[data-to='ring2'] {
-  --to-radius: var(--ring2-radius);
-  --to-turn: var(--ring2-turn);
-}
-.link[data-to='ring3'] {
-  --to-radius: var(--ring3-radius);
-  --to-turn: var(--ring3-turn);
-}
-.link[data-to='ring4'] {
-  --to-radius: var(--ring4-radius);
-  --to-turn: var(--ring4-turn);
-}
 
-/* Upright and moved toward the viewer like the dots, so the lines that meet in it end under it. */
+/* The visitor's light client, a dot inside a thin ring. Upright and moved toward the viewer like the dots. The ring is
+   the box's own border, since Chrome can drop what a 3D layer paints outside its box. */
 .centre {
-  --size: calc(15 * var(--unit));
+  --size: calc(17 * var(--unit));
   position: absolute;
   inset: calc(50% - var(--size) / 2);
+  box-sizing: border-box;
+  border: var(--line) solid var(--neutral-solid);
   border-radius: 50%;
-  background: var(--neutral-solid);
-  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(2 * var(--size)));
+  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(var(--rise) * var(--size)));
+}
+.centre::after {
+  content: '';
+  position: absolute;
+  inset: calc(2.5 * var(--unit));
+  border-radius: 50%;
+  background: var(--text-muted);
 }

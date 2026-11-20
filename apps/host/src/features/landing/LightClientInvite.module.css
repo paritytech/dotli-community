@@ -1,0 +1,36 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A translucent panel with no blur, so the orbit shows faintly through it without fighting the text. */
+.invite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 400px;
+  margin: var(--sp-5) 0 var(--sp-3);
+  padding: var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--chrome-well-strong);
+  text-align: center;
+}
+
+.text {
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  text-wrap: balance;
+}
+
+.hook {
+  display: block;
+  margin: 0 0 var(--sp-1);
+  padding: 0;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-medium);
+  color: var(--text-strong);
+}
