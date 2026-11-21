@@ -4,7 +4,6 @@
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ChainActivity } from '@dotli/chains';
 import { createNetworkMonitorState, type ChainStatus, type NetworkMonitor } from './networkMonitorState.js';
-import { describeLiveNetwork } from './networkVerdict.js';
 import { buildChainActivity } from '../../testing/buildChainActivity.js';
 import { getRelayGenesis } from '../../testing/getRelayGenesis.js';
 import { createManualTimers, must, nth, type ManualTimers } from '@dotli/shared/testing';
@@ -494,21 +493,6 @@ describe('The network monitor judges how each chain is used', () => {
       expect(getChainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
     },
   );
-});
-
-describe('The network monitor after a return', () => {
-  it('As a user back on my page, I see my chain not read as overdue', async () => {
-    // Given
-    use(getRelayGenesis());
-    monitor.recordBestBlock(getRelayGenesis(), 100);
-    await timers.advance(120_000);
-
-    // When
-    monitor.recordReturn();
-
-    // Then
-    expect(describeLiveNetwork(monitor.getChainClocks())).toEqual({ tone: 'ok' });
-  });
 });
 
 /** A consumer holds the chain, connected and following, unless the test says otherwise. */

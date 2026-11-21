@@ -10,12 +10,10 @@ import { chatPanelState } from '../features/chat/index.js';
 import { pageTopbarAutoHide } from '../features/page/index.js';
 import { networkHealthState } from '../features/network/index.js';
 import { pageTheme } from '../features/settings/index.js';
-import { networkPause } from '../features/network/index.js';
-import { networkMonitorState } from '../features/network/index.js';
 
 /**
- * Starts the theme, network health, chat panel, product permission and topbar auto-hide state, and has the network
- * monitor start over on each return to the page, once a page. Each lasts the page's life, so their stops go unused.
+ * Starts the theme, network health, chat panel, product permission and topbar auto-hide state, once a page. Each lasts the page's life, so their stops
+ * go unused.
  * Throws only as one of them does.
  */
 export function startShellState(): void {
@@ -25,5 +23,4 @@ export function startShellState(): void {
   chatPanelState.start();
   productPermissions.start();
   pageTopbarAutoHide.start();
-  networkPause.onReturn(networkMonitorState.recordReturn);
 }

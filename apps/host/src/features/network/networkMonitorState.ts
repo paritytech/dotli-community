@@ -147,8 +147,6 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     recordChainPhase,
     /** Records the share of its warp a known chain proved, from 0 to 1. An unchanged share is dropped. */
     recordSyncShare,
-    /** Records a return to the page, from hiding or from a sleep. Every chain's block clock stops, and the bars stay. */
-    recordReturn,
     /** Returns the transfer as last merged. */
     getTransfer,
     /**
@@ -218,13 +216,6 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     }
     state.latest = blockNumber;
     state.lastAt = now;
-    notify();
-  }
-
-  function recordReturn(): void {
-    for (const state of listChains()) {
-      state.lastAt = null;
-    }
     notify();
   }
 

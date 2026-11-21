@@ -221,11 +221,11 @@ reason, `'chain'` or `'frame'`.
 A hidden page has no use for its network. `createNetworkPause`
 (`apps/host/src/features/network/createNetworkPause.ts`) follows the document's
 visibility. It waits a grace of 60 s after the page hides, then pauses. A
-return to the page resumes at once. A wake from a sleep, which it finds by a
-late tick, resumes nothing, since a visible page was never paused. It only
-starts the network monitor's judgement over. A hold keeps the page awake: a
-page load and a product's request to Polkadot App each take one, and the pause
-waits for the last release.
+return to the page resumes at once. It tells nothing but pause and resume. The
+network monitor reads each chain's pool status and light client phase, so a
+pause shows as the pool's own disconnected, connecting and connected. A hold
+keeps the page awake: a page load and a product's request to Polkadot App each
+take one, and the pause waits for the last release.
 
 ```mermaid
 flowchart TB
@@ -272,9 +272,7 @@ pool and in the worker on each port's vote. In `smoldot-direct` and
 relays the pause to the worker, which keeps one flag per tab and pauses its
 pool only while every tab is paused. A tab that closes drops its flag.
 
-On the product page, the network monitor starts each chain's judgement over on
-each return to the page, so a chain that was quiet while paused is not read as
-stalled. The watched chains in
+The watched chains in
 `smoldot-direct` and the SharedWorker are held by `observeChains` on healing leases, which take
 their chain again behind the gate once any halt drops them, including one from
 a chain that fails to reopen at a resume.
