@@ -129,6 +129,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
 - [section-whose-data-loads-lazily](section-whose-data-loads-lazily.md): a card or popover section's data loads only
   after the card opens, and the question is what the section shows while it loads.
+- [status-mark-drawn-around-an-icon](status-mark-drawn-around-an-icon.md): a design carries an entity's state in a
+  disc or ring around its icon, and the question is whether that breaks the rule that icons stand bare.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.
 - [window-blur-closes-a-popover](window-blur-closes-a-popover.md): a shared layer closes a popover on every window blur,
