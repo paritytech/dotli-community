@@ -152,9 +152,11 @@ type CoreParts = {
   left: AbortController;
   /** Aborted as the core goes out of service or leaves, so it no longer speaks for the session. */
   retired: AbortController;
+  /** Stops hearing the page's stored session change. */
+  stopFollowing: () => void;
 };
 
-type BootedParts = CoreParts & { booted: BootedCoreRuntime; stopFollowing: () => void };
+type BootedParts = CoreParts & { booted: BootedCoreRuntime };
 
 /**
  * `lingering` is a core in service that outlives its last lease. `down` is one out of service that leases still hold.
@@ -168,6 +170,8 @@ type Core =
       waiting: ReadonlyMap<symbol, LeaseReply>;
       /** Whether the page cancelled pairing while the core booted, so a pairing core cancels it once booted. */
       pairingCancelled: boolean;
+      /** Whether the stored session changed while the core booted, so a pairing core is told once booted. */
+      storeChanged: boolean;
     })
   | (BootedParts & { kind: 'live'; leases: ReadonlySet<symbol> })
   | (BootedParts & { kind: 'lingering'; timer: unknown })
@@ -211,6 +215,8 @@ type PageCoreEffect =
   | { kind: 'lingerCancelled'; timer: unknown }
   /** A local wallet core has no phone. */
   | { kind: 'phoneDropped'; phoneRequests: PhoneRequestTracker }
+  /** A local wallet core holds its session in memory, so the stored one is not its to follow. */
+  | { kind: 'followingStopped'; stopFollowing: () => void }
   | { kind: 'sessionStoreChanged'; runtime: WorkerPairingHostRuntime }
   | { kind: 'runtimePairingCancelled'; runtime: WorkerPairingHostRuntime }
   | { kind: 'coresGone' };
@@ -300,23 +306,19 @@ export function createPageCore({
           if (core.redial !== undefined) {
             emitSideEffect({ kind: 'redialed', outcome: 'ok', reason: core.redial });
           }
-          // A local wallet core holds its session in memory, so the stored one is not its to follow. Other tabs' logins
-          // land in the shared session store.
-          const stopFollowing = booted.local
-            ? noop
-            : subscribeStoredSession(() => {
-                update({ kind: 'storeChanged', coreId });
-              });
           const live: LiveCore = {
             ...getParts(core),
+            stopFollowing: booted.local ? noop : core.stopFollowing,
             kind: 'live',
             booted,
-            stopFollowing,
             leases: new Set(core.waiting.keys()),
           };
           // A redial boots with nobody waiting, so it goes as a core whose last lease was released does.
           const next = live.leases.size > 0 ? withCore(state, live) : letGo(state, live, transition);
           emitState(next);
+          if (booted.local) {
+            emitSideEffect({ kind: 'followingStopped', stopFollowing: core.stopFollowing });
+          }
           if (!next.cores.has(coreId)) {
             return;
           }
@@ -324,8 +326,10 @@ export function createPageCore({
             // Its leases are handed out after this, so no frame is tapped first.
             emitSideEffect({ kind: 'phoneDropped', phoneRequests: core.phoneRequests });
           } else {
-            // A session stored or a store that came back before the core followed it is no store event.
-            update({ kind: 'storeChanged', coreId });
+            // The core restores the stored session as it boots, and telling it the store changed cuts that restore
+            // short, so it would report signed out before the session it restored. Only a change heard while it booted
+            // is told. A store that came back is no store event, so the core checks itself either way.
+            update(core.storeChanged ? { kind: 'storeChanged', coreId } : readStale(coreId, booted));
             if (core.pairingCancelled) {
               emitSideEffect({ kind: 'runtimePairingCancelled', runtime: booted.runtime });
             }
@@ -367,14 +371,18 @@ export function createPageCore({
           transition.emitState(leave(state, core, transition));
         },
         wentDown: takeOutOfService,
-        storeChanged(state, { coreId }, { emitSideEffect, update }) {
+        storeChanged(state, { coreId }, { emitState, emitSideEffect, update }) {
           const core = state.cores.get(coreId);
-          if (core === undefined || core.kind === 'booting') {
+          if (core === undefined) {
+            return;
+          }
+          if (core.kind === 'booting') {
+            emitState(withCore(state, { ...core, storeChanged: true }));
             return;
           }
           emitSideEffect({ kind: 'sessionStoreChanged', runtime: core.booted.runtime });
           // The store coming back can answer a wallet read that failed when this core booted.
-          update(core.booted.isStale().then((stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale })));
+          update(readStale(coreId, core.booted));
         },
         staleRead(state, { coreId, stale }, transition) {
           if (stale) {
@@ -438,6 +446,9 @@ export function createPageCore({
           return;
         case 'phoneDropped':
           effect.phoneRequests.dispose();
+          return;
+        case 'followingStopped':
+          effect.stopFollowing();
           return;
         case 'sessionStoreChanged':
           try {
@@ -545,17 +556,23 @@ export function createPageCore({
     transition: Transition<PageCoreMachine>,
   ): PageCoreState {
     const { product } = state;
+    const id = Symbol('core');
     const booting: BootingCore = {
-      id: Symbol('core'),
+      id,
       product,
       blockingModalScope: coordinator.createScope(),
       phoneRequests: createPhoneRequests(),
       left: new AbortController(),
       retired: new AbortController(),
+      // Followed from the dial, as other tabs' logins land in the shared session store while the core boots too.
+      stopFollowing: subscribeStoredSession(() => {
+        transition.update({ kind: 'storeChanged', coreId: id });
+      }),
       kind: 'booting',
       redial,
       waiting,
       pairingCancelled: false,
+      storeChanged: false,
     };
     // A first dial boots at once, and a redial with the retries the pool gives it until its core leaves.
     const booted =
@@ -693,8 +710,8 @@ export function createPageCore({
 }
 
 /** The parts every phase of `core` keeps, so a core that moves on carries no field of the phase it left. */
-function getParts({ id, product, blockingModalScope, phoneRequests, left, retired }: Core): CoreParts {
-  return { id, product, blockingModalScope, phoneRequests, left, retired };
+function getParts({ id, product, blockingModalScope, phoneRequests, left, retired, stopFollowing }: Core): CoreParts {
+  return { id, product, blockingModalScope, phoneRequests, left, retired, stopFollowing };
 }
 
 /** Reports a throw of a page core handler or effect. */
@@ -724,9 +741,7 @@ function disposeCore(core: Core): void {
   core.retired.abort();
   // Takes the core's runtime with it, booted or still booting.
   core.left.abort();
-  if (core.kind !== 'booting') {
-    core.stopFollowing();
-  }
+  core.stopFollowing();
   core.blockingModalScope.dispose();
   core.phoneRequests.dispose();
 }
@@ -755,7 +770,12 @@ function holdsLease(core: Core | undefined, leaseId: symbol): core is Extract<Co
 
 /** The parts every booted phase of `core` keeps. */
 function getBootedParts(core: Exclude<Core, { kind: 'booting' }>): BootedParts {
-  return { ...getParts(core), booted: core.booted, stopFollowing: core.stopFollowing };
+  return { ...getParts(core), booted: core.booted };
+}
+
+/** Resolves with the event of whether the core `coreId` turned stale. */
+function readStale(coreId: symbol, booted: BootedCoreRuntime): Promise<PageCoreEvent> {
+  return booted.isStale().then((stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale }));
 }
 
 function servesProduct(core: Core, product: PageProduct): boolean {
