@@ -2,7 +2,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* Every layer is always drawn and hidden ones sit at zero opacity, so a change of kind moves each layer from one
-   look to the next. The svg sets --ring, the ring's length, and --share, a short chain's share. */
+   look to the next. --ring is the ring's length and --share the arc's share of it. */
 .mark {
   flex: none;
   width: 28px;

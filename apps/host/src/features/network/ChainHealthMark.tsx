@@ -23,6 +23,7 @@ const SCALLOP =
  */
 export function ChainHealthMark(props: { mark: ChainMark; glyph: Component<IconProps> }): JSX.Element {
   const Glyph = dynamic(() => props.glyph);
+  // Every kind but short draws its arc full, so leaving one for short pulls the arc back from a whole ring.
   const share = (): number => (props.mark.kind === 'short' ? props.mark.share : 1);
   return (
     <svg

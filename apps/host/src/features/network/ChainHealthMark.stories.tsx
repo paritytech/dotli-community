@@ -99,6 +99,7 @@ export const AllStates: Story = {
 export const Morph: Story = {
   render: () => <Stepper />,
   play: async ({ canvas, userEvent, step }) => {
+    // Given one mark in the first state, and the layers it draws
     const mark = canvas.getByTestId('chains-mark');
     const layers = [...mark.children];
     for (const row of MARKS.slice(1)) {
