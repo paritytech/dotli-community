@@ -43,6 +43,7 @@ const ENGINE: { readonly [Name in keyof EngineMethods]: EngineMethod<EngineMetho
   resolveOwner: toRequestMethod(methods.resolve.owner),
   resolveExecutableManifest: toRequestMethod(methods.resolve.executableManifest),
   resolveRootManifest: toRequestMethod(methods.resolve.rootManifest),
+  resolvePrimaryName: toRequestMethod(methods.resolve.primaryName),
   connect: toSubscriptionMethod(methods.chain.connect),
   send: toRequestMethod(methods.chain.send),
 };

@@ -206,6 +206,7 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
         resolveDotName: resolveDotName ?? (() => Promise.resolve(null)),
         resolveExecutableManifest: () => Promise.reject(new Error('no manifests in this test')),
         resolveOwner: () => Promise.resolve(null),
+        resolvePrimaryName: () => Promise.resolve(null),
         resolveRootManifest: () => Promise.reject(new Error('no manifests in this test')),
         readLabelStores: () => Promise.resolve([]),
         readNewLabels: stores => Promise.resolve({ stores: [...stores], labels: [] }),

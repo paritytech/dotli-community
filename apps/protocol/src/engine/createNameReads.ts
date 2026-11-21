@@ -21,7 +21,7 @@ import { assertNonEmpty } from './assertNonEmpty.js';
 
 export type EngineResolver = Pick<
   DotnsResolver,
-  'resolveDotName' | 'resolveOwner' | 'resolveExecutableManifest' | 'resolveRootManifest'
+  'resolveDotName' | 'resolveOwner' | 'resolveExecutableManifest' | 'resolveRootManifest' | 'resolvePrimaryName'
 >;
 
 export type NameReadsParams = {
@@ -52,6 +52,11 @@ export function createNameReads({ resolver, syncBudgetCapMs }: NameReadsParams) 
     resolveExecutableManifest,
     /** Answers the name's root manifest, or the failure as a remote error, a mode that resolves no names included. */
     resolveRootManifest,
+    /**
+     * Answers the address's verified primary name, or the failure as a remote error, a mode that resolves no names
+     * included.
+     */
+    resolvePrimaryName,
   };
 
   /** The resolver a read of `method` runs on. Throws when the mode resolves no names. */
@@ -134,6 +139,17 @@ export function createNameReads({ resolver, syncBudgetCapMs }: NameReadsParams) 
       const reader = requireResolver(methods.resolve.rootManifest);
       assertNonEmpty(label, 'label');
       return reader.resolveRootManifest(label, toSyncOptions(methods.resolve.rootManifest));
+    });
+  }
+
+  function resolvePrimaryName(
+    { address }: MethodTypes<typeof methods.resolve.primaryName>['request'],
+    _context: ProtocolContext,
+  ): ReturnType<ProtocolHandler<typeof methods.resolve.primaryName>> {
+    return answerRead(() => {
+      const reader = requireResolver(methods.resolve.primaryName);
+      assertNonEmpty(address, 'address');
+      return reader.resolvePrimaryName(address, toSyncOptions(methods.resolve.primaryName));
     });
   }
 }

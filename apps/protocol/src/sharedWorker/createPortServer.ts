@@ -118,6 +118,11 @@ export function createPortServer({ lifecycle, status, handleTelemetry, openSpan,
         method: resolve.rootManifest,
         handler: (payload, context) => requireEngine().resolveRootManifest(payload, context),
       }),
+      resolvePrimaryName: withRequestSpan({
+        openSpan,
+        method: resolve.primaryName,
+        handler: (payload, context) => requireEngine().resolvePrimaryName(payload, context),
+      }),
       connect: withSubscriptionSpan({
         openSpan,
         method: chain.connect,
