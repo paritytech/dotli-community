@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
@@ -39,6 +39,34 @@ function Gallery(): JSX.Element {
   );
 }
 
+/** One mark that steps through every state, so each change can be watched as it morphs. */
+function Stepper(): JSX.Element {
+  const [index, setIndex] = createSignal(0);
+  return (
+    <div
+      style={{
+        display: 'flex',
+        'align-items': 'center',
+        gap: '12px',
+        padding: '12px',
+        background: 'var(--chrome-glass)',
+      }}
+    >
+      <Show when={MARKS[index() % MARKS.length]}>
+        {row => (
+          <>
+            <ChainHealthMark mark={row().mark} glyph={pickChainGlyph('relay')} />
+            <button type="button" onClick={() => setIndex(index() + 1)}>
+              Next state
+            </button>
+            <span style={{ 'font-size': 'var(--fs-caption)' }}>{row().name}</span>
+          </>
+        )}
+      </Show>
+    </div>
+  );
+}
+
 const meta = {
   title: 'Entities/Chains/ChainHealthMark',
   component: Gallery,
@@ -64,5 +92,24 @@ export const AllStates: Story = {
         }
       }
     });
+  },
+};
+
+/** As a user watching a chain, I see one mark move through every state, and it stays the same drawing as it changes. */
+export const Morph: Story = {
+  render: () => <Stepper />,
+  play: async ({ canvas, userEvent, step }) => {
+    const mark = canvas.getByTestId('chains-mark');
+    const layers = [...mark.children];
+    for (const row of MARKS.slice(1)) {
+      await step(`When the state changes to ${row.name}`, async () => {
+        await userEvent.click(canvas.getByRole('button', { name: 'Next state' }));
+      });
+      await step(`Then the same mark draws ${row.name} with the same layers`, async () => {
+        await expect(canvas.getByTestId('chains-mark')).toBe(mark);
+        await expect(mark).toHaveAttribute('data-kind', row.mark.kind);
+        await expect([...mark.children]).toEqual(layers);
+      });
+    }
   },
 };

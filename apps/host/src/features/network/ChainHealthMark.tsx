@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo, type Component } from 'solid-js';
+import type { Component } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
 import type { IconProps } from '@dotli/ui/icons';
 import type { ChainMark } from './chainHealth.js';
@@ -17,13 +17,13 @@ const SCALLOP =
 
 /**
  * A chain's glyph inside the mobile app's health mark: a disc when healthy, an arc at the share when short, an open ring
- * with a cross when no block arrives, and rings for the states with nothing to measure. Hidden from assistive
- * technology, so the caller says the state in words.
+ * with a cross when no block arrives, and rings for the states with nothing to measure. Every layer stays drawn and the
+ * kind picks which show, so a change of state morphs in CSS instead of redrawing. Hidden from assistive technology, so
+ * the caller says the state in words.
  */
 export function ChainHealthMark(props: { mark: ChainMark; glyph: Component<IconProps> }): JSX.Element {
   const Glyph = dynamic(() => props.glyph);
-  // A new mark with the same kind, share and band keeps the drawn frame, so a steady chain causes no DOM churn.
-  const frame = createMemo(() => props.mark, { equals: isSameMark });
+  const share = (): number => (props.mark.kind === 'short' ? props.mark.share : 1);
   return (
     <svg
       class={s['mark']}
@@ -32,74 +32,26 @@ export function ChainHealthMark(props: { mark: ChainMark; glyph: Component<IconP
       viewBox="0 0 28 28"
       fill="none"
       aria-hidden="true"
+      style={{ '--ring': `${String(RING_LENGTH)}px`, '--share': share() }}
     >
-      {drawFrame(frame())}
+      <circle class={s['track']} cx="14" cy="14" r={RING_RADIUS} />
+      {/* Mirrored, so the arc fills counterclockwise from the top. */}
+      <circle
+        class={s['arc']}
+        data-band={props.mark.kind === 'short' ? props.mark.band : undefined}
+        cx="14"
+        cy="14"
+        r={RING_RADIUS}
+        stroke-width="2"
+        stroke-linecap="round"
+        transform="translate(28 0) scale(-1 1) rotate(-90 14 14)"
+      />
+      <path class={s['scallop']} d={SCALLOP} stroke-width="1.5" />
+      <circle class={s['disc']} cx="14" cy="14" r="14" />
+      <path class={s['cross']} d="M3.7 3.7L6.7 6.7M6.7 3.7L3.7 6.7" stroke-width="1.6" stroke-linecap="round" />
       <g transform="translate(8 8)">
         <Glyph class={s['glyph']} size={12} />
       </g>
     </svg>
   );
-}
-
-function isSameMark(a: ChainMark, b: ChainMark): boolean {
-  return a.kind === b.kind && (a.kind !== 'short' || (b.kind === 'short' && a.share === b.share && a.band === b.band));
-}
-
-function drawFrame(mark: ChainMark): JSX.Element {
-  switch (mark.kind) {
-    case 'healthy':
-      return <circle class={s['disc']} cx="14" cy="14" r="14" />;
-    case 'short':
-      return (
-        <>
-          <circle class={s['track']} cx="14" cy="14" r={RING_RADIUS} stroke-width="2" />
-          {/* Mirrored, so the arc fills counterclockwise from the top. */}
-          <circle
-            class={s['arc']}
-            data-band={mark.band}
-            cx="14"
-            cy="14"
-            r={RING_RADIUS}
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-dasharray={`${String(mark.share * RING_LENGTH)} ${String(RING_LENGTH)}`}
-            transform="translate(28 0) scale(-1 1) rotate(-90 14 14)"
-          />
-        </>
-      );
-    case 'outage':
-      return (
-        <>
-          {/* Three quarters clockwise from the top, so the gap is the upper-left quarter. */}
-          <circle
-            class={s['ring']}
-            cx="14"
-            cy="14"
-            r={RING_RADIUS}
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-dasharray={`${String(0.75 * RING_LENGTH)} ${String(RING_LENGTH)}`}
-            transform="rotate(-90 14 14)"
-          />
-          <path class={s['cross']} d="M3.7 3.7L6.7 6.7M6.7 3.7L3.7 6.7" stroke-width="1.6" stroke-linecap="round" />
-        </>
-      );
-    case 'connecting':
-      return <path class={s['ring']} d={SCALLOP} stroke-width="1.5" />;
-    case 'unavailable':
-      // A dash of zero length with round caps draws a dot, so the ring reads as 24 dots.
-      return (
-        <circle
-          class={s['ring']}
-          cx="14"
-          cy="14"
-          r={RING_RADIUS}
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-dasharray={`0 ${String(RING_LENGTH / 24)}`}
-        />
-      );
-    case 'unused':
-      return <circle class={s['track']} cx="14" cy="14" r={RING_RADIUS} stroke-width="1" />;
-  }
 }

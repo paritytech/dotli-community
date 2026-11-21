@@ -1,23 +1,37 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* Every layer is always drawn and hidden ones sit at zero opacity, so a change of kind moves each layer from one
+   look to the next. The svg sets --ring, the ring's length, and --share, a short chain's share. */
 .mark {
   flex: none;
   width: 28px;
   height: 28px;
   color: var(--chrome-text);
 }
+.track,
+.arc,
+.scallop,
+.disc,
+.cross {
+  opacity: 0;
+}
+/* The arc keeps its own transform attribute, which a CSS origin would move, so only the scaled layers set one. */
+.scallop,
 .disc {
-  fill: var(--chrome-text);
+  transform-box: view-box;
+  transform-origin: 50% 50%;
 }
 .track {
   stroke: var(--chrome-ring);
-}
-.ring {
-  stroke: var(--chrome-ring-strong);
+  stroke-width: 2;
 }
 .arc {
+  --dash: calc(var(--share) * var(--ring));
+  --gap: var(--ring);
   stroke: var(--chrome-text);
+  stroke-dasharray: var(--dash) var(--gap);
+  stroke-dashoffset: 0;
 }
 .arc[data-band='warn'] {
   stroke: var(--chrome-warn);
@@ -25,9 +39,62 @@
 .arc[data-band='err'] {
   stroke: var(--chrome-err);
 }
+.scallop {
+  stroke: var(--chrome-ring-strong);
+  transform: rotate(-36deg) scale(0.86);
+}
+.disc {
+  fill: var(--chrome-text);
+  transform: scale(0.5);
+}
 .cross {
   stroke: var(--text-faint);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transform: scale(0);
 }
+
+/* The arc stays full beneath the disc, so leaving healthy reads as the disc giving way to the ring. */
+.mark[data-kind='healthy'] .disc {
+  opacity: 1;
+  transform: none;
+}
+.mark[data-kind='healthy'] .arc,
+.mark[data-kind='short'] .arc,
+.mark[data-kind='short'] .track {
+  opacity: 1;
+}
+/* Three quarters clockwise from the top: the mirrored arc starts a quarter on, at the left, so the gap is the
+   upper-left quarter. */
+.mark[data-kind='outage'] .arc {
+  --dash: calc(0.75 * var(--ring));
+  stroke: var(--chrome-ring-strong);
+  stroke-dashoffset: calc(-0.25 * var(--ring));
+  opacity: 1;
+}
+.mark[data-kind='outage'] .cross {
+  opacity: 1;
+  transform: none;
+}
+.mark[data-kind='connecting'] .arc {
+  stroke: var(--chrome-ring-strong);
+}
+.mark[data-kind='connecting'] .scallop {
+  opacity: 1;
+  transform: none;
+}
+/* A dash of zero length with round caps draws a dot, so the ring reads as 24 dots. */
+.mark[data-kind='unavailable'] .arc {
+  --dash: 0px;
+  --gap: calc(var(--ring) / 24);
+  stroke: var(--chrome-ring-strong);
+  opacity: 1;
+}
+.mark[data-kind='unused'] .track {
+  stroke-width: 1;
+  opacity: 1;
+}
+
 .mark[data-kind='healthy'] .glyph {
   color: var(--chrome-on-primary);
 }
@@ -39,6 +106,18 @@
   color: var(--chrome-action-dim);
 }
 @media (prefers-reduced-motion: no-preference) {
+  .track,
+  .arc,
+  .scallop,
+  .disc,
+  .cross {
+    transition-property: opacity, transform, stroke, stroke-width, stroke-dasharray, stroke-dashoffset;
+    transition-duration: var(--dur-morph);
+    transition-timing-function: var(--ease-out);
+  }
+  .glyph {
+    transition: color var(--dur-morph) var(--ease-out);
+  }
   .mark[data-kind='connecting'] .glyph {
     animation: glyph-pulse var(--loop) ease-in-out infinite;
   }
