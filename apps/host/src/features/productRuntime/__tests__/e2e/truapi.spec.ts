@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { test, expect, openHostPlayground } from '../../../../../tests/e2e/fixtures/paired.js';
-import { runTestExpectSuccess } from '../../../../../tests/e2e/helpers/runTest.js';
+import { runTest, runTestExpectSuccess } from '../../../../../tests/e2e/helpers/runTest.js';
 import { runWebSignedTest, type HostDialog } from '../../../../../tests/e2e/helpers/signing.js';
 import { productOrigin } from '../../../../../tests/e2e/fixtures/origin.js';
 
@@ -20,6 +20,21 @@ test.describe('dot.li > host-playground.dot', () => {
     test('As a product on dot.li, I get my product account', async ({ productFrame }) => {
       // When / Then
       await runTestExpectSuccess(productFrame, 'accounts-provider-product');
+    });
+
+    test('As a product on dot.li, I get a signer for my product account', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'accounts-provider-product-signer');
+    });
+
+    test('As a product on dot.li, I follow my account connection status', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'accounts-provider-connection-status');
+    });
+
+    test('As a product on dot.li, I get the alias of my product account', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'accounts-provider-alias');
     });
   });
 
@@ -41,6 +56,27 @@ test.describe('dot.li > host-playground.dot', () => {
 
       // Then
       expect(status).toBe('success');
+    });
+
+    test('As a product on dot.li, I ask the signed-in user to log in and learn they already are', async ({
+      productFrame,
+    }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'request-login');
+    });
+  });
+
+  test.describe('Theme', () => {
+    test('As a product on dot.li, I follow the host theme', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'theme-subscribe');
+    });
+  });
+
+  test.describe('Entropy', () => {
+    test("As a product on dot.li, I derive entropy from the user's key", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'derive-entropy');
     });
   });
 
@@ -78,6 +114,38 @@ test.describe('dot.li > host-playground.dot', () => {
       // Then
       expect(status).toBe('success');
     });
+
+    test('As a product on dot.li, I get a smart contract allowance once the user allows it', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      test.setTimeout(120_000);
+
+      // When
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-smart-contract', [ALLOCATION], {
+        timeoutMs: 90_000,
+      });
+
+      // Then
+      expect(status).toBe('success');
+    });
+
+    test('As a product on dot.li, I get every allowance in one request once the user allows it', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      test.setTimeout(120_000);
+
+      // When
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', [ALLOCATION], {
+        timeoutMs: 90_000,
+      });
+
+      // Then
+      expect(status).toBe('success');
+    });
   });
 
   test.describe('Storage', () => {
@@ -89,6 +157,21 @@ test.describe('dot.li > host-playground.dot', () => {
     test('As a product on dot.li, I clear my storage', async ({ productFrame }) => {
       // When / Then
       await runTestExpectSuccess(productFrame, 'storage-clear');
+    });
+
+    test('As a product on dot.li, I write bytes to my storage and read them back', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'storage-bytes-write-read');
+    });
+
+    test('As a product on dot.li, I write JSON to my storage and read it back', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'storage-json-write-read');
+    });
+
+    test('As a product on dot.li, I write and read through a storage made by the factory', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'storage-factory');
     });
   });
 
@@ -133,6 +216,68 @@ test.describe('dot.li > host-playground.dot', () => {
       // Then
       expect([granted, spent]).toEqual(['success', 'success']);
     });
+
+    test('As a product on dot.li, I check that the host supports my chain', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'feature-check');
+    });
+
+    test('As a product on dot.li, I open a WebRTC connection, which the host grants without asking', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // When
+      const status = await runWebSignedTest(pairedPage, productFrame, 'remote-permission-webrtc', [], {
+        timeoutMs: 30_000,
+      });
+
+      // Then
+      expect(status).toBe('success');
+    });
+
+    test('As a product on dot.li, I get permission to submit a preimage once the user allows it, and my next preimage spends the grant', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given the user allows the request once
+      test.setTimeout(90_000);
+      const granted = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'remote-permission-preimage-submit',
+        [PERMISSION_ONCE],
+        { timeoutMs: 30_000 },
+      );
+
+      // When the product submits a preimage made by the factory, which spends the grant without asking again
+      const spent = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', [], { timeoutMs: 30_000 });
+
+      // Then
+      expect([granted, spent]).toEqual(['success', 'success']);
+    });
+
+    test('As a product on dot.li, I get permission to submit a statement once the user allows it, and my next statement spends the grant', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given the user allows the request once
+      test.setTimeout(150_000);
+      const granted = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'remote-permission-statement-submit',
+        [PERMISSION_ONCE],
+        { timeoutMs: 30_000 },
+      );
+
+      // When the product submits a statement, which spends the grant without asking again
+      const spent = await runWebSignedTest(pairedPage, productFrame, 'statement-store-submit', [], {
+        timeoutMs: 90_000,
+      });
+
+      // Then
+      expect([granted, spent]).toEqual(['success', 'success']);
+    });
   });
 
   test.describe('Statements', () => {
@@ -147,6 +292,26 @@ test.describe('dot.li > host-playground.dot', () => {
 
       // Then
       expect(status).toBe('success');
+    });
+
+    test('As a product on dot.li, I create a statement proof', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'statement-store-create-proof');
+    });
+
+    test('As a product on dot.li, I create an authorized statement proof', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'statement-store-create-proof-authorized');
+    });
+
+    test('As a product on dot.li, I subscribe to statements that match all of my topics', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'statement-store-subscribe-match-all');
+    });
+
+    test('As a product on dot.li, I subscribe to statements that match any of my topics', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'statement-store-subscribe-match-any');
     });
   });
 
@@ -170,12 +335,90 @@ test.describe('dot.li > host-playground.dot', () => {
       // The worker shares the page, so the following tests need host-playground back.
       await openHostPlayground(pairedPage);
     });
+
+    test('As a product on dot.li, I navigate my own frame to another of my pages', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given: the playground replaces its own page, so its result log goes with it
+      const run = productFrame.locator('[data-testid="run-navigate-internal"]');
+      await expect(run).toBeEnabled({ timeout: 10_000 });
+
+      // When
+      await run.click();
+
+      // Then
+      await expect.poll(() => new URL(productFrame.url()).pathname, { timeout: 10_000 }).toContain('/navigation');
+
+      // The worker shares the page, so the following tests need host-playground back.
+      await openHostPlayground(pairedPage);
+    });
+
+    test('As a product on dot.li, I open an http URL', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'navigate-http');
+    });
   });
 
   test.describe('Chain', () => {
     test('As a product on dot.li, I query an account balance on chain', async ({ productFrame }) => {
       // When / Then
       await runTestExpectSuccess(productFrame, 'chain-query-balance');
+    });
+
+    test("As a product on dot.li, I read my chain's genesis hash", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'chain-spec-genesis-hash');
+    });
+
+    test("As a product on dot.li, I read my chain's name", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'chain-spec-chain-name');
+    });
+
+    test("As a product on dot.li, I read my chain's properties", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'chain-spec-properties');
+    });
+
+    test('As a product on dot.li, I list the well-known chains', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'well-known-chains');
+    });
+
+    test('As a product on dot.li, I stop a broadcast once the user allows the submission', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // When
+      const status = await runWebSignedTest(pairedPage, productFrame, 'chain-transaction-stop', [PERMISSION_ONCE], {
+        timeoutMs: 30_000,
+      });
+
+      // Then
+      expect(status).toBe('success');
+    });
+  });
+
+  test.describe('Contract reads', () => {
+    test("As a product on dot.li, I read a contract's stored value", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'contract-query-stored-value');
+    });
+
+    test("As a product on dot.li, I read the length of a contract's data", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'contract-query-data-length');
+    });
+
+    test("As a product on dot.li, I read a contract's balance", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'contract-query-balance');
+    });
+
+    test("As a product on dot.li, I read a contract's total deposits", async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'contract-query-total-deposits');
     });
   });
 
@@ -194,6 +437,40 @@ test.describe('dot.li > host-playground.dot', () => {
 
       // Then
       expect(status).toBe('success');
+    });
+
+    test('As a product on dot.li, I look up a preimage', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'preimage-lookup');
+    });
+  });
+
+  test.describe('Bulletin', () => {
+    test('As a product on dot.li, I upload a file to Bulletin and fetch it back by CID once the user allows the allowance and the upload', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      test.setTimeout(180_000);
+
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'bulletin-upload-and-verify',
+        [ALLOCATION, PERMISSION_ONCE],
+        { timeoutMs: 120_000 },
+      );
+
+      // Then
+      expect(status).toBe('success');
+    });
+  });
+
+  test.describe('Payment', () => {
+    test('As a product on dot.li, I subscribe to my balance', async ({ productFrame }) => {
+      // When / Then
+      await runTestExpectSuccess(productFrame, 'payment-balance-subscribe');
     });
   });
 
@@ -252,38 +529,50 @@ test.describe('dot.li > host-playground.dot', () => {
       // Then
       expect(status).toBe('success');
     });
+
+    test('As a product on dot.li, I sign and submit a batch of contract writes once the user allows and signs it', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      test.setTimeout(180_000);
+
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'sign-batch-payload',
+        [PERMISSION_ONCE, SIGN_TRANSACTION, PERMISSION_ONCE],
+        { timeoutMs: 120_000 },
+      );
+
+      // Then
+      expect(status).toBe('success');
+    });
   });
 
+  // The smart contract allowance the Allowances tests granted pays the fee.
+
   test.describe('Funded operations', () => {
-    test.fixme(
-      'As a product on dot.li, I store a value in a contract once the user signs it',
-      {
-        annotation: {
-          type: 'blocked',
-          description:
-            'The product reports Invalid Payment: the truapi-host CLI signer account cannot pay the fee on ' +
-            'paseo-next-v2, and its smart contract allowance does not cover it. Needs a funded account, or ' +
-            'host-playground paying the fee another way.',
-        },
-      },
-      async ({ pairedPage, productFrame }) => {
-        // Given
-        test.setTimeout(180_000);
+    test('As a product on dot.li, I store a value in a contract once the user allows and signs it', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      test.setTimeout(180_000);
 
-        // When
-        const status = await runWebSignedTest(
-          pairedPage,
-          productFrame,
-          'contract-store-value',
-          // Unchecked while blocked: an allowance dialog may come first while the account holds no PGAS.
-          [PERMISSION_ONCE, SIGN_TRANSACTION],
-          { timeoutMs: 120_000 },
-        );
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'contract-store-value',
+        [PERMISSION_ONCE, SIGN_TRANSACTION, PERMISSION_ONCE],
+        { timeoutMs: 120_000 },
+      );
 
-        // Then
-        expect(status).toBe('success');
-      },
-    );
+      // Then
+      expect(status).toBe('success');
+    });
 
     test.fixme(
       'As a product on dot.li, I deposit into a payable contract and withdraw it again once the user signs both',
@@ -331,6 +620,42 @@ test.describe('dot.li > host-playground.dot', () => {
 
       // Then
       expect(await iframe.getAttribute('allow')).toContain('camera');
+    });
+
+    for (const device of ['microphone', 'location', 'bluetooth', 'clipboard', 'open-url', 'biometrics']) {
+      test(`As a product on dot.li, I ask for ${device} and get it with no host dialog`, async ({ productFrame }) => {
+        // When / Then
+        await runTestExpectSuccess(productFrame, `device-permission-${device}`);
+      });
+    }
+
+    test('As a product on dot.li, I get notifications once the user allows them', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'device-permission-notifications',
+        [PERMISSION_ONCE],
+        {
+          timeoutMs: 20_000,
+        },
+      );
+
+      // Then
+      expect(status).toBe('success');
+    });
+
+    test('As a product on dot.li, I ask for NFC, whose browser API cannot run in a frame, and am denied', async ({
+      productFrame,
+    }) => {
+      // When
+      const result = await runTest(productFrame, 'device-permission-nfc');
+
+      // Then the playground reports the denial as its error
+      expect(result.text).toContain('NFC permission: denied');
     });
   });
 });

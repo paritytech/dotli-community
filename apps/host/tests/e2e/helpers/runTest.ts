@@ -13,8 +13,11 @@ export async function entryText(entry: Locator): Promise<string> {
   return text.replace(/\s+/g, ' ').trim().slice(0, 500);
 }
 
+/** The status a playground test ended with, and its entry's text. */
+type RunResult = { status: 'success' | 'error'; text: string };
+
 /** Runs one playground test. A stuck entry returns "error" rather than throwing, so one hung test skips no others. */
-async function runTest(page: PageLike, testId: string, timeout = 20_000): Promise<'success' | 'error'> {
+export async function runTest(page: PageLike, testId: string, timeout = 20_000): Promise<RunResult> {
   const entries = page.locator('[data-testid="log-entry"]');
   const initialCount = await entries.count();
 
@@ -25,7 +28,7 @@ async function runTest(page: PageLike, testId: string, timeout = 20_000): Promis
     await expect(btn).toBeEnabled({ timeout: 5_000 });
   } catch {
     console.log(`[host-playground] ${testId}: DISABLED`);
-    return 'error';
+    return { status: 'error', text: '' };
   }
 
   await btn.click();
@@ -38,15 +41,17 @@ async function runTest(page: PageLike, testId: string, timeout = 20_000): Promis
       timeout,
     });
   } catch {
-    console.log(`[host-playground] ${testId}: STUCK PENDING ${await entryText(newest)}`);
-    return 'error';
+    const text = await entryText(newest);
+    console.log(`[host-playground] ${testId}: STUCK PENDING ${text}`);
+    return { status: 'error', text };
   }
 
-  const status = await newest.getAttribute('data-status');
-  console.log(`[host-playground] ${testId}: ${status === 'success' ? 'OK' : `FAILED ${await entryText(newest)}`}`);
-  return status === 'success' ? 'success' : 'error';
+  const status = (await newest.getAttribute('data-status')) === 'success' ? 'success' : 'error';
+  const text = await entryText(newest);
+  console.log(`[host-playground] ${testId}: ${status === 'success' ? 'OK' : `FAILED ${text}`}`);
+  return { status, text };
 }
 
 export async function runTestExpectSuccess(page: PageLike, testId: string, timeout = 20_000): Promise<void> {
-  expect(await runTest(page, testId, timeout)).toBe('success');
+  expect((await runTest(page, testId, timeout)).status).toBe('success');
 }
