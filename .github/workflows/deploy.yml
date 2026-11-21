@@ -92,9 +92,22 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  # A release deploys only once the whole Tests suite, the host-playground E2E included, passes on its tag.
+  release-tests:
+    name: Release tests
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/test.yml
+
   deploy:
     name: Deploy ${{ matrix.environment }}
-    needs: [plan, quality-gate]
+    needs: [plan, quality-gate, release-tests]
+    # Release tests run only for a tag, so a branch or PR deploy goes ahead with them skipped.
+    if:
+      ${{ !cancelled() && needs.quality-gate.result == 'success' && contains(fromJSON('["success", "skipped"]'),
+      needs.release-tests.result) }}
     runs-on: ubuntu-latest
     environment: ${{ matrix.environment }}
     # One deploy per environment at a time, whichever event started it. A running deploy is never cut mid-rsync.
