@@ -1,0 +1,57 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--chrome-text);
+}
+.disc {
+  fill: var(--chrome-text);
+}
+.track {
+  stroke: var(--chrome-ring);
+}
+.ring {
+  stroke: var(--chrome-ring-strong);
+}
+.arc {
+  stroke: var(--chrome-text);
+}
+.arc[data-band='warn'] {
+  stroke: var(--chrome-warn);
+}
+.arc[data-band='err'] {
+  stroke: var(--chrome-err);
+}
+.cross {
+  stroke: var(--text-faint);
+}
+.mark[data-kind='healthy'] .glyph {
+  color: var(--chrome-on-primary);
+}
+.mark[data-kind='outage'] .glyph,
+.mark[data-kind='unavailable'] .glyph {
+  color: var(--text-faint);
+}
+.mark[data-kind='unused'] .glyph {
+  color: var(--chrome-action-dim);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mark[data-kind='connecting'] .glyph {
+    animation: glyph-pulse var(--loop) ease-in-out infinite;
+  }
+}
+@keyframes glyph-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (max-width: 560px) {
+  .mark {
+    width: 32px;
+    height: 32px;
+  }
+}
