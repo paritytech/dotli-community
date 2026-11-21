@@ -17,6 +17,8 @@ export type DotnsStorageSlots = {
   readonly LABEL_STORE_LABELS: number;
   /** LabelStore array slot of its labelhashes, in the order they were stored. */
   readonly LABEL_STORE_LABEL_LIST: number;
+  /** ReverseResolver mapping slot of each address's primary name, keyed by the address. */
+  readonly REVERSE_RESOLVER_NAMES: number;
 };
 
 export type DotnsContracts = {

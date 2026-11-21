@@ -13,6 +13,8 @@ type ComputeNestedStringMappingSlotParams = {
   outerSlot: number;
 };
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 /** ENS-style namehash. */
 export function computeNamehash(name: string): `0x${string}` {
   let node = new Uint8Array(32);
@@ -99,6 +101,18 @@ export function readWordAsBigInt(data: Uint8Array): bigint {
 /** The address is right-aligned in the word. */
 export function extractAddress(data: Uint8Array): string {
   return toHex(data.slice(12));
+}
+
+/** Reads the address a word holds, in lowercase hex. An unset word and the zero address both mean no address. */
+export function decodeAddress(word: Uint8Array | null): string | null {
+  if (word === null) {
+    return null;
+  }
+  const address = extractAddress(word);
+  if (address === ZERO_ADDRESS) {
+    return null;
+  }
+  return address;
 }
 
 /**
