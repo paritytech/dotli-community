@@ -1,8 +1,9 @@
 name: Run host-playground E2E
 description:
-  'Run the host-playground E2E suite from apps/host. Exit code 99 means the pairing and signing infrastructure is down,
-  not dot.li, so it passes with a warning and sets signing_unavailable. Requires setup-playwright and setup-truapi-host
-  first, and SIGNING_HOST_NETWORK in the environment.'
+  'Run the host-playground E2E suite from apps/host. Exit code 99 means pairing failed after the sign-in page loaded,
+  which an outage of the pairing and signing infrastructure causes, so it passes with a warning and sets
+  signing_unavailable. Requires setup-playwright and setup-truapi-host first, and SIGNING_HOST_NETWORK in the
+  environment.'
 
 outputs:
   signing_unavailable:
