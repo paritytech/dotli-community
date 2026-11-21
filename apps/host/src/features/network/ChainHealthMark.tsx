@@ -22,8 +22,8 @@ const SCALLOP =
  */
 export function ChainHealthMark(props: { mark: ChainMark; glyph: Component<IconProps> }): JSX.Element {
   const Glyph = dynamic(() => props.glyph);
-  // The row re-describes its chain every tick, so the frame is redrawn only when what it draws changes.
-  const frame = createMemo(() => props.mark, { equals: sameMark });
+  // A new mark with the same kind, share and band keeps the drawn frame, so a steady chain causes no DOM churn.
+  const frame = createMemo(() => props.mark, { equals: isSameMark });
   return (
     <svg
       class={s['mark']}
@@ -41,7 +41,7 @@ export function ChainHealthMark(props: { mark: ChainMark; glyph: Component<IconP
   );
 }
 
-function sameMark(a: ChainMark, b: ChainMark): boolean {
+function isSameMark(a: ChainMark, b: ChainMark): boolean {
   return a.kind === b.kind && (a.kind !== 'short' || (b.kind === 'short' && a.share === b.share && a.band === b.band));
 }
 
