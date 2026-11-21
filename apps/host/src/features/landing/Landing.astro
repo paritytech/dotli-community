@@ -16,45 +16,49 @@ import { LandingSuggestIsland } from './LandingSuggestIsland.jsx';
 import s from './Landing.module.css';
 ---
 
-<div class={s['landing']} data-testid="landing">
-  <LandingOrbitIsland client:idle />
-  <header class={s['header']}>
-    <a class={s['home']} href="/">
-      <Logo variant="full" beta height={28} />
-    </a>
-    <div class={s['actions']} id="landing-auth">
-      <LandingAuthIsland client:load />
-      <LandingNetworkIsland client:idle />
-      <LandingSettingsIsland client:idle />
-    </div>
-  </header>
-  <main class={s['main']}>
-    <div class={s['intro']}>
-      <h1 class={s['title']}>
-        <span class={s['line']}>The decentralized web,</span>
-        <span class={s['line']}>in your browser.</span>
-      </h1>
-      <p class={s['lead']}>Apps load straight from the Polkadot network, with no middleman to trust.</p>
-    </div>
-    <div class={s['nav']}>
-      <LandingNavIsland client:load />
-      <LandingSuggestIsland client:idle />
-    </div>
-    <div class={s['invite']}>
-      <LandingInviteIsland client:idle />
-    </div>
-  </main>
-  <footer class={s['footer']}>
-    <p class={s['notice']}>
-      <LandingNoticeIsland client:idle />
-    </p>
-    <nav class={s['links']} aria-label="Footer">
-      <a class={s['link']} href="https://developers.polkadot.com/apps/">
-        Get Polkadot App
+<div class={s['landing']} data-testid="landing" data-landing-page>
+  <div class={s['backdrop']}>
+    <LandingOrbitIsland client:idle />
+  </div>
+  <div class={s['content']} data-landing-scroller>
+    <header class={s['header']}>
+      <a class={s['home']} href="/">
+        <Logo variant="full" beta height={28} />
       </a>
-      <a class={s['link']} href="https://github.com/paritytech/dotli-community">
-        Source
-      </a>
-    </nav>
-  </footer>
+      <div class={s['actions']} id="landing-auth">
+        <LandingAuthIsland client:load />
+        <LandingNetworkIsland client:idle />
+        <LandingSettingsIsland client:idle />
+      </div>
+    </header>
+    <main class={s['main']}>
+      <div class={s['intro']}>
+        <h1 class={s['title']}>
+          <span class={s['line']}>The decentralized web,</span>
+          <span class={s['line']}>in your browser.</span>
+        </h1>
+        <p class={s['lead']}>Apps load straight from the Polkadot network, with no middleman to trust.</p>
+      </div>
+      <div class={s['nav']}>
+        <LandingNavIsland client:load />
+        <LandingSuggestIsland client:idle />
+      </div>
+      <div class={s['invite']}>
+        <LandingInviteIsland client:idle />
+      </div>
+    </main>
+    <footer class={s['footer']}>
+      <p class={s['notice']}>
+        <LandingNoticeIsland client:idle />
+      </p>
+      <nav class={s['links']} aria-label="Footer">
+        <a class={s['link']} href="https://developers.polkadot.com/apps/">
+          Get Polkadot App
+        </a>
+        <a class={s['link']} href="https://github.com/paritytech/dotli-community">
+          Source
+        </a>
+      </nav>
+    </footer>
+  </div>
 </div>

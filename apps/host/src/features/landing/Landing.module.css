@@ -15,19 +15,52 @@
   --topbar-inline-end: calc(var(--landing-edge) + var(--safe-right));
 }
 
+/* The page never scrolls, so the backdrop can run past the visible area to the screen's foot, under a mobile browser's
+   translucent toolbar. Mobile Safari clips a fixed box at the toolbar, so the backdrop is positioned in the page rather
+   than fixed to the viewport, and the content scrolls in a box of its own. */
+:global(:root:has(body[data-landing])) {
+  overflow: clip;
+}
+
 /* A stacking context of its own, so a backdrop below zero paints over the page's background, not under it. */
 .landing {
   position: relative;
   isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  min-height: 100dvh;
   margin: 0;
   padding: 0;
   background: var(--bg-page);
   color: var(--text-strong);
   font-family: var(--font-sans);
+}
+
+/* Mobile Safari shows a strip under the home indicator below 100lvh, and no unit or inset measures it, so the orbit
+   paints a margin past its box that covers the strip on current phones. */
+.backdrop {
+  --orbit-bleed: 100px;
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: -1;
+  height: 100lvh;
+  pointer-events: none;
+}
+
+/* The visible area, so the footer stays above a mobile browser's toolbar. */
+.content {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+/* While the keyboard is open, the page follows the visible area Safari pans to, and the content box shrinks to it. */
+.landing[data-keyboard-open] {
+  transform: translateY(var(--pan-offset));
+}
+.landing[data-keyboard-open] .content {
+  height: var(--visible-height);
 }
 
 /* The page has no topbar, so the header clears the status bar in an installed PWA. */

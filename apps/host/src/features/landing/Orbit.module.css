@@ -56,8 +56,10 @@
 
 /* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. Its parts are solid,
    so none shows another through it. One opacity dims them together, and one mask fades the rings out toward the
-   horizon. Lengths are in --unit, a 640th of the stage's width, so the whole orbit scales with the viewport. */
+   horizon. Lengths are in --unit, a 640th of the stage's width, so the whole orbit scales with the viewport. An
+   inherited --orbit-bleed, a length, paints it that far past its box's foot, with the floor kept where it was. */
 .orbit {
+  --bleed: var(--orbit-bleed, 0px);
   --width: min(1500px, 220vw);
   --unit: calc(var(--width) / 640);
   /* The perspective, in units. Long, so the floor reads close to isometric while near dots still grow a little. */
@@ -81,13 +83,14 @@
   /* How long a dot that stays takes to glide to its new place when the real nodes change. */
   --glide: 1.5s;
   position: absolute;
-  inset: 0;
+  inset: 0 0 calc(-1 * var(--bleed));
   z-index: -1;
   overflow: clip;
   pointer-events: none;
   opacity: 0.8;
   mask-image: radial-gradient(
-    var(--fade) calc(var(--fade) * cos(var(--tilt))) at 50% calc(100% - (0.5 - var(--drop)) * var(--width) * 5 / 12),
+    var(--fade) calc(var(--fade) * cos(var(--tilt))) at 50%
+      calc(100% - var(--bleed) - (0.5 - var(--drop)) * var(--width) * 5 / 12),
     #000 45%,
     transparent
   );
@@ -123,7 +126,7 @@
   --turn: calc(var(--clock, 0deg) + var(--pointer-turn));
   --floor: calc(293 * var(--unit));
   position: absolute;
-  bottom: 0;
+  bottom: var(--bleed);
   left: 50%;
   width: var(--width);
   aspect-ratio: 12 / 5;
