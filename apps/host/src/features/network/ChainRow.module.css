@@ -176,6 +176,10 @@
   height: 100%;
 }
 @media (prefers-reduced-motion: no-preference) {
+  .name,
+  .status {
+    transition: color var(--dur-morph) var(--ease-out);
+  }
   .pending {
     transition: height 0.25s linear;
   }
