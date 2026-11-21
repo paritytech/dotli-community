@@ -60,15 +60,12 @@ function PendingBar(props: { pending: PendingBarView }): JSX.Element {
   const height = (): JSX.CSSProperties | undefined =>
     props.pending.phase === 'searching' ? undefined : { height: `${String(props.pending.heightPercent)}%` };
   return (
-    <>
-      <Stubs count={HISTORY_SLOTS - 1} />
-      <span
-        class={[s['bar'], s['pending']]}
-        data-testid="chains-bar-pending"
-        data-pending={props.pending.phase}
-        style={height()}
-      />
-    </>
+    <span
+      class={[s['bar'], s['pending']]}
+      data-testid="chains-bar-pending"
+      data-pending={props.pending.phase}
+      style={height()}
+    />
   );
 }
 
@@ -113,37 +110,29 @@ function BarStrip(props: { chain: ChainSummary; pending: PendingBarView | null }
       title={STRIP_LABEL}
       aria-label={`${props.chain.label}: ${STRIP_LABEL.toLowerCase()}`}
     >
-      <Show
-        when={props.pending}
-        fallback={
-          <>
-            <Stubs count={HISTORY_SLOTS - visible().length} />
-            <For each={visible()}>
-              {(bar, index) => {
-                const block = String(bar.number);
-                const delay = describeBlockDelay(
-                  bar.gapMs,
-                  untrack(() => props.chain.blockTimeMs),
-                );
-                return (
-                  <span
-                    data-testid="chains-bar"
-                    data-block={block}
-                    class={s['bar']}
-                    data-health={bar.health}
-                    style={{ '--slot-opacity': slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
-                    title={delay}
-                    role="img"
-                    aria-label={`Block ${block}, ${delay}`}
-                  />
-                );
-              }}
-            </For>
-          </>
-        }
-      >
-        {view => <PendingBar pending={view()} />}
-      </Show>
+      <Stubs count={HISTORY_SLOTS - visible().length - (props.pending === null ? 0 : 1)} />
+      <For each={visible()}>
+        {(bar, index) => {
+          const block = String(bar.number);
+          const delay = describeBlockDelay(
+            bar.gapMs,
+            untrack(() => props.chain.blockTimeMs),
+          );
+          return (
+            <span
+              data-testid="chains-bar"
+              data-block={block}
+              class={s['bar']}
+              data-health={bar.health}
+              style={{ '--slot-opacity': slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
+              title={delay}
+              role="img"
+              aria-label={`Block ${block}, ${delay}`}
+            />
+          );
+        }}
+      </For>
+      <Show when={props.pending}>{view => <PendingBar pending={view()} />}</Show>
     </div>
   );
 }
