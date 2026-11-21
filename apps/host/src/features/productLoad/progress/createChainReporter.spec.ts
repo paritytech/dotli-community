@@ -38,6 +38,22 @@ describe('createChainReporter', () => {
     ]);
   });
 
+  it('As a user, I see each warp sample with a usable target move the chain row, and none without one', () => {
+    // Given a reporter
+    const { reporter, shares } = setupReporter();
+
+    // When the relay's warp moves, then sends a sample above its target
+    reporter.record({ chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 });
+    reporter.record({ chain: 'relay', kind: 'warpSyncProgress', at: 20, target: 100 });
+    reporter.record({ chain: 'relay', kind: 'warpSyncProgress', at: 120, target: 100 });
+
+    // Then the monitor hears the two usable shares
+    expect(shares).toEqual([
+      { chain: 'relay', share: 0.1 },
+      { chain: 'relay', share: 0.2 },
+    ]);
+  });
+
   it("As a developer with the debug panel, I see the load's byte totals sampled at most once a second", () => {
     // Given a reporter
     const { reporter, timers, readBytes } = setupReporter();
@@ -101,6 +117,7 @@ function setupReporter() {
   const debugBus = createDebugBus();
   debugBus.enableBuffering();
   const events: DotliDebugEvent[] = [];
+  const shares: { chain: string; share: number }[] = [];
   onTestFinished(
     debugBus.watch(event => {
       if ('layer' in event) {
@@ -112,9 +129,13 @@ function setupReporter() {
     flowId: 'flow',
     timers,
     debugBus,
-    monitor: { recordPeerCount: () => undefined, recordChainPhase: () => undefined },
+    monitor: {
+      recordPeerCount: () => undefined,
+      recordChainPhase: () => undefined,
+      recordSyncShare: (chain, share) => shares.push({ chain, share }),
+    },
   });
-  return { reporter, timers, readPhases, readBytes };
+  return { reporter, timers, readPhases, readBytes, shares };
 
   function readPhases(): unknown[] {
     return events.flatMap(event => (event.layer === 'chain' && event.event === 'phase' ? [event.payload] : []));

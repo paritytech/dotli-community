@@ -197,13 +197,13 @@ export const StatusConnecting: Story = statusStory(
 /** As a dotli user opening it with a chain syncing and one without an endpoint, each says so and the dot waits. */
 export const StatusSyncingNoEndpoint: Story = statusStory(
   [
-    chain({ phase: 'syncing', peers: 1 }),
+    chain({ phase: 'syncing', syncShare: 0.42, peers: 1 }),
     chain({ role: 'people', label: 'People', reachable: false, state: 'unused', peers: 3 }),
   ],
   {
     cells: ['waiting', []],
     statuses: [
-      ['Syncing', null],
+      ['Syncing: 42%', null],
       ['No endpoint', 'warn'],
     ],
     dot: 'idle',

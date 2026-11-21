@@ -32,6 +32,8 @@ export type ChainSummary = {
   readonly reachable: boolean;
   /** The light client's phase as the chain comes up, null for a chain it does not report. */
   readonly phase: ChainPhase | null;
+  /** The share of its last warp the light client proved, from 0 to 1. Null before any. */
+  readonly syncShare: number | null;
   /** Null where the backend never reports peers. */
   readonly peers: number | null;
 };

@@ -62,6 +62,7 @@ export function chain(overrides: Partial<ChainView> & { latest?: number | null }
     blockTimeMs: 6000,
     reachable: true,
     phase: null,
+    syncShare: null,
     peers: null,
     state: latest === null ? 'pending' : 'live',
     ...overrides,

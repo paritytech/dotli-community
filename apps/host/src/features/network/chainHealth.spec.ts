@@ -13,6 +13,7 @@ const CHAIN = {
   blockTimeMs: 6000,
   sinceLast: 0,
   phase: null,
+  syncShare: null,
 } satisfies Parameters<typeof describeChainHealth>[0];
 
 const FACTS: ChainHealthFacts = { sinceRead: 0, behind: false, offline: false, unreachable: false };
@@ -87,6 +88,17 @@ describe('describeChainHealth', () => {
       });
     },
   );
+
+  it('As a user of a chain whose light client warps, I see how far it got even with blocks landing', () => {
+    // Given
+    const chain = { ...CHAIN, phase: 'syncing' as const, syncShare: 0.426, bars: buildBarsWithGaps([6000, 6000]) };
+
+    // When
+    const health = describeChainHealth(chain, FACTS);
+
+    // Then
+    expect(health.status).toEqual({ text: 'Syncing: 43%', tone: null });
+  });
 
   it('As a user back after a pause, I see a chain with bars from before as Connecting until the monitor has it live', () => {
     // Given

@@ -37,7 +37,10 @@ export type ChainHealthFacts = {
   unreachable: boolean;
 };
 
-type HealthChain = Pick<ChainView, 'reachable' | 'state' | 'bars' | 'blockTimeMs' | 'sinceLast' | 'phase'>;
+type HealthChain = Pick<
+  ChainView,
+  'reachable' | 'state' | 'bars' | 'blockTimeMs' | 'sinceLast' | 'phase' | 'syncShare'
+>;
 
 const MIN_STALL_MS = 30_000;
 
@@ -69,7 +72,9 @@ export function describeChainHealth(
   const pending = chain.bars.length === 0 ? pendingBar(chain, sinceLast) : null;
   // The monitor's verdict and the light client's phase say whether the chain is up, never the bars it keeps.
   if (chain.phase === 'syncing') {
-    return { mark: { kind: 'connecting' }, status: { text: 'Syncing', tone: null }, pending };
+    // The phase says a warp runs, so the share it proved wins over a connected pool or blocks already landing.
+    const text = chain.syncShare === null ? 'Syncing' : `Syncing: ${String(Math.round(chain.syncShare * 100))}%`;
+    return { mark: { kind: 'connecting' }, status: { text, tone: null }, pending };
   }
   if (chain.state === 'pending' || chain.phase === 'connecting') {
     return { mark: { kind: 'connecting' }, status: { text: 'Connecting', tone: null }, pending };

@@ -321,6 +321,15 @@ describe('The network monitor repaints the panel only on a change', () => {
         monitor.recordChainPhase('assethub', 'ready');
       },
     },
+    {
+      reports: 'warp shares',
+      send() {
+        monitor.recordSyncShare('relay', 0.2);
+      },
+      sendChanged() {
+        monitor.recordSyncShare('relay', 0.4);
+      },
+    },
   ])(
     'As a user, I get $reports and see the panel repaint when one changes and stay quiet when it repeats',
     ({ send, sendChanged }) => {
@@ -424,6 +433,14 @@ describe('The network monitor judges how each chain is used', () => {
     // Then
     expect(syncing).toMatchObject({ state: 'unused', alarm: false });
     expect(getChainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+  });
+
+  it('As a user, I see the share of its warp a chain proved', () => {
+    // When
+    monitor.recordSyncShare('relay', 0.4);
+
+    // Then
+    expect(getChainByKey('relay')).toMatchObject({ syncShare: 0.4 });
   });
 
   it('As a user, I see a frame chain drop from ready back to connecting and the alarm raised, used or not', () => {

@@ -24,6 +24,7 @@ const RELAY: ChainView = {
   sinceLast: 0,
   reachable: true,
   phase: null,
+  syncShare: null,
   peers: 4,
 };
 

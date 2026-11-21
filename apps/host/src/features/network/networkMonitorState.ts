@@ -37,6 +37,8 @@ export type ChainStatus = {
   readonly reachable: boolean;
   /** A chain can be `ready` before any block is observed. */
   readonly phase: ChainPhase | null;
+  /** The share of its last warp the light client proved, kept after the warp. Null before any. */
+  readonly syncShare: number | null;
   /** Null where the backend never reports peers, such as a trusted provider. */
   readonly peers: number | null;
   readonly state: ChainUse;
@@ -91,6 +93,7 @@ type ChainState = {
    * whether or not this tab holds them.
    */
   phase: ChainPhase | null;
+  syncShare: number | null;
   /** Null until the frame reports the count for a known chain. */
   peers: number | null;
   /**
@@ -146,6 +149,8 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     recordTransfer,
     /** Records a known chain's phase. An unchanged phase is dropped. */
     recordChainPhase,
+    /** Records the share of its warp a known chain proved, from 0 to 1. An unchanged share is dropped. */
+    recordSyncShare,
     /**
      * Records a return to the page, from hiding or from a sleep. Every chain's judgement starts over: its block clock
      * stops. A light client's alarm waits for its first block after the return, a pool's for its next `connected`, and a
@@ -322,6 +327,15 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     notify();
   }
 
+  function recordSyncShare(role: ChainRole, share: number): void {
+    const state = findKnownChain(role);
+    if (state === null || state.syncShare === share) {
+      return;
+    }
+    state.syncShare = share;
+    notify();
+  }
+
   function isReachable(state: ChainState): boolean {
     return state.hasEndpoint && (state.role === null || isConnectable(state.genesis));
   }
@@ -390,6 +404,7 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
       bars: Object.freeze([...state.bars]),
       peers: state.peers,
       phase: state.phase,
+      syncShare: state.syncShare,
     }));
   }
 }
@@ -424,6 +439,7 @@ function createChainState(
     following: false,
     poolWasConnected: false,
     phase: null,
+    syncShare: null,
     peers: null,
     frameWasReady: false,
   };

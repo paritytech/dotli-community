@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Reports each chain's phase, peers and database cache, and the load's byte totals, to the network monitor and the
-// debug panel. A phase's debug event only when the phase changes, since Bulletin's two taps would otherwise emit every
-// block twice. Warp progress stays in `syncing`, so it passes on a slow tick.
+// Reports each chain's phase, peers, warp share and database cache, and the load's byte totals, to the network monitor
+// and the debug panel. A phase's debug event only when the phase changes, since Bulletin's two taps would otherwise emit
+// every block twice. Warp progress stays in `syncing`, so it passes on a slow tick.
 
 import type { ChainRole } from '@dotli/config';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
@@ -12,6 +12,7 @@ import type { Timers } from '@dotli/shared';
 import type { DebugBus } from '@dotli/truapi-debug';
 import { createChainPhaseTracker } from './createChainPhaseTracker.js';
 import { getChainTelemetryName } from './getChainTelemetryName.js';
+import { getWarpShare } from './loadingBands.js';
 import { networkMonitorState, type ChainPhase, type NetworkMonitor } from '../../network/index.js';
 
 type Params = {
@@ -21,8 +22,8 @@ type Params = {
   timers: Pick<Timers, 'now'>;
   /** Where the chain events go. */
   debugBus: DebugBus;
-  /** The network monitor each chain's phase and peers feed, the page's own by default. */
-  monitor?: Pick<NetworkMonitor, 'recordPeerCount' | 'recordChainPhase'>;
+  /** The network monitor each chain's phase, peers and warp share feed, the page's own by default. */
+  monitor?: Pick<NetworkMonitor, 'recordPeerCount' | 'recordChainPhase' | 'recordSyncShare'>;
 };
 
 // Sampled rather than emitted per step, or a long warp crowds the debug panel's ring buffer.
@@ -61,11 +62,15 @@ export function createChainReporter({ flowId, timers, debugBus, monitor = networ
   let byteTotals: ByteTotals = { kind: 'open', sampled: null, samples: 0, latest: 0 };
 
   return {
-    /** Reports the phase `event` leaves its chain in, and its peer count. */
+    /** Reports the phase `event` leaves its chain in, its peer count and its warp share. */
     record(event: ChainSyncEvent): void {
       const phase = trackPhase(event.chain, event.kind);
       if (event.kind === 'peers' && event.peers !== undefined) {
         recordPeers(event.chain, event.peers);
+      }
+      const share = event.kind === 'warpSyncProgress' ? getWarpShare(event) : null;
+      if (share !== null) {
+        monitor.recordSyncShare(event.chain, share);
       }
       if (phase !== undefined) {
         recordPhase(event, phase);
