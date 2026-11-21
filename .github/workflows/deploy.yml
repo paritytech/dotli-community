@@ -160,6 +160,8 @@ jobs:
   live:
     name: Live E2E
     needs: [plan, deploy]
+    # Release tests are skipped outside a tag, and a skipped job upstream would skip this one too.
+    if: ${{ !cancelled() && needs.deploy.result == 'success' }}
     uses: ./.github/workflows/live.yml
     with:
       environments: ${{ needs.plan.outputs.environments }}
