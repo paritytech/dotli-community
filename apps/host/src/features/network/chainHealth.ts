@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A chain's health as the mobile app reads it: the share of its predicted blocks produced over the last window, and
+// A chain's health as the mobile app reads it: its live share, the predicted block time over the measured one, and
 // the mark and status line that share implies.
 
 import type { ChainView } from './chains.js';
@@ -39,13 +39,13 @@ export type ChainHealthFacts = {
 
 type HealthChain = Pick<ChainView, 'reachable' | 'state' | 'bars' | 'blockTimeMs' | 'sinceLast' | 'phase'>;
 
-const MIN_WINDOW_MS = 30_000;
+const MIN_STALL_MS = 30_000;
 
-const MIN_WINDOW_BLOCKS = 10;
+const MIN_STALL_BLOCKS = 10;
 
 const HEALTHY_SHARE = 5 / 6;
 
-/** A chain's mark and status line, the first match winning: offline, no endpoint, unused, no block yet, then health. */
+/** A chain's mark and status line, the first match winning: offline, no endpoint, unused, coming up, then health. */
 export function describeChainHealth(
   chain: HealthChain,
   { sinceRead, behind, offline, unreachable }: ChainHealthFacts,
@@ -65,48 +65,51 @@ export function describeChainHealth(
   }
   // A clock that stepped back since the read must not make the bars younger than they were.
   const sinceLast = chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, sinceRead);
-  if (chain.bars.length === 0) {
-    const pending = pendingBar(chain, sinceLast);
-    return { mark: { kind: 'connecting' }, status: { text: pending.text, tone: null }, pending };
+  // The ghost bar waits for the chain's first bar whatever the status line says.
+  const pending = chain.bars.length === 0 ? pendingBar(chain, sinceLast) : null;
+  // The monitor's verdict and the light client's phase say whether the chain is up, never the bars it keeps.
+  if (chain.phase === 'syncing') {
+    return { mark: { kind: 'connecting' }, status: { text: 'Syncing', tone: null }, pending };
   }
+  if (chain.state === 'pending' || chain.phase === 'connecting') {
+    return { mark: { kind: 'connecting' }, status: { text: 'Connecting', tone: null }, pending };
+  }
+  return { ...describeProduction(chain, sinceLast, behind), pending };
+}
+
+/** A connected chain's mark and status line from its blocks: not producing, unmeasured, or its live share. */
+function describeProduction(
+  chain: HealthChain,
+  sinceLast: number | null,
+  behind: boolean,
+): Omit<ChainHealthView, 'pending'> {
   const tone = behind ? 'warn' : null;
-  const share = measureShare(chain, sinceLast);
-  if (share === 0) {
-    return { mark: { kind: 'outage' }, status: { text: 'Not producing blocks', tone }, pending: null };
+  if (isStalled(chain.blockTimeMs, sinceLast)) {
+    return { mark: { kind: 'outage' }, status: { text: 'Not producing blocks', tone } };
   }
   const word = behind ? 'Behind' : 'Connected';
-  if (share === null) {
-    return { mark: { kind: 'healthy' }, status: { text: word, tone }, pending: null };
+  const blockMs = measureBlockTime(chain.bars);
+  if (blockMs === null) {
+    return { mark: { kind: 'healthy' }, status: { text: word, tone } };
   }
+  const share = Math.min(1, chain.blockTimeMs / blockMs);
+  // Blocks a catching-up client hears back to back are not faster production, so Block never reads under the chain's own.
   const text = `${word} · Live ${String(Math.round(share * 100))}% · Block ~${formatDuration(chain.blockTimeMs / share)}`;
   return {
     mark: share >= HEALTHY_SHARE ? { kind: 'healthy' } : { kind: 'short', share, band: pickArcBand(share) },
     status: { text, tone },
-    pending: null,
   };
 }
 
-/**
- * The share of predicted blocks produced over the last window, null until the bars span it or with no last block. The
- * window is measured from the newest bar at or before its start, so a stall past the window reads as nothing produced.
- */
-function measureShare(chain: HealthChain, sinceLast: number | null): number | null {
-  const { bars, blockTimeMs } = chain;
-  const newest = bars.at(-1);
-  if (sinceLast === null || newest === undefined) {
-    return null;
-  }
-  const windowMs = Math.max(MIN_WINDOW_MS, MIN_WINDOW_BLOCKS * blockTimeMs);
-  const expected = Math.floor(windowMs / blockTimeMs);
-  // Each bar is older than the next one by that next bar's gap.
-  let age = sinceLast;
-  for (const bar of [...bars].reverse()) {
-    if (age >= windowMs) {
-      return Math.min(Math.max(newest.number - bar.number, 0), expected) / expected;
-    }
-    age += bar.gapMs;
-  }
-  return null;
+/** Whether no block landed for at least 30 s and 10 block times. */
+function isStalled(blockTimeMs: number, sinceLast: number | null): boolean {
+  return sinceLast !== null && sinceLast >= Math.max(MIN_STALL_MS, MIN_STALL_BLOCKS * blockTimeMs);
+}
+
+/** The mean of the last two block intervals, null until three blocks have landed. */
+function measureBlockTime(bars: HealthChain['bars']): number | null {
+  const [previous, newest] = bars.slice(-2);
+  return previous === undefined || newest === undefined ? null : (previous.gapMs + newest.gapMs) / 2;
 }
 
 function pickArcBand(share: number): ArcBand {

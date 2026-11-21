@@ -41,6 +41,9 @@ function shownBlocks(): string[] {
 function statusText(): string | null | undefined {
   return document.querySelector('#chains-popover [data-testid="chains-row-status"]')?.textContent;
 }
+function pendingPhase(): string | undefined {
+  return document.querySelector<HTMLElement>('#chains-popover [data-testid="chains-bar-pending"]')?.dataset['pending'];
+}
 function rowTexts(row: Element): (string | null)[] {
   return [...row.querySelectorAll('[data-testid="chains-transfer-label"], [data-testid="chains-transfer-value"]')].map(
     cell => cell.textContent,
@@ -210,7 +213,7 @@ export const StatusSyncingNoEndpoint: Story = statusStory(
   },
 );
 
-/** As a dotli user opening it with chains ready, one counts down to its next block and the status names the one it waits for. */
+/** As a dotli user opening it with chains ready, one waits for its first bar and the status names the one it waits for. */
 export const StatusOneOfTwoReady: Story = statusStory(
   [
     chain({ latest: 10, sinceLast: 1500, peers: 4 }),
@@ -235,8 +238,8 @@ export const StatusOverdue: Story = statusStory(
   {
     cells: ['waiting', ['18', '19', '20', '21']],
     statuses: [
-      ['Due any moment', null],
-      ['Behind · Live 20% · Block ~30s', 'warn'],
+      ['Behind', 'warn'],
+      ['Behind · Live 29% · Block ~21s', 'warn'],
     ],
   },
   { verdict: waitingOn('Relay chain', 'Asset Hub') },
@@ -341,22 +344,25 @@ export const OtherChains: Story = {
   },
 };
 
-/** As a dotli user watching a chain between blocks, the countdown ticks while the popover is open and goes when it closes. */
-export const CountdownTicksWhileOpen: Story = {
+/** As a dotli user watching a chain between blocks, its ghost bar moves on while the popover is open and goes when it closes. */
+export const GhostBarTicksWhileOpen: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Given a chain one second past its last block', async () => {
-      given([chain({ latest: 10, sinceLast: 1000 })]);
-      await waitFor(() => expect(statusText()).toBe('Next block in about 5s'));
+    await ctx.step('Given a connected chain with its first bar a second away', async () => {
+      given([chain({ latest: 10, sinceLast: 5000 })]);
+      await waitFor(() => expect(statusText()).toBe('Connected'));
+      await openChainRows();
+      await waitFor(() => expect(pendingPhase()).toBe('counting'));
     });
-    await ctx.step('Then a second later it counts on', async () => {
-      await waitFor(() => expect(statusText()).toBe('Next block in about 4s'));
+    await ctx.step('Then a second later its ghost bar is due and the status still reads Connected', async () => {
+      await waitFor(() => expect(pendingPhase()).toBe('due'));
+      await expect(statusText()).toBe('Connected');
     });
     await ctx.step('When I close the popover', async () => {
       await ctx.userEvent.keyboard('{Escape}');
     });
-    await ctx.step('Then its content and countdown are gone', async () => {
+    await ctx.step('Then its content and ghost bar are gone', async () => {
       await waitFor(() => expect(isOpen()).toBe(false));
       await waitFor(() => expect(document.querySelector('[data-testid="chains-row"]')).toBeNull());
     });

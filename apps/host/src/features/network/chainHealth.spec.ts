@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChainBar } from './chain.js';
 import { describeChainHealth, type ChainHealthFacts } from './chainHealth.js';
 
-// A 6 s chain: a 60 s window of 10 predicted blocks.
+// A 6 s chain, read as stalled after 60 s with no block.
 const CHAIN = {
   reachable: true,
   state: 'live',
@@ -17,14 +17,9 @@ const CHAIN = {
 
 const FACTS: ChainHealthFacts = { sinceRead: 0, behind: false, offline: false, unreachable: false };
 
-/** Bars numbered from 100, each after the gap before it. The first bar's own gap never counts toward an age. */
+/** Bars numbered from 100, each landing the given gap after the block before it. */
 function buildBarsWithGaps(gaps: number[]): ChainBar[] {
   return gaps.map((gapMs, i) => ({ number: 100 + i, health: 'onTime', gapMs }));
-}
-
-/** `produced` bars over exactly one 60 s window after an anchor bar, the newest landing as the chain is read. */
-function buildWindowOf(produced: number, windowMs = 60_000): ChainBar[] {
-  return buildBarsWithGaps([0, ...Array.from({ length: produced }, () => windowMs / produced)]);
 }
 
 describe('describeChainHealth', () => {
@@ -62,7 +57,7 @@ describe('describeChainHealth', () => {
 
   it('As a user of a chain nobody uses, I see it as not in use', () => {
     // Given
-    const chain = { ...CHAIN, state: 'unused' as const, bars: buildWindowOf(10) };
+    const chain = { ...CHAIN, state: 'unused' as const, bars: buildBarsWithGaps([6000, 6000]) };
 
     // When
     const health = describeChainHealth(chain, FACTS);
@@ -72,25 +67,66 @@ describe('describeChainHealth', () => {
   });
 
   it.each([
-    { sinceLast: null, text: 'Connecting', pending: { phase: 'searching', text: 'Connecting' } },
-    {
-      sinceLast: 1500,
-      text: 'Next block in about 4s',
-      pending: { phase: 'counting', heightPercent: 68, text: 'Next block in about 4s' },
-    },
+    { phase: null, text: 'Connecting' },
+    { phase: 'ready', text: 'Connecting' },
+    { phase: 'syncing', text: 'Syncing' },
   ])(
-    'As a user of a chain in use with no bar yet, $sinceLast ms after its last block and 1 s after the read, I see it connecting with "$text"',
-    ({ sinceLast, text, pending }) => {
+    'As a user of a chain still coming up whose light client reports $phase, I see "$text" and a ghost bar',
+    ({ phase, text }) => {
       // Given
-      const chain = { ...CHAIN, state: 'pending' as const, sinceLast };
+      const chain = { ...CHAIN, state: 'pending' as const, sinceLast: null, phase };
 
       // When
-      const health = describeChainHealth(chain, { ...FACTS, sinceRead: 1000 });
+      const health = describeChainHealth(chain, FACTS);
 
       // Then
-      expect(health).toEqual({ mark: { kind: 'connecting' }, status: { text, tone: null }, pending });
+      expect(health).toMatchObject({
+        mark: { kind: 'connecting' },
+        status: { text, tone: null },
+        pending: { phase: 'searching' },
+      });
     },
   );
+
+  it('As a user back after a pause, I see a chain with bars from before as Connecting until the monitor has it live', () => {
+    // Given
+    const chain = { ...CHAIN, state: 'pending' as const, sinceLast: null, bars: buildBarsWithGaps([6000, 6000]) };
+
+    // When
+    const health = describeChainHealth(chain, FACTS);
+
+    // Then
+    expect(health).toEqual({ mark: { kind: 'connecting' }, status: { text: 'Connecting', tone: null }, pending: null });
+  });
+
+  it.each(['connecting', 'syncing'])(
+    'As a user of a live chain whose light client reports %s again, I see it coming up',
+    phase => {
+      // Given
+      const chain = { ...CHAIN, phase, bars: buildBarsWithGaps([6000, 6000]) };
+
+      // When
+      const health = describeChainHealth(chain, FACTS);
+
+      // Then
+      expect(health.mark).toEqual({ kind: 'connecting' });
+    },
+  );
+
+  it('As a user of a live chain with one block and no bar yet, I see it Connected while its ghost bar counts on', () => {
+    // Given
+    const chain = { ...CHAIN, sinceLast: 1500, phase: 'ready' };
+
+    // When
+    const health = describeChainHealth(chain, { ...FACTS, sinceRead: 1000 });
+
+    // Then
+    expect(health).toEqual({
+      mark: { kind: 'healthy' },
+      status: { text: 'Connected', tone: null },
+      pending: { phase: 'counting', heightPercent: 68, text: 'Next block in about 4s' },
+    });
+  });
 
   it('As an offline user of a chain waiting for its first block, I see no ghost bar to wait on', () => {
     // Given
@@ -104,17 +140,17 @@ describe('describeChainHealth', () => {
   });
 
   it.each([
-    { sinceLast: 5000, sinceRead: 999, text: 'Connected' },
-    { sinceLast: 5000, sinceRead: 1000, text: 'Connected · Live 90% · Block ~7s' },
-    { sinceLast: null, sinceRead: 1000, text: 'Connected' },
+    { gaps: [6000], text: 'Connected' },
+    { gaps: [6000, 6000], text: 'Connected · Live 100% · Block ~6s' },
+    { gaps: [60_000, 6000, 6000], text: 'Connected · Live 100% · Block ~6s' },
   ])(
-    'As a user of a chain whose oldest bar is 54 s before its newest, $sinceLast ms after the newest and $sinceRead ms after the read, I see "$text"',
-    ({ sinceLast, sinceRead, text }) => {
+    'As a user of a chain whose blocks landed $gaps ms apart, I see "$text" from its last two intervals',
+    ({ gaps, text }) => {
       // Given
-      const chain = { ...CHAIN, sinceLast, bars: buildBarsWithGaps(Array.from({ length: 10 }, () => 6000)) };
+      const chain = { ...CHAIN, bars: buildBarsWithGaps(gaps) };
 
       // When
-      const health = describeChainHealth(chain, { ...FACTS, sinceRead });
+      const health = describeChainHealth(chain, FACTS);
 
       // Then
       expect(health).toEqual({ mark: { kind: 'healthy' }, status: { text, tone: null }, pending: null });
@@ -122,13 +158,30 @@ describe('describeChainHealth', () => {
   );
 
   it.each([
+    { sinceLast: 59_000, sinceRead: 999, kind: 'healthy' },
+    { sinceLast: 59_000, sinceRead: 1000, kind: 'outage' },
+  ])(
+    'As a user of a chain $sinceLast ms after its last block and $sinceRead ms after the read, I see the $kind mark',
+    ({ sinceLast, sinceRead, kind }) => {
+      // Given
+      const chain = { ...CHAIN, sinceLast, bars: buildBarsWithGaps([6000, 6000]) };
+
+      // When
+      const health = describeChainHealth(chain, { ...FACTS, sinceRead });
+
+      // Then
+      expect(health.mark.kind).toBe(kind);
+    },
+  );
+
+  it.each([
     { behind: false, tone: null },
     { behind: true, tone: 'warn' },
   ])(
-    'As a user of a chain with no block for a whole window, when the verdict names it is $behind I see it not producing blocks',
+    'As a user of a chain with no block for 60 s, when the verdict names it is $behind I see it not producing blocks',
     ({ behind, tone }) => {
       // Given
-      const chain = { ...CHAIN, sinceLast: 60_000, bars: buildWindowOf(10) };
+      const chain = { ...CHAIN, sinceLast: 60_000, bars: buildBarsWithGaps([6000, 6000]) };
 
       // When
       const health = describeChainHealth(chain, { ...FACTS, behind });
@@ -142,31 +195,34 @@ describe('describeChainHealth', () => {
     },
   );
 
-  it('As a user of a chain producing faster than predicted, I see its share capped at all of its blocks', () => {
-    // Given
-    const chain = { ...CHAIN, bars: buildWindowOf(20) };
+  it.each([4000, 0])(
+    'As a user of a chain whose last blocks landed %i ms apart, I see Live 100% and its own block time',
+    gapMs => {
+      // Given
+      const chain = { ...CHAIN, bars: buildBarsWithGaps([gapMs, gapMs]) };
 
-    // When
-    const health = describeChainHealth(chain, FACTS);
+      // When
+      const health = describeChainHealth(chain, FACTS);
 
-    // Then
-    expect(health).toEqual({
-      mark: { kind: 'healthy' },
-      status: { text: 'Connected · Live 100% · Block ~6s', tone: null },
-      pending: null,
-    });
-  });
+      // Then
+      expect(health).toEqual({
+        mark: { kind: 'healthy' },
+        status: { text: 'Connected · Live 100% · Block ~6s', tone: null },
+        pending: null,
+      });
+    },
+  );
 
   it.each([
-    { produced: 9, mark: { kind: 'healthy' } },
-    { produced: 5, mark: { kind: 'short', share: 0.5, band: 'plain' } },
-    { produced: 4, mark: { kind: 'short', share: 0.4, band: 'warn' } },
-    { produced: 2, mark: { kind: 'short', share: 0.2, band: 'err' } },
+    { blockMs: 7000, mark: { kind: 'healthy' } },
+    { blockMs: 12_000, mark: { kind: 'short', share: 0.5, band: 'plain' } },
+    { blockMs: 15_000, mark: { kind: 'short', share: 0.4, band: 'warn' } },
+    { blockMs: 30_000, mark: { kind: 'short', share: 0.2, band: 'err' } },
   ])(
-    'As a user of a chain that produced $produced of 10 predicted blocks, I see the $mark.kind mark',
-    ({ produced, mark }) => {
+    'As a user of a 6 s chain whose last two blocks each took $blockMs ms, I see the $mark.kind mark',
+    ({ blockMs, mark }) => {
       // Given
-      const chain = { ...CHAIN, bars: buildWindowOf(produced) };
+      const chain = { ...CHAIN, bars: buildBarsWithGaps([blockMs, blockMs]) };
 
       // When
       const health = describeChainHealth(chain, FACTS);
@@ -183,7 +239,7 @@ describe('describeChainHealth', () => {
     'As a user of a chain short of blocks, when the verdict names it is $behind I see "$status.text"',
     ({ behind, status }) => {
       // Given
-      const chain = { ...CHAIN, bars: buildWindowOf(8) };
+      const chain = { ...CHAIN, bars: buildBarsWithGaps([7000, 8000]) };
 
       // When
       const health = describeChainHealth(chain, { ...FACTS, behind });
@@ -194,8 +250,8 @@ describe('describeChainHealth', () => {
   );
 
   it('As a user of a slow chain far short of blocks, I see its block time in minutes and seconds', () => {
-    // Given a 6.5 s chain, so a 65 s window of 10 predicted blocks
-    const chain = { ...CHAIN, blockTimeMs: 6500, bars: buildWindowOf(1, 65_000) };
+    // Given a 6.5 s chain whose last two blocks each took 65 s
+    const chain = { ...CHAIN, blockTimeMs: 6500, bars: buildBarsWithGaps([65_000, 65_000]) };
 
     // When
     const health = describeChainHealth(chain, FACTS);

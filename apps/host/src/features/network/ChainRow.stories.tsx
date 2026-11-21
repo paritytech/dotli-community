@@ -95,9 +95,14 @@ export const NoEndpoint: Story = {
   },
 };
 
-/** As a user waiting for a chain's first bar, its row counts down to it. */
+/** As a user of a chain coming up again, such as after a pause, it reads Connecting over the bars it kept. */
+export const ComingUpAgain: Story = {
+  args: { chain: { ...RELAY, state: 'pending', sinceLast: null } },
+};
+
+/** As a user waiting for a live chain's first bar, its row reads Connected and its ghost bar grows toward the block. */
 export const WaitingForFirstBlock: Story = {
-  args: { chain: { ...RELAY, state: 'pending', bars: [], sinceLast: 1500 } },
+  args: { chain: { ...RELAY, bars: [], sinceLast: 1500 } },
 };
 
 /** As a user, a chain the network verdict names as lagging says it is behind, in amber. */
