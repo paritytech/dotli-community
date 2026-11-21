@@ -5,14 +5,15 @@ import { hasLightClient, type Backend } from '@dotli/config';
 import { NETWORK_HEALTH } from './networkVerdict.js';
 import type { LiveVerdict, NetworkHealth } from './networkVerdict.js';
 import { formatRate, formatSize } from '@dotli/shared';
+import { isWatched } from './chain.js';
 import type { ChainView, TransferView } from './chains.js';
 
 /**
  * Whether a reachable chain is in use, so the panel's clock has to tick: its countdown moves on, and its Live share
  * decays while no block lands.
  */
-export function needsTicker(chains: readonly Pick<ChainView, 'reachable' | 'state'>[]): boolean {
-  return chains.some(chain => chain.reachable && chain.state !== 'unused');
+export function isTickerNeeded(chains: readonly Pick<ChainView, 'reachable' | 'state'>[]): boolean {
+  return chains.some(isWatched);
 }
 
 /** A row of the transfer footer. */
@@ -142,7 +143,7 @@ export function describeNetworkStatus({
       chainCount: chains.filter(chain => chain.state === 'live').length,
       slow: verdict.slow ?? [],
       pending: pending.map(chain => chain.label),
-      peered: chains.some(chain => chain.reachable && chain.state !== 'unused' && (chain.peers ?? 0) > 0),
+      peered: chains.some(chain => isWatched(chain) && (chain.peers ?? 0) > 0),
     }),
   };
 }

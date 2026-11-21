@@ -16,7 +16,7 @@ const ROLE_GLYPHS: Readonly<Record<ChainRole, Component<IconProps>>> = {
 };
 
 /** A chain's glyph by its role, or the generic one for a chain outside the known roles. Unsized, so each caller sizes it. */
-export function chainGlyph(role: ChainRole | null): Component<IconProps> {
+export function pickChainGlyph(role: ChainRole | null): Component<IconProps> {
   return role === null ? OtherChainGlyph : ROLE_GLYPHS[role];
 }
 

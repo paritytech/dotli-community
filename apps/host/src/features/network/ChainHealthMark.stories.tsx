@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
 import { CHAIN_ROLES, type ChainRole } from '@dotli/config';
 import type { ChainMark } from './chainHealth.js';
-import { chainGlyph } from './chainGlyph.js';
+import { pickChainGlyph } from './chainGlyph.js';
 import { ChainHealthMark } from './ChainHealthMark.js';
 
 const MARKS: readonly { name: string; mark: ChainMark }[] = [
@@ -30,7 +30,7 @@ function Gallery(): JSX.Element {
       <For each={MARKS}>
         {row => (
           <div role="group" aria-label={row.name} style={{ display: 'flex', 'align-items': 'center', gap: '12px' }}>
-            <For each={GLYPHS}>{role => <ChainHealthMark mark={row.mark} glyph={chainGlyph(role)} />}</For>
+            <For each={GLYPHS}>{role => <ChainHealthMark mark={row.mark} glyph={pickChainGlyph(role)} />}</For>
             <span style={{ 'font-size': 'var(--fs-caption)' }}>{row.name}</span>
           </div>
         )}

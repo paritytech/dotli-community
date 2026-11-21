@@ -33,7 +33,9 @@ const NOTHING: NetworkView = { chains: [], transfer: NO_TRANSFER, readAt: 0, ver
 const [network, setNetwork] = createSignal<NetworkView>(NOTHING);
 const [health, setHealthSignal] = createSignal<NetworkHealth>('quiet');
 const [productLoaded, setProductLoadedSignal] = createSignal(false);
-const [backend, setBackendSignal] = createSignal<Backend | undefined>(undefined);
+function backend(): Backend | undefined {
+  return undefined;
+}
 
 /** How many times the panel started following the network, and how many of those still follow it. */
 export const follows = { started: 0, following: 0 };
@@ -112,7 +114,6 @@ export function resetStoryNetwork(): void {
   setNetwork(NOTHING);
   setHealthSignal('quiet');
   setProductLoadedSignal(false);
-  setBackendSignal(undefined);
   follows.started = 0;
   follows.following = 0;
 }

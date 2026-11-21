@@ -10,7 +10,7 @@ import type { ChainHealthFacts } from './chainHealth.js';
 import { isNetworkOffline, NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
-import { describeNetworkStatus, describeTransfer, needsTicker, type TransferRow } from './chainsFormat.js';
+import { describeNetworkStatus, describeTransfer, isTickerNeeded, type TransferRow } from './chainsFormat.js';
 import s from './ChainsContent.module.css';
 
 const TICK_MS = 250;
@@ -60,9 +60,9 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   const otherChains = createMemo(() => props.network().chains.filter(chain => chain.role === null));
 
   const [now, setNow] = createSignal(Date.now());
-  // Once no chain is in use nothing reads `now`, so the ticker stops. A memo, as Solid 2 runs an effect's function
-  // every time its compute re-runs.
-  const ticking = createMemo(() => needsTicker(props.network().chains));
+  // The clock ticks only while a reachable chain is in use, as only those rows age between reads. A memo, as Solid 2
+  // runs an effect's function every time its compute re-runs.
+  const ticking = createMemo(() => isTickerNeeded(props.network().chains));
   createEffect(ticking, on => {
     if (!on) {
       return;

@@ -5,7 +5,7 @@
 // the mark and status line that share implies.
 
 import type { ChainView } from './chains.js';
-import { pendingBar } from './chainStrip.js';
+import { pendingBar, type PendingBarView } from './chainStrip.js';
 
 /** The colour of a short chain's arc. */
 export type ArcBand = 'plain' | 'warn' | 'err';
@@ -22,6 +22,8 @@ export type ChainMark =
 export type ChainHealthView = {
   mark: ChainMark;
   status: { text: string; tone: 'warn' | 'err' | null };
+  /** The ghost bar of a connecting chain, null otherwise. */
+  pending: PendingBarView | null;
 };
 
 /** What the popover knows beside the chain itself. */
@@ -49,32 +51,38 @@ export function describeChainHealth(
   { sinceRead, behind, offline, unreachable }: ChainHealthFacts,
 ): ChainHealthView {
   if (offline) {
-    return { mark: { kind: 'unavailable' }, status: { text: 'No internet', tone: null } };
+    return { mark: { kind: 'unavailable' }, status: { text: 'No internet', tone: null }, pending: null };
   }
   if (!chain.reachable) {
-    return { mark: { kind: 'unavailable' }, status: { text: 'No endpoint', tone: unreachable ? 'err' : 'warn' } };
+    return {
+      mark: { kind: 'unavailable' },
+      status: { text: 'No endpoint', tone: unreachable ? 'err' : 'warn' },
+      pending: null,
+    };
   }
   if (chain.state === 'unused') {
-    return { mark: { kind: 'unused' }, status: { text: 'Not in use', tone: null } };
+    return { mark: { kind: 'unused' }, status: { text: 'Not in use', tone: null }, pending: null };
   }
   // A clock that stepped back since the read must not make the bars younger than they were.
   const sinceLast = chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, sinceRead);
   if (chain.bars.length === 0) {
-    return { mark: { kind: 'connecting' }, status: { text: pendingBar(chain, sinceLast).text, tone: null } };
+    const pending = pendingBar(chain, sinceLast);
+    return { mark: { kind: 'connecting' }, status: { text: pending.text, tone: null }, pending };
   }
   const tone = behind ? 'warn' : null;
   const share = measureShare(chain, sinceLast);
   if (share === 0) {
-    return { mark: { kind: 'outage' }, status: { text: 'Not producing blocks', tone } };
+    return { mark: { kind: 'outage' }, status: { text: 'Not producing blocks', tone }, pending: null };
   }
   const word = behind ? 'Behind' : 'Connected';
   if (share === null) {
-    return { mark: { kind: 'healthy' }, status: { text: word, tone } };
+    return { mark: { kind: 'healthy' }, status: { text: word, tone }, pending: null };
   }
   const text = `${word} · Live ${String(Math.round(share * 100))}% · Block ~${formatDuration(chain.blockTimeMs / share)}`;
   return {
-    mark: share >= HEALTHY_SHARE ? { kind: 'healthy' } : { kind: 'short', share, band: bandOf(share) },
+    mark: share >= HEALTHY_SHARE ? { kind: 'healthy' } : { kind: 'short', share, band: pickArcBand(share) },
     status: { text, tone },
+    pending: null,
   };
 }
 
@@ -101,7 +109,7 @@ function measureShare(chain: HealthChain, sinceLast: number | null): number | nu
   return null;
 }
 
-function bandOf(share: number): ArcBand {
+function pickArcBand(share: number): ArcBand {
   if (share < 0.25) {
     return 'err';
   }

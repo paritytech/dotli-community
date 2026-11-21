@@ -5,17 +5,16 @@ import { createEffect, createMemo, createSignal, createUniqueId, For, Show, untr
 import type { JSX } from '@solidjs/web';
 import { prefersReducedMotion } from '@dotli/ui';
 import { ChevronDownIcon } from '@dotli/ui/icons';
-import type { ChainSummary } from './chain.js';
+import { isWatched, type ChainSummary } from './chain.js';
 import type { ChainView } from './chains.js';
 import { describeChainHealth, type ChainHealthFacts } from './chainHealth.js';
-import { chainGlyph } from './chainGlyph.js';
+import { pickChainGlyph } from './chainGlyph.js';
 import { ChainHealthMark } from './ChainHealthMark.js';
 import {
   describeBlockDelay,
   describePeers,
   HISTORY_SLOTS,
   landedBars,
-  pendingBar,
   sameBars,
   slotOpacity,
   type PendingBarView,
@@ -158,18 +157,8 @@ export function ChainRow(props: { chain: ChainView; facts: ChainHealthFacts }): 
   const health = createMemo(() => describeChainHealth(props.chain, props.facts));
   // No caption rather than "0 peers" until a sample lands: zero is a different claim.
   const peers = createMemo(() =>
-    props.chain.reachable && props.chain.state !== 'unused' && props.chain.peers !== null
-      ? describePeers(props.chain.label, props.chain.peers)
-      : null,
+    isWatched(props.chain) && props.chain.peers !== null ? describePeers(props.chain.label, props.chain.peers) : null,
   );
-  // Nothing is connecting a chain that is unused or has no endpoint, so it gets no ghost bar.
-  const pending = createMemo(() => {
-    const { chain } = props;
-    if (!chain.reachable || chain.state === 'unused' || chain.bars.length > 0) {
-      return null;
-    }
-    return pendingBar(chain, chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, props.facts.sinceRead));
-  });
   const newest = (): string | null => {
     const bar = props.chain.bars.at(-1);
     return bar === undefined ? null : `#${bar.number.toLocaleString('en-US')}`;
@@ -184,7 +173,7 @@ export function ChainRow(props: { chain: ChainView; facts: ChainHealthFacts }): 
         aria-controls={detailId}
         onClick={() => setOpen(!open())}
       >
-        <ChainHealthMark mark={health().mark} glyph={chainGlyph(props.chain.role)} />
+        <ChainHealthMark mark={health().mark} glyph={pickChainGlyph(props.chain.role)} />
         <span class={s['text']}>
           <span class={s['name']} data-testid="chains-row-name">
             {props.chain.label}
@@ -238,7 +227,7 @@ export function ChainRow(props: { chain: ChainView; facts: ChainHealthFacts }): 
                 </div>
               }
             >
-              <BarStrip chain={props.chain} pending={pending()} />
+              <BarStrip chain={props.chain} pending={health().pending} />
             </Show>
           </div>
         </div>

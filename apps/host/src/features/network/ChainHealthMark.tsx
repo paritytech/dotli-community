@@ -1,13 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { Component } from 'solid-js';
+import { createMemo, type Component } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
 import type { IconProps } from '@dotli/ui/icons';
 import type { ChainMark } from './chainHealth.js';
 import s from './ChainHealthMark.module.css';
 
-const RING_LENGTH = 2 * Math.PI * 12.5;
+const RING_RADIUS = 12.5;
+
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
 /** A ring of radius 12.2 with ten waves of 0.9, as the mobile app draws a chain still connecting. */
 const SCALLOP =
@@ -20,6 +22,8 @@ const SCALLOP =
  */
 export function ChainHealthMark(props: { mark: ChainMark; glyph: Component<IconProps> }): JSX.Element {
   const Glyph = dynamic(() => props.glyph);
+  // The row re-describes its chain every tick, so the frame is redrawn only when what it draws changes.
+  const frame = createMemo(() => props.mark, { equals: sameMark });
   return (
     <svg
       class={s['mark']}
@@ -29,12 +33,16 @@ export function ChainHealthMark(props: { mark: ChainMark; glyph: Component<IconP
       fill="none"
       aria-hidden="true"
     >
-      {drawFrame(props.mark)}
+      {drawFrame(frame())}
       <g transform="translate(8 8)">
         <Glyph class={s['glyph']} size={12} />
       </g>
     </svg>
   );
+}
+
+function sameMark(a: ChainMark, b: ChainMark): boolean {
+  return a.kind === b.kind && (a.kind !== 'short' || (b.kind === 'short' && a.share === b.share && a.band === b.band));
 }
 
 function drawFrame(mark: ChainMark): JSX.Element {
@@ -44,14 +52,14 @@ function drawFrame(mark: ChainMark): JSX.Element {
     case 'short':
       return (
         <>
-          <circle class={s['track']} cx="14" cy="14" r="12.5" stroke-width="2" />
+          <circle class={s['track']} cx="14" cy="14" r={RING_RADIUS} stroke-width="2" />
           {/* Mirrored, so the arc fills counterclockwise from the top. */}
           <circle
             class={s['arc']}
             data-band={mark.band}
             cx="14"
             cy="14"
-            r="12.5"
+            r={RING_RADIUS}
             stroke-width="2"
             stroke-linecap="round"
             stroke-dasharray={`${String(mark.share * RING_LENGTH)} ${String(RING_LENGTH)}`}
@@ -67,7 +75,7 @@ function drawFrame(mark: ChainMark): JSX.Element {
             class={s['ring']}
             cx="14"
             cy="14"
-            r="12.5"
+            r={RING_RADIUS}
             stroke-width="2"
             stroke-linecap="round"
             stroke-dasharray={`${String(0.75 * RING_LENGTH)} ${String(RING_LENGTH)}`}
@@ -85,13 +93,13 @@ function drawFrame(mark: ChainMark): JSX.Element {
           class={s['ring']}
           cx="14"
           cy="14"
-          r="12.5"
+          r={RING_RADIUS}
           stroke-width="2"
           stroke-linecap="round"
           stroke-dasharray={`0 ${String(RING_LENGTH / 24)}`}
         />
       );
     case 'unused':
-      return <circle class={s['track']} cx="14" cy="14" r="12.5" stroke-width="1" />;
+      return <circle class={s['track']} cx="14" cy="14" r={RING_RADIUS} stroke-width="1" />;
   }
 }

@@ -1,14 +1,21 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* Columns are the mark, the text and the chevron, so the detail can start on the text's column. */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--sp-2);
+}
 .row + .row {
   border-top: 1px solid var(--chrome-line);
 }
 .head {
   box-sizing: border-box;
-  display: flex;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: var(--sp-2);
   width: 100%;
   min-height: var(--h-row);
   margin: 0;
@@ -27,7 +34,6 @@
 }
 .text {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: var(--sp-hair);
   min-width: 0;
@@ -61,7 +67,6 @@
   color: var(--chrome-text-muted);
 }
 .chevron {
-  flex: none;
   width: 14px;
   height: 14px;
   color: var(--chrome-text-muted);
@@ -70,12 +75,12 @@
 .head[aria-expanded='true'] > .chevron {
   transform: rotate(180deg);
 }
-/* The detail starts on the name's column, past the mark and its gap. */
 .detail {
   display: flex;
+  grid-column: 2 / -1;
   flex-direction: column;
   gap: var(--sp-1_5);
-  padding: 0 0 var(--sp-3) calc(28px + var(--sp-2));
+  padding: 0 0 var(--sp-3);
 }
 .line {
   display: flex;
@@ -197,8 +202,10 @@
 }
 
 @media (max-width: 560px) {
+  .row {
+    column-gap: var(--sp-3);
+  }
   .head {
-    gap: var(--sp-3);
     min-height: var(--h-row-lg);
     padding: var(--sp-3) 0;
   }
@@ -208,7 +215,7 @@
   }
   .detail {
     gap: var(--sp-2);
-    padding: 0 0 var(--sp-4) calc(32px + var(--sp-3));
+    padding: 0 0 var(--sp-4);
   }
   .line {
     gap: var(--sp-3);

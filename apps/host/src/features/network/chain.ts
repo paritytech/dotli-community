@@ -14,6 +14,11 @@ export type ChainBar = {
 /** How a chain counts toward the network's verdict. */
 export type ChainUse = 'unused' | 'pending' | 'live';
 
+/** Whether a chain has an endpoint and is in use, so its reads age between blocks. */
+export function isWatched(chain: Pick<ChainSummary, 'reachable' | 'state'>): boolean {
+  return chain.reachable && chain.state !== 'unused';
+}
+
 /** One chain as its row shows it: its name, use, peers and recent blocks. */
 export type ChainSummary = {
   readonly label: string;
