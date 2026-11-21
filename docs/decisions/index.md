@@ -16,7 +16,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [cleanup-move-matches-a-rule](cleanup-move-matches-a-rule.md): a simplification pass finds a shape that matches one
   of its rules, or a rater lists it.
 - [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md): a simple design competes with
-  elaborate ones that guard a size, a setup or a first-visit cost.
+  elaborate ones that guard a size, a setup or a first-visit cost, while building rather than in a cleanup.
 - [owner-approves-in-advance](owner-approves-in-advance.md): the owner approved a change in advance, and its gates or a
   follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to
@@ -46,7 +46,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
 - [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
   finds a style or skill rule that matches the code's shape, such as one event that carries a collaborator's state, and
-  the rewrite it describes would read no better than the code it replaces.
+  the rewrite it describes would read no better than the code it replaces, or would drop a guard that keeps idle work
+  from running.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
   protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
   unreachable.
