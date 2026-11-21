@@ -107,10 +107,6 @@ export function setProductLoaded(loaded: boolean): void {
   setProductLoadedSignal(loaded);
 }
 
-export function setBackend(next: Backend | undefined): void {
-  setBackendSignal(next);
-}
-
 /** For a story's `beforeEach`: no chain in use, quiet, the product loading, the settings not read yet. */
 export function resetStoryNetwork(): void {
   setNetwork(NOTHING);

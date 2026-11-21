@@ -4,25 +4,16 @@
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Backend } from '@dotli/config';
-import { InfoIcon } from '@dotli/ui/icons';
-import { Accordion, Callout, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
+import { Accordion, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainRow } from './ChainRow.js';
 import type { ChainHealthFacts } from './chainHealth.js';
 import { isNetworkOffline, NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
-import {
-  describeNetworkStatus,
-  describeTransfer,
-  isLightClientOrUnread,
-  needsCountdown,
-  type TransferRow,
-} from './chainsFormat.js';
+import { describeNetworkStatus, describeTransfer, needsTicker, type TransferRow } from './chainsFormat.js';
 import s from './ChainsContent.module.css';
 
-const PENDING_TICK_MS = 250;
-
-const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
+const TICK_MS = 250;
 
 export type ChainsContentProps = {
   network: Accessor<NetworkView>;
@@ -69,16 +60,16 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   const otherChains = createMemo(() => props.network().chains.filter(chain => chain.role === null));
 
   const [now, setNow] = createSignal(Date.now());
-  // Once every chain has bars nothing reads `now`, so the ticker stops. A memo, as Solid 2 runs an effect's
-  // function every time its compute re-runs.
-  const counting = createMemo(() => needsCountdown(props.network().chains));
-  createEffect(counting, on => {
+  // Once no chain is in use nothing reads `now`, so the ticker stops. A memo, as Solid 2 runs an effect's function
+  // every time its compute re-runs.
+  const ticking = createMemo(() => needsTicker(props.network().chains));
+  createEffect(ticking, on => {
     if (!on) {
       return;
     }
     const ticker = setInterval(() => {
       setNow(Date.now());
-    }, PENDING_TICK_MS);
+    }, TICK_MS);
     return () => {
       clearInterval(ticker);
     };
@@ -91,7 +82,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   });
   const transfer = createMemo(() => describeTransfer(props.network().transfer, !props.productLoaded()));
   return (
-    <Surface width="md" padded class={s['content']} testId="chains-content">
+    <Surface width="md" padded testId="chains-content">
       <SurfaceHead title="Network" testId="chains-head" />
       <Well class={s['status']} testId="chains-status">
         <StatusDot tone={NETWORK_HEALTH[status().tone].dot} class={s['statusDot']} testId="chains-status-dot" />
@@ -104,20 +95,24 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
           </p>
         </div>
       </Well>
-      <For each={knownChains()} keyed={chain => chain.key}>
-        {chain => <ChainRow chain={chain()} facts={facts(chain())} />}
-      </For>
+      <Show when={knownChains().length > 0}>
+        <Well layout="list" testId="chains-list">
+          <For each={knownChains()} keyed={chain => chain.key}>
+            {chain => <ChainRow chain={chain()} facts={facts(chain())} />}
+          </For>
+        </Well>
+      </Show>
       <Show when={otherChains().length > 0}>
         <Accordion
           title={`Other chains (${String(otherChains().length)})`}
           testId="chains-other"
           summaryTestId="chains-other-summary"
         >
-          <div class={s['other']}>
+          <Well layout="list" testId="chains-other-list">
             <For each={otherChains()} keyed={chain => chain.key}>
               {chain => <ChainRow chain={chain()} facts={facts(chain())} />}
             </For>
-          </div>
+          </Well>
         </Accordion>
       </Show>
       <div
@@ -128,12 +123,6 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
         <TransferLine row={transfer().speed} />
         <TransferLine row={transfer().size} />
       </div>
-      {/* Trusted providers have no peers to steady, and a good, quiet or offline network gains nothing from it. */}
-      <Show when={isLightClientOrUnread(props.backend()) && (status().tone === 'idle' || status().tone === 'warn')}>
-        <Callout icon={InfoIcon} class={s['tips']} testId="chains-tips">
-          {TIP}
-        </Callout>
-      </Show>
     </Surface>
   );
 }

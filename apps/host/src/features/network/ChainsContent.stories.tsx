@@ -15,7 +15,6 @@ import {
   given,
   openChainRows,
   resetStoryNetwork,
-  setBackend,
   setHealth,
   setProductLoaded,
   storyNetwork,
@@ -60,8 +59,6 @@ type ExpectedBody = {
   detail?: string;
   speed?: [string, string];
   size?: [string, string];
-  /** Whether the tip about steadier peers shows, by default it does. */
-  tips?: boolean;
 };
 
 function readCell(cell: HTMLElement): ExpectedCell {
@@ -74,7 +71,7 @@ function readCell(cell: HTMLElement): ExpectedCell {
   return [...cell.querySelectorAll<HTMLElement>('[data-testid="chains-bar"]')].map(bar => bar.dataset['block'] ?? '');
 }
 
-/** The body: a cell per known chain, the transfer rows while the product loads, and the tip while chains sync or lag. */
+/** The body: a cell per known chain, and the transfer rows while the product loads. */
 async function expectBody(expected: ExpectedBody): Promise<void> {
   const root = content();
   const cells = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-cell"]')];
@@ -91,7 +88,6 @@ async function expectBody(expected: ExpectedBody): Promise<void> {
   const [speedRow, sizeRow] = [...root.querySelectorAll('[data-testid="chains-transfer-row"]')];
   await expect(speedRow === undefined ? null : rowTexts(speedRow)).toEqual(expected.speed ?? []);
   await expect(sizeRow === undefined ? null : rowTexts(sizeRow)).toEqual(expected.size ?? []);
-  await expect(root.querySelector('[data-testid="chains-tips"]') !== null).toBe(expected.tips ?? true);
 }
 
 /** The network button and panel as the host composes them, reading the story's network. */
@@ -159,7 +155,7 @@ function statusStory(
         );
         await openChainRows();
       });
-      await ctx.step('Then it shows the chains, transfer and tips', async () => {
+      await ctx.step('Then it shows the chains and transfer', async () => {
         await expect(byId('chains-button')).toHaveAttribute('aria-expanded', 'true');
         await waitFor(() => expectBody(expected));
       });
@@ -167,12 +163,12 @@ function statusStory(
   };
 }
 
-/** As a dotli user opening it with nothing in use, it says no chains are in use and gives no tip about peers. */
-export const StatusNothingInUse: Story = statusStory([], { cells: [], tips: false });
+/** As a dotli user opening it with nothing in use, it says no chains are in use. */
+export const StatusNothingInUse: Story = statusStory([], { cells: [] });
 
 /**
  * As a dotli user opening it on a network with no endpoint for any chain, every chain says so and the status says the
- * network is out of reach, with no tip about peers.
+ * network is out of reach.
  */
 export const StatusStartingUnreachable: Story = statusStory(
   [
@@ -186,7 +182,6 @@ export const StatusStartingUnreachable: Story = statusStory(
       ['No endpoint', 'err'],
     ],
     detail: 'It offers no endpoint for these chains.',
-    tips: false,
   },
   { verdict: VERDICTS.unreachable },
 );
@@ -250,7 +245,7 @@ export const StatusOverdue: Story = statusStory(
   { verdict: waitingOn('Relay chain', 'Asset Hub') },
 );
 
-/** As a dotli user opening it with a good connection after the product loaded, it says so and shows no transfer or tip. */
+/** As a dotli user opening it with a good connection after the product loaded, it says so and shows no transfer. */
 export const StatusGood: Story = statusStory(
   [
     chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
@@ -262,7 +257,6 @@ export const StatusGood: Story = statusStory(
       ['18', '19', '20'],
     ],
     detail: 'Light client is in sync on both chains.',
-    tips: false,
   },
   { transfer: { bytesPerSecond: 800, fetched: 4096, total: 4096 }, loaded: true, verdict: VERDICTS.good },
 );
@@ -283,7 +277,6 @@ export const StatusOffline: Story = statusStory(
       ['No internet', null],
     ],
     detail: 'No peers on any chain. Retrying.',
-    tips: false,
   },
   { loaded: true, offline: true },
 );
@@ -347,21 +340,6 @@ export const OtherChains: Story = {
     });
     await ctx.step('Then Other chains is gone', async () => {
       await waitFor(() => expect(document.querySelector('[data-testid="chains-other"]')).toBeNull());
-    });
-  },
-};
-
-/** As a user on trusted providers, I get no tip about steadier peers. */
-export const TrustedNoTip: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    setBackend('rpc-gateway');
-    given([chain({ latest: 10, bars: bars(8, 3), sinceLast: 500 })]);
-  },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then there is no tip', async () => {
-      await expect(document.querySelector('[data-testid="chains-tips"]')).toBeNull();
     });
   },
 };

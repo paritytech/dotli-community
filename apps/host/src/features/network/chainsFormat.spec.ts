@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { describeNetworkStatus, describeTransfer, needsCountdown } from './chainsFormat.js';
+import { describeNetworkStatus, describeTransfer, needsTicker } from './chainsFormat.js';
 import type { LiveVerdict } from './networkVerdict.js';
 import type { ChainView } from './chains.js';
 
@@ -283,39 +283,38 @@ describe('describeTransfer', () => {
   });
 });
 
-describe('the network panel countdown', () => {
-  it('As a user watching a chain between blocks, the countdown runs', () => {
+describe('the network panel clock', () => {
+  it('As a user watching a chain between blocks, the clock ticks so its countdown moves on', () => {
     // When
-    const runs = needsCountdown([waiting]);
+    const runs = needsTicker([waiting]);
 
     // Then
     expect(runs).toBe(true);
   });
 
-  it('As a user, the countdown stops once no chain is waiting for its first block', () => {
+  it('As a user of a chain whose blocks stall, the clock keeps ticking so its Live share decays', () => {
     // Given
     const landed = { ...waiting, bars: [{ number: 11, health: 'onTime' as const, gapMs: 6000 }], sinceLast: 0 };
 
     // When
-    const runs = needsCountdown([landed]);
+    const runs = needsTicker([landed]);
 
     // Then
-    expect(runs).toBe(false);
+    expect(runs).toBe(true);
   });
 
-  it('As a user, a chain still connecting, unreachable or not in use runs no countdown', () => {
+  it('As a user, a chain unreachable or not in use keeps no clock ticking', () => {
     // Given
     const chains = [
-      { ...waiting, sinceLast: null },
       { ...waiting, reachable: false },
       { ...waiting, state: 'unused' as const },
     ];
 
     // When
-    const runs = chains.map(chain => needsCountdown([chain]));
+    const runs = chains.map(chain => needsTicker([chain]));
 
     // Then
-    expect(runs).toEqual([false, false, false]);
-    expect(needsCountdown([])).toBe(false);
+    expect(runs).toEqual([false, false]);
+    expect(needsTicker([])).toBe(false);
   });
 });

@@ -7,13 +7,12 @@ import type { LiveVerdict, NetworkHealth } from './networkVerdict.js';
 import { formatRate, formatSize } from '@dotli/shared';
 import type { ChainView, TransferView } from './chains.js';
 
-/** Whether a chain in use waits for its first bar with its last block known, so its countdown has to tick. */
-export function needsCountdown(
-  chains: readonly Pick<ChainView, 'reachable' | 'state' | 'bars' | 'sinceLast'>[],
-): boolean {
-  return chains.some(
-    chain => chain.reachable && chain.state !== 'unused' && chain.bars.length === 0 && chain.sinceLast !== null,
-  );
+/**
+ * Whether a reachable chain is in use, so the panel's clock has to tick: its countdown moves on, and its Live share
+ * decays while no block lands.
+ */
+export function needsTicker(chains: readonly Pick<ChainView, 'reachable' | 'state'>[]): boolean {
+  return chains.some(chain => chain.reachable && chain.state !== 'unused');
 }
 
 /** A row of the transfer footer. */
@@ -111,7 +110,7 @@ const GATEWAY = {
 } satisfies Captions;
 
 /** Whether the menu speaks of a light client: under one, or while the page has not read its settings (`undefined`). */
-export function isLightClientOrUnread(backend: Backend | undefined): boolean {
+function isLightClientOrUnread(backend: Backend | undefined): boolean {
   return backend === undefined || hasLightClient(backend);
 }
 
