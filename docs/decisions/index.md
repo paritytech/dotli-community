@@ -39,6 +39,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## Code structure
 
+- [author-metadata-the-rfc-does-not-name](author-metadata-the-rfc-does-not-name.md): a product page adds a piece of the
+  author's metadata the product-manifest RFC does not name, and the question is whether it is read while the product
+  resolves or when the author card opens, and where it is kept.
 - [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one
   variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
 - [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
