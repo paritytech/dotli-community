@@ -1,0 +1,20 @@
+name: Setup truapi-host
+description:
+  'Install the truapi-host CLI, the headless signer the host-playground E2E suite pairs with, and put it on PATH. Keep
+  the checkout token out of .git/config in a job that runs this, since the installer is a downloaded script.'
+
+runs:
+  using: 'composite'
+  steps:
+    # The installer at a fixed commit, so the script a run executes cannot change under it. Asked for no version, it
+    # installs the CLI's latest stable release.
+    - name: Install truapi-host CLI
+      env:
+        INSTALLER_URL: https://raw.githubusercontent.com/paritytech/host-rust-core/743f0bafab7467c3d37ca182b15af683e6564bc7/scripts/truapi-host-installer.sh
+      run: |
+        set -euo pipefail
+        curl -fsSL --proto '=https' -o "$RUNNER_TEMP/truapi-host-installer.sh" "$INSTALLER_URL"
+        bash "$RUNNER_TEMP/truapi-host-installer.sh"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/truapi-host" --version
+      shell: bash
