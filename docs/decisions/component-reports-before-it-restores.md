@@ -42,10 +42,40 @@ core.onReport((report) => $account.set(report.account));
 watcher.recheckOn($account, (account) => account !== null);
 ```
 
+## Not when
+
+- The empty report comes from the layer above itself: it nudges the component that its store changed as it takes the
+  component into use, the nudge cuts the restore short, and the component reports empty before its rerun reports the
+  real state. Stop the nudge where the layer starts the component instead of gating reports. The layer listens for store
+  changes from when it starts the component, not from its own boot, so it nudges only for changes heard during the
+  component's boot. A real change during that boot may still cause one transient, which the owner accepted. Watchers and
+  tests stay as they are, as in steps 3 and 4.
+
+  ```ts
+  function startCore(store: Store) {
+    const core = createCore(store);
+    // Listening starts with the core, so changes from before it are never relayed as a nudge.
+    store.onChange(() => core.storeChanged());
+    return core;
+  }
+  ```
+
+  Not this:
+
+  ```ts
+  // Listening since boot relays an earlier change as the core starts, which cuts its restore short.
+  store.onChange(() => current?.storeChanged());
+  ```
+
 ## Cases
 
 - A recheck of an open page landed while a newly booted core still reported signed out before restoring the session,
   so the recheck did nothing and the restored sign-in was never checked. The session layer now shows a core's reports
   only once it has read its stored session. (feat/network-chain-indicators)
+- A core's restore was cut short by the store-changed nudge the session layer sent as it took the core into use, so the
+  core announced signed out before its rerun reported the real state, and no has-read-its-store signal existed before
+  that transient. The owner chose to nudge only for store changes heard since the core's boot began, subscribing when
+  the core starts, over the session layer holding its reports or the presence watch rechecking on sign-in.
+  (feat/network-chain-indicators)
 
 Status: active

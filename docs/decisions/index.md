@@ -50,7 +50,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
   from running.
 - [component-reports-before-it-restores](component-reports-before-it-restores.md): a component that boots
   asynchronously reports an empty state before it restores what it stored, and a display, a cache or a watcher reading
-  the layer above acts on that gap.
+  the layer above acts on that gap, including when the layer above's own store-changed nudge causes it.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
   protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
   unreachable.
