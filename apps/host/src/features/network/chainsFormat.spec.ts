@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { describeNetworkStatus, describeTransfer, isTickerNeeded } from './chainsFormat.js';
+import { describeNetworkStatus, describeTransfer } from './chainsFormat.js';
 import type { LiveVerdict } from './networkVerdict.js';
 import type { ChainView } from './chains.js';
 
@@ -234,14 +234,6 @@ function live(count: number): StatusChain[] {
   return Array.from({ length: count }, (_, i) => chain({ label: `Chain ${String(i)}` }));
 }
 
-/** A chain in use, between its blocks unless told otherwise. */
-const waiting = {
-  reachable: true,
-  state: 'live' as const,
-  bars: [] as { number: number; health: 'onTime'; gapMs: number }[],
-  sinceLast: 1000 as number | null,
-};
-
 describe('describeTransfer', () => {
   it.each([
     {
@@ -280,41 +272,5 @@ describe('describeTransfer', () => {
 
     // Then
     expect(shown).toEqual(rows);
-  });
-});
-
-describe('the network panel clock', () => {
-  it('As a user watching a chain between blocks, I see its countdown move on as the clock ticks', () => {
-    // When
-    const runs = isTickerNeeded([waiting]);
-
-    // Then
-    expect(runs).toBe(true);
-  });
-
-  it('As a user of a chain whose blocks stall, I see its Live share decay as the clock keeps ticking', () => {
-    // Given
-    const landed = { ...waiting, bars: [{ number: 11, health: 'onTime' as const, gapMs: 6000 }], sinceLast: 0 };
-
-    // When
-    const runs = isTickerNeeded([landed]);
-
-    // Then
-    expect(runs).toBe(true);
-  });
-
-  it('As a user, I see no clock tick for a chain unreachable or not in use', () => {
-    // Given
-    const chains = [
-      { ...waiting, reachable: false },
-      { ...waiting, state: 'unused' as const },
-    ];
-
-    // When
-    const runs = chains.map(chain => isTickerNeeded([chain]));
-
-    // Then
-    expect(runs).toEqual([false, false]);
-    expect(isTickerNeeded([])).toBe(false);
   });
 });

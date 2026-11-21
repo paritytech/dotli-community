@@ -6,11 +6,12 @@ import type { JSX } from '@solidjs/web';
 import type { Backend } from '@dotli/config';
 import { Accordion, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainRow } from './ChainRow.js';
+import { isWatched } from './chain.js';
 import type { ChainHealthFacts } from './chainHealth.js';
 import { isNetworkOffline, NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
-import { describeNetworkStatus, describeTransfer, isTickerNeeded, type TransferRow } from './chainsFormat.js';
+import { describeNetworkStatus, describeTransfer, type TransferRow } from './chainsFormat.js';
 import s from './ChainsContent.module.css';
 
 const TICK_MS = 250;
@@ -62,7 +63,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   const [now, setNow] = createSignal(Date.now());
   // The clock ticks only while a reachable chain is in use, as only those rows age between reads. A memo, as Solid 2
   // runs an effect's function every time its compute re-runs.
-  const ticking = createMemo(() => isTickerNeeded(props.network().chains));
+  const ticking = createMemo(() => props.network().chains.some(isWatched));
   createEffect(ticking, on => {
     if (!on) {
       return;

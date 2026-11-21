@@ -8,14 +8,6 @@ import { formatRate, formatSize } from '@dotli/shared';
 import { isWatched } from './chain.js';
 import type { ChainView, TransferView } from './chains.js';
 
-/**
- * Whether a reachable chain is in use, so the panel's clock has to tick: its countdown moves on, and its Live share
- * decays while no block lands.
- */
-export function isTickerNeeded(chains: readonly Pick<ChainView, 'reachable' | 'state'>[]): boolean {
-  return chains.some(isWatched);
-}
-
 /** A row of the transfer footer. */
 export type TransferRow = { label: string; value: string };
 
