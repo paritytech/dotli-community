@@ -156,6 +156,15 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
 
+  # The suite again, against the deployed sites, whose server config and TLS a localhost run cannot reach.
+  live:
+    name: Live E2E
+    needs: [plan, deploy]
+    uses: ./.github/workflows/live.yml
+    with:
+      environments: ${{ needs.plan.outputs.environments }}
+      ref: ${{ needs.plan.outputs.ref || github.sha }}
+
   # The release goes out only once every environment runs the tag, so its announcement never runs ahead of the deploy.
   publish-release:
     name: Publish release

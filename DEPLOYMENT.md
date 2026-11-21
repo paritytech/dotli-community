@@ -89,7 +89,8 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
 - For nginx-only updates, `make deploy-nginx ENV=<env>`, or run the **Deploy nginx** workflow from the Actions tab: pick
   the environment and it runs the same target against that environment's box, behind that environment's protection
   rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag
-  and `paseoli.dev` from `main`.
+  and `paseoli.dev` from `main`. Once the config is live, the workflow runs the host-playground E2E suite against the
+  site.
 - To renew a certificate by hand, `make renew-cert ENV=<env>`, or run the **Renew certificate** workflow the same way.
   certbot renews only when the cert is within 30 days of expiry, and nginx reloads so it serves the new one.
 

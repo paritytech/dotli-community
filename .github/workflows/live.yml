@@ -1,0 +1,78 @@
+name: Live E2E
+
+# The host-playground suite against a deployed site, which the localhost runs in Tests cannot cover: the site's server
+# config, TLS and the build made for that environment. Deploy and Deploy nginx call it once they finish.
+
+run-name: Live E2E on ${{ inputs.environment || inputs.environments }}
+
+on:
+  workflow_call:
+    inputs:
+      environments:
+        description: Environments to check, as a JSON array of their names
+        required: true
+        type: string
+      ref:
+        description: The commit those environments run, so the suite matches the deployed build
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to check, running this branch's suite
+        required: true
+        type: choice
+        options:
+          - paseo.li
+          - paseoli.dev
+          - testnet.li
+          - paseo.fyi
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Live E2E ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    # Reads the environment's APP_URL and NETWORKS without recording a deployment.
+    environment:
+      name: ${{ matrix.environment }}
+      deployment: false
+    # Over Playwright's 30 min globalTimeout, so Playwright cuts a stuck run off with diagnostics.
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(inputs.environments || format('["{0}"]', inputs.environment)) }}
+    steps:
+      # The truapi-host installer runs in this job, so the token is not left in .git/config for it.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Setup Playwright
+        uses: ./.github/actions/setup-playwright
+
+      - name: Setup truapi-host
+        uses: ./.github/actions/setup-truapi-host
+
+      # The signer must attest on the site's default network, the first one it is built with.
+      - name: Resolve the site's network
+        env:
+          NETWORKS: ${{ vars.NETWORKS }}
+        run: echo "SIGNING_HOST_NETWORK=${NETWORKS%%,*}" >> "$GITHUB_ENV"
+
+      - name: Run E2E
+        uses: ./.github/actions/run-e2e
+        env:
+          E2E_ORIGIN: ${{ vars.APP_URL }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-e2e-results-${{ matrix.environment }}
+          path: apps/host/tests/e2e/test-results/
