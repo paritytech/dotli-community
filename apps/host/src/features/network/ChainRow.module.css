@@ -103,13 +103,10 @@
   overflow: hidden;
   text-align: left;
 }
-/* A chain nobody uses, or with no endpoint, keeps its strip. Only its bars fade, and its last bars lose their verdict
-   colour. The empty slots keep their strength, so the rail stays visible. */
-.cell[data-state='unused'] .bar,
-.cell[data-unavailable] .bar {
-  opacity: calc(var(--slot-opacity) * 0.5);
-}
+/* A chain nobody uses keeps its last bars. They fade and lose their verdict colour, while the empty slots keep their
+   strength, so the rail stays visible. */
 .cell[data-state='unused'] .bar {
+  opacity: calc(var(--slot-opacity) * 0.5);
   background: var(--chrome-idle);
 }
 .bars {
