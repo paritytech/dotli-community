@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect } from 'storybook/test';
+import { expect, within } from 'storybook/test';
 import type { ChainBar } from './chain.js';
 import type { ChainView } from './chains.js';
 import type { ChainHealthFacts } from './chainHealth.js';
@@ -80,9 +80,19 @@ export const NotInUse: Story = {
   args: { chain: { ...RELAY, state: 'unused' } },
 };
 
-/** As a user, a chain the network has no endpoint for says so. */
+/** As a user, I press a chain the network has no endpoint for and its strip draws none of its old blocks. */
 export const NoEndpoint: Story = {
   args: { chain: { ...RELAY, reachable: false } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('When I press the row', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: /Relay/ }));
+    });
+    await step('Then its strip holds only empty slots', async () => {
+      const strip = canvas.getByRole('group', { name: 'Relay: last 48 blocks, newest on the right' });
+      await expect(within(strip).getAllByTestId('chains-bar-stub')).toHaveLength(48);
+      await expect(canvas.queryAllByTestId('chains-bar')).toHaveLength(0);
+    });
+  },
 };
 
 /** As a user waiting for a chain's first bar, its row counts down to it. */

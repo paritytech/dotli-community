@@ -87,7 +87,8 @@ function BarStrip(props: { chain: ChainSummary; pending: PendingBarView | null }
   // Updates that land no block keep the same bar objects, so the same bars mean no block landed.
   const visible = createMemo(
     () => {
-      const list = props.chain.bars;
+      // An unreachable chain draws none of its old bars, so they never read as current.
+      const list = props.chain.reachable ? props.chain.bars : [];
       return list.length > HISTORY_SLOTS ? list.slice(-HISTORY_SLOTS) : list;
     },
     { equals: sameBars },
@@ -213,22 +214,8 @@ export function ChainRow(props: { chain: ChainView; facts: ChainHealthFacts }): 
               )}
             </Show>
           </p>
-          <div
-            class={s['cell']}
-            data-testid="chains-cell"
-            data-state={props.chain.state}
-            data-unavailable={props.chain.reachable ? undefined : ''}
-          >
-            <Show
-              when={props.chain.reachable}
-              fallback={
-                <div class={s['bars']} data-testid="chains-bars">
-                  <Stubs count={HISTORY_SLOTS} />
-                </div>
-              }
-            >
-              <BarStrip chain={props.chain} pending={health().pending} />
-            </Show>
+          <div class={s['cell']} data-testid="chains-cell" data-state={props.chain.state}>
+            <BarStrip chain={props.chain} pending={health().pending} />
           </div>
         </div>
       </Show>

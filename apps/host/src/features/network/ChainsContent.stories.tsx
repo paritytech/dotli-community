@@ -47,8 +47,8 @@ function rowTexts(row: Element): (string | null)[] {
   );
 }
 
-/** What a chain's cell shows: no endpoint, a ghost bar before its first bar, or the blocks of its bars. */
-type ExpectedCell = 'unavailable' | 'waiting' | string[];
+/** What a chain's cell shows: a ghost bar before its first bar, or the blocks of its bars. */
+type ExpectedCell = 'waiting' | string[];
 
 type ExpectedBody = {
   /** One cell per known chain, in order. */
@@ -62,9 +62,6 @@ type ExpectedBody = {
 };
 
 function readCell(cell: HTMLElement): ExpectedCell {
-  if (cell.hasAttribute('data-unavailable')) {
-    return 'unavailable';
-  }
   if (cell.querySelector('[data-testid="chains-bar-pending"]') !== null) {
     return 'waiting';
   }
@@ -176,7 +173,7 @@ export const StatusStartingUnreachable: Story = statusStory(
     chain({ role: 'assethub', label: 'Asset Hub', reachable: false, state: 'unused' }),
   ],
   {
-    cells: ['unavailable', 'unavailable'],
+    cells: [[], []],
     statuses: [
       ['No endpoint', 'err'],
       ['No endpoint', 'err'],
@@ -204,7 +201,7 @@ export const StatusSyncingNoEndpoint: Story = statusStory(
     chain({ role: 'people', label: 'People', reachable: false, state: 'unused', peers: 3 }),
   ],
   {
-    cells: ['waiting', 'unavailable'],
+    cells: ['waiting', []],
     statuses: [
       ['Syncing', null],
       ['No endpoint', 'warn'],
