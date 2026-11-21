@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-  # Deploy runs the whole suite on a release tag before it deploys.
   workflow_call:
 
 permissions:

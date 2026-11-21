@@ -1,7 +1,7 @@
 name: Live E2E
 
 # The host-playground suite against a deployed site, which the localhost runs in Tests cannot cover: the site's server
-# config, TLS and the build made for that environment. Deploy and Deploy nginx call it once they finish.
+# config, TLS and the build made for that environment.
 
 run-name: Live E2E on ${{ inputs.environment || inputs.environments }}
 

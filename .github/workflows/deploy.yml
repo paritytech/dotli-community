@@ -92,7 +92,7 @@ jobs:
       - name: Unit tests
         run: npm test
 
-  # A release deploys only once the whole Tests suite, the host-playground E2E included, passes on its tag.
+  # A release deploys only once the Tests workflow passes on its tag.
   release-tests:
     name: Release tests
     if: github.ref_type == 'tag'
