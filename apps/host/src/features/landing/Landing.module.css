@@ -55,6 +55,14 @@
   overflow-y: auto;
 }
 
+/* While the keyboard is open, the page follows the visible area Safari pans to, and the content box shrinks to it. */
+.landing[data-keyboard-open] {
+  transform: translateY(var(--pan-offset));
+}
+.landing[data-keyboard-open] .content {
+  height: var(--visible-height);
+}
+
 /* The page has no topbar, so the header clears the status bar in an installed PWA. */
 .header {
   display: flex;

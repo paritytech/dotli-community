@@ -16,11 +16,11 @@ import { LandingSuggestIsland } from './LandingSuggestIsland.jsx';
 import s from './Landing.module.css';
 ---
 
-<div class={s['landing']} data-testid="landing">
+<div class={s['landing']} data-testid="landing" data-landing-page>
   <div class={s['backdrop']}>
     <LandingOrbitIsland client:idle />
   </div>
-  <div class={s['content']}>
+  <div class={s['content']} data-landing-scroller>
     <header class={s['header']}>
       <a class={s['home']} href="/">
         <Logo variant="full" beta height={28} />

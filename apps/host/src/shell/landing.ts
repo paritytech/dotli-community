@@ -13,11 +13,14 @@ import { startPage } from './startPage.js';
 import { startHost } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
 import { framePeerCounts } from '../features/network/index.js';
+import { startKeyboardPin } from '../features/landing/index.js';
 
 const report = createReporter({ flow: 'boot' });
 
 async function main(): Promise<void> {
   startPage();
+  // Before boot, which enables the name field, so the pin is live before the field can take focus.
+  startKeyboardPin();
   // No nested dot.li.
   if (window.self !== window.top) {
     return;
