@@ -1,58 +1,105 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.group {
-  padding: 0 var(--sp-1);
+.row + .row {
+  border-top: 1px solid var(--chrome-line);
 }
-/* Wide enough that each strip reads as its own name's, not the next chain's. */
-.group + .group {
-  margin-top: var(--sp-3);
-}
-.group-label {
+.head {
+  box-sizing: border-box;
   display: flex;
-  align-items: baseline;
-  gap: var(--sp-1_5);
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: var(--h-row);
   margin: 0;
+  padding: var(--sp-2) 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
   color: var(--chrome-text);
-  font-size: var(--fs-body);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
-.name {
+.head:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.text {
+  display: flex;
   flex: 1;
-  font-weight: var(--fw-semibold);
+  flex-direction: column;
+  gap: var(--sp-hair);
   min-width: 0;
+}
+.name,
+.status {
   overflow: hidden;
+  line-height: var(--lh-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.caption {
+.name {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+}
+.status {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+.status[data-tone='warn'],
+.peers[data-tone='warn'] {
+  color: var(--chrome-warn-text);
+}
+.status[data-tone='err'] {
+  color: var(--chrome-err-text);
+}
+/* A chain nobody uses or nothing can reach reads as set aside, but faded text falls below readable contrast. */
+.row[data-mark='unused'] .name,
+.row[data-mark='unavailable'] .name {
+  color: var(--chrome-text-muted);
+}
+.chevron {
   flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--chrome-text-muted);
+  transition: transform var(--dur) var(--ease-out);
+}
+.head[aria-expanded='true'] > .chevron {
+  transform: rotate(180deg);
+}
+/* The detail starts on the name's column, past the mark and its gap. */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1_5);
+  padding: 0 0 var(--sp-3) calc(28px + var(--sp-2));
+}
+.line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: 0;
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* Two captions on a row, such as a countdown and the peers, read as two facts. */
-.caption + .caption {
-  margin-left: var(--sp-1_5);
-}
-.caption[data-tone='warn'] {
-  color: var(--chrome-warn-text);
-}
-.caption[data-tone='err'] {
-  color: var(--chrome-err-text);
+.block {
+  color: var(--chrome-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
 }
 .cell {
   min-width: 0;
   overflow: hidden;
   text-align: left;
 }
-/* A chain nobody uses, or with no endpoint, keeps its row and strip, so the known chains never jump around. Only its
-   bars fade, and its last bars lose their verdict colour: faded text falls below readable contrast. The empty slots
-   keep their strength, so the rail stays visible. */
-.group-label[data-state='unused'] .name,
-.group-label[data-unavailable] .name {
-  color: var(--chrome-text-muted);
-}
+/* A chain nobody uses, or with no endpoint, keeps its strip. Only its bars fade, and its last bars lose their verdict
+   colour. The empty slots keep their strength, so the rail stays visible. */
 .cell[data-state='unused'] .bar,
 .cell[data-unavailable] .bar {
   opacity: calc(var(--slot-opacity) * 0.5);
@@ -73,7 +120,7 @@
   height: var(--sp-3);
   overflow: hidden;
 }
-/* Set for one frame after a block lands (slideStrip), so the row glides left instead of jumping a step. */
+/* Set for one frame after a block lands (slideStrip), so the strip glides left instead of jumping a step. */
 .bars[data-sliding] {
   transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -150,18 +197,24 @@
 }
 
 @media (max-width: 560px) {
-  /* The sheet's padding is the text column, so the chains start on it. */
-  .group {
-    padding: 0;
+  .head {
+    gap: var(--sp-3);
+    min-height: var(--h-row-lg);
+    padding: var(--sp-3) 0;
   }
-  .group + .group {
-    margin-top: var(--sp-4);
+  .chevron {
+    width: 16px;
+    height: 16px;
   }
-  .group-label {
+  .detail {
     gap: var(--sp-2);
+    padding: 0 0 var(--sp-4) calc(32px + var(--sp-3));
   }
-  .caption + .caption {
-    margin-left: var(--sp-2);
+  .line {
+    gap: var(--sp-3);
+  }
+  .block {
+    font-size: var(--fs-caption);
   }
   .bars {
     height: var(--sp-4);

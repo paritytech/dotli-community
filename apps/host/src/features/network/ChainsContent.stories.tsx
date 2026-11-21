@@ -13,8 +13,10 @@ import {
   chain,
   follows,
   given,
+  openChainRows,
   resetStoryNetwork,
   setBackend,
+  setHealth,
   setProductLoaded,
   storyNetwork,
   VERDICTS,
@@ -37,8 +39,8 @@ function shownBlocks(): string[] {
     bar => bar.dataset['block'] ?? '',
   );
 }
-function waitingText(): string | null | undefined {
-  return document.querySelector('[data-testid="chains-bars-waiting"]')?.textContent;
+function statusText(): string | null | undefined {
+  return document.querySelector('#chains-popover [data-testid="chains-row-status"]')?.textContent;
 }
 function rowTexts(row: Element): (string | null)[] {
   return [...row.querySelectorAll('[data-testid="chains-transfer-label"], [data-testid="chains-transfer-value"]')].map(
@@ -52,6 +54,8 @@ type ExpectedCell = 'unavailable' | 'waiting' | string[];
 type ExpectedBody = {
   /** One cell per known chain, in order. */
   cells: ExpectedCell[];
+  /** Each known chain's status line and its tone, in order, where the facts beside the chain decide it. */
+  statuses?: [string, string | null][];
   /** The status detail, where the count of live chains decides it. */
   detail?: string;
   speed?: [string, string];
@@ -75,6 +79,12 @@ async function expectBody(expected: ExpectedBody): Promise<void> {
   const root = content();
   const cells = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-cell"]')];
   await expect(cells.map(readCell)).toEqual(expected.cells);
+  if (expected.statuses !== undefined) {
+    const statuses = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-row-status"]')];
+    await expect(statuses.map(status => [status.textContent, status.dataset['tone'] ?? null])).toEqual(
+      expected.statuses,
+    );
+  }
   if (expected.detail !== undefined) {
     await expect(query(root, '[data-testid="chains-status-detail"]').textContent).toBe(expected.detail);
   }
@@ -127,7 +137,7 @@ export const OpenPhone: Story = {
 function statusStory(
   chains: ChainView[],
   expected: ExpectedBody,
-  network: { transfer?: TransferView; loaded?: boolean; verdict?: LiveVerdict } = {},
+  network: { transfer?: TransferView; loaded?: boolean; verdict?: LiveVerdict; offline?: boolean } = {},
 ): Story {
   return {
     tags: ['!autodocs'],
@@ -139,6 +149,15 @@ function statusStory(
       await ctx.step('When the network reports the state', () => {
         // Read just now, so a countdown shows its first value.
         given(chains, network.transfer, network.verdict);
+        if (network.offline === true) {
+          setHealth('err');
+        }
+      });
+      await ctx.step('When I open every chain', async () => {
+        await waitFor(() =>
+          expect(document.querySelectorAll('#chains-popover [data-testid="chains-row"]')).toHaveLength(chains.length),
+        );
+        await openChainRows();
       });
       await ctx.step('Then it shows the chains, transfer and tips', async () => {
         await expect(byId('chains-button')).toHaveAttribute('aria-expanded', 'true');
@@ -160,7 +179,15 @@ export const StatusStartingUnreachable: Story = statusStory(
     chain({ reachable: false, state: 'unused' }),
     chain({ role: 'assethub', label: 'Asset Hub', reachable: false, state: 'unused' }),
   ],
-  { cells: ['unavailable', 'unavailable'], detail: 'It offers no endpoint for these chains.', tips: false },
+  {
+    cells: ['unavailable', 'unavailable'],
+    statuses: [
+      ['No endpoint', 'err'],
+      ['No endpoint', 'err'],
+    ],
+    detail: 'It offers no endpoint for these chains.',
+    tips: false,
+  },
   { verdict: VERDICTS.unreachable },
 );
 
@@ -181,7 +208,14 @@ export const StatusSyncingNoEndpoint: Story = statusStory(
     chain({ phase: 'syncing', peers: 1 }),
     chain({ role: 'people', label: 'People', reachable: false, state: 'unused', peers: 3 }),
   ],
-  { cells: ['waiting', 'unavailable'], detail: 'Waiting for Relay chain. This takes a few seconds.' },
+  {
+    cells: ['waiting', 'unavailable'],
+    statuses: [
+      ['Syncing', null],
+      ['No endpoint', 'warn'],
+    ],
+    detail: 'Waiting for Relay chain. This takes a few seconds.',
+  },
 );
 
 /** As a dotli user opening it with chains ready, one counts down to its next block and the status names the one it waits for. */
@@ -206,7 +240,13 @@ export const StatusOverdue: Story = statusStory(
       sinceLast: 20_000,
     }),
   ],
-  { cells: ['waiting', ['18', '19', '20', '21']] },
+  {
+    cells: ['waiting', ['18', '19', '20', '21']],
+    statuses: [
+      ['Due any moment', null],
+      ['Behind · Live 20% · Block ~30s', 'warn'],
+    ],
+  },
   { verdict: waitingOn('Relay chain', 'Asset Hub') },
 );
 
@@ -227,6 +267,27 @@ export const StatusGood: Story = statusStory(
   { transfer: { bytesPerSecond: 800, fetched: 4096, total: 4096 }, loaded: true, verdict: VERDICTS.good },
 );
 
+/** As a dotli user opening it while the browser is offline, every chain says there is no internet. */
+export const StatusOffline: Story = statusStory(
+  [
+    chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
+    chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3), sinceLast: 200, peers: 3 }),
+  ],
+  {
+    cells: [
+      ['8', '9', '10'],
+      ['18', '19', '20'],
+    ],
+    statuses: [
+      ['No internet', null],
+      ['No internet', null],
+    ],
+    detail: 'No peers on any chain. Retrying.',
+    tips: false,
+  },
+  { loaded: true, offline: true },
+);
+
 /** As a user, a chain nothing uses keeps its last bars under a "Not in use" label and claims no peers. */
 export const NotInUse: Story = {
   tags: ['!autodocs'],
@@ -235,18 +296,18 @@ export const NotInUse: Story = {
   },
   play: async ctx => {
     await open(ctx);
+    await ctx.step('When I open the chain', openChainRows);
     await ctx.step('Then its last bars stay under Not in use, with no peers', async () => {
       const cell = query(document, '[data-testid="chains-cell"]');
       await expect(cell).toHaveAttribute('data-state', 'unused');
       await expect(shownBlocks()).toEqual(['11', '12']);
-      await expect(query(document, '[data-testid="chains-group-label"]')).toHaveAttribute('data-state', 'unused');
-      await expect(query(document, '[data-testid="chains-group-unused"]')).toHaveTextContent('Not in use');
-      await expect(document.querySelector('[data-testid="chains-group-peers"]')).toBeNull();
+      await expect(query(document, '[data-testid="chains-row-status"]')).toHaveTextContent('Not in use');
+      await expect(document.querySelector('[data-testid="chains-row-peers"]')).toBeNull();
     });
   },
 };
 
-/** As a user, a chain never used shows empty slots with no countdown. */
+/** As a user, a chain never used shows empty slots with no ghost bar. */
 export const NeverUsed: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -254,11 +315,11 @@ export const NeverUsed: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Then every slot is empty and nothing counts down', async () => {
+    await ctx.step('When I open the chain', openChainRows);
+    await ctx.step('Then every slot is empty and no ghost bar waits', async () => {
       const cell = query(document, '[data-testid="chains-cell"]');
       await expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS);
       await expect(cell.querySelector('[data-testid="chains-bar-pending"]')).toBeNull();
-      await expect(cell.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull();
     });
   },
 };
@@ -312,17 +373,17 @@ export const CountdownTicksWhileOpen: Story = {
     await open(ctx);
     await ctx.step('Given a chain one second past its last block', async () => {
       given([chain({ latest: 10, sinceLast: 1000 })]);
-      await waitFor(() => expect(waitingText()).toBe('Next block in about 5s'));
+      await waitFor(() => expect(statusText()).toBe('Next block in about 5s'));
     });
     await ctx.step('Then a second later it counts on', async () => {
-      await waitFor(() => expect(waitingText()).toBe('Next block in about 4s'));
+      await waitFor(() => expect(statusText()).toBe('Next block in about 4s'));
     });
     await ctx.step('When I close the popover', async () => {
       await ctx.userEvent.keyboard('{Escape}');
     });
     await ctx.step('Then its content and countdown are gone', async () => {
       await waitFor(() => expect(isOpen()).toBe(false));
-      await waitFor(() => expect(document.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull());
+      await waitFor(() => expect(document.querySelector('[data-testid="chains-row"]')).toBeNull());
     });
   },
 };
@@ -388,7 +449,7 @@ export const RenderErrorCloses: Story = {
         expect.objectContaining({ step: 'root_render', tags: { root: 'popover:chains-popover' } }),
       );
       await waitFor(() => expect(isOpen()).toBe(false));
-      await waitFor(() => expect(document.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull());
+      await waitFor(() => expect(document.querySelector('[data-testid="chains-row"]')).toBeNull());
     });
     await ctx.step('When the state renders again and I open it', async () => {
       given([chain({ latest: 11, sinceLast: 0 })]);
@@ -396,9 +457,7 @@ export const RenderErrorCloses: Story = {
     });
     await ctx.step('Then it opens with the chain', async () => {
       await waitFor(() => expect(isOpen()).toBe(true));
-      await waitFor(() =>
-        expect(query(document, '[data-testid="chains-group-label"]')).toHaveTextContent('Relay chain'),
-      );
+      await waitFor(() => expect(query(document, '[data-testid="chains-row-name"]')).toHaveTextContent('Relay chain'));
     });
   },
 };
@@ -417,6 +476,8 @@ export const NoLayoutReadWithoutBlock: Story = {
     });
     await ctx.step('Given ten bars shown', async () => {
       given([chain({ latest: 10, bars: strip, sinceLast: 0 })]);
+      await waitFor(() => expect(document.querySelector('[data-testid="chains-row"]')).not.toBeNull());
+      await openChainRows();
       await waitFor(() => expect(shownBlocks()).toHaveLength(10));
       observer.observe(query(document, '[data-testid="chains-bars"]'), {
         subtree: true,
@@ -452,6 +513,7 @@ export const FortyEightSlots: Story = {
   },
   play: async ctx => {
     await open(ctx);
+    await ctx.step('When I open the chain', openChainRows);
     await ctx.step('Then the newest 48 of the 60 show', async () => {
       await expect(shownBlocks()).toEqual(Array.from({ length: 48 }, (_, i) => String(13 + i)));
     });

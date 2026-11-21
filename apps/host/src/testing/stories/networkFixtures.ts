@@ -4,6 +4,7 @@
 // The network a story gives the network button and panel, which a play moves.
 
 import { createSignal, onCleanup } from 'solid-js';
+import { expect, userEvent, waitFor } from 'storybook/test';
 import type { Backend } from '@dotli/config';
 import type { BlockHealth } from '../../features/network/networkMonitorState.js';
 import type { ChainBar } from '../../features/network/chain.js';
@@ -86,6 +87,16 @@ export function given(
 ): void {
   setNetwork({ chains, transfer, readAt: Date.now(), verdict });
   setHealthSignal(verdict.tone);
+}
+
+const CLOSED_ROW = '#chains-popover [data-testid="chains-row-head"][aria-expanded="false"]';
+
+/** Opens every closed chain row in the popover, so each shows its block strip. */
+export async function openChainRows(): Promise<void> {
+  for (const head of document.querySelectorAll<HTMLElement>(CLOSED_ROW)) {
+    await userEvent.click(head);
+  }
+  await waitFor(() => expect(document.querySelector(CLOSED_ROW)).toBeNull());
 }
 
 export function setHealth(next: NetworkHealth): void {

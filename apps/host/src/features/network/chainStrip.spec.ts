@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  describeBehind,
   describeBlockDelay,
   describePeers,
   HISTORY_SLOTS,
@@ -33,24 +32,6 @@ describe('describeBlockDelay', () => {
 
     // Then
     expect(delay).toBe(said);
-  });
-});
-
-describe('describeBehind', () => {
-  it.each([
-    { gaps: [6000, 12_000], said: 'Behind, last block 6.0s late' },
-    { gaps: [12_000, 36_000], said: 'Behind, last block 30s late' },
-    { gaps: [12_000, 6000], said: 'Behind' },
-    { gaps: [], said: 'Behind' },
-  ])('As a user of a chain that lags, after blocks $gaps of a 6s block time it reads "$said"', ({ gaps, said }) => {
-    // When
-    const caption = describeBehind(
-      gaps.map(gapMs => ({ gapMs })),
-      6000,
-    );
-
-    // Then
-    expect(caption).toBe(said);
   });
 });
 

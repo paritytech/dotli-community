@@ -111,6 +111,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   fallback, and the question is whether to fill the gap or keep the old way.
 - [listbox-option-needs-a-remove-action](listbox-option-needs-a-remove-action.md): a combobox's popup is a shared
   listbox primitive, and each row needs a remove action though an option may not hold a control.
+- [list-row-opens-a-detail-beneath-it](list-row-opens-a-detail-beneath-it.md): a list row with a rich header opens a
+  detail under it on press, and the shared disclosure primitive's header takes only a string.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
 - [identity-row-with-a-name-and-an-address](identity-row-with-a-name-and-an-address.md): a row shows an entity that

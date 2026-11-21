@@ -8,6 +8,7 @@ import { openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   chain,
   given,
+  openChainRows,
   resetStoryNetwork,
   setProductLoaded,
   storyNetwork,
@@ -84,6 +85,7 @@ export const LandingMarkDrops: Story = {
   beforeEach: holdRelay,
   play: async ctx => {
     await open(ctx);
+    await ctx.step('When I open the chain', openChainRows);
     await ctx.step('As a user watching a chain, the strip glides left as a new block lands', async () => {
       // Given
       anchor(100);

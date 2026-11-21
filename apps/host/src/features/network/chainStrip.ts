@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainBar, ChainSummary } from './chain.js';
+import type { ChainSummary } from './chain.js';
 
 /** Slots in a chain's history strip, filled from the right as samples arrive. */
 export const HISTORY_SLOTS = 48;
@@ -18,16 +18,6 @@ function formatSeconds(ms: number): string {
 export function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
   const late = gapMs - blockTimeMs;
   return late <= 0 ? `${formatSeconds(gapMs)}, on time` : `${formatSeconds(gapMs)}, ${formatSeconds(late)} late`;
-}
-
-/**
- * The caption of a chain the verdict names as behind. It says how late the newest block came, so the strip's colours
- * have a meaning in words, and only "Behind" when that block was on time or none landed.
- */
-export function describeBehind(bars: readonly Pick<ChainBar, 'gapMs'>[], blockTimeMs: number): string {
-  const newest = bars.at(-1);
-  const late = newest === undefined ? 0 : newest.gapMs - blockTimeMs;
-  return late <= 0 ? 'Behind' : `Behind, last block ${formatSeconds(late)} late`;
 }
 
 /**

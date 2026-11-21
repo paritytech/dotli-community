@@ -1,12 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, For, Match, Show, Switch, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, createUniqueId, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { prefersReducedMotion, Stack } from '@dotli/ui';
+import { prefersReducedMotion } from '@dotli/ui';
+import { ChevronDownIcon } from '@dotli/ui/icons';
 import type { ChainSummary } from './chain.js';
+import type { ChainView } from './chains.js';
+import { describeChainHealth, type ChainHealthFacts } from './chainHealth.js';
+import { chainGlyph } from './chainGlyph.js';
+import { ChainHealthMark } from './ChainHealthMark.js';
 import {
-  describeBehind,
   describeBlockDelay,
   describePeers,
   HISTORY_SLOTS,
@@ -16,7 +20,7 @@ import {
   slotOpacity,
   type PendingBarView,
 } from './chainStrip.js';
-import s from './ChainGroup.module.css';
+import s from './ChainRow.module.css';
 
 const STRIP_LABEL = `Last ${String(HISTORY_SLOTS)} blocks, newest on the right`;
 
@@ -145,99 +149,100 @@ function BarStrip(props: { chain: ChainSummary; pending: PendingBarView | null }
 }
 
 /**
- * One chain: its name with its state in words and its peers, over its recent blocks. Before a first block it shows a
- * ghost bar and an estimate, `sinceLast` ms after the chain's last block (null before any). `behind` marks a chain the
- * network verdict names as lagging. `unreachable` marks a network the verdict finds out of reach, so a chain with no
- * endpoint reads as the error the status names.
+ * One chain as a row: its glyph in its health mark, its name and its status line, in a button that opens the chain's
+ * recent blocks beneath it. `facts` are what the popover knows beside the chain, such as the time since its read.
  */
-export function ChainGroup(props: {
-  chain: ChainSummary;
-  sinceLast: number | null;
-  behind?: boolean;
-  unreachable?: boolean;
-}): JSX.Element {
+export function ChainRow(props: { chain: ChainView; facts: ChainHealthFacts }): JSX.Element {
+  const [open, setOpen] = createSignal(false);
+  const detailId = createUniqueId();
+  const health = createMemo(() => describeChainHealth(props.chain, props.facts));
   // No caption rather than "0 peers" until a sample lands: zero is a different claim.
   const peers = createMemo(() =>
     props.chain.reachable && props.chain.state !== 'unused' && props.chain.peers !== null
       ? describePeers(props.chain.label, props.chain.peers)
       : null,
   );
-  // Nothing is connecting a chain that is unused or has no endpoint, so it gets no ghost bar or countdown. Computed
-  // once per tick, as both the caption and the bar read it.
-  const pending = createMemo(() =>
-    props.chain.reachable && props.chain.state !== 'unused' && props.chain.bars.length === 0
-      ? pendingBar(props.chain, props.sinceLast)
-      : null,
-  );
+  // Nothing is connecting a chain that is unused or has no endpoint, so it gets no ghost bar.
+  const pending = createMemo(() => {
+    const { chain } = props;
+    if (!chain.reachable || chain.state === 'unused' || chain.bars.length > 0) {
+      return null;
+    }
+    return pendingBar(chain, chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, props.facts.sinceRead));
+  });
+  const newest = (): string | null => {
+    const bar = props.chain.bars.at(-1);
+    return bar === undefined ? null : `#${bar.number.toLocaleString('en-US')}`;
+  };
   return (
-    <Stack class={s['group']} testId="chains-group">
-      <p
-        class={s['groupLabel']}
-        data-testid="chains-group-label"
-        data-state={props.chain.state}
-        data-unavailable={props.chain.reachable ? undefined : ''}
+    <div class={s['row']} data-testid="chains-row" data-mark={health().mark.kind}>
+      <button
+        type="button"
+        class={s['head']}
+        data-testid="chains-row-head"
+        aria-expanded={open() ? 'true' : 'false'}
+        aria-controls={detailId}
+        onClick={() => setOpen(!open())}
       >
-        <span class={s['name']} data-testid="chains-group-name">
-          {props.chain.label}
+        <ChainHealthMark mark={health().mark} glyph={chainGlyph(props.chain.role)} />
+        <span class={s['text']}>
+          <span class={s['name']} data-testid="chains-row-name">
+            {props.chain.label}
+          </span>
+          <span class={s['status']} data-testid="chains-row-status" data-tone={health().status.tone ?? undefined}>
+            {health().status.text}
+          </span>
         </span>
-        <Switch>
-          <Match when={!props.chain.reachable}>
-            <span
-              class={s['caption']}
-              data-tone={props.unreachable === true ? 'err' : 'warn'}
-              data-testid="chains-group-no-endpoint"
+        <ChevronDownIcon class={s['chevron']} />
+      </button>
+      <Show when={open()}>
+        <div id={detailId} class={s['detail']} data-testid="chains-row-detail">
+          <p class={s['line']}>
+            <span>
+              {`Last ${String(HISTORY_SLOTS)} blocks`}
+              <Show when={peers()}>
+                {count => (
+                  <>
+                    {' · '}
+                    <span
+                      class={s['peers']}
+                      data-tone={count().tone === 'warn' ? 'warn' : undefined}
+                      data-testid="chains-row-peers"
+                      title={count().label}
+                    >
+                      {count().text}
+                    </span>
+                  </>
+                )}
+              </Show>
+            </span>
+            <Show when={newest()}>
+              {block => (
+                <span class={s['block']} data-testid="chains-row-block">
+                  {block()}
+                </span>
+              )}
+            </Show>
+          </p>
+          <div
+            class={s['cell']}
+            data-testid="chains-cell"
+            data-state={props.chain.state}
+            data-unavailable={props.chain.reachable ? undefined : ''}
+          >
+            <Show
+              when={props.chain.reachable}
+              fallback={
+                <div class={s['bars']} data-testid="chains-bars">
+                  <Stubs count={HISTORY_SLOTS} />
+                </div>
+              }
             >
-              No endpoint
-            </span>
-          </Match>
-          <Match when={props.chain.state === 'unused'}>
-            <span class={s['caption']} data-testid="chains-group-unused">
-              Not in use
-            </span>
-          </Match>
-          <Match when={props.behind === true}>
-            <span class={s['caption']} data-tone="warn" data-testid="chains-group-behind">
-              {describeBehind(props.chain.bars, props.chain.blockTimeMs)}
-            </span>
-          </Match>
-          <Match when={pending()}>
-            {view => (
-              <span class={s['caption']} data-testid="chains-bars-waiting">
-                {view().text}
-              </span>
-            )}
-          </Match>
-        </Switch>
-        <Show when={peers()}>
-          {count => (
-            <span
-              class={s['caption']}
-              data-tone={count().tone === 'warn' ? 'warn' : undefined}
-              data-testid="chains-group-peers"
-              title={count().label}
-            >
-              {count().text}
-            </span>
-          )}
-        </Show>
-      </p>
-      <div
-        class={s['cell']}
-        data-testid="chains-cell"
-        data-state={props.chain.state}
-        data-unavailable={props.chain.reachable ? undefined : ''}
-      >
-        <Show
-          when={props.chain.reachable}
-          fallback={
-            <div class={s['bars']} data-testid="chains-bars">
-              <Stubs count={HISTORY_SLOTS} />
-            </div>
-          }
-        >
-          <BarStrip chain={props.chain} pending={pending()} />
-        </Show>
-      </div>
-    </Stack>
+              <BarStrip chain={props.chain} pending={pending()} />
+            </Show>
+          </div>
+        </div>
+      </Show>
+    </div>
   );
 }

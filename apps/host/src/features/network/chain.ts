@@ -14,7 +14,7 @@ export type ChainBar = {
 /** How a chain counts toward the network's verdict. */
 export type ChainUse = 'unused' | 'pending' | 'live';
 
-/** One chain as its group shows it: its name, use, peers and recent blocks. */
+/** One chain as its row shows it: its name, use, peers and recent blocks. */
 export type ChainSummary = {
   readonly label: string;
   readonly state: ChainUse;
