@@ -10,8 +10,8 @@
 /** Whether a drag may go on. */
 type DragVerdict = 'cancel' | 'allow';
 
-/** Where a drag started: in the scroll box, elsewhere in the page box, or outside the page box. */
-type DragOrigin = 'scroller' | 'page' | 'outside';
+/** Where a touch started: in the scroll box, elsewhere in the page box, or outside the page box. */
+type TouchOrigin = 'scroller' | 'page' | 'outside';
 
 /** Whether the keyboard is open, and whether the page is pinned above it. */
 type KeyboardState = 'closed' | 'open' | 'pinned';
@@ -45,8 +45,15 @@ type Params = {
 type GetDragVerdictParams = {
   /** How far the touch has moved since it started, down positive. */
   distance: number;
-  origin: DragOrigin;
+  origin: TouchOrigin;
   scroller: Pick<ScrollBox, 'scrollTop' | 'clientHeight' | 'scrollHeight'>;
+};
+
+type IsBlurringTapParams = {
+  origin: TouchOrigin;
+  verdict: DragVerdict | null;
+  /** Where the touch ended, which is where it began. */
+  target: TapTarget;
 };
 
 const KEYBOARD_ATTRIBUTE = 'data-keyboard-open';
@@ -87,6 +94,7 @@ export function pinPageAboveKeyboard({
   const { signal } = controller;
   let keyboard: KeyboardState = 'closed';
   let startY = 0;
+  let origin: TouchOrigin = 'outside';
   let verdict: DragVerdict | null = null;
 
   viewport.addEventListener('resize', follow, { signal });
@@ -107,6 +115,7 @@ export function pinPageAboveKeyboard({
     'touchstart',
     event => {
       startY = event.touches[0]?.clientY ?? 0;
+      origin = getTouchOrigin(event.target);
       verdict = null;
     },
     { passive: true, signal },
@@ -121,7 +130,7 @@ export function pinPageAboveKeyboard({
       }
       verdict ??= getDragVerdict({
         distance: (event.touches[0]?.clientY ?? startY) - startY,
-        origin: getDragOrigin(event.target),
+        origin,
         scroller,
       });
       if (verdict === 'cancel') {
@@ -130,16 +139,14 @@ export function pinPageAboveKeyboard({
     },
     { passive: false, signal },
   );
-  // A tap in the page box outside any control closes the keyboard, whatever iOS deems clickable. A touch event's target
-  // is where the touch began, so a tap that starts outside the page box leaves the field focused.
+  // A tap in the page box outside any control closes the keyboard, whatever iOS deems clickable.
   document.addEventListener(
     'touchend',
     event => {
       if (
         keyboard === 'pinned' &&
         isElement(event.target) &&
-        page.contains(event.target) &&
-        isBlurringTap(verdict, event.target)
+        isBlurringTap({ origin, verdict, target: event.target })
       ) {
         document.activeElement?.blur?.();
       }
@@ -190,7 +197,7 @@ export function pinPageAboveKeyboard({
     page.style.removeProperty(PAN_OFFSET);
   }
 
-  function getDragOrigin(target: EventTarget | null): DragOrigin {
+  function getTouchOrigin(target: EventTarget | null): TouchOrigin {
     if (!isElement(target) || !page.contains(target)) {
       return 'outside';
     }
@@ -224,9 +231,11 @@ export function getDragVerdict({ distance, origin, scroller }: GetDragVerdictPar
   return 'allow';
 }
 
-/** Whether a touch in the page box that started on `target` was a tap that closes the keyboard: no drag, no control. */
-export function isBlurringTap(verdict: DragVerdict | null, target: TapTarget): boolean {
-  return verdict === null && target.closest(CONTROLS) === null;
+/**
+ * Whether a touch was a tap that closes the keyboard: it started in the page box, was no drag and ended on no control.
+ */
+export function isBlurringTap({ origin, verdict, target }: IsBlurringTapParams): boolean {
+  return origin !== 'outside' && verdict === null && target.closest(CONTROLS) === null;
 }
 
 function isElement(target: EventTarget | null): target is Element {

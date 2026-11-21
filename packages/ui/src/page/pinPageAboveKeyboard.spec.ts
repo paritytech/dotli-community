@@ -272,15 +272,17 @@ describe('isBlurringTap', () => {
   const control = { closest: () => control };
 
   it.each([
-    { name: 'a tap on plain content', verdict: null, target: plain, blurs: true },
-    { name: 'a tap on a control', verdict: null, target: control, blurs: false },
-    { name: 'the end of a judged drag', verdict: 'allow' as const, target: plain, blurs: false },
-  ])('As the helper, I judge whether $name blurs: $blurs', ({ verdict, target, blurs }) => {
+    { name: 'a tap on plain content', origin: 'page', verdict: null, target: plain, blurs: true },
+    { name: 'a tap on plain content in the scroll box', origin: 'scroller', verdict: null, target: plain, blurs: true },
+    { name: 'a tap on a control', origin: 'page', verdict: null, target: control, blurs: false },
+    { name: 'the end of a judged drag', origin: 'page', verdict: 'allow' as const, target: plain, blurs: false },
+    { name: 'a tap that began outside the page box', origin: 'outside', verdict: null, target: plain, blurs: false },
+  ] as const)('As the helper, I judge whether $name blurs: $blurs', ({ origin, verdict, target, blurs }) => {
     // Given: the touch in the row.
-    const touchEnd = { verdict, target };
+    const touchEnd = { origin, verdict, target };
 
     // When
-    const judged = isBlurringTap(touchEnd.verdict, touchEnd.target);
+    const judged = isBlurringTap(touchEnd);
 
     // Then
     expect(judged).toBe(blurs);
