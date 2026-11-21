@@ -20,31 +20,19 @@ export function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
   return late <= 0 ? `${formatSeconds(gapMs)}, on time` : `${formatSeconds(gapMs)}, ${formatSeconds(late)} late`;
 }
 
-/**
- * The ghost bar before a chain's first bar: what it waits on and what it says. Once a block has landed it also has a
- * height, in percent.
- */
-export type PendingBarView =
-  { phase: 'searching'; text: string } | { phase: 'counting' | 'due'; heightPercent: number; text: string };
+/** The ghost bar before a chain's first bar: what it waits on, and once a block has landed its height, in percent. */
+export type PendingBarView = { phase: 'searching' } | { phase: 'counting' | 'due'; heightPercent: number };
 
 /**
- * The ghost bar and estimate `sinceLast` ms after the chain's last block, null before any.
- * The copy never shows zero or a negative: past the estimate it swaps to words. The bar starts at a height that still
+ * The ghost bar `sinceLast` ms after the chain's last block, null before any. The bar starts at a height that still
  * reads as a bar.
  */
-export function pendingBar(
-  chain: Pick<ChainSummary, 'blockTimeMs' | 'phase'>,
-  sinceLast: number | null,
-): PendingBarView {
+export function pendingBar(chain: Pick<ChainSummary, 'blockTimeMs'>, sinceLast: number | null): PendingBarView {
   if (sinceLast === null) {
-    const phase = chain.phase ?? 'connecting';
-    return { phase: 'searching', text: `${phase.charAt(0).toUpperCase()}${phase.slice(1)}` };
+    return { phase: 'searching' };
   }
   const heightPercent = Math.round(45 + Math.min(sinceLast / chain.blockTimeMs, 1) * 55);
-  const leftMs = chain.blockTimeMs - sinceLast;
-  return leftMs > 0
-    ? { phase: 'counting', heightPercent, text: `Next block in about ${String(Math.ceil(leftMs / 1000))}s` }
-    : { phase: 'due', heightPercent, text: 'Due any moment' };
+  return { phase: sinceLast < chain.blockTimeMs ? 'counting' : 'due', heightPercent };
 }
 
 /**

@@ -124,7 +124,7 @@ describe('describeChainHealth', () => {
     expect(health).toEqual({
       mark: { kind: 'healthy' },
       status: { text: 'Connected', tone: null },
-      pending: { phase: 'counting', heightPercent: 68, text: 'Next block in about 4s' },
+      pending: { phase: 'counting', heightPercent: 68 },
     });
   });
 
