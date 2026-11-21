@@ -157,6 +157,20 @@ describe('pinPageAboveKeyboard', () => {
     expect(cancelled).toBe(false);
   });
 
+  it('As a visitor with the keyboard open, I tap a heading in a list portaled out of the page box and keep the field focused', () => {
+    // Given: the keyboard is open for the field.
+    const fake = createFakePage();
+    onTestFinished(fake.start());
+    fake.focusField();
+    fake.openKeyboard(120);
+
+    // When: a tap lands on a heading in the field's suggestion list, which renders outside the page box.
+    fake.tap(fake.list);
+
+    // Then
+    expect(fake.log).not.toContain('field blurred');
+  });
+
   it("As a visitor who typed in an overlay's field, I find the window back at its top once the keyboard closes, and the scroll box where I left it", () => {
     // Given: the keyboard is open for a field in an overlay.
     const fake = createFakePage();

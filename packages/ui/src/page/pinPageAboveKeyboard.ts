@@ -3,7 +3,9 @@
 
 // Keeps a page box in place while mobile Safari's on-screen keyboard is open for a field inside it. Safari pans the
 // page to show the field and lets a drag pan it further, so the page box reports what is visible for its CSS to shift
-// and cut the page by, and a drag in the page box that its scroll box cannot take is cancelled.
+// and cut the page by, and a drag in the page box that its scroll box cannot take is cancelled. A tap in the page box
+// outside any control closes the keyboard. A touch that starts outside the page box, such as in a layer portaled out of
+// it, is left alone.
 
 /** Whether a drag may go on. */
 type DragVerdict = 'cancel' | 'allow';
@@ -128,11 +130,17 @@ export function pinPageAboveKeyboard({
     },
     { passive: false, signal },
   );
-  // A tap outside any control closes the keyboard, whatever iOS deems clickable.
+  // A tap in the page box outside any control closes the keyboard, whatever iOS deems clickable. A touch event's target
+  // is where the touch began, so a tap that starts outside the page box leaves the field focused.
   document.addEventListener(
     'touchend',
     event => {
-      if (keyboard === 'pinned' && isElement(event.target) && isBlurringTap(verdict, event.target)) {
+      if (
+        keyboard === 'pinned' &&
+        isElement(event.target) &&
+        page.contains(event.target) &&
+        isBlurringTap(verdict, event.target)
+      ) {
         document.activeElement?.blur?.();
       }
     },
@@ -216,7 +224,7 @@ export function getDragVerdict({ distance, origin, scroller }: GetDragVerdictPar
   return 'allow';
 }
 
-/** Whether a touch that ended on `target` was a tap that should close the keyboard: no drag, and no control under it. */
+/** Whether a touch in the page box that started on `target` was a tap that closes the keyboard: no drag, no control. */
 export function isBlurringTap(verdict: DragVerdict | null, target: TapTarget): boolean {
   return verdict === null && target.closest(CONTROLS) === null;
 }
