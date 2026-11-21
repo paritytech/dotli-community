@@ -77,11 +77,16 @@ function getAuthorSection(author: AuthorStatus): JSX.Element {
 function AuthorRow(props: { author: ProductAuthor }): JSX.Element {
   return (
     <div class={s['row']}>
-      <AccountAvatar session={getAvatarSession(props.author.name)} size="sm" decorative />
+      <AccountAvatar
+        session={getAvatarSession(props.author.name)}
+        size="sm"
+        decorative
+        testId="product-card-author-avatar"
+      />
       <div class={s['who']}>
         <Show when={props.author.name}>
           {name => (
-            <span class={s['username']} data-testid="product-card-author-name">
+            <span class={s['authorName']} data-testid="product-card-author-name">
               {name().text}
             </span>
           )}

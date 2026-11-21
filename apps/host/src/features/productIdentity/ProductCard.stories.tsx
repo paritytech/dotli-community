@@ -59,9 +59,9 @@ export const DotnsName: Story = {
     },
   },
   play: async ({ canvas, step }) => {
-    await step('Then the author shows the dotNS name over the address', async () => {
+    await step('Then the author shows the dotNS name beside the user glyph, not initials', async () => {
       await expect(canvas.getByTestId('product-card-author-name')).toHaveTextContent('swap-labs.dot');
-      await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF…utQY');
+      await expect(canvas.getByTestId('product-card-author-avatar')).toHaveAttribute('data-anon');
     });
   },
 };
