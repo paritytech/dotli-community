@@ -265,12 +265,15 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     lane.status = status;
   }
 
-  /** `connected` when every open lane is, `disconnected` when any is or none is open, `connecting` otherwise. */
+  /**
+   * `connected` while any open lane is, `connecting` while none is and one opens, `disconnected` otherwise. A chain with
+   * one lane connected carries data, whatever a lane opened beside it reports.
+   */
   function getStatus(): ConnectionStatus {
-    if (lanes.length === 0 || lanes.some(lane => lane.status === 'disconnected')) {
-      return 'disconnected';
+    if (lanes.some(lane => lane.status === 'connected')) {
+      return 'connected';
     }
-    return lanes.every(lane => lane.status === 'connected') ? 'connected' : 'connecting';
+    return lanes.some(lane => lane.status === 'connecting') ? 'connecting' : 'disconnected';
   }
 
   function reportStatus(): void {

@@ -60,7 +60,8 @@ flowchart LR
   change once the call that made it has returned, so one that asks the pool for a chain finds the pool settled.
 - **Healing:** a local lease takes the rebuilt chain after a halt. A remote session ends and hears why.
 - **Lanes:** each lane is one connection. Follows spread across lanes to stay under the transport's follow limit. A halt
-  of any lane halts the chain.
+  of any lane halts the chain. A chain reads connected while any lane is, and connecting only while none is and one
+  opens.
 - **Pause:** closes every connection and keeps every lease. Sessions above stay connected.
 - **Broker:** shares one connection between JSON-RPC sessions. Each session owns its own upstream follow. A halt is
   final.
