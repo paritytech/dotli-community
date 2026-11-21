@@ -1,0 +1,30 @@
+name: Live E2E daily
+
+# Each site's environment admits only the ref it deploys from, so each check is dispatched from that ref.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch Live E2E
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch each site from the ref it deploys from
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          release=$(gh release view --json tagName --jq .tagName)
+          status=0
+          for target in "paseo.li $release" "testnet.li $release" "paseoli.dev main"; do
+            read -r environment ref <<< "$target"
+            gh workflow run live.yml --ref "$ref" -f environment="$environment" || status=1
+          done
+          exit "$status"

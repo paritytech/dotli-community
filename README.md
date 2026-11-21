@@ -168,7 +168,8 @@ With `E2E_ORIGIN` set, `npm run test:e2e` from `apps/host` needs no build and st
 - **Deploy:** pushing a `vX.Y.Z` tag runs the Tests suite on it, then deploys to `paseo.li` and `testnet.li`. The GitHub
   Release is published once both deploys succeed.
 - **Live check:** after every deploy except to `paseo.fyi`, Live E2E runs the host-playground suite against the deployed
-  site. Run it by hand from the Actions tab, from the ref the site deploys from.
+  site. Live E2E daily runs it at 06:00 UTC on `paseo.li` and `testnet.li` from the latest release and on `paseoli.dev`
+  from `main`. Run it by hand from the Actions tab, from the ref the site deploys from.
 - **Verify:** check out the tag from the [Releases page](https://github.com/paritytech/dotli-community/releases), then
   run `npm ci && npm run build:prod`.
 
