@@ -530,15 +530,18 @@ test.describe('dot.li > host-playground.dot', () => {
       expect(status).toBe('success');
     });
 
-    test('As a product on dot.li, I sign and submit a batch of contract writes once the user allows and signs it', async ({
+    test('As a product on dot.li, I pay for a batch of contract writes from my smart contract allowance once the user allows and signs it', async ({
       pairedPage,
       productFrame,
     }) => {
-      // Given
-      test.setTimeout(180_000);
+      // Given the product holds a smart contract allowance
+      test.setTimeout(240_000);
+      const granted = await runWebSignedTest(pairedPage, productFrame, 'allowances-smart-contract', [ALLOCATION], {
+        timeoutMs: 90_000,
+      });
 
       // When
-      const status = await runWebSignedTest(
+      const written = await runWebSignedTest(
         pairedPage,
         productFrame,
         'sign-batch-payload',
@@ -547,22 +550,23 @@ test.describe('dot.li > host-playground.dot', () => {
       );
 
       // Then
-      expect(status).toBe('success');
+      expect([granted, written]).toEqual(['success', 'success']);
     });
   });
 
-  // The smart contract allowance the Allowances tests granted pays the fee.
-
   test.describe('Funded operations', () => {
-    test('As a product on dot.li, I store a value in a contract once the user allows and signs it', async ({
+    test('As a product on dot.li, I pay for storing a value in a contract from my smart contract allowance once the user allows and signs it', async ({
       pairedPage,
       productFrame,
     }) => {
-      // Given
-      test.setTimeout(180_000);
+      // Given the product holds a smart contract allowance
+      test.setTimeout(240_000);
+      const granted = await runWebSignedTest(pairedPage, productFrame, 'allowances-smart-contract', [ALLOCATION], {
+        timeoutMs: 90_000,
+      });
 
       // When
-      const status = await runWebSignedTest(
+      const stored = await runWebSignedTest(
         pairedPage,
         productFrame,
         'contract-store-value',
@@ -571,7 +575,7 @@ test.describe('dot.li > host-playground.dot', () => {
       );
 
       // Then
-      expect(status).toBe('success');
+      expect([granted, stored]).toEqual(['success', 'success']);
     });
 
     test.fixme(
