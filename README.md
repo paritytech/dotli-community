@@ -149,16 +149,20 @@ It needs the product at `../host-playground` and the `truapi-host` CLI from
 curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
 ```
 
-| Env var                | Purpose                                                   |
-| ---------------------- | --------------------------------------------------------- |
-| `E2E_PRODUCT_REPO`     | Product checkout path                                     |
-| `E2E_PRODUCT_URL`      | Product server URL (default `http://localhost:5199`)      |
-| `E2E_CHAIN_BACKEND`    | Chain backend (default `rpc-gateway`)                     |
-| `SIGNING_HOST_BIN`     | A local `truapi-host` binary instead of the installed one |
-| `SIGNING_HOST_NETWORK` | A non-default network                                     |
+| Env var                | Purpose                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `E2E_ORIGIN`           | A deployed dot.li to test instead of a local build, such as `https://paseo.li` |
+| `E2E_PRODUCT_REPO`     | Product checkout path                                                          |
+| `E2E_PRODUCT_URL`      | Product server URL (default `http://localhost:5199`)                           |
+| `E2E_CHAIN_BACKEND`    | Chain backend (default `rpc-gateway`)                                          |
+| `SIGNING_HOST_BIN`     | A local `truapi-host` binary instead of the installed one                      |
+| `SIGNING_HOST_NETWORK` | A non-default network                                                          |
 
 The first run registers a test account on the network and can take a few minutes. Later runs reuse it from
 `apps/host/tests/e2e/.auth/signing-host`.
+
+With `E2E_ORIGIN` set, `npm run test:e2e` from `apps/host` needs no build and starts no server. `SIGNING_HOST_NETWORK`
+must then be that site's default network.
 
 ### Releases
 

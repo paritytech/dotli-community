@@ -4,6 +4,7 @@
 import { test, expect, openHostPlayground } from '../../../../../tests/e2e/fixtures/paired.js';
 import { runTestExpectSuccess } from '../../../../../tests/e2e/helpers/runTest.js';
 import { runWebSignedTest, type HostDialog } from '../../../../../tests/e2e/helpers/signing.js';
+import { productOrigin } from '../../../../../tests/e2e/fixtures/origin.js';
 
 // Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.
 
@@ -164,7 +165,7 @@ test.describe('dot.li > host-playground.dot', () => {
       await run.click();
 
       // Then
-      await pairedPage.waitForURL(/^http:\/\/truapi-playground\.localhost:\d+\//, { timeout: 15_000 });
+      await pairedPage.waitForURL(url => url.origin === productOrigin('truapi-playground'), { timeout: 15_000 });
 
       // The worker shares the page, so the following tests need host-playground back.
       await openHostPlayground(pairedPage);

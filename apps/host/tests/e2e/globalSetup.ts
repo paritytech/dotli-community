@@ -16,6 +16,7 @@ import {
 import { extractQrPayload } from './helpers/extractQrPayload.js';
 import { E2E_CHAIN_BACKEND, initializeChainBackend } from './helpers/chainBackend.js';
 import { STATE_FILE, SESSION_FILE, SIGNING_HOST_STATE_DIR, type PersistedSession } from './fixtures/paths.js';
+import { dotliOrigin, isLocalOrigin } from './fixtures/origin.js';
 
 // Must equal the host's default network, or pairing succeeds but the badge never appears: the CLI attests on another
 // chain.
@@ -29,9 +30,11 @@ const PRODUCT_ID =
   (process.env['E2E_PRODUCT_URL'] === undefined
     ? `${process.env['E2E_HOST'] ?? 'host-playground'}.dot`
     : new URL(process.env['E2E_PRODUCT_URL']).host);
-const PORT = process.env['PORT'] ?? '5173';
 // The bare host origin, since loading the product can open its permission modals before the auth button is clicked.
-const AUTH_HOST = process.env['E2E_AUTH_HOST'] ?? 'localhost';
+const AUTH_ORIGIN =
+  process.env['E2E_AUTH_HOST'] === undefined
+    ? dotliOrigin()
+    : `http://${process.env['E2E_AUTH_HOST']}:${process.env['PORT'] ?? '5173'}`;
 
 function nonEmptyEnv(name: string): string | undefined {
   const value = process.env[name];
@@ -113,10 +116,11 @@ class SigningHostExitError extends Error {
   }
 }
 
-// A dist older than the lockfile is stale, and its failures look like obscure SDK bugs. CI always builds fresh. Checked
-// here rather than in the config, which tools such as knip load without running the tests.
+// A dist older than the lockfile is stale, and its failures look like obscure SDK bugs. CI always builds fresh, and a
+// deployed origin serves its own build. Checked here rather than in the config, which tools such as knip load without
+// running the tests.
 function assertFreshDist(): void {
-  if (process.env['CI'] === 'true') {
+  if (process.env['CI'] === 'true' || !isLocalOrigin()) {
     return;
   }
   const repoRoot = resolve(import.meta.dirname, '../../../..');
@@ -241,7 +245,7 @@ async function pairOnce(
   let signingHost: SigningHostProcess | null = null;
   try {
     // Pins the host to the CLI's network, so the two cannot drift apart.
-    await page.goto(`http://${AUTH_HOST}:${PORT}/?network=${NETWORK}`, {
+    await page.goto(`${AUTH_ORIGIN}/?network=${NETWORK}`, {
       timeout: 60_000,
     });
 
