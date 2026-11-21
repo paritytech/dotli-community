@@ -62,6 +62,7 @@ export { focusables } from './page/focusables.js';
 export { preloadWhenIdle } from './page/preloadWhenIdle.js';
 export { runWhenIdle } from './page/runWhenIdle.js';
 export { isPhoneViewport, watchPhoneViewport } from './page/phoneViewport.js';
+export { pinPageAboveKeyboard } from './page/pinPageAboveKeyboard.js';
 export { prefersReducedMotion } from './page/reducedMotion.js';
 export type { StatusTone } from './page/statusTone.js';
 

@@ -44,6 +44,7 @@ The UI that more than one dotli app shows. It has no domain and no data source.
 | `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`, `ModalButtonVariant`, `ModalHandoff`                  | Store types.                                    |
 | `ToastEntry`, `PageContent`                                                                                                   | Store types.                                    |
 | `focusables`, `runWhenIdle`, `preloadWhenIdle`, `isPhoneViewport`, `watchPhoneViewport`, `prefersReducedMotion`, `StatusTone` | Page helpers.                                   |
+| `pinPageAboveKeyboard`                                                                                                        | Holds a page in place over the keyboard.        |
 | `createDrags`, `Drags`                                                                                                        | One pointer drag per component.                 |
 | `isFocusLostOrInside`, `focusTrigger`                                                                                         | Helpers.                                        |
 | `mountRoot`, `RootBoundary`, `ensureOverlayRoot`                                                                              | Roots.                                          |
@@ -118,6 +119,12 @@ falls back to the system face while it loads or where it lacks a script. Monospa
   takes markup.
 - **Text only:** the error page and the notifier take text, so nothing a visitor typed is parsed as markup.
 - **Notifier:** always shows a toast. A hidden or unfocused tab also gets a system notification when allowed.
+- **Keyboard pin:** `pinPageAboveKeyboard` takes a page box and the scroll box inside it, and returns its stop. While
+  mobile Safari's keyboard is open for a field inside the page box, the box carries `data-keyboard-open`, and
+  `--visible-height` and `--pan-offset` hold the visual viewport's height and offset. The page's CSS shifts and cuts the
+  page by them, and the helper writes no other style. A drag the scroll box cannot take is cancelled, and a tap outside
+  any control blurs the field. Once the keyboard closes, the page and the scroll box are back at their top. A field
+  outside the page box, such as an overlay's, gets none of this.
 - **Root boundary:** a broken root is reported once and renders nothing. Mounted roots, floating layers and the apps'
   islands all use it.
 
