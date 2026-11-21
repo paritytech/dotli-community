@@ -6,7 +6,7 @@ import { defineCount } from '@dotli/metrics';
 /**
  * Count. A read behind the product card's author failed, so the card shows less of the author. Expected. Tagged
  * `outcome` (error) and `reason`, the read that failed: `owner` (counted while the product resolves), `cached-owner`
- * (a cached owner that is no address, counted when the cached copy is read), and `account` or `username` (counted
- * when the card opens).
+ * (a cached owner that is no address, counted when the cached copy is read), and `account`, `username` or `name`
+ * (counted when the card opens).
  */
 export const productAuthorMetric = defineCount<'error'>('product.author');

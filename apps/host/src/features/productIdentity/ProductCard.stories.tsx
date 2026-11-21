@@ -14,7 +14,7 @@ const PUBLISHED: ProductCardView = {
   domain: 'swap.dot',
   description: 'Trade tokens across Polkadot chains from your browser, with no server in between.',
   icon: null,
-  author: { status: 'ready', author: { address: ADDRESS, username: { name: 'alice.dot', kind: 'full' } } },
+  author: { status: 'ready', author: { address: ADDRESS, name: { text: 'alice.dot', kind: 'full' } } },
   connection: 'verified',
 };
 
@@ -50,9 +50,25 @@ export const Trusted: Story = {
   args: { card: { ...PUBLISHED, connection: 'trusted' } },
 };
 
-/** As a visitor, I open the card of a product whose author has no username and see the author's address alone. */
+/** As a visitor, I open the card of a product whose author has a dotNS name and no username and see that name. */
+export const DotnsName: Story = {
+  args: {
+    card: {
+      ...PUBLISHED,
+      author: { status: 'ready', author: { address: ADDRESS, name: { text: 'swap-labs.dot', kind: 'dotns' } } },
+    },
+  },
+  play: async ({ canvas, step }) => {
+    await step('Then the author shows the dotNS name over the address', async () => {
+      await expect(canvas.getByTestId('product-card-author-name')).toHaveTextContent('swap-labs.dot');
+      await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF…utQY');
+    });
+  },
+};
+
+/** As a visitor, I open the card of a product whose author has no username or dotNS name and see the address alone. */
 export const NoUsername: Story = {
-  args: { card: { ...PUBLISHED, author: { status: 'ready', author: { address: ADDRESS, username: null } } } },
+  args: { card: { ...PUBLISHED, author: { status: 'ready', author: { address: ADDRESS, name: null } } } },
   play: async ({ canvas, step }) => {
     await step('Then the author shows the address and no name', async () => {
       await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF…utQY');

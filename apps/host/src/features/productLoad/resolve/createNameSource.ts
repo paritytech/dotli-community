@@ -22,6 +22,11 @@ export type RemoteResolver = {
   resolveDotName: (name: string, onPhase?: PhaseCallback) => Promise<string | null>;
   /** Resolves the label's owner address, or null for a name with none. Rejects with the resolver's error. */
   resolveOwner: (label: string) => Promise<string | null>;
+  /**
+   * Resolves the address's primary name, or null when it stored none or does not own the name it stored. Rejects with
+   * the resolver's error.
+   */
+  resolvePrimaryName: (address: string) => Promise<string | null>;
   /** Resolves the label's root manifest. Rejects with the resolver's error. */
   resolveRootManifest: (label: string) => Promise<ManifestResult<RootManifest>>;
   /** Resolves the label's executable manifest of `kind`. Rejects with the resolver's error. */
@@ -31,7 +36,7 @@ export type RemoteResolver = {
 /** The gateway's resolver, which reads over the host's own Asset Hub connection. */
 export type RpcResolver = Pick<
   DotnsResolver,
-  'resolveDotName' | 'resolveOwner' | 'resolveRootManifest' | 'resolveExecutableManifest'
+  'resolveDotName' | 'resolveOwner' | 'resolvePrimaryName' | 'resolveRootManifest' | 'resolveExecutableManifest'
 >;
 
 type Params = {
@@ -72,9 +77,9 @@ export function createNameSource({ backend, remote, loadRpc, report = reportOwne
     return owner === undefined ? { root, app } : { root, app, owner };
   }
 
-  /** The resolver of a label's records, which both backends read alike. Only the name's lookup differs. */
+  /** The resolver of dotNS records, which both backends read alike. Only the name's lookup differs. */
   async function getRecordResolver(): Promise<
-    Pick<RemoteResolver, 'resolveOwner' | 'resolveRootManifest' | 'resolveExecutableManifest'>
+    Pick<RemoteResolver, 'resolveOwner' | 'resolvePrimaryName' | 'resolveRootManifest' | 'resolveExecutableManifest'>
   > {
     return gateway ? rpcResolver() : remote;
   }
@@ -86,6 +91,10 @@ export function createNameSource({ backend, remote, loadRpc, report = reportOwne
       resolver.resolveExecutableManifest(label, 'app'),
     ]);
     return { root, app };
+  }
+
+  async function readPrimaryName(address: H160Address): Promise<string | null> {
+    return (await getRecordResolver()).resolvePrimaryName(address);
   }
 
   async function readWorkerManifest(label: string): Promise<ManifestResult<ExecutableManifest>> {
@@ -120,6 +129,11 @@ export function createNameSource({ backend, remote, loadRpc, report = reportOwne
     readManifests,
     /** Resolves the product's worker manifest. Rejects with the resolver's or the gateway load's error. */
     readWorkerManifest,
+    /**
+     * Resolves the address's dotNS primary name, or null when it stored none or does not own the name it stored.
+     * Rejects with the resolver's or the gateway load's error.
+     */
+    readPrimaryName,
   };
 }
 

@@ -63,6 +63,7 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
     readOwner: readLoadedOwner,
     readAccount: bridge.readOriginalAccount,
     readUsernames: bridge.readPeopleUsernames,
+    readPrimaryName: names.readPrimaryName,
   });
   productCardState.setAuthorSource(() => author.load());
   const loader = createProductLoader({

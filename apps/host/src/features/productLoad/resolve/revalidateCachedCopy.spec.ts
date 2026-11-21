@@ -233,6 +233,7 @@ function createPublishedNameSource({ published }: CreatePublishedNameSourceParam
       resolveDotName: name =>
         published instanceof Error ? Promise.reject(published) : Promise.resolve(published[name] ?? null),
       resolveOwner: () => Promise.resolve(null),
+      resolvePrimaryName: () => Promise.resolve(null),
       resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
       resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
     },

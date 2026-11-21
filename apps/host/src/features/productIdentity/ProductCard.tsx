@@ -11,7 +11,7 @@ import { shortenAccount } from '../account/index.js';
 import { TrustedShieldIcon } from './TrustedShieldIcon.js';
 import { VerifiedShieldIcon } from './VerifiedShieldIcon.js';
 import { CONNECTION_LABELS } from './connectionLabels.js';
-import type { AuthorUsername, ProductAuthor } from './createProductAuthor.js';
+import type { AuthorName, ProductAuthor } from './createProductAuthor.js';
 import type { AuthorStatus } from './productCardState.js';
 import type { ProductCardView } from './productCardView.js';
 import type { ShieldState } from './urlPillState.js';
@@ -77,12 +77,12 @@ function getAuthorSection(author: AuthorStatus): JSX.Element {
 function AuthorRow(props: { author: ProductAuthor }): JSX.Element {
   return (
     <div class={s['row']}>
-      <AccountAvatar session={getAvatarSession(props.author.username)} size="sm" decorative />
+      <AccountAvatar session={getAvatarSession(props.author.name)} size="sm" decorative />
       <div class={s['who']}>
-        <Show when={props.author.username}>
-          {username => (
+        <Show when={props.author.name}>
+          {name => (
             <span class={s['username']} data-testid="product-card-author-name">
-              {username().name}
+              {name().text}
             </span>
           )}
         </Show>
@@ -94,15 +94,18 @@ function AuthorRow(props: { author: ProductAuthor }): JSX.Element {
   );
 }
 
-function getAvatarSession(username: AuthorUsername | null): AccountSession {
-  if (username === null) {
+/** The session the avatar draws from. A dotNS name is no People username, so it keeps the user glyph. */
+function getAvatarSession(name: AuthorName | null): AccountSession {
+  if (name === null) {
     return {};
   }
-  switch (username.kind) {
+  switch (name.kind) {
     case 'full':
-      return { fullUsername: username.name };
+      return { fullUsername: name.text };
     case 'lite':
-      return { liteUsername: username.name };
+      return { liteUsername: name.text };
+    case 'dotns':
+      return {};
   }
 }
 

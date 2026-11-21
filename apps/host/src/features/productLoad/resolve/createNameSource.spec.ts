@@ -22,6 +22,8 @@ type Params = {
   owners?: Record<string, string>;
   /** The error every owner read rejects with, in place of `owners`. */
   ownerError?: Error;
+  /** Primary names by address. An address missing here has none. */
+  primaryNames?: Record<string, string>;
 };
 
 const OWNER = `0x${'ab'.repeat(20)}`;
@@ -187,6 +189,32 @@ describe('createNameSource', () => {
   );
 
   it.each(BACKEND_CASES)(
+    "As a visitor on $backend, I open the card of a product and read its owner's primary name through the resolver that backend uses",
+    async ({ backend, resolver }) => {
+      // Given an owner address that stored a primary name, with both resolvers able to answer
+      const primaryNames = { [OWNER]: 'alice.dot' };
+      const resolvers = {
+        remote: createRemoteResolver({ names: {}, primaryNames }),
+        rpc: createRpcResolver({ names: {}, primaryNames }),
+      };
+      const names = createNameSource({
+        backend,
+        remote: resolvers.remote,
+        loadRpc: () => Promise.resolve(resolvers.rpc),
+      });
+      const other = resolver === 'remote' ? 'rpc' : 'remote';
+
+      // When the primary name is read
+      const name = await names.readPrimaryName(parseH160Address(OWNER));
+
+      // Then the name comes from the resolver this backend uses, and the other one is not asked
+      expect(name).toBe('alice.dot');
+      expect(resolvers[resolver].asked).toEqual([OWNER]);
+      expect(resolvers[other].asked).toEqual([]);
+    },
+  );
+
+  it.each(BACKEND_CASES)(
     'As a visitor on $backend, I open a product whose name has no owner and its manifests say so',
     async ({ backend }) => {
       // Given a name with no owner
@@ -253,13 +281,22 @@ describe('createNameSource', () => {
   );
 });
 
-function createRemoteResolver({ names, owners = {}, ownerError }: Params): RemoteResolver & { asked: string[] } {
+function createRemoteResolver({
+  names,
+  owners = {},
+  ownerError,
+  primaryNames = {},
+}: Params): RemoteResolver & { asked: string[] } {
   const asked: string[] = [];
   return {
     asked,
     resolveOwner: vi.fn((label: string) => {
       asked.push(label);
       return ownerError === undefined ? Promise.resolve(owners[label] ?? null) : Promise.reject(ownerError);
+    }),
+    resolvePrimaryName: vi.fn((address: string) => {
+      asked.push(address);
+      return Promise.resolve(primaryNames[address] ?? null);
     }),
     resolveDotName: vi.fn((name: string, onPhase?: (phase: ResolvePhase) => void) => {
       asked.push(name);
@@ -271,13 +308,22 @@ function createRemoteResolver({ names, owners = {}, ownerError }: Params): Remot
   };
 }
 
-function createRpcResolver({ names, owners = {}, ownerError }: Params): RpcResolver & { asked: string[] } {
+function createRpcResolver({
+  names,
+  owners = {},
+  ownerError,
+  primaryNames = {},
+}: Params): RpcResolver & { asked: string[] } {
   const asked: string[] = [];
   return {
     asked,
     resolveOwner: vi.fn((label: string) => {
       asked.push(label);
       return ownerError === undefined ? Promise.resolve(owners[label] ?? null) : Promise.reject(ownerError);
+    }),
+    resolvePrimaryName: vi.fn((address: string) => {
+      asked.push(address);
+      return Promise.resolve(primaryNames[address] ?? null);
     }),
     resolveDotName: vi.fn((name: string, options?: ResolveOptions) => {
       asked.push(name);
