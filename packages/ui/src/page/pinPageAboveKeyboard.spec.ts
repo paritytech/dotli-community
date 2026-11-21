@@ -7,8 +7,9 @@ import { getDragVerdict, isBlurringTap, isKeyboardOpen, pinPageAboveKeyboard } f
 const LAYOUT_HEIGHT = 800;
 
 /**
- * A landing page with one field inside its scroll box and one in an overlay, a keyboard that opens and closes, and a
- * log of what the helper does to the page beyond the page box's own attributes.
+ * A landing page with one field inside its scroll box and one in an overlay, a header in the page box but outside its
+ * scroll box, a list portaled out of the page box, a keyboard that opens and closes, and a log of what the helper does
+ * to the page beyond the page box's own attributes.
  */
 function createFakePage() {
   const log: string[] = [];
@@ -25,7 +26,10 @@ function createFakePage() {
     blur: () => log.push('overlay field blurred'),
   };
   const text = { closest: () => null };
+  const header = { closest: () => null };
+  const list = { closest: () => null };
   const page = {
+    contains: (other: unknown) => other === field || other === text || other === header,
     matches: (selector: string) => selector === ':focus-within' && focus.withinPage,
     setAttribute: (name: string, value: string) => written.set(name, value),
     removeAttribute: (name: string) => written.delete(name),
@@ -54,6 +58,8 @@ function createFakePage() {
     written,
     scroller,
     text,
+    header,
+    list,
     start: () => pinPageAboveKeyboard({ page, scroller, visualViewport, window, document }),
     focusField(): void {
       focus.withinPage = true;
@@ -91,8 +97,6 @@ function createFakePage() {
       document.dispatchEvent(touch('touchstart', 300, target));
       document.dispatchEvent(touch('touchend', 300, target));
     },
-    /** What sits outside the scroll box, such as the header. */
-    outside: document,
   };
 }
 
@@ -131,12 +135,42 @@ describe('pinPageAboveKeyboard', () => {
     fake.openKeyboard(120);
 
     // When: a drag starts on the header, then a tap lands on plain text in the scroll box.
-    const cancelled = fake.drag(-40, fake.outside);
+    const cancelled = fake.drag(-40, fake.header);
     fake.tap(fake.text);
 
     // Then
     expect(cancelled).toBe(true);
     expect(fake.log).toContain('field blurred');
+  });
+
+  it('As a visitor with the keyboard open, I can drag a list portaled out of the page box', () => {
+    // Given: the keyboard is open for the field.
+    const fake = createFakePage();
+    onTestFinished(fake.start());
+    fake.focusField();
+    fake.openKeyboard(120);
+
+    // When: a drag starts in the field's suggestion list, which renders outside the page box.
+    const cancelled = fake.drag(-40, fake.list);
+
+    // Then
+    expect(cancelled).toBe(false);
+  });
+
+  it("As a visitor who typed in an overlay's field, I find the window back at its top once the keyboard closes, and the scroll box where I left it", () => {
+    // Given: the keyboard is open for a field in an overlay.
+    const fake = createFakePage();
+    onTestFinished(fake.start());
+    fake.focusOverlayField();
+    fake.openKeyboard(120);
+
+    // When: the field blurs and the keyboard closes.
+    fake.blur();
+    fake.closeKeyboard();
+
+    // Then
+    expect(fake.log).toEqual(['window scrolled to top']);
+    expect(fake.scroller.scrollTop).toBe(40);
   });
 
   it("As a visitor who moves to an overlay's field, I get none of the pinning: nothing written, no drag cancelled, no blur", () => {
@@ -149,7 +183,7 @@ describe('pinPageAboveKeyboard', () => {
     // When: focus moves to a field in an overlay, the keyboard stays, and the visitor drags and taps.
     fake.focusOverlayField();
     fake.openKeyboard(200);
-    const cancelled = fake.drag(-40, fake.outside);
+    const cancelled = fake.drag(-40, fake.header);
     fake.tap(fake.text);
 
     // Then
@@ -168,7 +202,7 @@ describe('pinPageAboveKeyboard', () => {
     // When: it is stopped, and the keyboard pans on and the visitor drags from the header.
     stop();
     fake.openKeyboard(200);
-    const cancelled = fake.drag(-40, fake.outside);
+    const cancelled = fake.drag(-40, fake.header);
 
     // Then
     expect(fake.written.size).toBe(0);
@@ -202,20 +236,14 @@ describe('getDragVerdict', () => {
   const FOOT = { ...MIDDLE, scrollTop: 499.5 };
 
   it.each([
-    { name: 'a jitter under the threshold', distance: 9, startedInScroller: true, scroller: MIDDLE, verdict: null },
-    {
-      name: 'a drag from outside the box',
-      distance: 10,
-      startedInScroller: false,
-      scroller: MIDDLE,
-      verdict: 'cancel',
-    },
-    { name: 'a pull down at the top', distance: 10, startedInScroller: true, scroller: TOP, verdict: 'cancel' },
-    { name: 'a push up at the foot', distance: -10, startedInScroller: true, scroller: FOOT, verdict: 'cancel' },
-    { name: 'a drag the box can scroll', distance: 10, startedInScroller: true, scroller: MIDDLE, verdict: 'allow' },
-  ])('As the helper, I judge $name as $verdict', ({ distance, startedInScroller, scroller, verdict }) => {
+    { name: 'a jitter under the threshold', distance: 9, origin: 'scroller', scroller: MIDDLE, verdict: null },
+    { name: 'a drag from the page outside the box', distance: 10, origin: 'page', scroller: MIDDLE, verdict: 'cancel' },
+    { name: 'a pull down at the top', distance: 10, origin: 'scroller', scroller: TOP, verdict: 'cancel' },
+    { name: 'a push up at the foot', distance: -10, origin: 'scroller', scroller: FOOT, verdict: 'cancel' },
+    { name: 'a drag the box can scroll', distance: 10, origin: 'scroller', scroller: MIDDLE, verdict: 'allow' },
+  ] as const)('As the helper, I judge $name as $verdict', ({ distance, origin, scroller, verdict }) => {
     // Given: a drag in the row.
-    const drag = { distance, startedInScroller, scroller };
+    const drag = { distance, origin, scroller };
 
     // When
     const judged = getDragVerdict(drag);

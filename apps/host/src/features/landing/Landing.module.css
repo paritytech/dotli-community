@@ -16,8 +16,8 @@
 }
 
 /* The page never scrolls, so the backdrop can run past the visible area to the screen's foot, under a mobile browser's
-   translucent toolbar. Mobile Safari clips a fixed box at the toolbar, so the backdrop is in the page's flow instead,
-   and the content scrolls in a box of its own. */
+   translucent toolbar. Mobile Safari clips a fixed box at the toolbar, so the backdrop is positioned in the page rather
+   than fixed to the viewport, and the content scrolls in a box of its own. */
 :global(:root:has(body[data-landing])) {
   overflow: clip;
 }

@@ -3,13 +3,19 @@
 
 // Keeps a page box in place while mobile Safari's on-screen keyboard is open for a field inside it. Safari pans the
 // page to show the field and lets a drag pan it further, so the page box reports what is visible for its CSS to shift
-// and cut the page by, and a drag its scroll box cannot take is cancelled.
+// and cut the page by, and a drag in the page box that its scroll box cannot take is cancelled.
 
 /** Whether a drag may go on. */
 type DragVerdict = 'cancel' | 'allow';
 
+/** Where a drag started: in the scroll box, elsewhere in the page box, or outside the page box. */
+type DragOrigin = 'scroller' | 'page' | 'outside';
+
+/** Whether the keyboard is open, and whether the page is pinned above it. */
+type KeyboardState = 'closed' | 'open' | 'pinned';
+
 /** The box that carries the keyboard state for its CSS to read. */
-type PageBox = Pick<HTMLElement, 'setAttribute' | 'removeAttribute'> & {
+type PageBox = Pick<HTMLElement, 'contains' | 'setAttribute' | 'removeAttribute'> & {
   matches(selectors: string): boolean;
   style: Pick<CSSStyleDeclaration, 'setProperty' | 'removeProperty'>;
 };
@@ -37,7 +43,7 @@ type Params = {
 type GetDragVerdictParams = {
   /** How far the touch has moved since it started, down positive. */
   distance: number;
-  startedInScroller: boolean;
+  origin: DragOrigin;
   scroller: Pick<ScrollBox, 'scrollTop' | 'clientHeight' | 'scrollHeight'>;
 };
 
@@ -55,8 +61,13 @@ const CONTROLS = 'input, textarea, select, button, a, label, [role=option]';
  * and clears what it wrote. The stop is safe to call twice.
  *
  * While pinned, `page` carries `data-keyboard-open` and the custom properties `--visible-height` and `--pan-offset`,
- * the visual viewport's height and offset in px. Once the keyboard closes, the window and `scroller` are back at their
- * top.
+ * the visual viewport's height and offset in px. Once the keyboard closes, the window is back at its top, whichever
+ * field the keyboard was for, and after a pinned session `scroller` is too.
+ *
+ * @example
+ * const stop = pinPageAboveKeyboard({ page, scroller });
+ * // .page[data-keyboard-open] { transform: translateY(var(--pan-offset)); }
+ * // .page[data-keyboard-open] .scroller { height: var(--visible-height); }
  */
 export function pinPageAboveKeyboard({
   page,
@@ -72,7 +83,7 @@ export function pinPageAboveKeyboard({
   const viewport = visualViewport;
   const controller = new AbortController();
   const { signal } = controller;
-  let pinned = false;
+  let keyboard: KeyboardState = 'closed';
   let startY = 0;
   let verdict: DragVerdict | null = null;
 
@@ -98,17 +109,17 @@ export function pinPageAboveKeyboard({
     },
     { passive: true, signal },
   );
-  // A drag the scroll box cannot take is cancelled, so Safari never pans the page. iOS makes a document's touch
-  // listeners passive unless told otherwise, and a passive one cannot cancel.
+  // A drag in the page box that its scroll box cannot take is cancelled, so Safari never pans the page. iOS makes a
+  // document's touch listeners passive unless told otherwise, and a passive one cannot cancel.
   document.addEventListener(
     'touchmove',
     event => {
-      if (!pinned) {
+      if (keyboard !== 'pinned') {
         return;
       }
       verdict ??= getDragVerdict({
         distance: (event.touches[0]?.clientY ?? startY) - startY,
-        startedInScroller: isElement(event.target) && scroller.contains(event.target),
+        origin: getDragOrigin(event.target),
         scroller,
       });
       if (verdict === 'cancel') {
@@ -121,7 +132,7 @@ export function pinPageAboveKeyboard({
   document.addEventListener(
     'touchend',
     event => {
-      if (pinned && isElement(event.target) && isBlurringTap(verdict, event.target)) {
+      if (keyboard === 'pinned' && isElement(event.target) && isBlurringTap(verdict, event.target)) {
         document.activeElement?.blur?.();
       }
     },
@@ -135,20 +146,25 @@ export function pinPageAboveKeyboard({
 
   function follow(): void {
     if (!isKeyboardOpen(viewport.height, window.innerHeight)) {
-      if (pinned) {
-        // Safari can leave the page scrolled once the keyboard goes, and a clipped root gives the user no way back.
+      // Safari can leave the page scrolled once the keyboard goes, whichever field it was for, and a clipped root gives
+      // the user no way back.
+      if (keyboard !== 'closed') {
         window.scrollTo(0, 0);
+      }
+      if (keyboard === 'pinned') {
         scroller.scrollTop = 0;
       }
       unpin();
+      keyboard = 'closed';
       return;
     }
     const focusedInside = page.matches(':focus-within');
     // A blur keeps the page pinned until the keyboard has gone, so the page holds still while it slides away.
-    if (!pinned && !focusedInside) {
+    if (keyboard !== 'pinned' && !focusedInside) {
+      keyboard = 'open';
       return;
     }
-    pinned = true;
+    keyboard = 'pinned';
     page.setAttribute(KEYBOARD_ATTRIBUTE, '');
     page.style.setProperty(VISIBLE_HEIGHT, `${String(viewport.height)}px`);
     page.style.setProperty(PAN_OFFSET, `${String(viewport.offsetTop)}px`);
@@ -158,10 +174,19 @@ export function pinPageAboveKeyboard({
   }
 
   function unpin(): void {
-    pinned = false;
+    if (keyboard === 'pinned') {
+      keyboard = 'open';
+    }
     page.removeAttribute(KEYBOARD_ATTRIBUTE);
     page.style.removeProperty(VISIBLE_HEIGHT);
     page.style.removeProperty(PAN_OFFSET);
+  }
+
+  function getDragOrigin(target: EventTarget | null): DragOrigin {
+    if (!isElement(target) || !page.contains(target)) {
+      return 'outside';
+    }
+    return scroller.contains(target) ? 'scroller' : 'page';
   }
 }
 
@@ -171,17 +196,21 @@ export function isKeyboardOpen(visibleHeight: number, layoutHeight: number): boo
 }
 
 /**
- * Judges a drag once it has moved past the threshold, `null` before. A drag is cancelled when the scroll box cannot
- * take it: it started outside the box, or it pulls past the box's top or pushes past its foot.
+ * Judges a drag once it has moved past the threshold, `null` before. A drag that starts in the page box is cancelled
+ * when the scroll box cannot take it: it started outside the scroll box, or it pulls past the box's top or pushes past
+ * its foot. A drag that starts outside the page box, such as in a layer portaled out of it, goes on.
  */
-export function getDragVerdict({ distance, startedInScroller, scroller }: GetDragVerdictParams): DragVerdict | null {
+export function getDragVerdict({ distance, origin, scroller }: GetDragVerdictParams): DragVerdict | null {
   if (Math.abs(distance) < DRAG_THRESHOLD) {
     return null;
+  }
+  if (origin === 'outside') {
+    return 'allow';
   }
   const atTop = scroller.scrollTop <= 0;
   // A fractional scroll position can stop a pixel short of the foot.
   const atFoot = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
-  if (!startedInScroller || (distance > 0 && atTop) || (distance < 0 && atFoot)) {
+  if (origin === 'page' || (distance > 0 && atTop) || (distance < 0 && atFoot)) {
     return 'cancel';
   }
   return 'allow';

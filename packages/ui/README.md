@@ -122,9 +122,11 @@ falls back to the system face while it loads or where it lacks a script. Monospa
 - **Keyboard pin:** `pinPageAboveKeyboard` takes a page box and the scroll box inside it, and returns its stop. While
   mobile Safari's keyboard is open for a field inside the page box, the box carries `data-keyboard-open`, and
   `--visible-height` and `--pan-offset` hold the visual viewport's height and offset. The page's CSS shifts and cuts the
-  page by them, and the helper writes no other style. A drag the scroll box cannot take is cancelled, and a tap outside
-  any control blurs the field. Once the keyboard closes, the page and the scroll box are back at their top. A field
-  outside the page box, such as an overlay's, gets none of this.
+  page by them, and the helper writes no other style. A drag in the page box that the scroll box cannot take is
+  cancelled, and a tap outside any control blurs the field. A field outside the page box, such as an overlay's, gets
+  none of this, and neither does a drag that starts outside it, such as in a layer portaled out of the page. Once the
+  keyboard closes, the page is back at its top, whichever field the keyboard was for, and after a pinned session the
+  scroll box is too.
 - **Root boundary:** a broken root is reported once and renders nothing. Mounted roots, floating layers and the apps'
   islands all use it.
 
