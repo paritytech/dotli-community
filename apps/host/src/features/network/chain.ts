@@ -13,8 +13,8 @@ export type ChainBar = {
   readonly gapMs: number;
 };
 
-/** How a chain counts toward the network's verdict. */
-export type ChainUse = 'unused' | 'pending' | 'live';
+/** How a chain counts toward the network's verdict. `down` while its pool reports it disconnected. */
+export type ChainUse = 'unused' | 'pending' | 'down' | 'live';
 
 /** Whether a chain has an endpoint and is in use, so its reads age between blocks. */
 export function isWatched(chain: Pick<ChainSummary, 'reachable' | 'state'>): boolean {

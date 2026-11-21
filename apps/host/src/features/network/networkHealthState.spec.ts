@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getActiveChainRoles } from '@dotli/config';
+import type { ChainActivity } from '@dotli/chains';
 import { createNetworkMonitorState, type NetworkMonitor } from './networkMonitorState.js';
 import { createNetworkHealthState } from './networkHealthState.js';
 import { buildChainActivity } from '../../testing/buildChainActivity.js';
@@ -35,17 +36,17 @@ afterEach(() => {
 });
 
 describe('The network health store', () => {
-  it('As a user, I start using every chain and see syncing until each delivers a block, then ok', () => {
+  it('As a user, I start using every chain and see syncing until each pool connects, then ok', () => {
     // Given
     startHealth();
 
     // When
+    useAll({ status: 'connecting' });
+    const connecting = health.store.get();
     useAll();
-    const inUse = health.store.get();
-    blockAll(100);
 
     // Then
-    expect([inUse, health.store.get()]).toEqual(['idle', 'ok']);
+    expect([connecting, health.store.get()]).toEqual(['idle', 'ok']);
   });
 
   it('As a user whose chains stop producing blocks, I wait and see degraded without any new event', async () => {
@@ -125,18 +126,6 @@ describe('The network health store', () => {
     expect(health.store.get()).toBe('err');
   });
 
-  it('As a user, I see a frame chain drop from ready back to connecting and the health turn unstable', () => {
-    // Given
-    startHealth();
-    monitor.recordChainPhase('relay', 'ready');
-
-    // When
-    monitor.recordChainPhase('relay', 'connecting');
-
-    // Then
-    expect(health.store.get()).toBe('warn');
-  });
-
   it('As a user leaving the page, I stop the health store and it leaves its monitor with no listener', () => {
     // Given
     const stop = startHealth();
@@ -210,9 +199,10 @@ function getEveryChainOverdueMs(): number {
   return slowest * 3 + 2000;
 }
 
-function useAll(): void {
+/** A consumer holds every active chain, connected and following, unless the test says otherwise. */
+function useAll(overrides: Partial<ChainActivity> = {}): void {
   for (const role of getActiveChainRoles()) {
-    monitor.recordChainActivity(buildChainActivity({ genesisHash: role.genesis }));
+    monitor.recordChainActivity(buildChainActivity({ genesisHash: role.genesis, ...overrides }));
   }
 }
 

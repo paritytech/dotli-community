@@ -48,7 +48,10 @@ const MIN_STALL_BLOCKS = 10;
 
 const HEALTHY_SHARE = 5 / 6;
 
-/** A chain's mark and status line, the first match winning: offline, no endpoint, unused, coming up, then health. */
+/**
+ * A chain's mark and status line, the first match winning: offline, no endpoint, unused, disconnected, coming up, then
+ * health.
+ */
 export function describeChainHealth(
   chain: HealthChain,
   { sinceRead, behind, offline, unreachable }: ChainHealthFacts,
@@ -65,6 +68,9 @@ export function describeChainHealth(
   }
   if (chain.state === 'unused') {
     return { mark: { kind: 'unused' }, status: { text: 'Not in use', tone: null }, pending: null };
+  }
+  if (chain.state === 'down') {
+    return { mark: { kind: 'unavailable' }, status: { text: 'Disconnected', tone: null }, pending: null };
   }
   // A clock that stepped back since the read must not make the bars younger than they were.
   const sinceLast = chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, sinceRead);

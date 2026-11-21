@@ -50,7 +50,7 @@ export const storyNetwork: NetworkItemProps = {
   },
 };
 
-/** A known chain in use, pending until it has a latest block, which only decides its state. */
+/** A known chain in use, connecting unless given a latest block, which only decides its state. */
 export function chain(overrides: Partial<ChainView> & { latest?: number | null } = {}): ChainView {
   const latest = overrides.latest ?? null;
   return {

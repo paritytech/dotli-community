@@ -67,6 +67,21 @@ describe('describeChainHealth', () => {
     expect(health).toEqual({ mark: { kind: 'unused' }, status: { text: 'Not in use', tone: null }, pending: null });
   });
 
+  it('As a user of a chain whose pool dropped, I see it Disconnected with no ghost bar to wait on', () => {
+    // Given
+    const chain = { ...CHAIN, state: 'down' as const, sinceLast: null };
+
+    // When
+    const health = describeChainHealth(chain, FACTS);
+
+    // Then
+    expect(health).toEqual({
+      mark: { kind: 'unavailable' },
+      status: { text: 'Disconnected', tone: null },
+      pending: null,
+    });
+  });
+
   it.each([
     { phase: null, text: 'Connecting' },
     { phase: 'ready', text: 'Connecting' },

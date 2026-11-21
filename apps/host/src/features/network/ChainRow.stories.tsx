@@ -101,6 +101,11 @@ export const ComingUpAgain: Story = {
   args: { chain: { ...RELAY, state: 'pending', sinceLast: null } },
 };
 
+/** As a user of a chain whose pool dropped, it reads Disconnected over the bars it kept, with no ghost bar. */
+export const Disconnected: Story = {
+  args: { chain: { ...RELAY, state: 'down', sinceLast: null } },
+};
+
 /** As a user waiting for a live chain's first bar, its row reads Connected and its ghost bar grows toward the block. */
 export const WaitingForFirstBlock: Story = {
   args: { chain: { ...RELAY, bars: [], sinceLast: 1500 } },
