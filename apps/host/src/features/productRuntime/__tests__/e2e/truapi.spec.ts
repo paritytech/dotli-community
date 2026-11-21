@@ -57,7 +57,7 @@ test.describe('dot.li > host-playground.dot', () => {
       expect(status).toBe('success');
     });
 
-    testsWithoutDialogs([['I ask the signed-in user to log in and learn they already are', 'request-login']]);
+    testsWithoutDialogs([['I request a login from the signed-in user and learn they are logged in', 'request-login']]);
   });
 
   test.describe('Theme', () => {
@@ -148,15 +148,17 @@ test.describe('dot.li > host-playground.dot', () => {
       test(`As a product on dot.li, I ${action}`, async ({ pairedPage, productFrame }) => {
         // Given the user allows the request once
         test.setTimeout(150_000);
-        const granted = await runWebSignedTest(pairedPage, productFrame, grantId, [PERMISSION_ONCE], {
+        const grantStatus = await runWebSignedTest(pairedPage, productFrame, grantId, [PERMISSION_ONCE], {
           timeoutMs: 30_000,
         });
 
         // When the product's next request of that kind spends the grant without asking again
-        const spent = await runWebSignedTest(pairedPage, productFrame, spendId, [], { timeoutMs: spendTimeoutMs });
+        const spendStatus = await runWebSignedTest(pairedPage, productFrame, spendId, [], {
+          timeoutMs: spendTimeoutMs,
+        });
 
         // Then
-        expect([granted, spent]).toEqual(['success', 'success']);
+        expect([grantStatus, spendStatus]).toEqual(['success', 'success']);
       });
     }
 
@@ -373,17 +375,23 @@ test.describe('dot.li > host-playground.dot', () => {
       }) => {
         // Given the product holds a smart contract allowance
         test.setTimeout(240_000);
-        const granted = await runWebSignedTest(pairedPage, productFrame, 'allowances-smart-contract', [ALLOCATION], {
-          timeoutMs: 90_000,
-        });
+        const grantStatus = await runWebSignedTest(
+          pairedPage,
+          productFrame,
+          'allowances-smart-contract',
+          [ALLOCATION],
+          {
+            timeoutMs: 90_000,
+          },
+        );
 
         // When
-        const written = await runWebSignedTest(pairedPage, productFrame, testId, CONTRACT_WRITE, {
+        const writeStatus = await runWebSignedTest(pairedPage, productFrame, testId, CONTRACT_WRITE, {
           timeoutMs: 120_000,
         });
 
         // Then
-        expect([granted, written]).toEqual(['success', 'success']);
+        expect([grantStatus, writeStatus]).toEqual(['success', 'success']);
       });
     }
   });
@@ -439,7 +447,7 @@ test.describe('dot.li > host-playground.dot', () => {
 
     testsWithoutDialogs(
       ['microphone', 'location', 'bluetooth', 'clipboard', 'open-url', 'biometrics'].map(
-        device => [`I ask for ${device} and get it with no host dialog`, `device-permission-${device}`] as const,
+        device => [`I request ${device} and get it with no host dialog`, `device-permission-${device}`] as const,
       ),
     );
 
@@ -460,9 +468,8 @@ test.describe('dot.li > host-playground.dot', () => {
       expect(status).toBe('success');
     });
 
-    test('As a product on dot.li, I ask for NFC, whose browser API cannot run in a frame, and am denied', async ({
-      productFrame,
-    }) => {
+    // dot.li denies NFC, since its browser API cannot run in a frame.
+    test('As a product on dot.li, I request NFC and am denied', async ({ productFrame }) => {
       // When
       const result = await runTest(productFrame, 'device-permission-nfc');
 
