@@ -14,7 +14,7 @@ import { describeLiveNetwork, type LiveVerdict } from './networkVerdict.js';
 export type NetworkState = {
   chains: ChainStatus[];
   transfer: TransferState;
-  /** When `chains` was read, so a countdown adds the time since to each `sinceLast`. */
+  /** When `chains` was read, so the rows age each `sinceLast` between reads. */
   readAt: number;
   /** The live network verdict over `chains`, worked out once per update. */
   verdict: LiveVerdict;

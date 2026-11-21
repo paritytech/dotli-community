@@ -70,7 +70,7 @@ describe('describeChainHealth', () => {
     { phase: null, text: 'Connecting' },
     { phase: 'ready', text: 'Connecting' },
     { phase: 'syncing', text: 'Syncing' },
-  ])(
+  ] as const)(
     'As a user of a chain still coming up whose light client reports $phase, I see "$text" and a ghost bar',
     ({ phase, text }) => {
       // Given
@@ -99,7 +99,7 @@ describe('describeChainHealth', () => {
     expect(health).toEqual({ mark: { kind: 'connecting' }, status: { text: 'Connecting', tone: null }, pending: null });
   });
 
-  it.each(['connecting', 'syncing'])(
+  it.each(['connecting', 'syncing'] as const)(
     'As a user of a live chain whose light client reports %s again, I see it coming up',
     phase => {
       // Given
@@ -115,7 +115,7 @@ describe('describeChainHealth', () => {
 
   it('As a user of a live chain with one block and no bar yet, I see it Connected while its ghost bar counts on', () => {
     // Given
-    const chain = { ...CHAIN, sinceLast: 1500, phase: 'ready' };
+    const chain = { ...CHAIN, sinceLast: 1500, phase: 'ready' as const };
 
     // When
     const health = describeChainHealth(chain, { ...FACTS, sinceRead: 1000 });

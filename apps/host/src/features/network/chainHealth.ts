@@ -22,7 +22,7 @@ export type ChainMark =
 export type ChainHealthView = {
   mark: ChainMark;
   status: { text: string; tone: 'warn' | 'err' | null };
-  /** The ghost bar of a connecting chain, null otherwise. */
+  /** The ghost bar of a chain in use with no bar yet, null otherwise. */
   pending: PendingBarView | null;
 };
 

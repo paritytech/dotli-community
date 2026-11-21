@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ChainPhase } from './networkMonitorState.js';
+
 /** A block's arrival against the chain's block time, which colours its bar. */
 export type BarHealth = 'onTime' | 'late' | 'veryLate';
 
@@ -28,8 +30,8 @@ export type ChainSummary = {
   readonly bars: readonly ChainBar[];
   /** False when the active network offers no endpoint for this chain. */
   readonly reachable: boolean;
-  /** What a chain with no bar yet waits on, in words. */
-  readonly phase: string | null;
+  /** The light client's phase as the chain comes up, null for a chain it does not report. */
+  readonly phase: ChainPhase | null;
   /** Null where the backend never reports peers. */
   readonly peers: number | null;
 };

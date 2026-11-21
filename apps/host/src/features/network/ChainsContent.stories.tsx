@@ -143,7 +143,7 @@ function statusStory(
     play: async ctx => {
       await open(ctx);
       await ctx.step('When the network reports the state', () => {
-        // Read just now, so a countdown shows its first value.
+        // Read just now, so the rows age from it.
         given(chains, network.transfer, network.verdict);
         if (network.offline === true) {
           setHealth('err');
@@ -394,7 +394,7 @@ export const FollowsOnlyWhileOpen: Story = {
 
 const captured = fn().mockName('captureException');
 
-/** As a dotli user, a render error while open is reported, closes the popover and its countdown, and the next open works. */
+/** As a dotli user, a render error while open is reported, closes the popover and its ticking rows, and the next open works. */
 export const RenderErrorCloses: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
