@@ -113,30 +113,29 @@ describe('The network menu verdict', () => {
 });
 
 describe('NETWORK_HEALTH', () => {
-  it.each<{ health: NetworkHealth; word: string; title: string; alerts: boolean; pulses: boolean; dot: StatusTone }>([
-    { health: 'ok', word: 'Connected', title: 'Your connection is good', alerts: false, pulses: false, dot: 'ok' },
-    { health: 'idle', word: 'Syncing', title: 'Syncing', alerts: true, pulses: true, dot: 'idle' },
-    { health: 'warn', word: 'Unstable', title: 'Connection is unstable', alerts: true, pulses: false, dot: 'warn' },
-    { health: 'err', word: 'Offline', title: 'You are offline', alerts: true, pulses: false, dot: 'err' },
-    { health: 'quiet', word: 'Not in use', title: 'No chains in use', alerts: false, pulses: false, dot: 'idle' },
+  it.each<{ health: NetworkHealth; word: string; alerts: boolean; pulses: boolean; dot: StatusTone }>([
+    { health: 'ok', word: 'Connected', alerts: false, pulses: false, dot: 'ok' },
+    { health: 'idle', word: 'Syncing', alerts: true, pulses: true, dot: 'idle' },
+    { health: 'warn', word: 'Unstable', alerts: true, pulses: false, dot: 'warn' },
+    { health: 'err', word: 'Offline', alerts: true, pulses: false, dot: 'err' },
+    { health: 'quiet', word: 'Not in use', alerts: false, pulses: false, dot: 'idle' },
     {
       health: 'unreachable',
       word: 'Unreachable',
-      title: "Can't reach this network",
       alerts: true,
       pulses: false,
       dot: 'err',
     },
   ])(
-    'As a dotli user whose network is $health, I see "$word" in the More row and "$title" in the panel',
-    ({ health, word, title, alerts, pulses, dot }) => {
+    'As a dotli user whose network is $health, I see "$word" in the More row',
+    ({ health, word, alerts, pulses, dot }) => {
       // Given the row's network health, from the table
 
       // When
       const facts = NETWORK_HEALTH[health];
 
       // Then
-      expect(facts).toEqual({ word, title, alerts, pulses, dot });
+      expect(facts).toEqual({ word, alerts, pulses, dot });
     },
   );
 

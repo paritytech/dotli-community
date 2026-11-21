@@ -315,22 +315,48 @@ describe('createChainLanes', () => {
     expect(readAnswer(consumer, 2)['result']).toEqual(expect.stringContaining(':lane:2:'));
   });
 
-  it('As an RPC chain, I read connecting while a new lane opens, and connected once every lane is', () => {
+  it('As an RPC chain, I read connected while a new lane opens beside a connected one', () => {
     // Given lane 0 connected and full
     const { createTransport, built } = createTransports();
     const { lanes, statuses } = createLanes({ createTransport });
     nth(built, 0).hooks.onStatus('connected');
     fillLaneZero(lanes);
 
-    // When a consumer opens lane 1, and lane 1 connects
+    // When a consumer opens lane 1
     connectConsumer(lanes, 'local:e');
+
+    // Then the chain reads connected throughout
+    expect(statuses).toEqual(['connected']);
+    expect(lanes.status()).toBe('connected');
+  });
+
+  it('As an RPC chain, I read connecting until my first lane connects', () => {
+    // Given a chain whose lane 0 opens
+    const { createTransport, built } = createTransports();
+    const { lanes, statuses } = createLanes({ createTransport });
     const opening = lanes.status();
+
+    // When lane 0 connects
+    nth(built, 0).hooks.onStatus('connected');
+
+    // Then the chain read connecting while it opened, and connected after
+    expect([opening, statuses]).toEqual(['connecting', ['connected']]);
+  });
+
+  it('As an RPC chain, I read connected while one of my lanes drops and another stays connected', () => {
+    // Given lane 0 connected and full, and lane 1 connected
+    const { createTransport, built } = createTransports();
+    const { lanes, statuses } = createLanes({ createTransport });
+    nth(built, 0).hooks.onStatus('connected');
+    fillLaneZero(lanes);
+    connectConsumer(lanes, 'local:e');
     nth(built, 1).hooks.onStatus('connected');
 
-    // Then the chain reads connecting while lane 1 opens, and connected after
-    expect(opening).toBe('connecting');
-    expect(statuses).toEqual(['connected', 'connecting', 'connected']);
-    expect(lanes.status()).toBe('connected');
+    // When lane 1 drops
+    nth(built, 1).hooks.onStatus('disconnected');
+
+    // Then the chain stays connected
+    expect([lanes.status(), statuses]).toEqual(['connected', ['connected']]);
   });
 
   it('As an RPC chain, I ignore a status from a lane I closed', () => {
@@ -348,7 +374,7 @@ describe('createChainLanes', () => {
 
     // Then the chain stays connected
     expect(lanes.status()).toBe('connected');
-    expect(statuses).toEqual(['connected', 'connecting', 'connected']);
+    expect(statuses).toEqual(['connected']);
   });
 
   it('As an RPC chain, I ignore a status from a lane once the chain halted, even before its lanes are halted', () => {
@@ -529,9 +555,9 @@ describe('createChainLanes', () => {
     // When a new consumer connects
     const thrown = catchError(() => connectConsumer(lanes, 'local:e'));
 
-    // Then the connect throws the opening's error, the chain reads connected again and does not halt
+    // Then the connect throws the opening's error, the chain stays connected and does not halt
     expect(thrown).toBe(FAULT);
-    expect(statuses).toEqual(['connected', 'connecting', 'connected']);
+    expect(statuses).toEqual(['connected']);
     expect(halts).toEqual([]);
   });
 

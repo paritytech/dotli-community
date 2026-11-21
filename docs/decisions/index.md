@@ -16,7 +16,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [cleanup-move-matches-a-rule](cleanup-move-matches-a-rule.md): a simplification pass finds a shape that matches one
   of its rules, or a rater lists it.
 - [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md): a simple design competes with
-  elaborate ones that guard a size, a setup or a first-visit cost.
+  elaborate ones that guard a size, a setup or a first-visit cost, while building rather than in a cleanup.
 - [owner-approves-in-advance](owner-approves-in-advance.md): the owner approved a change in advance, and its gates or a
   follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to
@@ -46,7 +46,11 @@ The owner may change or remove any rule. A change here lands in the same commit 
   variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
 - [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
   finds a style or skill rule that matches the code's shape, such as one event that carries a collaborator's state, and
-  the rewrite it describes would read no better than the code it replaces.
+  the rewrite it describes would read no better than the code it replaces, or would drop a guard that keeps idle work
+  from running.
+- [component-reports-before-it-restores](component-reports-before-it-restores.md): a component that boots
+  asynchronously reports an empty state before it restores what it stored, and a display, a cache or a watcher reading
+  the layer above acts on that gap, including when the layer above's own store-changed nudge causes it.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
   protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
   unreachable.
@@ -70,8 +74,14 @@ The owner may change or remove any rule. A change here lands in the same commit 
   reads config from its parent through URL params any embedder can write, and one value is security-critical.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
   value an older version wrote that the UI no longer offers.
+- [table-column-left-with-one-reader](table-column-left-with-one-reader.md): removing a view leaves one column of a
+  feature's facts table with a single reader in a sibling feature, which reads one member's value.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
+- [view-shows-a-status-the-layer-already-reports](view-shows-a-status-the-layer-already-reports.md): a view shows each
+  item's status, and the state layer's existing verdict, which other readers share, reports a waiting state the view
+  would rather not show, such as a brief one after the page returns from hidden or one for an item nothing on the page
+  holds.
 
 ## Product requests
 
@@ -111,6 +121,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   fallback, and the question is whether to fill the gap or keep the old way.
 - [listbox-option-needs-a-remove-action](listbox-option-needs-a-remove-action.md): a combobox's popup is a shared
   listbox primitive, and each row needs a remove action though an option may not hold a control.
+- [list-row-opens-a-detail-beneath-it](list-row-opens-a-detail-beneath-it.md): a list row with a rich header opens a
+  detail under it on press, and the shared disclosure primitive's header takes only a string.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
 - [identity-row-with-a-name-and-an-address](identity-row-with-a-name-and-an-address.md): a row shows an entity that
@@ -129,6 +141,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
 - [section-whose-data-loads-lazily](section-whose-data-loads-lazily.md): a card or popover section's data loads only
   after the card opens, and the question is what the section shows while it loads.
+- [status-mark-drawn-around-an-icon](status-mark-drawn-around-an-icon.md): a design carries an entity's state in a
+  disc or ring around its icon, and the question is whether that breaks the rule that icons stand bare.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.
 - [window-blur-closes-a-popover](window-blur-closes-a-popover.md): a shared layer closes a popover on every window blur,

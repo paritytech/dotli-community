@@ -4,7 +4,7 @@
 // The network a story gives the network button and panel, which a play moves.
 
 import { createSignal, onCleanup } from 'solid-js';
-import type { Backend } from '@dotli/config';
+import { expect, userEvent, waitFor } from 'storybook/test';
 import type { BlockHealth } from '../../features/network/networkMonitorState.js';
 import type { ChainBar } from '../../features/network/chain.js';
 import type { ChainView, NetworkView, TransferView } from '../../features/network/chains.js';
@@ -32,7 +32,6 @@ const NOTHING: NetworkView = { chains: [], transfer: NO_TRANSFER, readAt: 0, ver
 const [network, setNetwork] = createSignal<NetworkView>(NOTHING);
 const [health, setHealthSignal] = createSignal<NetworkHealth>('quiet');
 const [productLoaded, setProductLoadedSignal] = createSignal(false);
-const [backend, setBackendSignal] = createSignal<Backend | undefined>(undefined);
 
 /** How many times the panel started following the network, and how many of those still follow it. */
 export const follows = { started: 0, following: 0 };
@@ -41,7 +40,6 @@ export const follows = { started: 0, following: 0 };
 export const storyNetwork: NetworkItemProps = {
   health,
   productLoaded,
-  backend,
   followNetwork: () => {
     follows.started += 1;
     follows.following += 1;
@@ -52,9 +50,8 @@ export const storyNetwork: NetworkItemProps = {
   },
 };
 
-/** A known chain in use, pending until it has a latest block, which only decides its state. */
-export function chain(overrides: Partial<ChainView> & { latest?: number | null } = {}): ChainView {
-  const latest = overrides.latest ?? null;
+/** A known chain in use, live unless the story gives its state. */
+export function chain(overrides: Partial<ChainView> = {}): ChainView {
   return {
     key: overrides.role ?? 'relay',
     role: 'relay',
@@ -64,8 +61,9 @@ export function chain(overrides: Partial<ChainView> & { latest?: number | null }
     blockTimeMs: 6000,
     reachable: true,
     phase: null,
+    syncShare: null,
     peers: null,
-    state: latest === null ? 'pending' : 'live',
+    state: 'live',
     ...overrides,
   };
 }
@@ -76,8 +74,8 @@ export function bars(from: number, count: number, gapMs = 6000, health: BlockHea
 }
 
 /**
- * The network, read just now, so a countdown shows its first value, with the health its verdict earns online. With no
- * `verdict`, it is the one the chains earn with no alarm raised, so the status line agrees with the rows.
+ * The network, read just now, so the rows age from it, with the health its verdict earns online. With no
+ * `verdict`, it is the one the chains earn with no alarm raised, so the head's dot agrees with the rows.
  */
 export function given(
   chains: ChainView[],
@@ -88,6 +86,16 @@ export function given(
   setHealthSignal(verdict.tone);
 }
 
+const CLOSED_ROW = '#chains-popover [data-testid="chains-row-head"][aria-expanded="false"]';
+
+/** Opens every closed chain row in the popover, so each shows its block strip. */
+export async function openChainRows(): Promise<void> {
+  for (const head of document.querySelectorAll<HTMLElement>(CLOSED_ROW)) {
+    await userEvent.click(head);
+  }
+  await waitFor(() => expect(document.querySelector(CLOSED_ROW)).toBeNull());
+}
+
 export function setHealth(next: NetworkHealth): void {
   setHealthSignal(next);
 }
@@ -96,16 +104,11 @@ export function setProductLoaded(loaded: boolean): void {
   setProductLoadedSignal(loaded);
 }
 
-export function setBackend(next: Backend | undefined): void {
-  setBackendSignal(next);
-}
-
-/** For a story's `beforeEach`: no chain in use, quiet, the product loading, the settings not read yet. */
+/** For a story's `beforeEach`: no chain in use, quiet, the product loading. */
 export function resetStoryNetwork(): void {
   setNetwork(NOTHING);
   setHealthSignal('quiet');
   setProductLoadedSignal(false);
-  setBackendSignal(undefined);
   follows.started = 0;
   follows.following = 0;
 }

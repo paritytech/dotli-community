@@ -42,7 +42,7 @@ type Story = StoryObj<typeof meta>;
 export const OpensBody: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    given([chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 })], undefined, VERDICTS.good);
+    given([chain({ bars: bars(8, 3), sinceLast: 500, peers: 12 })], undefined, VERDICTS.good);
   },
   play: async ctx => {
     await ctx.step('Given the button badged with the good health', async () => {

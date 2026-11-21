@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  describeBehind,
   describeBlockDelay,
   describePeers,
   HISTORY_SLOTS,
@@ -13,7 +12,7 @@ import {
   slotOpacity,
 } from './chainStrip.js';
 
-const RELAY = { blockTimeMs: 6000, phase: null };
+const RELAY = { blockTimeMs: 6000 };
 
 describe('slotOpacity', () => {
   it('As a user reading the history, the oldest slot is half strength and the newest full', () => {
@@ -33,24 +32,6 @@ describe('describeBlockDelay', () => {
 
     // Then
     expect(delay).toBe(said);
-  });
-});
-
-describe('describeBehind', () => {
-  it.each([
-    { gaps: [6000, 12_000], said: 'Behind, last block 6.0s late' },
-    { gaps: [12_000, 36_000], said: 'Behind, last block 30s late' },
-    { gaps: [12_000, 6000], said: 'Behind' },
-    { gaps: [], said: 'Behind' },
-  ])('As a user of a chain that lags, after blocks $gaps of a 6s block time it reads "$said"', ({ gaps, said }) => {
-    // When
-    const caption = describeBehind(
-      gaps.map(gapMs => ({ gapMs })),
-      6000,
-    );
-
-    // Then
-    expect(caption).toBe(said);
   });
 });
 
@@ -75,33 +56,30 @@ describe('the bar strip motion', () => {
 });
 
 describe('the ghost bar before a chain first bar', () => {
-  it('As a user of a chain still connecting, the ghost bar searches, saying the light client phase or connecting', () => {
+  it('As a user of a chain with no block yet, the ghost bar searches', () => {
     // When
-    const bars = [pendingBar(RELAY, null), pendingBar({ blockTimeMs: 6000, phase: 'syncing' }, null)];
+    const bar = pendingBar(RELAY, null);
 
     // Then
-    expect(bars).toEqual([
-      { phase: 'searching', text: 'Connecting' },
-      { phase: 'searching', text: 'Syncing' },
-    ]);
+    expect(bar).toEqual({ phase: 'searching' });
   });
 
-  it('As a user waiting for the next block of a chain, the ghost bar grows and counts down to it', () => {
+  it('As a user waiting for the next block of a chain, the ghost bar grows toward it', () => {
     // When
     const bar = pendingBar(RELAY, 1500);
 
     // Then
-    expect(bar).toEqual({ phase: 'counting', heightPercent: 59, text: 'Next block in about 5s' });
+    expect(bar).toEqual({ phase: 'counting', heightPercent: 59 });
   });
 
-  it('As a user of a chain at or past its block time, the ghost bar stands full and says due any moment, never zero', () => {
+  it('As a user of a chain at or past its block time, the ghost bar stands full and due', () => {
     // When
     const bars = [pendingBar(RELAY, 6000), pendingBar(RELAY, 19_000)];
 
     // Then
     expect(bars).toEqual([
-      { phase: 'due', heightPercent: 100, text: 'Due any moment' },
-      { phase: 'due', heightPercent: 100, text: 'Due any moment' },
+      { phase: 'due', heightPercent: 100 },
+      { phase: 'due', heightPercent: 100 },
     ]);
   });
 });

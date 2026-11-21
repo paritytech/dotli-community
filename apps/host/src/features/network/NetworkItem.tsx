@@ -29,7 +29,7 @@ export type NetworkItemProps = {
 function OpenChains(props: NetworkItemProps): JSX.Element {
   // Once per opening, as the body mounts with each one.
   const network = untrack(() => props.followNetwork());
-  return <Chains network={network} health={props.health} productLoaded={props.productLoaded} backend={props.backend} />;
+  return <Chains network={network} health={props.health} productLoaded={props.productLoaded} />;
 }
 
 /** The network button and its popover. As a More row: the health in a word, and a warning raised on More. */

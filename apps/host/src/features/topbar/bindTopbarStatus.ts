@@ -3,7 +3,10 @@
 
 import type { ReadableAtom } from 'nanostores';
 import { pageActionNeeded } from './pageActionNeeded.js';
-import { isNetworkOffline, NETWORK_HEALTH, type NetworkHealth } from '../network/index.js';
+import { isNetworkOffline, type NetworkHealth } from '../network/index.js';
+
+/** What the offline line says, since the capsule's colour is not announced. */
+const OFFLINE_ANNOUNCEMENT = 'You are offline';
 
 /**
  * Binds the capsule's tone, action dot and offline line to the page's state. `health` is the page's network health,
@@ -15,8 +18,7 @@ export function bindTopbarStatus(bar: HTMLElement, health: ReadableAtom<NetworkH
   function render(): void {
     bar.dataset['tone'] = health.get();
     bar.toggleAttribute('data-action', pageActionNeeded.get());
-    // The capsule's colour is not announced, so going offline is said in words.
-    const announcement = isNetworkOffline(health.get()) ? NETWORK_HEALTH.err.title : '';
+    const announcement = isNetworkOffline(health.get()) ? OFFLINE_ANNOUNCEMENT : '';
     // The line is a live region, so writing the same words again would announce them again.
     if (offline !== null && offline.textContent !== announcement) {
       offline.textContent = announcement;

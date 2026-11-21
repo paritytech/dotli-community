@@ -6,7 +6,6 @@ import { productState } from '../page/index.js';
 import { NetworkItem } from './NetworkItem.js';
 import { networkState } from './networkState.js';
 import { networkHealthState } from './networkHealthState.js';
-import { settingsState } from '../settings/index.js';
 import { useNetworkPanel } from './network.js';
 
 /** The network button and its panel, bound to the page's network and its health. */
@@ -15,7 +14,6 @@ export function NetworkButtonIsland(): JSX.Element {
     health: networkHealthState.store,
     network: networkState,
     product: productState.store,
-    settings: settingsState.store,
   });
   return <NetworkItem {...panel} />;
 }

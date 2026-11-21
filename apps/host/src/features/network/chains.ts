@@ -27,7 +27,7 @@ export type TransferView = {
 export type NetworkView = {
   readonly chains: readonly ChainView[];
   readonly transfer: TransferView;
-  /** When `chains` was read, so a countdown adds the time since to each `sinceLast`. */
+  /** When `chains` was read, so the rows age each `sinceLast` between reads. */
   readonly readAt: number;
   readonly verdict: LiveVerdict;
 };

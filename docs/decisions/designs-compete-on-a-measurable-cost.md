@@ -32,6 +32,12 @@ const { RefundsView } = await import('../payments/refunds/RefundsView.js');
 
 Build the simple one, compare the eager bundle size on both, and keep the simple one when it is no larger.
 
+## Not when
+
+- The guarding piece is already built, the change's design names it, and a cleanup would drop it to save a few lines.
+  That is not a choice between designs while building, so it is not measured first. Keep it, as
+  [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md) says.
+
 ## Cases
 
 - Per-feature loader modules gave way to an `import()` written at each call site. The eager pages came out smaller, and
@@ -41,5 +47,7 @@ Build the simple one, compare the eager bundle size on both, and keep the simple
   in every build. Measured on a cold, throttled first visit, the font came a little after first paint with a tiny swap
   shift on one page, and the owner kept the simple import over the framework's font feature with preload and fallback
   faces in one build. (docs/_plans/brand-fonts-design.md, PR #493)
+- Counter-case: a cleanup proposed dropping a built gate, named in the design, that keeps an open panel's clock idle
+  when nothing is in use. The owner kept it over dropping it or measuring idle CPU first. (feat/network-chain-indicators)
 
 Status: active

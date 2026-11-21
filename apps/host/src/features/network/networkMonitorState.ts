@@ -19,8 +19,8 @@ export type BlockBar = {
   readonly gapMs: number;
 };
 
-/** How a chain counts toward the verdict. */
-export type ChainUse = 'unused' | 'pending' | 'live';
+/** How a chain counts toward the verdict. `down` while its pool reports it disconnected. */
+export type ChainUse = 'unused' | 'pending' | 'down' | 'live';
 
 export type ChainStatus = {
   /** The role of a known chain, the genesis hash of any other. */
@@ -37,10 +37,12 @@ export type ChainStatus = {
   readonly reachable: boolean;
   /** A chain can be `ready` before any block is observed. */
   readonly phase: ChainPhase | null;
+  /** The share of its last warp the light client proved, kept after the warp. Null before any. */
+  readonly syncShare: number | null;
   /** Null where the backend never reports peers, such as a trusted provider. */
   readonly peers: number | null;
   readonly state: ChainUse;
-  /** True when the chain is stalled, or down again after it was up. Never set by overdue blocks. */
+  /** True when the light client reports a chain in use stalled. Never set by overdue blocks. */
   readonly alarm: boolean;
 };
 
@@ -84,20 +86,14 @@ type ChainState = {
   consumers: number;
   status: ChainActivity['status'];
   following: boolean;
-  /** The pool reported `connected` while something held the chain, since it was last released. */
-  poolWasConnected: boolean;
   /**
    * The frame's last report on a known chain. This and the two below outlive a release, since the frame's chains live on
    * whether or not this tab holds them.
    */
   phase: ChainPhase | null;
+  syncShare: number | null;
   /** Null until the frame reports the count for a known chain. */
   peers: number | null;
-  /**
-   * A known chain the frame had up, so a drop is a regression. Set by a `ready` report or by a block while ready, and
-   * cleared on a return to the page, so after a return only the next sign of life arms the alarm again.
-   */
-  frameWasReady: boolean;
 };
 
 /** The most bars a chain keeps. Only a memory ceiling, never how many are drawn. */
@@ -126,12 +122,13 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     version,
     /**
      * Records who holds a chain and how its connection stands. A chain outside the known roles is listed only while
-     * something holds it.
+     * something holds it. A chain not `connected` stops its block clock, so its next block draws no bar.
      */
     recordChainActivity,
     /**
      * Records a chain's best block. Ignored for a chain nobody holds, so a late block cannot revive a released chain's
-     * history.
+     * history. A block on a chain not `connected`, or whose phase is `connecting` or `syncing`, leaves the block clock
+     * stopped and draws no bar, so the clock starts at the first block after the chain is up.
      */
     recordBestBlock,
     /**
@@ -144,14 +141,13 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
      * the other. An unchanged transfer is dropped.
      */
     recordTransfer,
-    /** Records a known chain's phase. An unchanged phase is dropped. */
-    recordChainPhase,
     /**
-     * Records a return to the page, from hiding or from a sleep. Every chain's judgement starts over: its block clock
-     * stops. A light client's alarm waits for its first block after the return, a pool's for its next `connected`, and a
-     * pool still connected keeps its alarm. The bars stay.
+     * Records a known chain's phase. An unchanged phase is dropped. A move to `connecting` or `syncing` stops the
+     * chain's block clock, so its next block draws no bar.
      */
-    recordReturn,
+    recordChainPhase,
+    /** Records the share of its warp a known chain proved, from 0 to 1. An unchanged share is dropped. */
+    recordSyncShare,
     /** Returns the transfer as last merged. */
     getTransfer,
     /**
@@ -206,6 +202,11 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     if (state.latest !== null && blockNumber <= state.latest) {
       return;
     }
+    state.latest = blockNumber;
+    if (state.status !== 'connected' || isPhaseDown(state.phase)) {
+      notify();
+      return;
+    }
     const now = timers.now();
     // The first block has no gap to judge, so it only anchors the next one.
     if (state.lastAt !== null) {
@@ -219,23 +220,7 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
         state.bars.shift();
       }
     }
-    state.latest = blockNumber;
     state.lastAt = now;
-    // A block proves the chain is up again, so a later drop is a regression worth an alarm.
-    if (state.phase === 'ready') {
-      state.frameWasReady = true;
-    }
-    notify();
-  }
-
-  function recordReturn(): void {
-    for (const state of listChains()) {
-      state.lastAt = null;
-      state.frameWasReady = false;
-      if (state.status !== 'connected') {
-        state.poolWasConnected = false;
-      }
-    }
     notify();
   }
 
@@ -259,15 +244,13 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     const released = state.consumers > 0 && activity.consumers === 0;
     // A consumer can drop its follow and keep the chain. No block is coming then, so the clock stops rather than
     // reading the chain as overdue, and a later follow carries the strip on from its next block.
-    if (state.following && !activity.following) {
+    // A gap across a drop is no measure of block production either.
+    if ((state.following && !activity.following) || activity.status !== 'connected') {
       state.lastAt = null;
     }
     state.consumers = activity.consumers;
     state.status = activity.status;
     state.following = activity.following;
-    if (activity.consumers > 0 && activity.status === 'connected') {
-      state.poolWasConnected = true;
-    }
     if (released) {
       if (state.role === null) {
         extras.delete(genesis);
@@ -275,7 +258,6 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
         // The bars stay as the record of its last use. The clock stops, so a chain held again is judged from its next
         // block rather than read as overdue, and the unused stretch draws no bar.
         state.lastAt = null;
-        state.poolWasConnected = false;
       }
     }
     notify();
@@ -312,13 +294,23 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     if (state === null) {
       return;
     }
-    if (phase === 'ready') {
-      state.frameWasReady = true;
-    }
     if (state.phase === phase) {
       return;
     }
     state.phase = phase;
+    // A client coming up again has no block production to measure until its next block.
+    if (isPhaseDown(phase)) {
+      state.lastAt = null;
+    }
+    notify();
+  }
+
+  function recordSyncShare(role: ChainRole, share: number): void {
+    const state = findKnownChain(role);
+    if (state === null || state.syncShare === share) {
+      return;
+    }
+    state.syncShare = share;
     notify();
   }
 
@@ -327,37 +319,23 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
   }
 
   /**
-   * How a chain counts toward the verdict, and whether it is stalled or down again after it was up. Overdue blocks are
-   * not judged here.
+   * How a chain counts toward the verdict, read from its pool's status and its light client's phase only, and whether
+   * the light client calls it stalled. Neither its blocks nor overdue blocks are judged here.
    */
-  function judgeUse(state: ChainState, sinceLast: number | null): Pick<ChainStatus, 'state' | 'alarm'> {
-    if (!isReachable(state)) {
+  function judgeUse(state: ChainState): Pick<ChainStatus, 'state' | 'alarm'> {
+    // The frame brings its chains up whether or not this tab holds them, so a chain only counts once taken.
+    if (!isReachable(state) || state.consumers === 0) {
       return { state: 'unused', alarm: false };
     }
-    if (isAlarmed(state)) {
-      return { state: 'live', alarm: true };
+    const alarm = state.phase === 'stalled';
+    switch (state.status) {
+      case 'disconnected':
+        return { state: 'down', alarm };
+      case 'connecting':
+        return { state: 'pending', alarm };
+      case 'connected':
+        return { state: isPhaseDown(state.phase) ? 'pending' : 'live', alarm };
     }
-    if (state.consumers === 0) {
-      // The frame brings its chains up whether or not this tab holds them, so one still coming up is pending.
-      return { state: isPhaseDown(state.phase) ? 'pending' : 'unused', alarm: false };
-    }
-    if (state.following) {
-      return { state: sinceLast === null ? 'pending' : 'live', alarm: false };
-    }
-    return { state: isPhaseDown(state.phase) || state.status !== 'connected' ? 'pending' : 'live', alarm: false };
-  }
-
-  /** Whether the chain is stalled while in use, or down again after it was up. */
-  function isAlarmed(state: ChainState): boolean {
-    const inUse = state.consumers > 0;
-    // The frame judges the chains it reports on, the pool the rest.
-    if (state.phase === null) {
-      return inUse && state.poolWasConnected && state.status !== 'connected';
-    }
-    if (inUse && state.phase === 'stalled') {
-      return true;
-    }
-    return isPhaseDown(state.phase) && state.frameWasReady;
   }
 
   function listChains(): ChainState[] {
@@ -372,7 +350,7 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
       sinceLast,
       blockTimeMs: state.blockTimeMs,
       reachable: isReachable(state),
-      ...judgeUse(state, sinceLast),
+      ...judgeUse(state),
     };
   }
 
@@ -390,6 +368,7 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
       bars: Object.freeze([...state.bars]),
       peers: state.peers,
       phase: state.phase,
+      syncShare: state.syncShare,
     }));
   }
 }
@@ -422,10 +401,9 @@ function createChainState(
     consumers: 0,
     status: 'disconnected',
     following: false,
-    poolWasConnected: false,
     phase: null,
+    syncShare: null,
     peers: null,
-    frameWasReady: false,
   };
 }
 

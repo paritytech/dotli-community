@@ -5,9 +5,7 @@
 
 import { onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { networkPause } from '../network/index.js';
 import { networkHealthState } from '../network/index.js';
-import { networkMonitorState } from '../network/index.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
 import { NetworkButtonIsland } from '../network/index.js';
 
@@ -23,12 +21,7 @@ export function LandingNetworkIsland(): JSX.Element {
 // The landing page starts no shell state, so the button starts what the topbar's reads from the shell.
 function BoundNetwork(): JSX.Element {
   onSettled(() => {
-    const stopHealth = networkHealthState.start();
-    const stopReturns = networkPause.onReturn(networkMonitorState.recordReturn);
-    return () => {
-      stopHealth();
-      stopReturns();
-    };
+    return networkHealthState.start();
   });
   return <NetworkButtonIsland />;
 }

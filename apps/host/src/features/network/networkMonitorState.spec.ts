@@ -4,7 +4,6 @@
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ChainActivity } from '@dotli/chains';
 import { createNetworkMonitorState, type ChainStatus, type NetworkMonitor } from './networkMonitorState.js';
-import { describeLiveNetwork } from './networkVerdict.js';
 import { buildChainActivity } from '../../testing/buildChainActivity.js';
 import { getRelayGenesis } from '../../testing/getRelayGenesis.js';
 import { createManualTimers, must, nth, type ManualTimers } from '@dotli/shared/testing';
@@ -103,11 +102,9 @@ describe('The network monitor tracks blocks', () => {
 
     // When
     use(getRelayGenesis());
-    const heldAgain = getChainByKey('relay');
     monitor.recordBestBlock(getRelayGenesis(), 120);
 
     // Then
-    expect(heldAgain).toMatchObject({ state: 'pending', alarm: false });
     expect(getChainByKey('relay')).toMatchObject({ latest: 120, state: 'live' });
     expect(getChainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
   });
@@ -321,6 +318,15 @@ describe('The network monitor repaints the panel only on a change', () => {
         monitor.recordChainPhase('assethub', 'ready');
       },
     },
+    {
+      reports: 'warp shares',
+      send() {
+        monitor.recordSyncShare('relay', 0.2);
+      },
+      sendChanged() {
+        monitor.recordSyncShare('relay', 0.4);
+      },
+    },
   ])(
     'As a user, I get $reports and see the panel repaint when one changes and stay quiet when it repeats',
     ({ send, sendChanged }) => {
@@ -365,168 +371,146 @@ describe('The network monitor judges how each chain is used', () => {
     expect(getChainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
   });
 
-  it('As a user, I follow a chain and see it pending until its first block, then live', () => {
+  it('As a user, I hold a chain whose pool is connecting and see it pending until the pool reports it connected, then live', () => {
+    // When
+    use(getRelayGenesis(), { status: 'connecting' });
+    const connecting = getChainByKey('relay');
+    use(getRelayGenesis(), { status: 'connected' });
+
+    // Then
+    expect(connecting.state).toBe('pending');
+    expect(getChainByKey('relay').state).toBe('live');
+  });
+
+  it('As a user, I hold a chain its pool reports connected and see it live before its first block', () => {
     // When
     use(getRelayGenesis());
-    const followed = getChainByKey('relay');
-    monitor.recordBestBlock(getRelayGenesis(), 100);
 
     // Then
-    expect(followed).toMatchObject({ state: 'pending', alarm: false });
-    expect(getChainByKey('relay')).toMatchObject({ state: 'live', alarm: false });
+    expect(getChainByKey('relay')).toMatchObject({ state: 'live', latest: null });
   });
 
-  it('As a user on trusted providers, I hold a chain without a follow and see it judged by its connection', () => {
-    // When
-    use(getRelayGenesis(), { following: false, status: 'connecting' });
-    const connecting = getChainByKey('relay');
-    use(getRelayGenesis(), { following: false, status: 'connected' });
-    const connected = getChainByKey('relay');
-    use(getRelayGenesis(), { following: false, status: 'connecting' });
-
-    // Then
-    expect(connecting).toMatchObject({ state: 'pending', alarm: false });
-    expect(connected).toMatchObject({ state: 'live', alarm: false });
-    expect(getChainByKey('relay')).toMatchObject({ state: 'live', alarm: true });
-  });
-
-  it('As a user, I release a chain and hold it again and see its connection start afresh', () => {
+  it('As a user, I see a chain in use whose pool reports it disconnected read as down', () => {
     // Given
-    use(getRelayGenesis(), { following: false, status: 'connected' });
-    release(getRelayGenesis());
+    use(getRelayGenesis());
 
     // When
-    use(getRelayGenesis(), { following: false, status: 'connecting' });
+    use(getRelayGenesis(), { status: 'disconnected' });
 
     // Then
-    expect(getChainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+    expect(getChainByKey('relay').state).toBe('down');
   });
 
-  it('As a user on trusted providers, I hold again a chain that reconnected while nothing held it and see it start afresh', () => {
-    // Given a chain held while connecting, released, then reported connected while released
-    use(getRelayGenesis(), { following: false, status: 'connecting' });
-    release(getRelayGenesis());
-    release(getRelayGenesis());
+  it.each(['connecting', 'syncing'] as const)(
+    'As a user, I see a connected chain in use whose light client reports %s read as pending',
+    phase => {
+      // Given
+      use(getRelayGenesis());
 
-    // When
-    use(getRelayGenesis(), { following: false, status: 'connecting' });
+      // When
+      monitor.recordChainPhase('relay', phase);
 
-    // Then
-    expect(getChainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
-  });
+      // Then
+      expect(getChainByKey('relay').state).toBe('pending');
+    },
+  );
 
-  it('As a user loading a product, I watch the frame sync an unused chain and see it pending, then unused once ready', () => {
+  it('As a user loading a product, I watch the frame sync a chain nothing holds and see it unused until something takes it', () => {
     // When
     monitor.recordChainPhase('relay', 'syncing');
     const syncing = getChainByKey('relay');
-    monitor.recordChainPhase('relay', 'ready');
-
-    // Then
-    expect(syncing).toMatchObject({ state: 'pending', alarm: false });
-    expect(getChainByKey('relay')).toMatchObject({ state: 'unused', alarm: false });
-  });
-
-  it('As a user, I see a frame chain drop from ready back to connecting and the alarm raised, used or not', () => {
-    // Given
-    monitor.recordChainPhase('relay', 'ready');
-
-    // When
-    monitor.recordChainPhase('relay', 'connecting');
-
-    // Then
-    expect(getChainByKey('relay')).toMatchObject({ state: 'live', alarm: true });
-  });
-
-  it('As a user, I see the frame call a chain in use stalled and the alarm raised', () => {
-    // Given
     use(getRelayGenesis());
-    monitor.recordBestBlock(getRelayGenesis(), 100);
-
-    // When
-    monitor.recordChainPhase('relay', 'stalled');
 
     // Then
-    expect(getChainByKey('relay')).toMatchObject({ state: 'live', alarm: true });
+    expect(syncing).toMatchObject({ state: 'unused', alarm: false });
+    expect(getChainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
   });
 
-  it('As a user, I see an extra chain that was connected reconnect and the alarm raised', () => {
-    // Given
-    use(EXTRA, { following: false, status: 'connected' });
-
+  it('As a user, I see the share of its warp a chain proved', () => {
     // When
-    use(EXTRA, { following: false, status: 'connecting' });
+    monitor.recordSyncShare('relay', 0.4);
 
     // Then
-    expect(getChainByKey(EXTRA)).toMatchObject({ state: 'live', alarm: true });
+    expect(getChainByKey('relay')).toMatchObject({ syncShare: 0.4 });
   });
-});
 
-describe('The network monitor after a return', () => {
-  it('As a user back on my page, I see my chain as Connecting until its next block, not as overdue', async () => {
-    // Given
+  it.each([
+    { phase: 'connecting', alarm: false },
+    { phase: 'syncing', alarm: false },
+    { phase: 'ready', alarm: false },
+    { phase: 'stalled', alarm: true },
+  ] as const)(
+    'As a user, I see the light client report a chain in use $phase and the alarm raised is $alarm',
+    ({ phase, alarm }) => {
+      // Given
+      use(getRelayGenesis());
+      monitor.recordBestBlock(getRelayGenesis(), 100);
+
+      // When
+      monitor.recordChainPhase('relay', phase);
+
+      // Then
+      expect(getChainByKey('relay').alarm).toBe(alarm);
+    },
+  );
+
+  it.each<{ drop: string; leave: () => void; back: () => void }>([
+    {
+      drop: 'its pool disconnects',
+      leave() {
+        use(getRelayGenesis(), { status: 'disconnected' });
+      },
+      back() {
+        use(getRelayGenesis(), { status: 'connected' });
+      },
+    },
+    {
+      drop: 'its light client syncs again',
+      leave() {
+        monitor.recordChainPhase('relay', 'syncing');
+      },
+      back() {
+        monitor.recordChainPhase('relay', 'ready');
+      },
+    },
+  ])(
+    'As a user whose chain drops when $drop, I get its first block after it is back and see no bar for the gap',
+    async ({ leave, back }) => {
+      // Given
+      use(getRelayGenesis());
+      monitor.recordChainPhase('relay', 'ready');
+      monitor.recordBestBlock(getRelayGenesis(), 100);
+      await timers.advance(6000);
+      monitor.recordBestBlock(getRelayGenesis(), 101);
+
+      // When
+      leave();
+      await timers.advance(60_000);
+      back();
+      monitor.recordBestBlock(getRelayGenesis(), 111);
+
+      // Then
+      expect(getChainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
+    },
+  );
+
+  it('As a user whose chain gets a block while its light client syncs, I see the block recorded with its clock stopped, and bars only from the first block after it is ready', async () => {
+    // Given a connected chain in use whose light client syncs
     use(getRelayGenesis());
-    monitor.recordBestBlock(getRelayGenesis(), 100);
-    await timers.advance(120_000);
+    monitor.recordChainPhase('relay', 'syncing');
 
     // When
-    monitor.recordReturn();
-    const back = describeLiveNetwork(monitor.getChainClocks());
+    monitor.recordBestBlock(getRelayGenesis(), 100);
+    await timers.advance(60_000);
+    const syncing = getChainByKey('relay');
+    monitor.recordChainPhase('relay', 'ready');
     monitor.recordBestBlock(getRelayGenesis(), 101);
+    await timers.advance(6000);
+    monitor.recordBestBlock(getRelayGenesis(), 102);
 
     // Then
-    expect(back).toEqual({ tone: 'idle' });
-    expect(describeLiveNetwork(monitor.getChainClocks()).tone).toBe('ok');
-  });
-
-  it('As a user back on my page, I see a light client syncing again as Connecting, not as Waiting', () => {
-    // Given
-    monitor.recordChainPhase('relay', 'ready');
-
-    // When
-    monitor.recordReturn();
-    monitor.recordChainPhase('relay', 'connecting');
-
-    // Then
-    expect(monitor.getChainClocks().some(chain => chain.alarm)).toBe(false);
-  });
-
-  it('As a user back on my page whose chain drops after its first block, I see it as Waiting again', () => {
-    // Given
-    use(getRelayGenesis());
-    monitor.recordChainPhase('relay', 'ready');
-    monitor.recordReturn();
-
-    // When
-    monitor.recordBestBlock(getRelayGenesis(), 100);
-    monitor.recordChainPhase('relay', 'connecting');
-
-    // Then
-    expect(getChainByKey('relay').alarm).toBe(true);
-  });
-
-  it('As a user back on my page, I see a host pool that paused and reconnects as Connecting', () => {
-    // Given
-    use(EXTRA, { following: false, status: 'connected' });
-    use(EXTRA, { following: false, status: 'disconnected' });
-
-    // When
-    monitor.recordReturn();
-    use(EXTRA, { following: false, status: 'connecting' });
-
-    // Then
-    expect(getChainByKey(EXTRA)).toMatchObject({ state: 'pending', alarm: false });
-  });
-
-  it('As a user back on my page whose connected pool chain drops later, I see it as Waiting', () => {
-    // Given
-    use(EXTRA, { following: false, status: 'connected' });
-
-    // When
-    monitor.recordReturn();
-    use(EXTRA, { following: false, status: 'connecting' });
-
-    // Then
-    expect(getChainByKey(EXTRA).alarm).toBe(true);
+    expect(syncing).toMatchObject({ latest: 100, sinceLast: null });
+    expect(getChainByKey('relay').bars).toEqual([{ number: 102, health: 'onTime', gapMs: 6000 }]);
   });
 });
 

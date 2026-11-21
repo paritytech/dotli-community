@@ -6,25 +6,19 @@ import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { recordReports } from '@dotli/metrics/testing';
 import { createFakePage, createManualTimers, type FakePage, type ManualTimers } from '@dotli/shared/testing';
 import { createNetworkPause, NETWORK_PAUSE_GRACE_MS, type NetworkPause } from './createNetworkPause.js';
-import { createManualPoll } from '../../testing/createManualPoll.js';
 
 let timers: ManualTimers;
 let page: FakePage;
 let pause: NetworkPause;
 /** What every target heard, in order. */
 let calls: ('pause' | 'resume')[];
-let returns: number;
 
 beforeEach(() => {
   timers = createManualTimers();
   page = createFakePage();
-  pause = createNetworkPause({ timers, poll: createManualPoll({ timers }) });
+  pause = createNetworkPause({ timers });
   calls = [];
-  returns = 0;
   pause.addTarget(createRecordingTarget());
-  pause.onReturn(() => {
-    returns += 1;
-  });
 });
 
 describe('The network pause', () => {
@@ -42,7 +36,7 @@ describe('The network pause', () => {
     expect([beforeGrace, calls]).toEqual([[], ['pause']]);
   });
 
-  it('As a page shown within the grace, nothing pauses and the monitor starts over', async () => {
+  it('As a page shown within the grace, nothing pauses', async () => {
     // Given
     pause.start(page.document);
     page.setVisibility('hidden');
@@ -53,10 +47,10 @@ describe('The network pause', () => {
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
 
     // Then
-    expect([calls, returns]).toEqual([[], 1]);
+    expect(calls).toEqual([]);
   });
 
-  it('As a page shown after a pause, my network resumes and the monitor starts over', async () => {
+  it('As a page shown after a pause, my network resumes', async () => {
     // Given
     pause.start(page.document);
     page.setVisibility('hidden');
@@ -66,7 +60,7 @@ describe('The network pause', () => {
     page.setVisibility('visible');
 
     // Then
-    expect([calls, returns]).toEqual([['pause', 'resume'], 1]);
+    expect(calls).toEqual(['pause', 'resume']);
   });
 
   it('As a page that loads while hidden, my network stays awake until the load ends, then the grace starts', async () => {
@@ -112,36 +106,7 @@ describe('The network pause', () => {
     frozen.dispatchEvent(new Event('visibilitychange'));
 
     // Then
-    expect([calls, returns]).toEqual([[], 1]);
-  });
-
-  it('As a page that slept while visible, the monitor starts over on wake', async () => {
-    // Given a page whose ticks come 10 000 ms apart
-    pause.start(page.document);
-    await timers.advance(10_000);
-    await timers.advance(10_000);
-    const beforeSleep = returns;
-
-    // When
-    timers.freeze(120_000);
-    await timers.advance(10_000);
-
-    // Then
-    expect([beforeSleep, returns]).toEqual([0, 1]);
-  });
-
-  it('As a page that was hidden for long, its first tick after the return is no sleep', async () => {
-    // Given
-    pause.start(page.document);
-    page.setVisibility('hidden');
-    await timers.advance(300_000);
-
-    // When
-    page.setVisibility('visible');
-    await timers.advance(10_000);
-
-    // Then
-    expect(returns).toBe(1);
+    expect(calls).toEqual([]);
   });
 
   it('As a pause target added late, I hear the current state at once', async () => {
@@ -256,14 +221,12 @@ describe('The network pause', () => {
     expect([afterFirstGrace, calls]).toEqual([[], ['pause']]);
   });
 
-  it('As a page that removes a target and a return listener, neither hears the network again', async () => {
+  it('As a page that removes a target, it hears the network no more', async () => {
     // Given
     const removed: string[] = [];
     const removeTarget = pause.addTarget({ pause: () => removed.push('pause'), resume: () => removed.push('resume') });
-    const removeReturn = pause.onReturn(() => removed.push('return'));
     pause.start(page.document);
     removeTarget();
-    removeReturn();
 
     // When
     page.setVisibility('hidden');
@@ -310,7 +273,7 @@ describe('The network pause', () => {
     expect(calls).toEqual(['pause']);
   });
 
-  it('As a page shown while a target pauses, my network resumes and the monitor starts over', async () => {
+  it('As a page shown while a target pauses, my network resumes', async () => {
     // Given
     pause.addTarget({
       pause: () => {
@@ -325,7 +288,7 @@ describe('The network pause', () => {
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
 
     // Then
-    expect([calls, returns]).toEqual([['pause', 'resume'], 1]);
+    expect(calls).toEqual(['pause', 'resume']);
   });
 
   it('As a pause target added while another target pauses, I am paused', async () => {

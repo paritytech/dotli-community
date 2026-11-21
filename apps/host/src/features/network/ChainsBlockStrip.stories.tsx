@@ -8,6 +8,7 @@ import { openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   chain,
   given,
+  openChainRows,
   resetStoryNetwork,
   setProductLoaded,
   storyNetwork,
@@ -51,8 +52,8 @@ function holdRelay(): void {
 }
 
 /** The relay's first block, which only anchors the chain, as the page's monitor draws no bar for it. */
-function anchor(block: number): void {
-  relay = chain({ ...relay, latest: block, sinceLast: 0, state: 'live' });
+function anchor(): void {
+  relay = chain({ ...relay, sinceLast: 0 });
   given([relay]);
 }
 
@@ -62,7 +63,6 @@ async function land(from: number, to = from): Promise<void> {
     // Bars already drawn keep their objects, as the page's monitor never changes a bar.
     relay = chain({
       ...relay,
-      latest: n,
       sinceLast: 0,
       bars: [...relay.bars, { number: n, health: 'onTime', gapMs: 6000 }],
     });
@@ -84,9 +84,10 @@ export const LandingMarkDrops: Story = {
   beforeEach: holdRelay,
   play: async ctx => {
     await open(ctx);
+    await ctx.step('When I open the chain', openChainRows);
     await ctx.step('As a user watching a chain, the strip glides left as a new block lands', async () => {
       // Given
-      anchor(100);
+      anchor();
       await land(101, 102);
 
       // When

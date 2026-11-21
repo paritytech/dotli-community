@@ -3,41 +3,6 @@
 
 /* The Surface around these parts sets the rhythm between them. */
 
-/* The dot sits on the title's line, not centred on a detail that wraps. */
-.status {
-  flex-direction: row;
-  align-items: flex-start;
-  gap: var(--sp-2);
-}
-.status-dot {
-  margin-top: 4px;
-}
-.status-text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-hair);
-  min-width: 0;
-}
-.status-title {
-  margin: 0;
-  font-size: var(--fs-body);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
-}
-.status-detail {
-  margin: 0;
-  color: var(--chrome-text-muted);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-body);
-  text-wrap: pretty;
-}
-
-.other {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-1);
-}
 /* Set apart from the last chain, so the transfer rows never read as one more chain. */
 .transfer {
   display: flex;
@@ -72,32 +37,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Set apart from the last strip, so the tip never reads as part of that chain. */
-.tips {
-  margin-top: var(--sp-2);
-}
-/* A bare strip ends flush on its bars, so the popover leaves more room under it than under the tip, whose box draws
-   its own edge. */
-@media (min-width: 561px) {
-  .content[data-padded] {
-    padding-bottom: var(--sp-5);
-  }
-  .content[data-padded]:has(> .tips) {
-    padding-bottom: var(--sp-3);
-  }
-}
-
 @media (max-width: 560px) {
-  .status {
-    gap: var(--sp-3);
-  }
-  /* The sheet's padding is the text column, so these start on it. */
-  .other,
+  /* The sheet's padding is the text column, so the transfer rows start on it. */
   .transfer {
     padding: 0;
-  }
-  .other {
-    gap: var(--sp-3);
   }
   .transfer-row {
     gap: var(--sp-3);

@@ -5,8 +5,9 @@ reduce-complexity skill matches the shape in front of them. It may be a helper u
 that each branch over the same union. It may be an optional parameter that only the spec passes, or a unit's states
 that mirror another unit's states because only that other unit moves it between them. It may be one event that carries
 a collaborator's whole state, which handlers then switch on, where one event per meaning could be split out at the
-subscription. The rewrite the rule describes is possible, and the question is whether a match is reason enough to make
-it.
+subscription. It may be a guard that keeps a short-lived UI's timer from running while there is nothing for it to
+update, which a few lines fewer could drop at the price of idle work. The rewrite the rule describes is possible, and
+the question is whether a match is reason enough to make it.
 
 ## How to resolve
 
@@ -17,7 +18,9 @@ it.
    handled directly is a cost. So is a multi-line body moved into a place that used to read as a list of names. So is
    a dropped optional collaborator with a production default that only the spec passes, since it is the seam the spec
    drives the unit through, and the spec then has to reach around the unit. So is folding a unit's named states into
-   one state under a vaguer name, so the unit no longer says which phase it is in.
+   one state under a vaguer name, so the unit no longer says which phase it is in. So is dropping a guard the change's
+   design names, such as a timer that runs only while there is something to update, since the code then does work the
+   old code skipped, even when that work is small and touches nothing on screen.
 4. Make the rewrite only when the gain is real and outweighs what it adds. When it reads the same or worse, leave the
    code as it is.
 5. A narrow style fix in the same code, such as an `===` test on a union member turned into a `switch` over every
@@ -115,6 +118,21 @@ feedMoved(state, event) {
 Splitting `feedMoved` into `feedOpened`, `feedPaused` and `feedClosed` at the subscription adds event kinds and moves
 the mapping into the subscription. Keep the one event and make only the style fix.
 
+An open panel whose clock ticks only while one of its items is busy:
+
+```ts
+const anyBusy = createMemo(() => items().some((item) => item.busy));
+
+createEffect(anyBusy, (busy) => {
+  if (!busy) return;
+  const timer = setInterval(tick, 250);
+  return () => clearInterval(timer);
+});
+```
+
+Dropping the memo and the guard so the clock always ticks while the panel is open saves a few lines but wakes the page
+four times a second with nothing to update. Leave the guard.
+
 ## Cases
 
 - Merging two states of a machine left two named handlers, a few lines each, that end a read on success and on
@@ -136,5 +154,10 @@ the mapping into the subscription. Keep the one event and make only the style fi
   at the subscription into one event per meaning would drop the relay hop and the test, but add event kinds and move
   the mapping switch to the subscription. The owner kept the one event, without a stated reason, and had only the `===`
   test turned into an exhaustive `switch`. (branch complexity-review-fixes, design goal item 7)
+- A simplification round proposed dropping the gate that keeps an open popover's 250 ms clock, in a panel listing
+  network chains, idle unless a chain is in use. The change's design names the gate. Dropping it would remove one memo,
+  one guard and the effect keyed on it, for four idle wake-ups a second with no DOM writes. The owner kept the gate,
+  choosing the recommended option without a stated reason, over dropping it or measuring idle CPU first.
+  (feat/network-chain-indicators)
 
 Status: active

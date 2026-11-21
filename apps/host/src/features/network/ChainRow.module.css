@@ -1,0 +1,230 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Columns are the mark, the text and the chevron, so the detail can start on the text's column. */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--sp-2);
+}
+.row + .row {
+  border-top: 1px solid var(--chrome-line);
+}
+.head {
+  box-sizing: border-box;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  width: 100%;
+  min-height: var(--h-row);
+  margin: 0;
+  padding: var(--sp-2) 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--chrome-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.head:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  min-width: 0;
+}
+.name,
+.status {
+  overflow: hidden;
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.name {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+}
+.status {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+.status[data-tone='warn'],
+.peers[data-tone='warn'] {
+  color: var(--chrome-warn-text);
+}
+.status[data-tone='err'] {
+  color: var(--chrome-err-text);
+}
+/* A chain nobody uses or nothing can reach reads as set aside, but faded text falls below readable contrast. */
+.row[data-mark='unused'] .name,
+.row[data-mark='unavailable'] .name {
+  color: var(--chrome-text-muted);
+}
+.chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--chrome-text-muted);
+  transition: transform var(--dur) var(--ease-out);
+}
+.head[aria-expanded='true'] > .chevron {
+  transform: rotate(180deg);
+}
+.detail {
+  display: flex;
+  grid-column: 2 / -1;
+  flex-direction: column;
+  gap: var(--sp-1_5);
+  padding: 0 0 var(--sp-3);
+}
+.line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.block {
+  color: var(--chrome-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+}
+.cell {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+}
+/* A chain nobody uses keeps its last bars. They fade and lose their verdict colour, while the empty slots keep their
+   strength, so the rail stays visible. */
+.cell[data-state='unused'] .bar {
+  opacity: calc(var(--slot-opacity) * 0.5);
+  background: var(--chrome-idle);
+}
+.bars {
+  position: relative;
+  display: flex;
+  /* 48 slots share the width, the newest at the right edge. */
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--sp-hair);
+  box-sizing: border-box;
+  /* A flex item's default `min-width: auto` would let its content defeat the clipping. */
+  min-width: 0;
+  height: var(--sp-3);
+  overflow: hidden;
+}
+/* Set for one frame after a block lands (slideStrip), so the strip glides left instead of jumping a step. */
+.bars[data-sliding] {
+  transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* Each slot sets --slot-opacity, so older slots fade. */
+.bar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  opacity: var(--slot-opacity);
+  border-radius: var(--r-hair);
+  transform-origin: bottom center;
+}
+/* A slot with no sample yet. */
+.stub {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  border-radius: var(--r-hair);
+  background: color-mix(in srgb, var(--chrome-idle) 25%, transparent);
+  opacity: var(--slot-opacity);
+}
+.bar[data-new] {
+  animation: bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes bar-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+.bar[data-health='onTime'] {
+  background: var(--chrome-ok);
+}
+.bar[data-health='late'] {
+  background: var(--chrome-warn);
+}
+.bar[data-health='veryLate'] {
+  background: var(--chrome-err);
+}
+/* Inline height is the elapsed share of the block time once a first head anchors the estimate. */
+.pending {
+  height: 45%;
+  min-height: 8px;
+  background: var(--chrome-idle);
+}
+.pending[data-pending='due'] {
+  height: 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .name,
+  .status {
+    transition: color var(--dur-morph) var(--ease-out);
+  }
+  .pending {
+    transition: height 0.25s linear;
+  }
+  .pending[data-pending='searching'],
+  .pending[data-pending='due'] {
+    animation: pending-pulse var(--loop) ease-in-out infinite;
+  }
+}
+@keyframes pending-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bars[data-sliding] {
+    transition: none;
+  }
+  .bar[data-new] {
+    animation: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .row {
+    column-gap: var(--sp-3);
+  }
+  .head {
+    min-height: var(--h-row-lg);
+    padding: var(--sp-3) 0;
+  }
+  .chevron {
+    width: 16px;
+    height: 16px;
+  }
+  .detail {
+    gap: var(--sp-2);
+    padding: 0 0 var(--sp-4);
+  }
+  .line {
+    gap: var(--sp-3);
+  }
+  .block {
+    font-size: var(--fs-caption);
+  }
+  .bars {
+    height: var(--sp-4);
+  }
+}
