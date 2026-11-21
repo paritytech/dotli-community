@@ -74,6 +74,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   reads config from its parent through URL params any embedder can write, and one value is security-critical.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
   value an older version wrote that the UI no longer offers.
+- [table-column-left-with-one-reader](table-column-left-with-one-reader.md): removing a view leaves one column of a
+  feature's facts table with a single reader in a sibling feature, which reads one member's value.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
 - [view-shows-a-status-the-layer-already-reports](view-shows-a-status-the-layer-already-reports.md): a view shows each

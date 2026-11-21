@@ -13,8 +13,6 @@ export type NetworkHealth = Extract<StatusTone, 'ok' | 'idle' | 'warn' | 'err' |
 type HealthFacts = {
   /** The health as the badge's More row says it. */
   word: string;
-  /** The network panel's status title. */
-  title: string;
   /** Whether More raises an alert for it. */
   alerts: boolean;
   /** Whether the status dot pulses. */
@@ -30,12 +28,12 @@ export type LiveVerdict = {
 };
 
 export const NETWORK_HEALTH = {
-  ok: { word: 'Connected', title: 'Your connection is good', alerts: false, pulses: false, dot: 'ok' },
-  idle: { word: 'Syncing', title: 'Syncing', alerts: true, pulses: true, dot: 'idle' },
-  warn: { word: 'Unstable', title: 'Connection is unstable', alerts: true, pulses: false, dot: 'warn' },
-  err: { word: 'Offline', title: 'You are offline', alerts: true, pulses: false, dot: 'err' },
-  quiet: { word: 'Not in use', title: 'No chains in use', alerts: false, pulses: false, dot: 'idle' },
-  unreachable: { word: 'Unreachable', title: "Can't reach this network", alerts: true, pulses: false, dot: 'err' },
+  ok: { word: 'Connected', alerts: false, pulses: false, dot: 'ok' },
+  idle: { word: 'Syncing', alerts: true, pulses: true, dot: 'idle' },
+  warn: { word: 'Unstable', alerts: true, pulses: false, dot: 'warn' },
+  err: { word: 'Offline', alerts: true, pulses: false, dot: 'err' },
+  quiet: { word: 'Not in use', alerts: false, pulses: false, dot: 'idle' },
+  unreachable: { word: 'Unreachable', alerts: true, pulses: false, dot: 'err' },
 } satisfies Record<NetworkHealth, HealthFacts>;
 
 /** A live chain is overdue past this many block times without a block. */

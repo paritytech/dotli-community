@@ -58,8 +58,8 @@ type ExpectedBody = {
   cells: ExpectedCell[];
   /** Each known chain's status line and its tone, in order, where the facts beside the chain decide it. */
   statuses?: [string, string | null][];
-  /** The status detail, where the count of live chains decides it. */
-  detail?: string;
+  /** The tone of the head's dot, where the network's health decides it. */
+  dot?: string;
   speed?: [string, string];
   size?: [string, string];
 };
@@ -71,7 +71,7 @@ function readCell(cell: HTMLElement): ExpectedCell {
   return [...cell.querySelectorAll<HTMLElement>('[data-testid="chains-bar"]')].map(bar => bar.dataset['block'] ?? '');
 }
 
-/** The body: a cell per known chain, and the transfer rows while the product loads. */
+/** The body: the head's dot, a cell per known chain, and the transfer rows while the product loads. */
 async function expectBody(expected: ExpectedBody): Promise<void> {
   const root = content();
   const cells = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-cell"]')];
@@ -82,8 +82,8 @@ async function expectBody(expected: ExpectedBody): Promise<void> {
       expected.statuses,
     );
   }
-  if (expected.detail !== undefined) {
-    await expect(query(root, '[data-testid="chains-status-detail"]').textContent).toBe(expected.detail);
+  if (expected.dot !== undefined) {
+    await expect(query(root, '[data-testid="chains-status-dot"]')).toHaveAttribute('data-tone', expected.dot);
   }
   const [speedRow, sizeRow] = [...root.querySelectorAll('[data-testid="chains-transfer-row"]')];
   await expect(speedRow === undefined ? null : rowTexts(speedRow)).toEqual(expected.speed ?? []);
@@ -163,13 +163,10 @@ function statusStory(
   };
 }
 
-/** As a dotli user opening it with nothing in use, it says no chains are in use. */
-export const StatusNothingInUse: Story = statusStory([], { cells: [] });
+/** As a dotli user opening it with nothing in use, it lists no chains and its dot judges nothing. */
+export const StatusNothingInUse: Story = statusStory([], { cells: [], dot: 'idle' });
 
-/**
- * As a dotli user opening it on a network with no endpoint for any chain, every chain says so and the status says the
- * network is out of reach.
- */
+/** As a dotli user opening it on a network with no endpoint for any chain, every chain says so and the dot is red. */
 export const StatusStartingUnreachable: Story = statusStory(
   [
     chain({ reachable: false, state: 'unused' }),
@@ -181,7 +178,7 @@ export const StatusStartingUnreachable: Story = statusStory(
       ['No endpoint', 'err'],
       ['No endpoint', 'err'],
     ],
-    detail: 'It offers no endpoint for these chains.',
+    dot: 'err',
   },
   { verdict: VERDICTS.unreachable },
 );
@@ -197,7 +194,7 @@ export const StatusConnecting: Story = statusStory(
   { transfer: { bytesPerSecond: 512, fetched: 2048, total: 4_194_304 } },
 );
 
-/** As a dotli user opening it with a chain syncing and one without an endpoint, each says so and the status names the chain it waits for. */
+/** As a dotli user opening it with a chain syncing and one without an endpoint, each says so and the dot waits. */
 export const StatusSyncingNoEndpoint: Story = statusStory(
   [
     chain({ phase: 'syncing', peers: 1 }),
@@ -209,21 +206,21 @@ export const StatusSyncingNoEndpoint: Story = statusStory(
       ['Syncing', null],
       ['No endpoint', 'warn'],
     ],
-    detail: 'Waiting for Relay chain. This takes a few seconds.',
+    dot: 'idle',
   },
 );
 
-/** As a dotli user opening it with chains ready, one waits for its first bar and the status names the one it waits for. */
+/** As a dotli user opening it with chains ready, one waits for its first bar and so does the dot. */
 export const StatusOneOfTwoReady: Story = statusStory(
   [
     chain({ latest: 10, sinceLast: 1500, peers: 4 }),
     chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3), sinceLast: 1000, peers: 8 }),
     chain({ role: 'people', label: 'People' }),
   ],
-  { cells: ['waiting', ['18', '19', '20'], 'waiting'], detail: 'Waiting for People. This takes a few seconds.' },
+  { cells: ['waiting', ['18', '19', '20'], 'waiting'], dot: 'idle' },
 );
 
-/** As a dotli user opening it while chains are overdue, it says the connection is unstable and which chains lag. */
+/** As a dotli user opening it while chains are overdue, the lagging chains say so and the dot warns. */
 export const StatusOverdue: Story = statusStory(
   [
     chain({ latest: 10, sinceLast: 19_000 }),
@@ -241,11 +238,12 @@ export const StatusOverdue: Story = statusStory(
       ['Behind', 'warn'],
       ['Behind · Live 29% · Block ~21s', 'warn'],
     ],
+    dot: 'warn',
   },
   { verdict: waitingOn('Relay chain', 'Asset Hub') },
 );
 
-/** As a dotli user opening it with a good connection after the product loaded, it says so and shows no transfer. */
+/** As a dotli user opening it with a good connection after the product loaded, the dot is green and no transfer shows. */
 export const StatusGood: Story = statusStory(
   [
     chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
@@ -256,12 +254,12 @@ export const StatusGood: Story = statusStory(
       ['8', '9', '10'],
       ['18', '19', '20'],
     ],
-    detail: 'Light client is in sync on both chains.',
+    dot: 'ok',
   },
   { transfer: { bytesPerSecond: 800, fetched: 4096, total: 4096 }, loaded: true, verdict: VERDICTS.good },
 );
 
-/** As a dotli user opening it while the browser is offline, every chain says there is no internet. */
+/** As a dotli user opening it while the browser is offline, every chain says there is no internet and the dot is red. */
 export const StatusOffline: Story = statusStory(
   [
     chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
@@ -276,7 +274,7 @@ export const StatusOffline: Story = statusStory(
       ['No internet', null],
       ['No internet', null],
     ],
-    detail: 'No peers on any chain. Retrying.',
+    dot: 'err',
   },
   { loaded: true, offline: true },
 );

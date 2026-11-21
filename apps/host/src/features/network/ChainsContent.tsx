@@ -11,7 +11,7 @@ import type { ChainHealthFacts } from './chainHealth.js';
 import { isNetworkOffline, NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
-import { describeNetworkStatus, describeTransfer, type TransferRow } from './chainsFormat.js';
+import { describeTransfer, type TransferRow } from './chainsFormat.js';
 import s from './ChainsContent.module.css';
 
 const TICK_MS = 250;
@@ -47,16 +47,6 @@ function TransferLine(props: { row: TransferRow | null }): JSX.Element {
 
 /** The network popover's body, its own chunk. */
 export function ChainsContent(props: ChainsContentProps): JSX.Element {
-  // Both backends produce block arrivals, so only the captions follow the backend. A memo, as it is read
-  // three times per render.
-  const status = createMemo(() =>
-    describeNetworkStatus({
-      verdict: props.network().verdict,
-      offline: isNetworkOffline(props.health()),
-      chains: props.network().chains,
-      backend: props.backend(),
-    }),
-  );
   const knownChains = createMemo(() => props.network().chains.filter(chain => chain.role !== null));
   const otherChains = createMemo(() => props.network().chains.filter(chain => chain.role === null));
 
@@ -84,18 +74,17 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   const transfer = createMemo(() => describeTransfer(props.network().transfer, !props.productLoaded()));
   return (
     <Surface width="md" padded testId="chains-content">
-      <SurfaceHead title="Network" testId="chains-head" />
-      <Well class={s['status']} testId="chains-status">
-        <StatusDot tone={NETWORK_HEALTH[status().tone].dot} class={s['statusDot']} testId="chains-status-dot" />
-        <div class={s['statusText']}>
-          <p class={s['statusTitle']} data-testid="chains-status-title">
-            {status().title}
-          </p>
-          <p class={s['statusDetail']} data-testid="chains-status-detail">
-            {status().detail}
-          </p>
-        </div>
-      </Well>
+      <SurfaceHead
+        title="Network"
+        testId="chains-head"
+        aside={
+          <StatusDot
+            tone={NETWORK_HEALTH[props.health()].dot}
+            label={NETWORK_HEALTH[props.health()].word}
+            testId="chains-status-dot"
+          />
+        }
+      />
       <Show when={knownChains().length > 0}>
         <Well layout="list" testId="chains-list">
           <For each={knownChains()} keyed={chain => chain.key}>

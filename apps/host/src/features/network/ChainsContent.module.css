@@ -3,35 +3,6 @@
 
 /* The Surface around these parts sets the rhythm between them. */
 
-/* The dot sits on the title's line, not centred on a detail that wraps. */
-.status {
-  flex-direction: row;
-  align-items: flex-start;
-  gap: var(--sp-2);
-}
-.status-dot {
-  margin-top: 4px;
-}
-.status-text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-hair);
-  min-width: 0;
-}
-.status-title {
-  margin: 0;
-  font-size: var(--fs-body);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
-}
-.status-detail {
-  margin: 0;
-  color: var(--chrome-text-muted);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-body);
-  text-wrap: pretty;
-}
-
 /* Set apart from the last chain, so the transfer rows never read as one more chain. */
 .transfer {
   display: flex;
@@ -67,9 +38,6 @@
 }
 
 @media (max-width: 560px) {
-  .status {
-    gap: var(--sp-3);
-  }
   /* The sheet's padding is the text column, so the transfer rows start on it. */
   .transfer {
     padding: 0;

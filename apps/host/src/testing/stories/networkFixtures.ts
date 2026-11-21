@@ -80,7 +80,7 @@ export function bars(from: number, count: number, gapMs = 6000, health: BlockHea
 
 /**
  * The network, read just now, so the rows age from it, with the health its verdict earns online. With no
- * `verdict`, it is the one the chains earn with no alarm raised, so the status line agrees with the rows.
+ * `verdict`, it is the one the chains earn with no alarm raised, so the head's dot agrees with the rows.
  */
 export function given(
   chains: ChainView[],
