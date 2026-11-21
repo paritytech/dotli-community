@@ -3,7 +3,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { SectionLabel } from '@dotli/ui';
+import { SectionLabel, Spinner } from '@dotli/ui';
 import { Logo } from '@dotli/ui/brand';
 import { AccountAvatar } from '../account/index.js';
 import type { AccountSession } from '../account/index.js';
@@ -60,20 +60,34 @@ export function ProductCard(props: ProductCardProps): JSX.Element {
 
 function getAuthorSection(author: AuthorStatus): JSX.Element {
   switch (author.status) {
-    // The section appears once an author is found. Loading and no owner show nothing.
+    // Before the read starts, and with no owner, there is no section.
     case 'idle':
-    case 'loading':
       return null;
+    case 'loading':
+      return (
+        <AuthorSection loading>
+          <Spinner testId="product-card-author-spinner" />
+        </AuthorSection>
+      );
     case 'ready':
       return author.author === null ? null : (
-        <div class={s['author']} data-testid="product-card-author">
-          <SectionLabel class={s['label']} text="Author" />
+        <AuthorSection loading={false}>
           <AuthorRow author={author.author} />
-        </div>
+        </AuthorSection>
       );
   }
 }
 
+function AuthorSection(props: { loading: boolean; children: JSX.Element }): JSX.Element {
+  return (
+    <div class={s['author']} data-testid="product-card-author" aria-busy={props.loading ? 'true' : undefined}>
+      <SectionLabel class={s['label']} text="Author" />
+      {props.children}
+    </div>
+  );
+}
+
+/** The author's shown name when there is one, else the address. */
 function AuthorRow(props: { author: ProductAuthor }): JSX.Element {
   return (
     <div class={s['row']}>
@@ -83,18 +97,20 @@ function AuthorRow(props: { author: ProductAuthor }): JSX.Element {
         decorative
         testId="product-card-author-avatar"
       />
-      <div class={s['who']}>
-        <Show when={props.author.name}>
-          {name => (
-            <span class={s['authorName']} data-testid="product-card-author-name">
-              {name().text}
-            </span>
-          )}
-        </Show>
-        <span class={s['address']} data-testid="product-card-author-address">
-          {shortenAccount(props.author.address) ?? props.author.address}
-        </span>
-      </div>
+      <Show
+        when={props.author.name}
+        fallback={
+          <span class={s['address']} data-testid="product-card-author-address">
+            {shortenAccount(props.author.address) ?? props.author.address}
+          </span>
+        }
+      >
+        {name => (
+          <span class={s['authorName']} data-testid="product-card-author-name">
+            {name().text}
+          </span>
+        )}
+      </Show>
     </div>
   );
 }
