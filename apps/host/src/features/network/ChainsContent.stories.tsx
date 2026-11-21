@@ -185,7 +185,7 @@ export const StatusStartingUnreachable: Story = statusStory(
 
 /** As a dotli user opening it while connecting, before any block or phase, each chain searches and the download shows. */
 export const StatusConnecting: Story = statusStory(
-  [chain(), chain({ role: 'assethub', label: 'Asset Hub' })],
+  [chain({ state: 'pending' }), chain({ role: 'assethub', label: 'Asset Hub', state: 'pending' })],
   {
     cells: ['waiting', 'waiting'],
     speed: ['Speed', '512 B/s'],
@@ -197,7 +197,7 @@ export const StatusConnecting: Story = statusStory(
 /** As a dotli user opening it with a chain syncing and one without an endpoint, each says so and the dot waits. */
 export const StatusSyncingNoEndpoint: Story = statusStory(
   [
-    chain({ phase: 'syncing', syncShare: 0.42, peers: 1 }),
+    chain({ phase: 'syncing', syncShare: 0.42, peers: 1, state: 'pending' }),
     chain({ role: 'people', label: 'People', reachable: false, state: 'unused', peers: 3 }),
   ],
   {
@@ -210,12 +210,12 @@ export const StatusSyncingNoEndpoint: Story = statusStory(
   },
 );
 
-/** As a dotli user opening it with chains ready, one waits for its first bar and so does the dot. */
+/** As a dotli user opening it with chains ready and one still connecting, the dot waits for the connecting one. */
 export const StatusOneOfTwoReady: Story = statusStory(
   [
-    chain({ latest: 10, sinceLast: 1500, peers: 4 }),
-    chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3), sinceLast: 1000, peers: 8 }),
-    chain({ role: 'people', label: 'People' }),
+    chain({ sinceLast: 1500, peers: 4 }),
+    chain({ role: 'assethub', label: 'Asset Hub', bars: bars(18, 3), sinceLast: 1000, peers: 8 }),
+    chain({ role: 'people', label: 'People', state: 'pending' }),
   ],
   { cells: ['waiting', ['18', '19', '20'], 'waiting'], dot: 'idle' },
 );
@@ -223,11 +223,10 @@ export const StatusOneOfTwoReady: Story = statusStory(
 /** As a dotli user opening it while chains are overdue, the lagging chains say so and the dot warns. */
 export const StatusOverdue: Story = statusStory(
   [
-    chain({ latest: 10, sinceLast: 19_000 }),
+    chain({ sinceLast: 19_000 }),
     chain({
       role: 'assethub',
       label: 'Asset Hub',
-      latest: 20,
       bars: [...bars(18, 2), ...bars(20, 1, 12_000, 'late'), ...bars(21, 1, 30_000, 'veryLate')],
       sinceLast: 20_000,
     }),
@@ -246,8 +245,8 @@ export const StatusOverdue: Story = statusStory(
 /** As a dotli user opening it with a good connection after the product loaded, the dot is green and no transfer shows. */
 export const StatusGood: Story = statusStory(
   [
-    chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
-    chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3, 4000), sinceLast: 200, peers: 1 }),
+    chain({ bars: bars(8, 3), sinceLast: 500, peers: 12 }),
+    chain({ role: 'assethub', label: 'Asset Hub', bars: bars(18, 3, 4000), sinceLast: 200, peers: 1 }),
   ],
   {
     cells: [
@@ -262,8 +261,8 @@ export const StatusGood: Story = statusStory(
 /** As a dotli user opening it while the browser is offline, every chain says there is no internet and the dot is red. */
 export const StatusOffline: Story = statusStory(
   [
-    chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
-    chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3), sinceLast: 200, peers: 3 }),
+    chain({ bars: bars(8, 3), sinceLast: 500, peers: 12 }),
+    chain({ role: 'assethub', label: 'Asset Hub', bars: bars(18, 3), sinceLast: 200, peers: 3 }),
   ],
   {
     cells: [
@@ -283,7 +282,7 @@ export const StatusOffline: Story = statusStory(
 export const NotInUse: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    given([chain({ state: 'unused', peers: 8, latest: 12, bars: bars(11, 2) })]);
+    given([chain({ state: 'unused', peers: 8, bars: bars(11, 2) })]);
   },
   play: async ctx => {
     await open(ctx);
@@ -319,10 +318,7 @@ export const NeverUsed: Story = {
 export const OtherChains: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    given([
-      chain(),
-      chain({ key: '0xabab', role: null, label: '0xabab…abab', state: 'live', latest: 5, sinceLast: 100 }),
-    ]);
+    given([chain(), chain({ key: '0xabab', role: null, label: '0xabab…abab', sinceLast: 100 })]);
   },
   play: async ctx => {
     await open(ctx);
@@ -348,7 +344,7 @@ export const GhostBarTicksWhileOpen: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Given a connected chain with its first bar a second away', async () => {
-      given([chain({ latest: 10, sinceLast: 5000 })]);
+      given([chain({ sinceLast: 5000 })]);
       await waitFor(() => expect(statusText()).toBe('Connected'));
       await openChainRows();
       await waitFor(() => expect(pendingPhase()).toBe('counting'));
@@ -397,7 +393,7 @@ export const RenderErrorCloses: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     captured.mockClear();
-    given([chain({ latest: 10, sinceLast: 1000 })]);
+    given([chain({ sinceLast: 1000 })]);
     return bindCaptureSink({ exception: captured, expected: () => undefined });
   },
   render: () => (
@@ -411,7 +407,7 @@ export const RenderErrorCloses: Story = {
       // A verdict of its own, as earning one would read the label that throws.
       given(
         [
-          Object.defineProperty(chain({ latest: 11, sinceLast: 0 }), 'label', {
+          Object.defineProperty(chain({ sinceLast: 0 }), 'label', {
             get: () => {
               throw new Error('the island broke');
             },
@@ -431,7 +427,7 @@ export const RenderErrorCloses: Story = {
       await waitFor(() => expect(document.querySelector('[data-testid="chains-row"]')).toBeNull());
     });
     await ctx.step('When the state renders again and I open it', async () => {
-      given([chain({ latest: 11, sinceLast: 0 })]);
+      given([chain({ sinceLast: 0 })]);
       await ctx.userEvent.click(byId('chains-button'));
     });
     await ctx.step('Then it opens with the chain', async () => {
@@ -454,7 +450,7 @@ export const NoLayoutReadWithoutBlock: Story = {
       }
     });
     await ctx.step('Given ten bars shown', async () => {
-      given([chain({ latest: 10, bars: strip, sinceLast: 0 })]);
+      given([chain({ bars: strip, sinceLast: 0 })]);
       await waitFor(() => expect(document.querySelector('[data-testid="chains-row"]')).not.toBeNull());
       await openChainRows();
       await waitFor(() => expect(shownBlocks()).toHaveLength(10));
@@ -466,7 +462,7 @@ export const NoLayoutReadWithoutBlock: Story = {
     });
     await ctx.step('When five speed samples come with the same bars', () => {
       for (let i = 0; i < 5; i += 1) {
-        given([chain({ latest: 10, bars: [...strip], sinceLast: 0 })], {
+        given([chain({ bars: [...strip], sinceLast: 0 })], {
           bytesPerSecond: 1000 + i,
           fetched: null,
           total: null,
@@ -488,7 +484,7 @@ export const NoLayoutReadWithoutBlock: Story = {
 export const FortyEightSlots: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    given([chain({ latest: 60, bars: bars(1, 60), sinceLast: 0 })]);
+    given([chain({ bars: bars(1, 60), sinceLast: 0 })]);
   },
   play: async ctx => {
     await open(ctx);

@@ -493,6 +493,25 @@ describe('The network monitor judges how each chain is used', () => {
       expect(getChainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
     },
   );
+
+  it('As a user whose chain gets a block while its light client syncs, I see the block recorded with its clock stopped, and bars only from the first block after it is ready', async () => {
+    // Given a connected chain in use whose light client syncs
+    use(getRelayGenesis());
+    monitor.recordChainPhase('relay', 'syncing');
+
+    // When
+    monitor.recordBestBlock(getRelayGenesis(), 100);
+    await timers.advance(60_000);
+    const syncing = getChainByKey('relay');
+    monitor.recordChainPhase('relay', 'ready');
+    monitor.recordBestBlock(getRelayGenesis(), 101);
+    await timers.advance(6000);
+    monitor.recordBestBlock(getRelayGenesis(), 102);
+
+    // Then
+    expect(syncing).toMatchObject({ latest: 100, sinceLast: null });
+    expect(getChainByKey('relay').bars).toEqual([{ number: 102, health: 'onTime', gapMs: 6000 }]);
+  });
 });
 
 /** A consumer holds the chain, connected and following, unless the test says otherwise. */

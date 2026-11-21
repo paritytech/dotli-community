@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainPhase } from './networkMonitorState.js';
+import type { ChainPhase, ChainUse } from './networkMonitorState.js';
 
 /** A block's arrival against the chain's block time, which colours its bar. */
 export type BarHealth = 'onTime' | 'late' | 'veryLate';
@@ -12,9 +12,6 @@ export type ChainBar = {
   /** Since the previous block arrived. */
   readonly gapMs: number;
 };
-
-/** How a chain counts toward the network's verdict. `down` while its pool reports it disconnected. */
-export type ChainUse = 'unused' | 'pending' | 'down' | 'live';
 
 /** Whether a chain has an endpoint and is in use, so its reads age between blocks. */
 export function isWatched(chain: Pick<ChainSummary, 'reachable' | 'state'>): boolean {

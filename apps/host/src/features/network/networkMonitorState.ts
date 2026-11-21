@@ -127,7 +127,8 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     recordChainActivity,
     /**
      * Records a chain's best block. Ignored for a chain nobody holds, so a late block cannot revive a released chain's
-     * history.
+     * history. A block on a chain not `connected`, or whose phase is `connecting` or `syncing`, leaves the block clock
+     * stopped and draws no bar, so the clock starts at the first block after the chain is up.
      */
     recordBestBlock,
     /**
@@ -201,6 +202,11 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     if (state.latest !== null && blockNumber <= state.latest) {
       return;
     }
+    state.latest = blockNumber;
+    if (state.status !== 'connected' || isPhaseDown(state.phase)) {
+      notify();
+      return;
+    }
     const now = timers.now();
     // The first block has no gap to judge, so it only anchors the next one.
     if (state.lastAt !== null) {
@@ -214,7 +220,6 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
         state.bars.shift();
       }
     }
-    state.latest = blockNumber;
     state.lastAt = now;
     notify();
   }

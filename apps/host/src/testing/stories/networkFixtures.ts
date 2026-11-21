@@ -50,9 +50,8 @@ export const storyNetwork: NetworkItemProps = {
   },
 };
 
-/** A known chain in use, connecting unless given a latest block, which only decides its state. */
-export function chain(overrides: Partial<ChainView> & { latest?: number | null } = {}): ChainView {
-  const latest = overrides.latest ?? null;
+/** A known chain in use, live unless the story gives its state. */
+export function chain(overrides: Partial<ChainView> = {}): ChainView {
   return {
     key: overrides.role ?? 'relay',
     role: 'relay',
@@ -64,7 +63,7 @@ export function chain(overrides: Partial<ChainView> & { latest?: number | null }
     phase: null,
     syncShare: null,
     peers: null,
-    state: latest === null ? 'pending' : 'live',
+    state: 'live',
     ...overrides,
   };
 }
