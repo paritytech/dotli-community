@@ -1,11 +1,11 @@
 # A table column left with one reader
 
-A developer removes a view that read one column of a feature's facts table, a table that holds several facts for each
-member, such as a label, a description and a colour per state. After the removal, the developer looks for other readers
-of that column and finds one, in a sibling feature, that reads the value of a single member, such as one state's
-description in an announcement. Nothing else reads the column. The question is whether the column stays in the table
-for every member, whether the table's feature exports that one value by name, or whether the remaining reader holds the
-value itself.
+A developer removes a view that read one column of a feature's facts table. Such a table holds several facts for each
+member. A state's label, description and colour are one example. After the removal, the developer looks for other
+readers of that column and finds one, in a sibling feature, that reads the value of a single member, such as one state's
+description in an announcement. Nothing else reads the column. The question is where that one value should live. The
+column could stay in the table for every member. The table's feature could export that one value by name. The remaining
+reader could hold the value itself.
 
 ## How to resolve
 

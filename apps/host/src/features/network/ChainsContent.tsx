@@ -10,7 +10,7 @@ import type { ChainHealthFacts } from './chainHealth.js';
 import { isNetworkOffline, NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
-import { describeTransfer, type TransferRow } from './chainsFormat.js';
+import { describeTransfer, type TransferRow } from './describeTransfer.js';
 import s from './ChainsContent.module.css';
 
 const TICK_MS = 250;
