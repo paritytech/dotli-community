@@ -12,7 +12,7 @@ import type { Timers } from '@dotli/shared';
 import type { DebugBus } from '@dotli/truapi-debug';
 import { createChainPhaseTracker } from './createChainPhaseTracker.js';
 import { getChainTelemetryName } from './getChainTelemetryName.js';
-import { getWarpShare } from './loadingBands.js';
+import { getWarpShare } from './getWarpShare.js';
 import { networkMonitorState, type ChainPhase, type NetworkMonitor } from '../../network/index.js';
 
 type Params = {

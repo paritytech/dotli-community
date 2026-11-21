@@ -9,6 +9,7 @@ import type { ChainSyncEvent } from '@dotli/chains';
 import type { Backend } from '@dotli/config';
 import type { ResolvePhase } from '@dotli/resolver';
 import type { LoadingController, LoadingPhase, LoadingStage } from './createLoadingController.js';
+import { getWarpShare } from './getWarpShare.js';
 
 type Bar = Pick<LoadingController, 'advancePhase' | 'nudgePhaseProgress' | 'releasePhaseProgress' | 'setLoadingStage'>;
 
@@ -145,12 +146,4 @@ export function moveBarOnChainSync(event: ChainSyncEvent, bar: Bar): void {
       // The per-chain peer counts already show these.
       return;
   }
-}
-
-/** The share of its warp sync a chain has proven, or null when the sample has no usable target. */
-export function getWarpShare({ at, target }: ChainSyncEvent): number | null {
-  if (at !== undefined && target !== undefined && target > 0 && at <= target) {
-    return at / target;
-  }
-  return null;
 }
