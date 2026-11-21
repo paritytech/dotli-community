@@ -62,6 +62,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [listener-helper-needs-another-value](listener-helper-needs-another-value.md): a helper that listens to one source of
   events and reports one value per frame, such as one pointer axis, must also report another value from the same
   events.
+- [page-wide-behaviour-on-an-island-page](page-wide-behaviour-on-an-island-page.md): an Astro page of static markup
+  and islands needs a DOM behaviour that spans the whole page, and the question is whether the entry module, an island
+  or a page `<script>` starts it.
 - [parameters-only-valid-together](parameters-only-valid-together.md): a function takes a nullable parameter and a
   second one, often a callback, used only when the first is set, so a caller without the first passes a stand-in.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
