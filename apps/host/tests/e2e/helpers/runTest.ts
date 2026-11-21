@@ -13,11 +13,12 @@ export async function entryText(entry: Locator): Promise<string> {
   return text.replace(/\s+/g, ' ').trim().slice(0, 500);
 }
 
-/** The status a playground test ended with, and its entry's text. */
-type RunResult = { status: 'success' | 'error'; text: string };
-
 /** Runs one playground test. A stuck entry returns "error" rather than throwing, so one hung test skips no others. */
-export async function runTest(page: PageLike, testId: string, timeout = 20_000): Promise<RunResult> {
+export async function runTest(
+  page: PageLike,
+  testId: string,
+  timeout = 20_000,
+): Promise<{ status: 'success' | 'error'; text: string }> {
   const entries = page.locator('[data-testid="log-entry"]');
   const initialCount = await entries.count();
 
