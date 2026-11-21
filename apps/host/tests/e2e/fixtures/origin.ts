@@ -16,7 +16,7 @@ function deployedOrigin(): string | undefined {
   return origin;
 }
 
-/** True when the suite runs against the local preview server, which the config starts. */
+/** True when E2E_ORIGIN is unset, so the suite runs against a local build. Throws when E2E_ORIGIN is set to anything but an https origin. */
 export function isLocalOrigin(): boolean {
   return deployedOrigin() === undefined;
 }
@@ -26,7 +26,10 @@ export function dotliOrigin(): string {
   return new URL(deployedOrigin() ?? `http://localhost:${process.env['PORT'] ?? '5173'}`).origin;
 }
 
-/** The origin dot.li serves a product from: its label as a subdomain of the dot.li origin. */
+/**
+ * The origin dot.li serves a product from: its label as a subdomain of the dot.li origin. Throws when E2E_ORIGIN is
+ * set to anything but an https origin.
+ */
 export function productOrigin(label: string): string {
   const url = new URL(dotliOrigin());
   return `${url.protocol}//${label}.${url.host}`;
