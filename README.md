@@ -169,7 +169,7 @@ must then be that site's default network.
 - **Deploy:** pushing a `vX.Y.Z` tag runs the Tests suite on it, then deploys to `paseo.li` and `testnet.li`. The GitHub
   Release is published once both deploys succeed.
 - **Live check:** after every deploy, Live E2E runs the host-playground suite against the deployed site. Run it by hand
-  from the Actions tab.
+  from the Actions tab, from the ref the site deploys from.
 - **Verify:** check out the tag from the [Releases page](https://github.com/paritytech/dotli-community/releases), then
   run `npm ci && npm run build:prod`.
 

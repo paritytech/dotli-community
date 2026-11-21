@@ -19,21 +19,37 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Environment to check, running this branch's suite
+        description:
+          Environment to check with this ref's suite. Its branch policy admits only the ref it deploys from, a release
+          tag for paseo.li and main for paseoli.dev.
         required: true
         type: choice
         options:
           - paseo.li
           - paseoli.dev
           - testnet.li
-          - paseo.fyi
 
 permissions:
   contents: read
 
 jobs:
+  targets:
+    name: Pick environments
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.pick.outputs.environments }}
+    steps:
+      # paseo.fyi needs a reviewer for every job that uses its environment, so a check there would wait on a second
+      # approval after its deploy.
+      - id: pick
+        env:
+          REQUESTED: ${{ inputs.environments || format('["{0}"]', inputs.environment) }}
+        run: echo "environments=$(jq -c 'map(select(. != "paseo.fyi"))' <<< "$REQUESTED")" >> "$GITHUB_OUTPUT"
+
   live:
     name: Live E2E ${{ matrix.environment }}
+    needs: targets
+    if: needs.targets.outputs.environments != '[]'
     runs-on: ubuntu-latest
     # Reads the environment's APP_URL and NETWORKS without recording a deployment.
     environment:
@@ -44,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: ${{ fromJSON(inputs.environments || format('["{0}"]', inputs.environment)) }}
+        environment: ${{ fromJSON(needs.targets.outputs.environments) }}
     steps:
       # The truapi-host installer runs in this job, so the token is not left in .git/config for it.
       - name: Checkout
