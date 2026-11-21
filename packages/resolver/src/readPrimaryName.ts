@@ -6,6 +6,7 @@
 
 import type { DotnsContracts } from '@dotli/config';
 import type { Api } from './createRawApi.js';
+import { isValidDotName } from './dotLabel.js';
 import { readNameOwner } from './readNameOwner.js';
 import { readPinnedBytes } from './readPinnedBytes.js';
 import { readProtocolAddress } from './readProtocolAddress.js';
@@ -20,13 +21,16 @@ type Params = {
 
 /**
  * Reads an address's dotNS primary name, such as `alice.dot`, once the name's owner is confirmed to be that address.
- * Resolves `null` when the address stored no name, the stored name is empty, not UTF-8 or not under the network's TLD,
- * or another address owns it. Rejects with `PartialStorageReadError` when the name's read stops partway,
- * `CorruptBytesSlotError` when its stored length cannot be read, and otherwise with the error of the slot read that
- * failed.
+ * Resolves `null` when the address is not 20 bytes of hex, stored no name, or stored a name that is not UTF-8, not
+ * under the network's TLD, not valid by the naming rules or owned by another address. Rejects with
+ * `PartialStorageReadError` when the name's read stops partway, `CorruptBytesSlotError` when its stored length cannot be
+ * read, and otherwise with the error of the slot read that failed.
  */
 export function readPrimaryName({ api, dotns, address }: Params): Promise<string | null> {
   const owner = address.toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(owner)) {
+    return Promise.resolve(null);
+  }
   const suffix = `.${dotns.TLD}`;
   return api.withBestBlock(async atHash => {
     // The reads below each pin a block of their own. Handed this view, they read at the block this read holds, so the
@@ -46,10 +50,16 @@ export function readPrimaryName({ api, dotns, address }: Params): Promise<string
         context: { mappingKind: 'mapping string' },
       }),
     );
-    if (name === null || !name.endsWith(suffix) || name.length === suffix.length) {
+    if (name?.endsWith(suffix) !== true) {
       return null;
     }
-    const nameOwner = await readNameOwner({ api: pinned, dotns, label: name.slice(0, -suffix.length) });
+    // The ReverseResolver stores any text. A label outside the naming rules, such as one with a lookalike letter or a
+    // bidi control, could read as another name.
+    const label = name.slice(0, -suffix.length);
+    if (!isValidDotName(label)) {
+      return null;
+    }
+    const nameOwner = await readNameOwner({ api: pinned, dotns, label });
     return nameOwner === owner ? name : null;
   });
 }

@@ -113,6 +113,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
+- [identity-row-with-a-name-and-an-address](identity-row-with-a-name-and-an-address.md): a row shows an entity that
+  always has a raw address and may have a human-readable name, and the question is whether it shows both or one.
 - [match-an-on-screen-reference](match-an-on-screen-reference.md): the owner asks for UI done like something already on
   screen, and the question is whether a close or moved version is enough before presenting, or whether a shared
   component's fixed placement may stay a pixel or two off at one caller's size.
@@ -125,6 +127,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   layer is anchored to a control that cannot be its invoker, such as a text field, and the browser's light dismiss
   closes it on a press on that control.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
+- [section-whose-data-loads-lazily](section-whose-data-loads-lazily.md): a card or popover section's data loads only
+  after the card opens, and the question is what the section shows while it loads.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.
 - [window-blur-closes-a-popover](window-blur-closes-a-popover.md): a shared layer closes a popover on every window blur,

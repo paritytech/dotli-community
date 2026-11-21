@@ -18,6 +18,10 @@ const PROTOCOL_REGISTRY = '0xd19e3d0c97cf501125a04a97405e3e6592fa846e';
 const REVERSE_RESOLVER = '0xee3883d7eb60ee9bcd7f3bcd8f2f05302a9cc035';
 const LABEL = 'alice';
 const NAME = `${LABEL}.${dotns.TLD}`;
+/** A device name's labels: a stem over a two-digit node. */
+const DEVICE_LABEL = 'alice.01';
+/** A subname under the author's own name whose first letter is a Cyrillic `а`, so it reads as `paypal`. */
+const LOOKALIKE_LABEL = `p\u0430ypal.${LABEL}`;
 const TRIE_ID = new Uint8Array([1]);
 
 const protocolRegistrySlot = encodeSlotKey(dotns.STORAGE_SLOTS.REGISTRY_PROTOCOL_REGISTRY);
@@ -53,6 +57,20 @@ describe('readPrimaryName', () => {
     expect(name).toBe(NAME);
   });
 
+  it('As a visitor of an author whose primary name is a device name, I see that name', async () => {
+    // Given an address that stored a device name and owns it
+    const storage = createStorage();
+    storeName(storage, new TextEncoder().encode(`${DEVICE_LABEL}.${dotns.TLD}`));
+    ownLabel(storage, DEVICE_LABEL, ADDRESS);
+    const { api } = createFakeApi(storage);
+
+    // When its primary name is read
+    const name = await readPrimaryName({ api, dotns, address: ADDRESS });
+
+    // Then the device name is its primary name
+    expect(name).toBe(`${DEVICE_LABEL}.${dotns.TLD}`);
+  });
+
   it.each([
     [
       'a network that lists no ReverseResolver',
@@ -86,6 +104,13 @@ describe('readPrimaryName', () => {
       },
     ],
     [
+      'a name whose label has a lookalike letter',
+      (storage: Storage) => {
+        storeName(storage, new TextEncoder().encode(`${LOOKALIKE_LABEL}.${dotns.TLD}`));
+        ownLabel(storage, LOOKALIKE_LABEL, ADDRESS);
+      },
+    ],
+    [
       'a name that is not UTF-8',
       (storage: Storage) => {
         storeName(storage, new Uint8Array([0xff, ...new TextEncoder().encode(`.${dotns.TLD}`)]));
@@ -100,6 +125,17 @@ describe('readPrimaryName', () => {
 
     // When its primary name is read
     const name = await readPrimaryName({ api, dotns, address: ADDRESS });
+
+    // Then the address has no primary name
+    expect(name).toBeNull();
+  });
+
+  it('As a visitor of an author whose address is malformed, I see no primary name', async () => {
+    // Given an address that is not 20 bytes of hex
+    const { api } = createFakeApi(createStorage());
+
+    // When its primary name is read
+    const name = await readPrimaryName({ api, dotns, address: `0x${'z'.repeat(40)}` });
 
     // Then the address has no primary name
     expect(name).toBeNull();
