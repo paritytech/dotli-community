@@ -72,4 +72,3 @@ jobs:
     uses: ./.github/workflows/live.yml
     with:
       environments: '["${{ inputs.environment }}"]'
-      ref: ${{ github.sha }}

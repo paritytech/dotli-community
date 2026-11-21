@@ -22,12 +22,10 @@ if (existsSync(envFile)) {
 
 const localProductUrl = process.env['E2E_PRODUCT_URL'];
 
-const dotliWebServer = { ...previewServer, url: dotliOrigin() };
-
 // A deployed origin serves itself, so only a local run starts the preview server.
-const webServer: (typeof dotliWebServer & {
-  cwd?: string;
-})[] = isLocalOrigin() ? [dotliWebServer] : [];
+const webServer: (typeof previewServer & { cwd?: string })[] = isLocalOrigin()
+  ? [{ ...previewServer, url: dotliOrigin() }]
+  : [];
 if (localProductUrl !== undefined) {
   if (!isLocalOrigin()) {
     throw new Error('E2E_PRODUCT_URL serves a local product, which only the local preview server can load');

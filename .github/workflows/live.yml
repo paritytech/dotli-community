@@ -3,7 +3,7 @@ name: Live E2E
 # The host-playground suite against a deployed site, which the localhost runs in Tests cannot cover: the site's server
 # config, TLS and the build made for that environment.
 
-run-name: Live E2E on ${{ inputs.environment || inputs.environments }}
+run-name: Live E2E on ${{ inputs.environment }}
 
 on:
   workflow_call:
@@ -13,8 +13,9 @@ on:
         required: true
         type: string
       ref:
-        description: The commit those environments run, so the suite matches the deployed build
-        required: true
+        description:
+          The commit those environments run, so the suite matches the deployed build. Defaults to the triggering commit.
+        required: false
         type: string
   workflow_dispatch:
     inputs:
