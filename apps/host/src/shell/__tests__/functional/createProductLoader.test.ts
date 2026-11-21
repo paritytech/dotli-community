@@ -761,6 +761,7 @@ function setupLoader(params: Params = {}) {
     }),
     readManifests: vi.fn(() => Promise.resolve(NO_MANIFESTS)),
     readWorkerManifest: vi.fn(() => Promise.resolve(params.workerManifest ?? { kind: 'empty' as const })),
+    readPrimaryName: vi.fn(() => Promise.resolve(null)),
   };
   const ports = {
     product: {

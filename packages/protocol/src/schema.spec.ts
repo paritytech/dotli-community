@@ -251,6 +251,10 @@ const cases: Cases = {
       ],
       interrupts: [ok(), err(syncTimeout), err(apiStopped)],
     }),
+    primaryName: createRequestCase(resolve.primaryName, {
+      request: { address: '0x00000000000000000000000000000000000000aa' },
+      responses: [ok('alice.dot'), ok(null), err(syncTimeout)],
+    }),
   },
   storage: {
     authRead: createRequestCase(storage.authRead, { request: siteKey, responses: [ok('token'), ok(null)] }),

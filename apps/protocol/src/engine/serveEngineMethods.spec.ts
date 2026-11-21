@@ -19,6 +19,7 @@ function createServed(): EngineMethods {
     resolveOwner: () => Promise.resolve(ok(null)),
     resolveExecutableManifest: () => Promise.resolve(ok({ kind: 'empty' })),
     resolveRootManifest: () => Promise.resolve(ok({ kind: 'empty' })),
+    resolvePrimaryName: () => Promise.resolve(ok(null)),
     connect: () => () => undefined,
     send: () => Promise.resolve(ok()),
   };

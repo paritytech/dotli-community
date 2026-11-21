@@ -14,7 +14,7 @@ const PUBLISHED: ProductCardView = {
   domain: 'swap.dot',
   description: 'Trade tokens across Polkadot chains from your browser, with no server in between.',
   icon: null,
-  author: { status: 'ready', author: { address: ADDRESS, username: { name: 'alice.dot', kind: 'full' } } },
+  author: { status: 'ready', author: { address: ADDRESS, name: { text: 'alice.dot', kind: 'full' } } },
   connection: 'verified',
 };
 
@@ -43,18 +43,53 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a visitor, I open the card of a published product and see what it is, who made it and how it loaded. */
-export const Published: Story = {};
+export const Published: Story = {
+  play: async ({ canvas, step }) => {
+    await step('Then the author shows the username alone, with no address', async () => {
+      await expect(canvas.getByTestId('product-card-author-name')).toHaveTextContent('alice.dot');
+      await expect(canvas.queryByTestId('product-card-author-address')).toBeNull();
+    });
+  },
+};
+
+/** As a visitor, I open the card while its author loads and see the author row wait with a spinner in place of the name. */
+export const AuthorLoading: Story = {
+  args: { card: { ...PUBLISHED, author: { status: 'loading' } } },
+  play: async ({ canvas, step }) => {
+    await step('Then the author row is busy, with the user glyph and a spinner in place of the name', async () => {
+      await expect(canvas.getByTestId('product-card-author')).toHaveAttribute('aria-busy', 'true');
+      await expect(canvas.getByTestId('product-card-author-spinner')).toBeVisible();
+      await expect(canvas.getByTestId('product-card-author-avatar')).toHaveAttribute('data-anon');
+    });
+  },
+};
 
 /** As a visitor, I open the card of a product served by trusted providers and see that it is. */
 export const Trusted: Story = {
   args: { card: { ...PUBLISHED, connection: 'trusted' } },
 };
 
-/** As a visitor, I open the card of a product whose author has no username and see the author's address alone. */
-export const NoUsername: Story = {
-  args: { card: { ...PUBLISHED, author: { status: 'ready', author: { address: ADDRESS, username: null } } } },
+/** As a visitor, I open the card of a product whose author has a dotNS name and no username and see that name. */
+export const DotnsName: Story = {
+  args: {
+    card: {
+      ...PUBLISHED,
+      author: { status: 'ready', author: { address: ADDRESS, name: { text: 'swap-labs.dot', kind: 'dotns' } } },
+    },
+  },
   play: async ({ canvas, step }) => {
-    await step('Then the author shows the address and no name', async () => {
+    await step('Then the author shows the dotNS name beside the user glyph, not initials', async () => {
+      await expect(canvas.getByTestId('product-card-author-name')).toHaveTextContent('swap-labs.dot');
+      await expect(canvas.getByTestId('product-card-author-avatar')).toHaveAttribute('data-anon');
+    });
+  },
+};
+
+/** As a visitor, I open the card of a product whose author has no username or dotNS name and see the address alone. */
+export const NoUsername: Story = {
+  args: { card: { ...PUBLISHED, author: { status: 'ready', author: { address: ADDRESS, name: null } } } },
+  play: async ({ canvas, step }) => {
+    await step('Then the author shows the address alone', async () => {
       await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF…utQY');
       await expect(canvas.queryByTestId('product-card-author-name')).toBeNull();
     });

@@ -14,7 +14,7 @@ const PRODUCT_ID = asProductId(toProductId('swap'));
 const PRODUCT_PILL: UrlPillState = { kind: 'product', domain: 'swap', tld: '.dot', shield: 'verified' };
 const CARD: ProductCardState = {
   icon: 'blob:icon',
-  author: { status: 'ready', author: { address: parsePolkadotAccount('5Author'), username: null } },
+  author: { status: 'ready', author: { address: parsePolkadotAccount('5Author'), name: null } },
 };
 
 describe('product card view', () => {

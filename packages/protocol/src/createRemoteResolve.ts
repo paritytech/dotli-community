@@ -14,7 +14,7 @@ type Params = {
   rpc: FrameRpc;
 };
 
-const { dotName, owner, executableManifest, rootManifest } = protocolSchema.sections.resolve;
+const { dotName, owner, executableManifest, rootManifest, primaryName } = protocolSchema.sections.resolve;
 
 /** Name and manifest resolution in the frame, each request on `rpc`. */
 export function createRemoteResolve({ rpc }: Params) {
@@ -77,6 +77,15 @@ export function createRemoteResolve({ rpc }: Params) {
      * `Error` with a `PROTOCOL_ERRORS` text.
      */
     resolveOwner: (label: string) => rpc.request(owner, { label }),
+    /**
+     * Resolves `address`'s primary name, such as `alice.dot`, or null when the address is malformed, stored none, or
+     * stored a name it does not own or that breaks the naming rules. Rejects with a `ProtocolRequestError` named
+     * `NetworkSyncTimeoutError` or `ApiStoppedError` for a resolver failure, and with one named after why the frame
+     * failed the call for any other failure. Rejects with a `ProtocolRequestError` named `ProtocolTimeoutError` once its
+     * budget runs out. Rejects with the error the frame went down with, such as a `ProtocolFatalError` or an `Error`
+     * with a `PROTOCOL_ERRORS` text.
+     */
+    resolvePrimaryName: (address: string) => rpc.request(primaryName, { address }),
     /**
      * Resolves the manifest result of `label`'s executable of `kind`. Rejects with a `ProtocolRequestError` named
      * `NetworkSyncTimeoutError` or `ApiStoppedError` for a resolver failure, and with one named after why the frame

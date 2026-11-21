@@ -53,6 +53,7 @@ const POLICIES = {
   'resolve.executableManifest': definePolicy('resolveExecutableManifest', RESOLVE_STEP_OPTIONS),
   'resolve.rootManifest': definePolicy('resolveRootManifest', RESOLVE_STEP_OPTIONS),
   'resolve.dotName': definePolicy('resolveDotName', RESOLVE_STEP_OPTIONS),
+  'resolve.primaryName': definePolicy('resolvePrimaryName', RESOLVE_STEP_OPTIONS),
   'storage.authRead': definePolicy('authStorageRead', STORE_OPTIONS),
   'storage.authWrite': definePolicy('authStorageWrite', STORE_OPTIONS),
   'storage.authClear': definePolicy('authStorageClear', STORE_OPTIONS),

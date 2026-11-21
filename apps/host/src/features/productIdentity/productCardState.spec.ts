@@ -12,12 +12,12 @@ const ADDRESS = parsePolkadotAccount('5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoH
 
 const AUTHOR: ProductAuthor = {
   address: ADDRESS,
-  username: { name: 'alice', kind: 'full' },
+  name: { text: 'alice', kind: 'full' },
 };
 
 const RENAMED_AUTHOR: ProductAuthor = {
   address: ADDRESS,
-  username: { name: 'alice.dot', kind: 'full' },
+  name: { text: 'alice.dot', kind: 'full' },
 };
 
 afterEach(() => {

@@ -14,29 +14,36 @@ type Reads = {
   account?: (address: H160Address) => Promise<PolkadotAccount | null>;
   /** The People usernames read. */
   usernames?: (account: PolkadotAccount) => Promise<PeopleUsernames | null>;
+  /** The dotNS primary name read. */
+  primaryName?: (address: H160Address) => Promise<string | null>;
 };
 
 type SettledRow = {
   reads: Reads;
   answer: ProductAuthorResult;
-  calls: { account: number; usernames: number };
+  calls: { account: number; usernames: number; primaryName: number };
 };
 
 const OWNER = parseH160Address(`0x${'ab'.repeat(20)}`);
 const ACCOUNT = parsePolkadotAccount('5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY');
 const USERNAMES: PeopleUsernames = { full: 'alice', lite: 'alice.42' };
 
-/** An author over reads that answer with `reads`, the owner, its mapped account and its usernames by default. */
+/**
+ * An author over reads that answer with `reads`, the owner, its mapped account, its usernames and no primary name by
+ * default.
+ */
 function createAuthor({
   owner = OWNER,
   account = () => Promise.resolve(ACCOUNT),
   usernames = () => Promise.resolve(USERNAMES),
+  primaryName = () => Promise.resolve(null),
 }: Reads = {}) {
   const reports: [AuthorReadStep, unknown][] = [];
   const params = {
     readOwner: () => owner,
     readAccount: vi.fn(account),
     readUsernames: vi.fn(usernames),
+    readPrimaryName: vi.fn(primaryName),
     report: (error: unknown, read: AuthorReadStep) => {
       reports.push([read, error]);
     },
@@ -56,7 +63,7 @@ describe('product author', () => {
       {
         reads: { owner: null },
         answer: { kind: 'none' },
-        calls: { account: 0, usernames: 0 },
+        calls: { account: 0, usernames: 0, primaryName: 0 },
       },
     ],
     [
@@ -64,8 +71,17 @@ describe('product author', () => {
       "the owner's address",
       {
         reads: { account: answerWith(null) },
-        answer: { kind: 'found', author: { address: OWNER, username: null } },
-        calls: { account: 1, usernames: 0 },
+        answer: { kind: 'found', author: { address: OWNER, name: null } },
+        calls: { account: 1, usernames: 0, primaryName: 1 },
+      },
+    ],
+    [
+      'has no mapped account and a dotNS name',
+      "the owner's address with the dotNS name",
+      {
+        reads: { account: answerWith(null), primaryName: answerWith('alice.dot') },
+        answer: { kind: 'found', author: { address: OWNER, name: { text: 'alice.dot', kind: 'dotns' } } },
+        calls: { account: 1, usernames: 0, primaryName: 1 },
       },
     ],
     [
@@ -73,8 +89,17 @@ describe('product author', () => {
       'the account with no username',
       {
         reads: { usernames: answerWith(null) },
-        answer: { kind: 'found', author: { address: ACCOUNT, username: null } },
-        calls: { account: 1, usernames: 1 },
+        answer: { kind: 'found', author: { address: ACCOUNT, name: null } },
+        calls: { account: 1, usernames: 1, primaryName: 1 },
+      },
+    ],
+    [
+      'has no usernames and a dotNS name',
+      'the account with the dotNS name',
+      {
+        reads: { usernames: answerWith(null), primaryName: answerWith('alice.dot') },
+        answer: { kind: 'found', author: { address: ACCOUNT, name: { text: 'alice.dot', kind: 'dotns' } } },
+        calls: { account: 1, usernames: 1, primaryName: 1 },
       },
     ],
     [
@@ -82,17 +107,17 @@ describe('product author', () => {
       'the account with no username',
       {
         reads: { usernames: answerWith({ full: '', lite: '' }) },
-        answer: { kind: 'found', author: { address: ACCOUNT, username: null } },
-        calls: { account: 1, usernames: 1 },
+        answer: { kind: 'found', author: { address: ACCOUNT, name: null } },
+        calls: { account: 1, usernames: 1, primaryName: 1 },
       },
     ],
     [
-      'has a full username',
+      'has a full username and a dotNS name',
       'the full username',
       {
-        reads: {},
-        answer: { kind: 'found', author: { address: ACCOUNT, username: { name: 'alice', kind: 'full' } } },
-        calls: { account: 1, usernames: 1 },
+        reads: { primaryName: answerWith('alice.dot') },
+        answer: { kind: 'found', author: { address: ACCOUNT, name: { text: 'alice', kind: 'full' } } },
+        calls: { account: 1, usernames: 1, primaryName: 0 },
       },
     ],
     [
@@ -100,8 +125,8 @@ describe('product author', () => {
       'the lite username',
       {
         reads: { usernames: answerWith({ full: null, lite: 'alice.42' }) },
-        answer: { kind: 'found', author: { address: ACCOUNT, username: { name: 'alice.42', kind: 'lite' } } },
-        calls: { account: 1, usernames: 1 },
+        answer: { kind: 'found', author: { address: ACCOUNT, name: { text: 'alice.42', kind: 'lite' } } },
+        calls: { account: 1, usernames: 1, primaryName: 0 },
       },
     ],
     [
@@ -109,13 +134,13 @@ describe('product author', () => {
       'the lite username',
       {
         reads: { usernames: answerWith({ full: '', lite: 'alice.42' }) },
-        answer: { kind: 'found', author: { address: ACCOUNT, username: { name: 'alice.42', kind: 'lite' } } },
-        calls: { account: 1, usernames: 1 },
+        answer: { kind: 'found', author: { address: ACCOUNT, name: { text: 'alice.42', kind: 'lite' } } },
+        calls: { account: 1, usernames: 1, primaryName: 0 },
       },
     ],
   ])('As a visitor, I open the card of a product whose owner %s and see %s', async (_owner, _seen, row) => {
     // Given reads that settle as the row says
-    const { author, readAccount, readUsernames, reports } = createAuthor(row.reads);
+    const { author, readAccount, readUsernames, readPrimaryName, reports } = createAuthor(row.reads);
 
     // When the card loads its author
     const result = await author.load();
@@ -124,6 +149,7 @@ describe('product author', () => {
     expect(result).toEqual(row.answer);
     expect(readAccount).toHaveBeenCalledTimes(row.calls.account);
     expect(readUsernames).toHaveBeenCalledTimes(row.calls.usernames);
+    expect(readPrimaryName).toHaveBeenCalledTimes(row.calls.primaryName);
     expect(reports).toEqual([]);
   });
 
@@ -138,11 +164,11 @@ describe('product author', () => {
     const second = await author.load();
 
     // Then the first answer has the owner's address and was reported, and the second read only the mapping again
-    expect(first).toEqual({ kind: 'found', author: { address: OWNER, username: null } });
+    expect(first).toEqual({ kind: 'found', author: { address: OWNER, name: null } });
     expect(reports).toEqual([['account', accountError]]);
     expect(second).toEqual({
       kind: 'found',
-      author: { address: ACCOUNT, username: { name: 'alice', kind: 'full' } },
+      author: { address: ACCOUNT, name: { text: 'alice', kind: 'full' } },
     });
     expect(readAccount).toHaveBeenCalledTimes(2);
     expect(readUsernames).toHaveBeenCalledTimes(1);
@@ -159,14 +185,62 @@ describe('product author', () => {
     const second = await author.load();
 
     // Then the first answer has the account and was reported, and the second read only the usernames again
-    expect(first).toEqual({ kind: 'found', author: { address: ACCOUNT, username: null } });
+    expect(first).toEqual({ kind: 'found', author: { address: ACCOUNT, name: null } });
     expect(reports).toEqual([['username', usernamesError]]);
     expect(second).toEqual({
       kind: 'found',
-      author: { address: ACCOUNT, username: { name: 'alice', kind: 'full' } },
+      author: { address: ACCOUNT, name: { text: 'alice', kind: 'full' } },
     });
     expect(readAccount).toHaveBeenCalledTimes(1);
     expect(readUsernames).toHaveBeenCalledTimes(2);
+  });
+
+  it("As a visitor, I open the card while the owner's dotNS name cannot be read and see the account, then the next opening reads only the name again", async () => {
+    // Given an owner with no usernames whose name read fails once
+    const { author, readAccount, readUsernames, readPrimaryName, reports } = createAuthor({
+      usernames: answerWith(null),
+      primaryName: answerWith('alice.dot'),
+    });
+    const nameError = new Error('dotNS unreachable');
+    readPrimaryName.mockRejectedValueOnce(nameError);
+
+    // When the card opens twice
+    const first = await author.load();
+    const second = await author.load();
+
+    // Then the first answer has no name and was reported, and the second read only the name again
+    expect(first).toEqual({ kind: 'found', author: { address: ACCOUNT, name: null } });
+    expect(reports).toEqual([['name', nameError]]);
+    expect(second).toEqual({
+      kind: 'found',
+      author: { address: ACCOUNT, name: { text: 'alice.dot', kind: 'dotns' } },
+    });
+    expect(readAccount).toHaveBeenCalledTimes(1);
+    expect(readUsernames).toHaveBeenCalledTimes(1);
+    expect(readPrimaryName).toHaveBeenCalledTimes(2);
+  });
+
+  it("As a visitor, I open the card while People is unreachable and see the owner's dotNS name, then the next opening shows the username in its place", async () => {
+    // Given an owner with a dotNS name whose usernames read fails once
+    const { author, readUsernames, readPrimaryName, reports } = createAuthor({ primaryName: answerWith('alice.dot') });
+    const usernamesError = new Error('People unreachable');
+    readUsernames.mockRejectedValueOnce(usernamesError);
+
+    // When the card opens twice
+    const first = await author.load();
+    const second = await author.load();
+
+    // Then the first answer has the dotNS name and the failure was reported, and the second has the username
+    expect(first).toEqual({
+      kind: 'found',
+      author: { address: ACCOUNT, name: { text: 'alice.dot', kind: 'dotns' } },
+    });
+    expect(reports).toEqual([['username', usernamesError]]);
+    expect(second).toEqual({
+      kind: 'found',
+      author: { address: ACCOUNT, name: { text: 'alice', kind: 'full' } },
+    });
+    expect(readPrimaryName).toHaveBeenCalledTimes(1);
   });
 
   it('As a visitor, I open the card on the desktop and the phone at once and the author is read once', async () => {
@@ -187,7 +261,7 @@ describe('product author', () => {
     // Then both get the same author and each read ran once
     expect(desktop).toEqual({
       kind: 'found',
-      author: { address: ACCOUNT, username: { name: 'alice', kind: 'full' } },
+      author: { address: ACCOUNT, name: { text: 'alice', kind: 'full' } },
     });
     expect(phone).toEqual(desktop);
     expect(readAccount).toHaveBeenCalledTimes(1);

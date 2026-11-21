@@ -6,7 +6,8 @@
 
 import type { DotnsContracts } from '@dotli/config';
 import type { Api } from './createRawApi.js';
-import { addToSlot, computeMappingSlot, computeNamehash, extractAddress } from './storageSlots.js';
+import { readProtocolAddress } from './readProtocolAddress.js';
+import { addToSlot, computeMappingSlot, computeNamehash, decodeAddress } from './storageSlots.js';
 
 type Params = {
   api: Api;
@@ -17,12 +18,8 @@ type Params = {
 /** Reads one slot of a contract at the block the owner read is pinned to. */
 type ReadSlot = (contractAddress: string, slotKey: `0x${string}`) => Promise<Uint8Array | null>;
 
-const ZERO_SLOT = '0x0000000000000000000000000000000000000000000000000000000000000000';
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 /** The record's `exists` flag sits in the byte just above the resolver address of its second word. */
 const EXISTS_FLAG_BYTE = 11;
-/** `bytes32("registrar")`, the protocol registry's key for the Registrar: its ASCII, right-padded with zeros. */
-const REGISTRAR_KEY = '0x7265676973747261720000000000000000000000000000000000000000000000';
 
 /**
  * Reads the address that owns a name in dotNS, in lowercase hex: the record's owner for a subname, else the holder of
@@ -32,8 +29,8 @@ const REGISTRAR_KEY = '0x7265676973747261720000000000000000000000000000000000000
 export function readNameOwner({ api, dotns, label }: Params): Promise<string | null> {
   const node = computeNamehash(`${label}.${dotns.TLD}`);
   // One block for every slot, so a transfer between two reads cannot mix two states.
-  return api.withBestBlock(async hash => {
-    const readSlot: ReadSlot = (contractAddress, slotKey) => api.readSlot(contractAddress, slotKey, { atHash: hash });
+  return api.withBestBlock(async atHash => {
+    const readSlot: ReadSlot = (contractAddress, slotKey) => api.readSlot(contractAddress, slotKey, { atHash });
     const record = await readRecord(readSlot, dotns, node);
     if (record.owner !== null) {
       return record.owner;
@@ -41,12 +38,12 @@ export function readNameOwner({ api, dotns, label }: Params): Promise<string | n
     if (!record.exists) {
       return null;
     }
-    const registrar = await readRegistrar(readSlot, dotns);
+    const registrar = await readProtocolAddress({ api, dotns, atHash, contract: 'registrar' });
     if (registrar === null) {
       return null;
     }
     // The token id is the node read as a uint256, which keys the mapping with the same 32 bytes.
-    return toAddress(await readSlot(registrar, computeMappingSlot(node, dotns.STORAGE_SLOTS.REGISTRAR_OWNERS)));
+    return decodeAddress(await readSlot(registrar, computeMappingSlot(node, dotns.STORAGE_SLOTS.REGISTRAR_OWNERS)));
   });
 }
 
@@ -57,28 +54,5 @@ async function readRecord(readSlot: ReadSlot, dotns: DotnsContracts, node: `0x${
     readSlot(dotns.DOTNS_REGISTRY, ownerSlot),
     readSlot(dotns.DOTNS_REGISTRY, addToSlot(ownerSlot, 1)),
   ]);
-  return { owner: toAddress(ownerWord), exists: flagsWord?.[EXISTS_FLAG_BYTE] === 1 };
-}
-
-async function readRegistrar(readSlot: ReadSlot, dotns: DotnsContracts): Promise<string | null> {
-  const protocolRegistry = toAddress(
-    await readSlot(dotns.DOTNS_REGISTRY, addToSlot(ZERO_SLOT, dotns.STORAGE_SLOTS.REGISTRY_PROTOCOL_REGISTRY)),
-  );
-  if (protocolRegistry === null) {
-    return null;
-  }
-  const registrarSlot = computeMappingSlot(REGISTRAR_KEY, dotns.STORAGE_SLOTS.PROTOCOL_REGISTRY_ADDRESSES);
-  return toAddress(await readSlot(protocolRegistry, registrarSlot));
-}
-
-/** An unset word and the zero address both mean no address. */
-function toAddress(word: Uint8Array | null): string | null {
-  if (word === null) {
-    return null;
-  }
-  const address = extractAddress(word);
-  if (address === ZERO_ADDRESS) {
-    return null;
-  }
-  return address;
+  return { owner: decodeAddress(ownerWord), exists: flagsWord?.[EXISTS_FLAG_BYTE] === 1 };
 }

@@ -366,9 +366,9 @@ sequenceDiagram
 ```
 
 - The `reads` pool's `retryIf` in `packages/resolver/src/createDotnsResolver.ts`
-  retries `resolveDotName`, `resolveExecutableManifest`, `resolveOwner` and
-  `resolveRootManifest`. Both smoldot backends (`smoldot-direct`,
-  `smoldot-shared-worker`) run them.
+  retries `resolveDotName`, `resolveExecutableManifest`, `resolveOwner`,
+  `resolvePrimaryName` and `resolveRootManifest`. Both smoldot backends
+  (`smoldot-direct`, `smoldot-shared-worker`) run them.
 - A halt reaches a read in one of three shapes, and each one is retried:
   - the pool's answer to a request in flight, `Chain transport halted` with
     `data: 'dotli:chain-halted'`

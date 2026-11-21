@@ -182,6 +182,7 @@ function toResolver(resolveDotName: EngineResolver['resolveDotName']): EngineRes
     resolveOwner: () => Promise.resolve(null),
     resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
     resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
+    resolvePrimaryName: () => Promise.resolve(null),
   };
 }
 
@@ -404,6 +405,10 @@ describe('createEngine name reads', () => {
           seen.push(['rootManifest', options]);
           return Promise.resolve({ kind: 'empty' });
         },
+        resolvePrimaryName(_address, options) {
+          seen.push(['primaryName', options]);
+          return Promise.resolve('alice.dot');
+        },
       },
     });
 
@@ -411,6 +416,7 @@ describe('createEngine name reads', () => {
     const owner = await tab.host.request(resolve.owner, { label: 'doom' });
     await tab.host.request(resolve.executableManifest, { label: 'doom', kind: 'app' });
     await tab.host.request(resolve.rootManifest, { label: 'doom' });
+    await tab.host.request(resolve.primaryName, { address: '0x00000000000000000000000000000000000000aa' });
 
     // Then each read has its method's budget, less the grace for the answer to cross back
     const grace = TIMEOUTS.RESPONSE_DELIVERY_GRACE;
@@ -419,6 +425,7 @@ describe('createEngine name reads', () => {
       ['owner', { syncTimeoutMs: must(getBudget(resolve.owner), 'owner budget') - grace }],
       ['executableManifest', { syncTimeoutMs: must(getBudget(resolve.executableManifest), 'budget') - grace }],
       ['rootManifest', { syncTimeoutMs: must(getBudget(resolve.rootManifest), 'root budget') - grace }],
+      ['primaryName', { syncTimeoutMs: must(getBudget(resolve.primaryName), 'name budget') - grace }],
     ]);
   });
 

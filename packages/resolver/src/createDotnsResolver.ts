@@ -24,6 +24,7 @@ import { readLabelStores } from './readLabelStores.js';
 import { readNameOwner } from './readNameOwner.js';
 import { readNewLabels, type LabelStoreCursor } from './readNewLabels.js';
 import { readPinnedBytes } from './readPinnedBytes.js';
+import { readPrimaryName } from './readPrimaryName.js';
 import { readRootManifest } from './readRootManifest.js';
 import { computeMappingSlot, computeNamehash } from './storageSlots.js';
 import type { PhaseCallback, ResolvePhase } from './types.js';
@@ -237,6 +238,15 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
      */
     resolveOwner: (label: string, options: ResolveOptions = {}): Promise<string | null> =>
       read(options, api => readNameOwner({ api, dotns, label })),
+    /**
+     * Reads an address's primary name, such as `alice.dot`, or `null` when the address is malformed, stored none, or
+     * stored a name it does not own or that breaks the naming rules. Rejects with `PartialStorageReadError` when the
+     * read stops partway, `CorruptBytesSlotError` when the stored name's length cannot be read,
+     * `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own error when it fails
+     * for any other reason or the chain keeps halting.
+     */
+    resolvePrimaryName: (address: string, options: ResolveOptions = {}): Promise<string | null> =>
+      read(options, api => readPrimaryName({ api, dotns, address })),
     /**
      * Reads the manifest a label publishes for `kind`, as a result the caller branches on. Rejects with
      * `PartialStorageReadError` when the read stops partway, `CorruptBytesSlotError` when a stored value's length

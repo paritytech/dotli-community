@@ -85,7 +85,7 @@ const localWalletRead = Enum({
 export type LocalWalletRead = CodecType<typeof localWalletRead>;
 
 export const protocolSchema = defineSchema({
-  version: 6,
+  version: 7,
   hello: resolutionHello,
   sections: {
     frame: {
@@ -123,6 +123,7 @@ export const protocolSchema = defineSchema({
         receive: Enum({ phase: resolvePhaseCodec, resolved: nullable(str) }),
         interrupt: Result(_void, callError(remoteFailure)),
       }),
+      primaryName: request({ request: Struct({ address: str }), response: nullableString, error: remoteFailure }),
     },
     storage: {
       authRead: request({ request: siteKey, response: nullableString }),

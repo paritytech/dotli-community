@@ -11,6 +11,7 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
   - contenthash decoding
   - manifest records
   - a name's owner
+  - an address's primary name, returned only while the address owns it
   - the names the label stores hold, and which of them publish an app
 - **Owns** the wait for chain sync before a read, and the resolution errors.
 - **Owns** the naming rules:
@@ -44,6 +45,10 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
 - **Passed-in connection:** the resolver reads through the Asset Hub follow its owner already keeps.
 - **Direct storage reads:** contracts are read from Revive storage slots, with no runtime call. A multi-slot read pins
   one block, so bytes are never torn.
+- **Checked primary names:** any address can store any text as its primary name, so a primary name is returned only when
+  it passes the naming rules and the name's owner, read at the same block, is that address.
+- **Composed reads:** a read built from other reads hands them a view of the API whose pin reuses the block it holds, so
+  every part reads one state.
 - **Batched reads:** a read of many slots sends a bounded number of keys in each storage call. A key the server discards
   goes out again.
 - **Halts:** a read on a halted chain is retried a few times. The resolver spots a halt by the shared marker, so it
