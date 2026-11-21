@@ -337,9 +337,9 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     if (isAlarmed(state)) {
       return { state: 'live', alarm: true };
     }
+    // The frame brings its chains up whether or not this tab holds them, so a chain only turns pending once taken.
     if (state.consumers === 0) {
-      // The frame brings its chains up whether or not this tab holds them, so one still coming up is pending.
-      return { state: isPhaseDown(state.phase) ? 'pending' : 'unused', alarm: false };
+      return { state: 'unused', alarm: false };
     }
     if (state.following) {
       return { state: sinceLast === null ? 'pending' : 'live', alarm: false };

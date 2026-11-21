@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createManualTimers, resetAllStoresForTests as resetStores, type ManualTimers } from '@dotli/shared/testing';
 import { createNetworkMonitorState, type ChainPhase, type NetworkMonitor } from './networkMonitorState.js';
 import { createNetworkState, type NetworkState } from './networkState.js';
+import { buildChainActivity } from '../../testing/buildChainActivity.js';
+import { getRelayGenesis } from '../../testing/getRelayGenesis.js';
 import { recordNotified } from '../../testing/recordNotified.js';
 
 /** Every chain is connectable, so only what the monitor hears decides what the store shows. */
@@ -21,9 +23,10 @@ describe('network store', () => {
     resetStores();
   });
 
-  it('As a user with the chains popover open, I watch a chain come up and see each phase and the verdict', () => {
-    // Given
+  it('As a user with the chains popover open, I watch a chain in use come up and see each phase and the verdict', () => {
+    // Given a chain something holds
     const store = createNetworkState({ timers, monitor });
+    monitor.recordChainActivity(buildChainActivity({ genesisHash: getRelayGenesis() }));
 
     // When
     monitor.recordChainPhase('relay', 'syncing');

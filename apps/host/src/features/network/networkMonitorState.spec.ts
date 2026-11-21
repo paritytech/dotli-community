@@ -415,15 +415,15 @@ describe('The network monitor judges how each chain is used', () => {
     expect(getChainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
   });
 
-  it('As a user loading a product, I watch the frame sync an unused chain and see it pending, then unused once ready', () => {
+  it('As a user loading a product, I watch the frame sync a chain nothing holds and see it unused until something takes it', () => {
     // When
     monitor.recordChainPhase('relay', 'syncing');
     const syncing = getChainByKey('relay');
-    monitor.recordChainPhase('relay', 'ready');
+    use(getRelayGenesis());
 
     // Then
-    expect(syncing).toMatchObject({ state: 'pending', alarm: false });
-    expect(getChainByKey('relay')).toMatchObject({ state: 'unused', alarm: false });
+    expect(syncing).toMatchObject({ state: 'unused', alarm: false });
+    expect(getChainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
   });
 
   it('As a user, I see a frame chain drop from ready back to connecting and the alarm raised, used or not', () => {

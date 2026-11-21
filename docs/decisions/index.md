@@ -77,8 +77,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
 - [view-shows-a-status-the-layer-already-reports](view-shows-a-status-the-layer-already-reports.md): a view shows each
-  item's status, and the state layer's existing verdict also reports a brief waiting state, such as after the page
-  returns from hidden, that the underlying thing may not be in.
+  item's status, and the state layer's existing verdict, which other readers share, reports a waiting state the view
+  would rather not show, such as a brief one after the page returns from hidden or one for an item nothing on the page
+  holds.
 
 ## Product requests
 
