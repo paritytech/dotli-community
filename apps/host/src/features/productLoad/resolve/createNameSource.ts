@@ -23,8 +23,8 @@ export type RemoteResolver = {
   /** Resolves the label's owner address, or null for a name with none. Rejects with the resolver's error. */
   resolveOwner: (label: string) => Promise<string | null>;
   /**
-   * Resolves the address's primary name, or null when it stored none or does not own the name it stored. Rejects with
-   * the resolver's error.
+   * Resolves the address's primary name, or null when the address is malformed, stored none, or stored a name it does
+   * not own or that breaks the naming rules. Rejects with the resolver's error.
    */
   resolvePrimaryName: (address: string) => Promise<string | null>;
   /** Resolves the label's root manifest. Rejects with the resolver's error. */

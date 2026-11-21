@@ -78,8 +78,8 @@ export function createRemoteResolve({ rpc }: Params) {
      */
     resolveOwner: (label: string) => rpc.request(owner, { label }),
     /**
-     * Resolves `address`'s primary name, such as `alice.dot`, or null when it stored none or does not own the name it
-     * stored. Rejects with a `ProtocolRequestError` named `NetworkSyncTimeoutError` or `ApiStoppedError` for a
+     * Resolves `address`'s primary name, such as `alice.dot`, or null when the address is malformed, stored
+     * none, or stored a name it does not own or that breaks the naming rules. Rejects with a `ProtocolRequestError` named `NetworkSyncTimeoutError` or `ApiStoppedError` for a
      * resolver failure, and with one named after why the frame failed the call for any other failure. Rejects with a
      * `ProtocolRequestError` named `ProtocolTimeoutError` once its budget runs out. Rejects with the error the frame
      * went down with, such as a `ProtocolFatalError` or an `Error` with a `PROTOCOL_ERRORS` text.
