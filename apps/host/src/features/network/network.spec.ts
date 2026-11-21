@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom, computed } from 'nanostores';
-import type { Backend } from '@dotli/config';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { NetworkView } from './chains.js';
 import type { ProductState } from '../page/index.js';
@@ -16,7 +15,6 @@ function mount() {
     health: atom<NetworkHealth>('quiet'),
     network: atom<NetworkView>(INITIAL_NETWORK),
     product: atom<Pick<ProductState, 'status'>>({ status: 'none' }),
-    settings: atom<{ backend: Backend } | null>(null),
   };
   // A computed, which has no `init`
   const network = computed(stores.network, value => value);

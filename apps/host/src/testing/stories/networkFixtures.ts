@@ -5,7 +5,6 @@
 
 import { createSignal, onCleanup } from 'solid-js';
 import { expect, userEvent, waitFor } from 'storybook/test';
-import type { Backend } from '@dotli/config';
 import type { BlockHealth } from '../../features/network/networkMonitorState.js';
 import type { ChainBar } from '../../features/network/chain.js';
 import type { ChainView, NetworkView, TransferView } from '../../features/network/chains.js';
@@ -33,9 +32,6 @@ const NOTHING: NetworkView = { chains: [], transfer: NO_TRANSFER, readAt: 0, ver
 const [network, setNetwork] = createSignal<NetworkView>(NOTHING);
 const [health, setHealthSignal] = createSignal<NetworkHealth>('quiet');
 const [productLoaded, setProductLoadedSignal] = createSignal(false);
-function backend(): Backend | undefined {
-  return undefined;
-}
 
 /** How many times the panel started following the network, and how many of those still follow it. */
 export const follows = { started: 0, following: 0 };
@@ -44,7 +40,6 @@ export const follows = { started: 0, following: 0 };
 export const storyNetwork: NetworkItemProps = {
   health,
   productLoaded,
-  backend,
   followNetwork: () => {
     follows.started += 1;
     follows.following += 1;
@@ -109,7 +104,7 @@ export function setProductLoaded(loaded: boolean): void {
   setProductLoadedSignal(loaded);
 }
 
-/** For a story's `beforeEach`: no chain in use, quiet, the product loading, the settings not read yet. */
+/** For a story's `beforeEach`: no chain in use, quiet, the product loading. */
 export function resetStoryNetwork(): void {
   setNetwork(NOTHING);
   setHealthSignal('quiet');

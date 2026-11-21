@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { Backend } from '@dotli/config';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import type { NetworkHealth } from './networkVerdict.js';
@@ -13,7 +12,6 @@ export type NetworkStores = {
   health: ReadableAtom<NetworkHealth>;
   network: ReadableAtom<NetworkView>;
   product: ReadableAtom<Pick<ProductState, 'status'>>;
-  settings: ReadableAtom<{ backend: Backend } | null>;
 };
 
 /** The network as a build-time render shows it, before any chain is in use. */
@@ -31,6 +29,5 @@ export function useNetworkPanel(stores: NetworkStores): NetworkItemProps {
     // The network store rebuilds only while someone reads it, so the panel subscribes only while it is open.
     followNetwork: () => useStore(stores.network, { initial: INITIAL_NETWORK }),
     productLoaded: useStore(stores.product, product => product.status === 'loaded'),
-    backend: useStore(stores.settings, settings => settings?.backend),
   };
 }

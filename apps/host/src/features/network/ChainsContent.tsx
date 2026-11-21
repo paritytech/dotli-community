@@ -3,7 +3,6 @@
 
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { Backend } from '@dotli/config';
 import { Accordion, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainRow } from './ChainRow.js';
 import { isWatched } from './chain.js';
@@ -21,8 +20,6 @@ export type ChainsContentProps = {
   health: Accessor<NetworkHealth>;
   /** Until then the footer shows the product's download. */
   productLoaded: Accessor<boolean>;
-  /** Undefined until the page has read its settings. */
-  backend: Accessor<Backend | undefined>;
 };
 
 /** A row of the transfer footer, which keeps its place while it has nothing to say. */
