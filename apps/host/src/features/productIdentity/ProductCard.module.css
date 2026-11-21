@@ -88,6 +88,12 @@
   gap: var(--sp-2);
   min-width: 0;
 }
+/* Inline in the row where the name goes, the size of the avatar's glyph. */
+.authorSpinner {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
 .authorName {
   overflow: hidden;
   min-width: 0;

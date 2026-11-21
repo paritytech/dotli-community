@@ -63,16 +63,21 @@ function getAuthorSection(author: AuthorStatus): JSX.Element {
     // Before the read starts, and with no owner, there is no section.
     case 'idle':
       return null;
+    // The same row as the loaded author, so the card does not move when the author arrives.
     case 'loading':
       return (
         <AuthorSection loading>
-          <Spinner testId="product-card-author-spinner" />
+          <AuthorRow session={{}}>
+            <Spinner class={s['authorSpinner']} testId="product-card-author-spinner" />
+          </AuthorRow>
         </AuthorSection>
       );
     case 'ready':
       return author.author === null ? null : (
         <AuthorSection loading={false}>
-          <AuthorRow author={author.author} />
+          <AuthorRow session={getAvatarSession(author.author.name)}>
+            <AuthorText author={author.author} />
+          </AuthorRow>
         </AuthorSection>
       );
   }
@@ -87,31 +92,33 @@ function AuthorSection(props: { loading: boolean; children: JSX.Element }): JSX.
   );
 }
 
-/** The author's shown name when there is one, else the address. */
-function AuthorRow(props: { author: ProductAuthor }): JSX.Element {
+/** The author's avatar beside `children`. */
+function AuthorRow(props: { session: AccountSession; children: JSX.Element }): JSX.Element {
   return (
     <div class={s['row']}>
-      <AccountAvatar
-        session={getAvatarSession(props.author.name)}
-        size="sm"
-        decorative
-        testId="product-card-author-avatar"
-      />
-      <Show
-        when={props.author.name}
-        fallback={
-          <span class={s['address']} data-testid="product-card-author-address">
-            {shortenAccount(props.author.address) ?? props.author.address}
-          </span>
-        }
-      >
-        {name => (
-          <span class={s['authorName']} data-testid="product-card-author-name">
-            {name().text}
-          </span>
-        )}
-      </Show>
+      <AccountAvatar session={props.session} size="sm" decorative testId="product-card-author-avatar" />
+      {props.children}
     </div>
+  );
+}
+
+/** The author's shown name when there is one, else the address. */
+function AuthorText(props: { author: ProductAuthor }): JSX.Element {
+  return (
+    <Show
+      when={props.author.name}
+      fallback={
+        <span class={s['address']} data-testid="product-card-author-address">
+          {shortenAccount(props.author.address) ?? props.author.address}
+        </span>
+      }
+    >
+      {name => (
+        <span class={s['authorName']} data-testid="product-card-author-name">
+          {name().text}
+        </span>
+      )}
+    </Show>
   );
 }
 

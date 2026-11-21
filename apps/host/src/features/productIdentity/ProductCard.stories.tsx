@@ -52,14 +52,14 @@ export const Published: Story = {
   },
 };
 
-/** As a visitor, I open the card while its author loads and see the author section wait with a spinner. */
+/** As a visitor, I open the card while its author loads and see the author row wait with a spinner in place of the name. */
 export const AuthorLoading: Story = {
   args: { card: { ...PUBLISHED, author: { status: 'loading' } } },
   play: async ({ canvas, step }) => {
-    await step('Then the author section is busy with a spinner in place of the author', async () => {
+    await step('Then the author row is busy, with the user glyph and a spinner in place of the name', async () => {
       await expect(canvas.getByTestId('product-card-author')).toHaveAttribute('aria-busy', 'true');
       await expect(canvas.getByTestId('product-card-author-spinner')).toBeVisible();
-      await expect(canvas.queryByTestId('product-card-author-avatar')).toBeNull();
+      await expect(canvas.getByTestId('product-card-author-avatar')).toHaveAttribute('data-anon');
     });
   },
 };
