@@ -1,7 +1,7 @@
 name: Setup truapi-host
 description:
-  'Install the truapi-host CLI, the headless signer the host-playground E2E suite pairs with, and put it on PATH. Keep
-  the checkout token out of .git/config in a job that runs this, since the installer is a downloaded script.'
+  'Install the truapi-host CLI, the headless signer the host-playground E2E suite pairs with, and put it on PATH. Run it
+  only in a job whose checkout leaves the token out of .git/config, since the installer is a downloaded script.'
 
 runs:
   using: 'composite'
