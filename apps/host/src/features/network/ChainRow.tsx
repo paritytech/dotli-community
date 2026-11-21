@@ -113,35 +113,35 @@ function BarStrip(props: { chain: ChainSummary; pending: PendingBarView | null }
       aria-label={`${props.chain.label}: ${STRIP_LABEL.toLowerCase()}`}
     >
       <Show
-        when={props.chain.bars.length > 0}
+        when={props.pending}
         fallback={
-          <Show when={props.pending} fallback={<Stubs count={HISTORY_SLOTS} />}>
-            {view => <PendingBar pending={view()} />}
-          </Show>
+          <>
+            <Stubs count={HISTORY_SLOTS - visible().length} />
+            <For each={visible()}>
+              {(bar, index) => {
+                const block = String(bar.number);
+                const delay = describeBlockDelay(
+                  bar.gapMs,
+                  untrack(() => props.chain.blockTimeMs),
+                );
+                return (
+                  <span
+                    data-testid="chains-bar"
+                    data-block={block}
+                    class={s['bar']}
+                    data-health={bar.health}
+                    style={{ '--slot-opacity': slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
+                    title={delay}
+                    role="img"
+                    aria-label={`Block ${block}, ${delay}`}
+                  />
+                );
+              }}
+            </For>
+          </>
         }
       >
-        <Stubs count={HISTORY_SLOTS - visible().length} />
-        <For each={visible()}>
-          {(bar, index) => {
-            const block = String(bar.number);
-            const delay = describeBlockDelay(
-              bar.gapMs,
-              untrack(() => props.chain.blockTimeMs),
-            );
-            return (
-              <span
-                data-testid="chains-bar"
-                data-block={block}
-                class={s['bar']}
-                data-health={bar.health}
-                style={{ '--slot-opacity': slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
-                title={delay}
-                role="img"
-                aria-label={`Block ${block}, ${delay}`}
-              />
-            );
-          }}
-        </For>
+        {view => <PendingBar pending={view()} />}
       </Show>
     </div>
   );
