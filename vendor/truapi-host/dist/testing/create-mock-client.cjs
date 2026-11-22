@@ -1,4 +1,5 @@
 const __esm_import_meta_url = require('url').pathToFileURL(__filename).href;
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -549,6 +550,7 @@ var require_index_cjs = __commonJS({
 var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, CallingReview, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, CrossProductSignatureKind, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, HostScan, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, MediaBackendCapabilities, MediaBackendCommand, MediaBackendEvent, MediaBackendPeerState, MediaBackendResponse, MediaConsentRequest, MediaDescription, MediaDescriptionKind, MediaIceCandidate, MediaRevocationSource, MediaRevokedPermission, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ReceivingAuthority, ReceivingRegistration, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
+    "use strict";
     S = __toESM(require("@parity/truapi/scale"), 1);
     import_truapi3 = require("@parity/truapi");
     AccountAccessReview = S.lazy(() => S.Struct({ requestingProductId: S.str, targetProductId: S.str }));
@@ -631,6 +633,7 @@ function errorMessage(err2) {
 }
 var init_error = __esm({
   "dist/error.js"() {
+    "use strict";
   }
 });
 
@@ -823,6 +826,7 @@ function rpcConnectionAdapter(connection, onResponse, onClosed) {
 var import_scale, unavailableHopProvider, unavailableNativeChatFilesHost;
 var init_adapter_support = __esm({
   "dist/adapter-support.js"() {
+    "use strict";
     import_scale = require("@parity/truapi/scale");
     init_error();
     unavailableHopProvider = {
@@ -984,6 +988,7 @@ function createWasmRawCallbacks(callbacks) {
 var S2, import_truapi4, allowedHopEndpointsResultCodec, identityUsernameCandidatesResultCodec, pickChatFilesResultCodec;
 var init_host_callbacks_adapter = __esm({
   "dist/generated/host-callbacks-adapter.js"() {
+    "use strict";
     S2 = __toESM(require("@parity/truapi/scale"), 1);
     import_truapi4 = require("@parity/truapi");
     init_host_callbacks();

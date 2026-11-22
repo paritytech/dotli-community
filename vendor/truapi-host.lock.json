@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "ea4024a8f9dbdfdcffb7cacc01481f5fe78a09e4",
+  "upstreamRevision": "92df9041963a4185a5c46ed81fc022102dc22952",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
@@ -13,7 +13,7 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.25.0",
-      "sourceArchiveSha256": "29ae2c8532d9da5aeba8acdcc3f67ce007356a21b2e1b34cdaa2a20a6338053a",
+      "sourceArchiveSha256": "c05bcc1d2f25f297d41ff898375efaa4bcced2247a10a1fe5fa64f8873aabbfe",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
@@ -27,6 +27,6 @@
       }
     }
   },
-  "wasmUpstreamRevision": "ea4024a8f9dbdfdcffb7cacc01481f5fe78a09e4",
+  "wasmUpstreamRevision": "92df9041963a4185a5c46ed81fc022102dc22952",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217"
 }
