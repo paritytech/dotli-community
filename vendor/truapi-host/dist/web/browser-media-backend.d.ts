@@ -75,10 +75,12 @@ export interface BrowserMediaBackendOptions {
      */
     requestConsent(request: MediaConsentRequest, context: BrowserMediaConsentContext): Promise<boolean>;
     /**
-     * Host-owned TURN configuration; credentials never enter product values.
-     * Peers are always relay-only, so this must name a reachable TURN relay.
+     * Optional host-owned STUN/TURN configuration, never exposed to products.
+     * Missing or failed credentials still permit direct peer connections.
      */
-    iceServers: readonly RTCIceServer[] | ((runtimeId: bigint) => Promise<readonly RTCIceServer[]>);
+    iceServers?: readonly RTCIceServer[] | ((runtimeId: bigint) => Promise<readonly RTCIceServer[]>);
+    /** Trusted host override; direct connections and TURN fallback are the default. */
+    iceTransportPolicy?: RTCIceTransportPolicy;
     measureViewport?(product: Element, mount: Element, runtimeId: bigint): BrowserMediaGeometry | undefined;
     /** Advisory preference, resolved only against trusted host device knowledge. */
     resolveAudioOutput?(preference: MediaAudioRoute | undefined): Promise<{

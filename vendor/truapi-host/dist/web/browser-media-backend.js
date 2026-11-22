@@ -69,8 +69,6 @@ function rectValid(rect) {
         Number.isSafeInteger(rect.x + rect.width) &&
         Number.isSafeInteger(rect.y + rect.height));
 }
-/** Only TURN relay candidates may leave the host; anything else names an address. */
-const RELAY_CANDIDATE = /(?:^|\s)typ\s+relay(?:\s|$)/;
 function intersect(...rects) {
     const x = Math.max(...rects.map((rect) => rect.x));
     const y = Math.max(...rects.map((rect) => rect.y));
@@ -967,11 +965,7 @@ export function createBrowserMediaBackend(options) {
                 participantId: peer.id,
                 description: {
                     kind: description.type === "offer" ? "Offer" : "Answer",
-                    // Descriptions created after gathering embed candidates; keep relays only.
-                    sdp: description.sdp
-                        .split("\r\n")
-                        .filter((line) => !line.startsWith("a=candidate:") || RELAY_CANDIDATE.test(line))
-                        .join("\r\n"),
+                    sdp: description.sdp,
                 },
             },
         });
@@ -1012,6 +1006,27 @@ export function createBrowserMediaBackend(options) {
             throw failure("InvalidDescription");
         }
         peer.slots = slots;
+    }
+    async function iceServersForPeer(runtimeId) {
+        let timer;
+        try {
+            const servers = await Promise.race([
+                Promise.resolve().then(() => typeof options.iceServers === "function"
+                    ? options.iceServers(runtimeId)
+                    : options.iceServers),
+                new Promise((resolve) => {
+                    timer = win.setTimeout(() => resolve([]), 2_000);
+                }),
+            ]);
+            return Array.isArray(servers) ? servers : [];
+        }
+        catch {
+            return [];
+        }
+        finally {
+            if (timer !== undefined)
+                win.clearTimeout(timer);
+        }
     }
     async function createPeer(session, id, offerer) {
         if (!session.committed)
@@ -1060,19 +1075,29 @@ export function createBrowserMediaBackend(options) {
             tag: "PeerStateChanged",
             value: { sessionId: session.id, participantId: id, state: "Connecting" },
         });
-        peer.ready = Promise.resolve()
-            .then(() => typeof options.iceServers === "function"
-            ? options.iceServers(session.runtime.id)
-            : options.iceServers)
+        peer.ready = iceServersForPeer(session.runtime.id)
             .then((iceServers) => serializeSession(session, async () => {
             if (!peerAlive(peer))
                 throw failure("SessionEnded");
-            // Relay-only is not negotiable: host or reflexive candidates would
-            // reveal this device's addresses to every remote participant.
-            const pc = new win.RTCPeerConnection(webIdl({
-                iceServers: [...iceServers],
-                iceTransportPolicy: "relay",
-            }));
+            // Signalling is host-to-host; products never receive transport details.
+            const iceTransportPolicy = options.iceTransportPolicy ?? "all";
+            if (iceTransportPolicy === "relay" && iceServers.length === 0)
+                throw failure();
+            let pc;
+            try {
+                pc = new win.RTCPeerConnection(webIdl({
+                    iceServers, iceTransportPolicy,
+                    bundlePolicy: "max-bundle", rtcpMuxPolicy: "require",
+                }));
+            }
+            catch (error) {
+                if (iceTransportPolicy === "relay" || iceServers.length === 0)
+                    throw error;
+                pc = new win.RTCPeerConnection(webIdl({
+                    iceServers: [], iceTransportPolicy,
+                    bundlePolicy: "max-bundle", rtcpMuxPolicy: "require",
+                }));
+            }
             peer.pc = pc;
             // Only the offerer creates slots. An answerer's addTransceiver() slots
             // are not reused by setRemoteDescription(), which would create extras.
@@ -1087,9 +1112,6 @@ export function createBrowserMediaBackend(options) {
                 if (!peerAlive(peer) || !event.candidate)
                     return;
                 const candidate = event.candidate;
-                if (!RELAY_CANDIDATE.test(candidate.candidate) ||
-                    (candidate.type ?? "relay") !== "relay")
-                    return;
                 emit(session.runtime, {
                     tag: "IceCandidate",
                     value: {

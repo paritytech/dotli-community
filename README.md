@@ -442,10 +442,11 @@ The host Media backend supports direct ICE connectivity with optional TURN fallb
 network addresses. Products never receive SDP, ICE candidates, IP addresses or transport statistics, and never supply
 ICE settings. When a call opens a peer, the shell fetches short-lived Cloudflare TURN credentials from its own origin at
 `/__dotli-media/turn` (`nginx/snippets/dotli-media-turn.conf`). The Cloudflare API token stays on the server. Only
-credentialed `turn:`/`turns:` URLs off port 53 are used from that endpoint. Credentials are reused for two thirds of
-their 12-hour lifetime, so a call keeps its relay for at least four hours. A failed, unconfigured (503) or relay-less
-response continues setup without TURN, and the next peer retries. Networks that require a relay still need working TURN.
-The local dev and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
+credentialed, valid `turn:`/`turns:` URLs off port 53 are used from that endpoint. Credentials are reused for two thirds
+of their 12-hour lifetime, so a call keeps its relay for at least four hours. Acquisition, including the response body,
+has a two-second deadline. A failed, unconfigured (503), malformed or relay-less response continues setup without TURN,
+and the next peer retries. Networks that require a relay still need working TURN. The local dev and preview servers do
+not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
 
 Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
 client (smoldot, `@parity/truapi-provider` 0.3.1) answers a statement subscription with no stored statements, only later
