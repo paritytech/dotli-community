@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-sessions",
-  "upstreamRevision": "d33723f989ac5a8c12002312239c23a506c91d3d",
+  "upstreamRevision": "be103818d31d170b0a85c67377841aa9bb398ad3",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
@@ -27,6 +27,6 @@
       }
     }
   },
-  "wasmUpstreamRevision": "d33723f989ac5a8c12002312239c23a506c91d3d",
+  "wasmUpstreamRevision": "be103818d31d170b0a85c67377841aa9bb398ad3",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1258"
 }
