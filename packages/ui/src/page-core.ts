@@ -5,7 +5,12 @@
 // and a faulted one is never handed out again.
 
 import type {
+  AuthState,
   ContactsPlatform,
+  CoreStorage,
+  CoreStorageKey,
+  MediaPlatform,
+  PermissionAuthorizationRequest,
   ProductExecutionKind,
   RequiredHostCallbacks,
   TrUApiProductProvider,
@@ -16,7 +21,11 @@ import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { loadLocalWalletCore } from './lazy.js';
 import type { LocalWalletChat } from './local-wallet-chat.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
-import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
+import {
+  onStoredSessionChanged,
+  registerCoreStoragePermissionProvider,
+  waitForCoreStoragePermissionRefresh,
+} from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 import { getWalletMode } from './state/wallet-mode.js';
 import { readWalletBoot } from './wallet-boot.js';
@@ -30,16 +39,25 @@ export interface PageProduct {
   pairing?: { label: string; dotSuffix: boolean; hostGlobal: boolean };
 }
 
+/** Host-owned Media for one product connection, never supplied by the product. */
+export interface ConnectionMedia {
+  platform: Required<MediaPlatform>;
+  authChanged(state: AuthState): void;
+  observeStorage(key: CoreStorageKey): void;
+}
+
 /** Close it through `close`, never the provider, or the core is marked faulted. */
 export interface CoreConnection {
   provider: TrUApiProductProvider;
   productId: string;
+  /** Settles once every live core sharing this storage applied the decision. */
+  waitForPermissionRefresh(request: PermissionAuthorizationRequest): Promise<void>;
   close(): void;
 }
 
 export interface CoreLease {
   runtime: WorkerPairingHostRuntime;
-  connect(executionKind?: ProductExecutionKind): Promise<CoreConnection>;
+  connect(executionKind?: ProductExecutionKind, media?: ConnectionMedia): Promise<CoreConnection>;
   /** Idempotent. */
   release(): void;
 }
@@ -49,8 +67,10 @@ interface Core {
   runtime: Promise<WorkerPairingHostRuntime>;
   leases: number;
   faulted: boolean;
+  /** The session-store adapter before the Chat and Media observing wrappers. */
+  permissionStorage(): CoreStorage;
   /** Callbacks scoped to one product connection, so its prompts end with it. */
-  openCallbacks(): { callbacks: RequiredHostCallbacks; dispose(): void };
+  openCallbacks(media?: ConnectionMedia): { callbacks: RequiredHostCallbacks; dispose(): void };
   dispose(): void;
 }
 
@@ -108,7 +128,7 @@ export async function acquireCore(): Promise<CoreLease> {
   }
   return {
     runtime,
-    connect: executionKind => connect(core, runtime, executionKind),
+    connect: (executionKind, media) => connect(core, runtime, executionKind, media),
     release,
   };
 }
@@ -140,6 +160,8 @@ function createCore(product: PageProduct): Core {
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let unsubscribeStore: (() => void) | null = null;
   let coreCallbacks: RequiredHostCallbacks | null = null;
+  let permissionStorage: CoreStorage | null = null;
+  const connectionMedia = new Set<ConnectionMedia>();
   // Native Chat runs only beside the local signer; a Polkadot App session leaves Chat on the phone.
   let chat: LocalWalletChat | null = null;
   const connectionDisposers = new Set<() => void>();
@@ -153,6 +175,40 @@ function createCore(product: PageProduct): Core {
       local,
       contacts,
     });
+    const storage = coreCallbacks.coreStorage;
+    permissionStorage = storage;
+    const observePermission = (key: CoreStorageKey): void => {
+      if (key.tag === 'PermissionAuthorization') {
+        for (const media of connectionMedia) {
+          media.observeStorage(key);
+        }
+      }
+    };
+    coreCallbacks.coreStorage = {
+      ...storage,
+      readCoreStorage: key => {
+        observePermission(key);
+        return storage.readCoreStorage(key);
+      },
+      writeCoreStorage: async (key, value) => {
+        await storage.writeCoreStorage(key, value);
+        observePermission(key);
+      },
+      compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => {
+        const changed = await storage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
+        if (changed) {
+          observePermission(key);
+        }
+        return changed;
+      },
+    };
+    const presentAuth = coreCallbacks.auth.authStateChanged;
+    coreCallbacks.auth.authStateChanged = state => {
+      for (const media of connectionMedia) {
+        media.authChanged(state);
+      }
+      presentAuth(state);
+    };
     return coreCallbacks;
   };
   // The wallet read, the host chunk and the worker wrapper load in parallel, so a Polkadot App boot waits on
@@ -204,7 +260,13 @@ function createCore(product: PageProduct): Core {
     runtime,
     leases: 0,
     faulted: false,
-    openCallbacks() {
+    permissionStorage() {
+      if (permissionStorage === null || !cores.has(core)) {
+        throw new Error('Page core storage is unavailable');
+      }
+      return permissionStorage;
+    },
+    openCallbacks(media) {
       const shared = coreCallbacks;
       if (shared === null || !cores.has(core)) {
         throw new Error('Page core callbacks are unavailable');
@@ -227,6 +289,10 @@ function createCore(product: PageProduct): Core {
         },
       };
       callbacks.coreStorage = shared.coreStorage;
+      if (media !== undefined) {
+        callbacks.media = media.platform;
+        connectionMedia.add(media);
+      }
       if (shared.nativeChatFiles !== undefined) {
         callbacks.nativeChatFiles = shared.nativeChatFiles;
       }
@@ -236,6 +302,9 @@ function createCore(product: PageProduct): Core {
         }
         closed = true;
         connectionDisposers.delete(dispose);
+        if (media !== undefined) {
+          connectionMedia.delete(media);
+        }
         contacts?.dispose();
         scope.dispose();
       };
@@ -279,9 +348,14 @@ async function connect(
   core: Core,
   runtime: WorkerPairingHostRuntime,
   executionKind: ProductExecutionKind = 'App',
+  media?: ConnectionMedia,
 ): Promise<CoreConnection> {
+  if (!cores.has(core)) {
+    throw new Error('Page core is closed');
+  }
   const productId = productIdOf(core.product);
-  const callbacks = core.openCallbacks();
+  const storage = core.permissionStorage();
+  const callbacks = core.openCallbacks(media);
   let provider: TrUApiProductProvider;
   try {
     provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);
@@ -291,9 +365,25 @@ async function connect(
     core.faulted = true;
     throw error;
   }
+  let unregisterRefresh: () => void;
+  try {
+    if (!cores.has(core)) {
+      throw new Error('Page core closed while connecting the product');
+    }
+    unregisterRefresh = await registerCoreStoragePermissionProvider(storage, productId, provider);
+    if (!cores.has(core)) {
+      unregisterRefresh();
+      throw new Error('Page core closed while connecting the product');
+    }
+  } catch (error) {
+    callbacks.dispose();
+    provider.dispose();
+    throw error;
+  }
   let closing = false;
   // A deliberate close also fires close listeners. Any other close is the core going down.
   provider.subscribeClose?.(() => {
+    unregisterRefresh();
     callbacks.dispose();
     if (!closing) {
       log.event('wallet core went down under a connection', { flow: 'wallet' });
@@ -303,8 +393,13 @@ async function connect(
   return {
     provider,
     productId,
+    waitForPermissionRefresh: request => waitForCoreStoragePermissionRefresh(storage, productId, request),
     close() {
+      if (closing) {
+        return;
+      }
       closing = true;
+      unregisterRefresh();
       callbacks.dispose();
       provider.dispose();
     },

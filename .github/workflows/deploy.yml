@@ -32,7 +32,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          # PR labels may target only these development environments.
+          # Environments a PR label is allowed to target (development only).
           ALLOWED='["paseoli.dev","paseo.fyi"]'
           case "$EVENT_NAME" in
             workflow_dispatch)
@@ -42,7 +42,6 @@ jobs:
               ;;
             release)
               echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
-              echo 'smoke_environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
               ;;
             push)
@@ -51,7 +50,8 @@ jobs:
               echo "ref=" >> "$GITHUB_OUTPUT"
               ;;
             pull_request)
-              # On `labeled` only the added label counts, on `synchronize` every label on the PR.
+              # On `labeled` only the just-added label triggers a deploy; on
+              # `synchronize` (new commit) consider all labels currently on the PR.
               if [ "$ACTION" = "labeled" ]; then
                 CANDIDATES="$(jq -nc --arg l "$ADDED_LABEL" '[$l]')"
               else
@@ -113,11 +113,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.ref || github.sha }}
-          # The Sentry release is named from the newest tag, and its upload reads the commits since the previous one.
+          # Tags and history: the Sentry release is named from the newest
+          # vX.Y.Z tag (`git describe`), and its upload reads the commits since
+          # the previous release.
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 
+      # Sync every workspace package.json to the release tag
       - name: Sync package versions to release tag
         if: github.event_name == 'release'
         run: node scripts/set-version.ts "${{ github.event.release.tag_name }}"
@@ -138,12 +141,70 @@ jobs:
 
       - run: ssh-keyscan ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
+      # Only these environments can opt into config updates. Validate routing
+      # before config or frontend uploads; other environments stay dist-only.
+      # The Cloudflare TURN key id and API token go only to the server's
+      # root-only Media TURN include; the frontend build never sees them.
+      - name: Deploy identity proxy config
+        if:
+          (matrix.environment == 'dotli.dev' || matrix.environment == 'westendli.dev' || matrix.environment ==
+          'paseo.fyi') && vars.DEPLOY_NGINX == 'true'
+        run: |
+          set -euo pipefail
+          case "$DEPLOY_SITE" in
+            dotli.dev) NGINX_ENV=dev-polkadot ;;
+            westendli.dev) NGINX_ENV=dev-westend ;;
+            paseo.fyi) NGINX_ENV=fyi-paseo ;;
+            *) echo "Identity proxy rollout is not allowed for $DEPLOY_SITE"; exit 1 ;;
+          esac
+          make ci-deploy-nginx ENV="$NGINX_ENV"
+        env:
+          DEPLOY_SITE: ${{ matrix.environment }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DOTLI_TURN_CLOUDFLARE_KEY_ID: ${{ secrets.DOTLI_TURN_CLOUDFLARE_KEY_ID }}
+          DOTLI_TURN_CLOUDFLARE_API_TOKEN: ${{ secrets.DOTLI_TURN_CLOUDFLARE_API_TOKEN }}
+
       - name: Deploy
         run: make ci-deploy
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Smoke identity proxy
+        if:
+          (matrix.environment == 'dotli.dev' || matrix.environment == 'westendli.dev' || matrix.environment ==
+          'paseo.fyi') && vars.DEPLOY_NGINX == 'true'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "https://${DEPLOY_SITE}/__dotli-identity/paseo/attester" \
+            | jq -e 'type == "object" and (.attester | type == "string" and test("^0x[0-9a-fA-F]{64}$"))'
+        env:
+          DEPLOY_SITE: ${{ matrix.environment }}
+
+      # Mints one short-lived relay credential through the public route; only
+      # the jq verdict is printed. Skipped while the TURN secrets are unset.
+      - name: Smoke Media TURN route
+        if:
+          (matrix.environment == 'dotli.dev' || matrix.environment == 'westendli.dev' || matrix.environment ==
+          'paseo.fyi') && vars.DEPLOY_NGINX == 'true'
+        run: |
+          set -euo pipefail
+          if [ "$TURN_CONFIGURED" != true ]; then
+            echo "::warning title=No Media TURN relay::DOTLI_TURN_CLOUDFLARE_KEY_ID is not set; /__dotli-media/turn answers 503 and host Media calls cannot connect."
+            exit 0
+          fi
+          curl --fail --silent --show-error "https://${DEPLOY_SITE}/__dotli-media/turn" \
+            | jq -e '[.iceServers | if type == "array" then .[] else . end
+                      | select((.username | type == "string") and (.credential | type == "string"))
+                      | .urls | if type == "array" then .[] else . end
+                      | select(test("^turns?:"))] | length > 0' > /dev/null
+        env:
+          DEPLOY_SITE: ${{ matrix.environment }}
+          TURN_CONFIGURED: ${{ secrets.DOTLI_TURN_CLOUDFLARE_KEY_ID != '' }}
 
   product-smoke:
     name: Smoke ${{ matrix.environment }} products

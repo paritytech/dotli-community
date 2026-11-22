@@ -223,6 +223,8 @@ describe('native Chat contacts', () => {
       readCoreStorage: () => Promise.resolve(undefined),
       writeCoreStorage: () => stored.promise,
       clearCoreStorage: () => Promise.resolve(),
+      compareExchangeCoreStorage: () => Promise.resolve(false),
+      coreStorageChanged: () => undefined,
     };
     const storage = state.directory.observeStorage(backing);
     const picked = state.adapter.callbacks.pickContact(product);

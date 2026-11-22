@@ -1,10 +1,17 @@
 import { SITE_ID } from '@dotli/config';
 import { bytesToHex, hexToBytes } from '@parity/truapi/scale';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
-import type { CoreStorage, CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
+import type {
+  CoreStorage,
+  CoreStorageKey,
+  PermissionAuthorizationRequest,
+  SessionUiInfo,
+  TrUApiProductProvider,
+} from '@parity/truapi-host';
 import {
   SHARED_CORE_SESSION_KEY,
   clearSharedAuthStorage,
+  compareExchangeSharedAuthStorage,
   getSharedStoreStatus,
   readSharedAuthStorage,
   subscribeSharedAuthStorage,
@@ -17,6 +24,7 @@ import { createAsyncTaskPool, errorName, log } from '@dotli/shared';
 import { getAuthState } from '../state/auth.js';
 import { readWalletBoot, type LocalWalletBoot } from '../wallet-boot.js';
 import { dispatchAuthState } from './AuthState.js';
+import { createCorePermissionRefreshGroup, type CorePermissionRefreshGroup } from './core-permission-refresh.js';
 
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
@@ -237,32 +245,119 @@ export interface SessionStoreOptions {
   local?: boolean | undefined;
 }
 
+const permissionRefreshGroups = new WeakMap<CoreStorage, CorePermissionRefreshGroup>();
+
+export function registerCoreStoragePermissionProvider(
+  storage: CoreStorage,
+  productId: string,
+  provider: Pick<TrUApiProductProvider, 'refreshPermissionAuthorization'>,
+): Promise<() => void> {
+  const group = permissionRefreshGroups.get(storage);
+  if (!group) {
+    throw new Error('Core storage refresh group is unavailable');
+  }
+  return group.register(productId, provider);
+}
+
+export function waitForCoreStoragePermissionRefresh(
+  storage: CoreStorage,
+  productId: string,
+  request: PermissionAuthorizationRequest,
+): Promise<void> {
+  const group = permissionRefreshGroups.get(storage);
+  if (!group) {
+    throw new Error('Core storage refresh group is unavailable');
+  }
+  return group.wait(productId, request);
+}
+
+function withPhysicalCoreSlot<T>(slot: string, operation: () => Promise<T>, atomic: boolean): Promise<T> {
+  const locks = navigator.locks as LockManager | null | undefined;
+  if (locks === null || locks === undefined) {
+    // Ordinary operations remain usable; compare-exchange must fail closed.
+    return atomic ? Promise.reject(new Error('Atomic cross-document core storage is unavailable')) : operation();
+  }
+  // A dropped core future must not release the lock while persistence is still in flight.
+  return locks.request(`dotli:core-slot:${slot}`, operation);
+}
+
 export function createSessionStoreAdapters(options: SessionStoreOptions = {}): CoreStorage {
   const skips = (key: CoreStorageKey): boolean => options.local === true && key.tag === 'AuthSession';
-  return {
+  const group = createCorePermissionRefreshGroup(coreLocalStorageKey);
+  // The protocol frame serializes the shared session; local slots use one cross-document lock.
+  const locked = <T>(key: CoreStorageKey, operation: () => Promise<T>, atomic = false): Promise<T> =>
+    key.tag === 'AuthSession' ? operation() : withPhysicalCoreSlot(coreLocalStorageKey(key), operation, atomic);
+  const storage: CoreStorage = {
     async readCoreStorage(key) {
-      return skips(key) ? undefined : readCoreStorageValue(key);
+      return skips(key) ? undefined : locked(key, () => readCoreStorageValue(key));
     },
     async writeCoreStorage(key, value) {
       if (!skips(key)) {
-        await writeCoreStorageValue(key, value);
+        await locked(key, () => writeCoreStorageValue(key, value));
       }
     },
     async clearCoreStorage(key) {
       if (!skips(key)) {
-        await clearCoreStorageValue(key);
+        await locked(key, () => clearCoreStorageValue(key));
       }
     },
+    async compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess) {
+      if (skips(key)) {
+        return expected === undefined;
+      }
+      let changed: boolean;
+      if (key.tag === 'AuthSession') {
+        changed = await compareExchangeSharedAuthStorage(
+          SITE_ID,
+          SHARED_CORE_SESSION_KEY,
+          expected ?? null,
+          replacement,
+        );
+        if (changed) {
+          emitLocalChange();
+        }
+      } else {
+        changed = await locked(
+          key,
+          async () => {
+            const current = await readCoreStorageValue(key, false);
+            if (current === undefined && localStorage.getItem(coreLocalStorageKey(key)) !== null) {
+              throw new Error('Core storage value cannot be decoded');
+            }
+            const matches =
+              current === undefined || expected === undefined
+                ? current === expected
+                : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+            if (!matches) {
+              return false;
+            }
+            await writeCoreStorageValue(key, replacement);
+            return true;
+          },
+          true,
+        );
+      }
+      // Enqueue even if the requesting core future was dropped.
+      if (changed && notifyOnSuccess) {
+        group.notify(key);
+      }
+      return changed;
+    },
+    coreStorageChanged: key => {
+      group.notify(key);
+    },
   };
+  permissionRefreshGroups.set(storage, group);
+  return storage;
 }
 
-async function readCoreStorageValue(key: CoreStorageKey): Promise<Uint8Array | undefined> {
+async function readCoreStorageValue(key: CoreStorageKey, migrate = true): Promise<Uint8Array | undefined> {
   if (key.tag === 'AuthSession') {
     const raw = await readSharedSession();
     return raw === null ? undefined : decodeStoredBytes(raw, 'shared auth session');
   }
   const raw = localStorage.getItem(coreLocalStorageKey(key));
-  return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
+  return raw === null ? undefined : await decodeCoreStorageValue(key, raw, migrate);
 }
 
 function decodeStoredBytes(raw: string, description: string): Uint8Array | undefined {
@@ -358,7 +453,11 @@ async function encodeCoreStorageValue(key: CoreStorageKey, value: Uint8Array): P
   return bytesToHex(value);
 }
 
-async function decodeCoreStorageValue(key: CoreStorageKey, raw: string): Promise<Uint8Array | undefined> {
+async function decodeCoreStorageValue(
+  key: CoreStorageKey,
+  raw: string,
+  migrate = true,
+): Promise<Uint8Array | undefined> {
   if (!storesSecretMaterial(key)) {
     return decodeStoredBytes(raw, `core storage ${key.tag}`);
   }
@@ -368,8 +467,11 @@ async function decodeCoreStorageValue(key: CoreStorageKey, raw: string): Promise
     if (bytes === undefined) {
       return undefined;
     }
-    log.event('re-encrypting legacy plaintext core storage', { flow: 'wallet', slot: key.tag });
-    localStorage.setItem(coreLocalStorageKey(key), await encodeCoreStorageValue(key, bytes));
+    // An atomic comparison must leave the probed slot unchanged.
+    if (migrate) {
+      log.event('re-encrypting legacy plaintext core storage', { flow: 'wallet', slot: key.tag });
+      localStorage.setItem(coreLocalStorageKey(key), await encodeCoreStorageValue(key, bytes));
+    }
     return bytes;
   }
   const bytes = decodeStoredBytes(raw.slice(ENCRYPTED_VALUE_PREFIX.length), `core storage ${key.tag}`);
@@ -387,8 +489,10 @@ async function decodeCoreStorageValue(key: CoreStorageKey, raw: string): Promise
   } catch (err) {
     // Written under a key we no longer hold, or corrupt. Returning the raw bytes would hand
     // ciphertext to the core as key material.
-    log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
-    localStorage.removeItem(coreLocalStorageKey(key));
+    if (migrate) {
+      log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
+      localStorage.removeItem(coreLocalStorageKey(key));
+    }
     return undefined;
   }
 }

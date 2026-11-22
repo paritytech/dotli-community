@@ -49,8 +49,8 @@ type ConfirmationField = ModalField;
 
 type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismissed';
 
-/** PreimageSubmit gets its own modal. */
-type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' }>;
+/** Calling uses operation-scoped Media consent; PreimageSubmit has its own UI. */
+type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' | 'Calling' }>;
 
 async function showConfirmationModal(
   label: string,
@@ -479,20 +479,28 @@ export function createUserConfirmationAdapters(
   return {
     // Per-action reviews confirm a single operation, so there is no lifetime
     // to choose and the modal keeps two buttons.
-    confirmUserAction: review =>
-      modalScope.enqueue(async signal =>
+    confirmUserAction: review => {
+      if (review.tag === 'Calling') {
+        return Promise.reject(new Error('Calling requires operation-scoped Media consent'));
+      }
+      return modalScope.enqueue(async signal =>
         review.tag === 'PreimageSubmit'
           ? handlePreimageSubmitReview(review.value, signal)
           : (await handleConfirmationReview(label, review, signal, false)) === 'accepted',
-      ),
+      );
+    },
     // The core stores AllowAlways and Deny, and honours AllowOnce for this request only.
-    confirmPermission: review =>
-      modalScope.enqueue(async signal =>
+    confirmPermission: review => {
+      if (review.tag === 'Calling') {
+        return Promise.reject(new Error('Calling requires operation-scoped Media consent'));
+      }
+      return modalScope.enqueue(async signal =>
         review.tag === 'PreimageSubmit'
           ? (await handlePreimageSubmitReview(review.value, signal))
             ? 'AllowOnce'
             : 'Deny'
           : permissionDecision(await handleConfirmationReview(label, review, signal, true)),
-      ),
+      );
+    },
   };
 }

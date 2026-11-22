@@ -30,6 +30,12 @@ export interface ProtocolRequestMap {
   authStorageRead: { siteId: string; key: string };
   authStorageWrite: { siteId: string; key: string; value: string };
   authStorageClear: { siteId: string; key: string };
+  authStorageCompareExchange: {
+    siteId: string;
+    key: string;
+    expected: Uint8Array | null;
+    replacement: Uint8Array;
+  };
   modeStorageRead: { siteId: string; key: string };
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };

@@ -769,6 +769,20 @@ export async function clearSharedAuthStorage(siteId: SiteId, key: string): Promi
   await postRequest('authStorageClear', { siteId, key });
 }
 
+/** Atomic core-session bytes, executed at the actual shared storage origin. */
+export async function compareExchangeSharedAuthStorage(
+  siteId: SiteId,
+  key: string,
+  expected: Uint8Array | null,
+  replacement: Uint8Array,
+): Promise<boolean> {
+  const result = await postRequest('authStorageCompareExchange', { siteId, key, expected, replacement });
+  if (typeof result !== 'boolean') {
+    throw new Error('Invalid shared storage CAS response');
+  }
+  return result;
+}
+
 /** Lives on `host.<BASE_DOMAIN>` so backend and cache preferences follow the user across subdomains. */
 export async function readSharedModeStorage(siteId: SiteId, key: string): Promise<string | null> {
   return (await postRequest('modeStorageRead', { siteId, key })) as string | null;
@@ -803,11 +817,12 @@ export async function forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
 export async function requestCoreCustody(
   siteId: SiteId,
   operation: CoreCustodyOperation,
-): Promise<string | Uint8Array | Blob | undefined> {
+): Promise<string | Uint8Array | Blob | boolean | undefined> {
   const result = await postRequest('coreCustody', { siteId, operation });
   if (
     result !== undefined &&
     typeof result !== 'string' &&
+    typeof result !== 'boolean' &&
     !(result instanceof Uint8Array) &&
     !(result instanceof Blob)
   ) {

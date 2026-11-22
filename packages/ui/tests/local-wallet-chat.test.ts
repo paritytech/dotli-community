@@ -24,6 +24,18 @@ vi.mock('../../protocol/src/client.js', () => ({
         return Promise.resolve(undefined);
       case 'read':
         return Promise.resolve(custody.records.get(operation.key));
+      case 'compareExchange': {
+        const current = custody.records.get(operation.key) ?? null;
+        const matches =
+          current === null || operation.expected === null
+            ? current === operation.expected
+            : current.length === operation.expected.length &&
+              current.every((byte, index) => byte === operation.expected?.[index]);
+        if (matches) {
+          custody.records.set(operation.key, operation.replacement);
+        }
+        return Promise.resolve(matches);
+      }
       case 'clear':
       case 'release':
       case 'putSources':
@@ -58,6 +70,18 @@ function memoryStorage(): CoreStorage & { values: Map<string, Uint8Array> } {
       values.delete(key.tag);
       return Promise.resolve();
     },
+    compareExchangeCoreStorage: vi.fn((key: CoreStorageKey, expected: Uint8Array | undefined, replacement: Uint8Array) => {
+      const current = values.get(key.tag);
+      const matches =
+        current === undefined || expected === undefined
+          ? current === expected
+          : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+      if (matches) {
+        values.set(key.tag, replacement);
+      }
+      return Promise.resolve(matches);
+    }),
+    coreStorageChanged: vi.fn(),
   };
 }
 
