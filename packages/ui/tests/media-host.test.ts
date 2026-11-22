@@ -119,6 +119,20 @@ describe('Media ICE configuration', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('As a dotli integrator, I can configure direct-only ICE without requesting TURN', () => {
+    // Given
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const own: RTCIceServer[] = [];
+
+    // When
+    const options = mediaHost(own);
+
+    // Then
+    expect(options.iceServers).toBe(own);
+    expect(options).not.toHaveProperty('iceTransportPolicy');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('As a dotli integrator, only credentialed turn:/turns: relays off port 53 survive conversion', () => {
     expect(toMediaIceServers(CLOUDFLARE)).toEqual(CLOUDFLARE_RELAYS);
     expect(toMediaIceServers({ iceServers: { ...TURN, urls: 'turn:turn.example:3478' } })).toEqual([
@@ -209,6 +223,7 @@ describe('Media TURN credentials', () => {
 
   it.each([
     ['unreachable', () => Promise.reject(new TypeError('Failed to fetch')), 'is unreachable'],
+    ['timed out', () => Promise.reject(new DOMException('Timed out', 'TimeoutError')), 'is unreachable'],
     ['unconfigured', () => Promise.resolve(turnResponse('', null, 503)), 'answered HTTP 503'],
     ['rate limited', () => Promise.resolve(turnResponse('', null, 429)), 'answered HTTP 429'],
     ['serving HTML', () => Promise.resolve(turnResponse('<!doctype html>')), 'answered invalid JSON'],
@@ -217,21 +232,27 @@ describe('Media TURN credentials', () => {
       () => Promise.resolve(turnResponse({ iceServers: [{ urls: ['stun:stun.example'] }] })),
       'returned no credentialed turn:/turns: relay',
     ],
-  ])('As a caller, a %s TURN route fails closed and is retried by the next peer', async (_name, failure, reason) => {
-    // Given
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const clock = { now: 0 };
-    const { fetchImpl, iceServers } = source(
-      [failure, () => Promise.resolve(turnResponse({ iceServers: [TURN] }))],
-      clock,
-    );
+  ])(
+    'As a caller, a %s TURN route allows direct setup and is retried by the next peer',
+    async (_name, failure, reason) => {
+      // Given
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const clock = { now: 0 };
+      const { fetchImpl, iceServers } = source(
+        [failure, () => Promise.resolve(turnResponse({ iceServers: [TURN] }))],
+        clock,
+      );
 
-    // When / Then
-    await expect(iceServers()).rejects.toThrow(`Media:NoTurnRelay: ${MEDIA_TURN_PATH} ${reason}`);
-    expect(error).toHaveBeenCalledWith('[media]', expect.stringContaining('Media:NoTurnRelay'));
-    await expect(iceServers()).resolves.toEqual([TURN]);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
+      // When / Then
+      await expect(iceServers()).resolves.toEqual([]);
+      expect(error).toHaveBeenCalledWith(
+        '[media]',
+        `Media:TurnUnavailable: ${MEDIA_TURN_PATH} ${reason}. Continuing without TURN.`,
+      );
+      await expect(iceServers()).resolves.toEqual([TURN]);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    },
+  );
 });
 
 describe('Media viewport occlusion', () => {

@@ -519,13 +519,14 @@ screen-selection prompt. Camera and microphone delegation require their individu
 grant replaces the iframe to apply the new policy. Revocation leaves screen-selection consent with the browser.
 Protected host Media removes all raw-capture directives, including origin-scoped ones, before applying its denials.
 
-ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay. When a call opens
-a peer, the shell fetches short-lived Cloudflare TURN credentials from its own origin at `/__dotli-media/turn`
-(`nginx/snippets/dotli-media-turn.conf`); the Cloudflare API token stays on the server. Only credentialed
-`turn:`/`turns:` URLs off port 53 are used. Credentials are reused for two thirds of their 12-hour lifetime, so a call
-keeps its relay for at least four hours. A failed or unconfigured route (503) leaves the peer without a relay: it fails
-with `Media:NoTurnRelay` in the console, and the next peer retries. Products never supply ICE settings. The local dev
-and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
+The host Media backend supports direct ICE connectivity with optional TURN fallback. Peer hosts can learn each other's
+network addresses. Products never receive SDP, ICE candidates, IP addresses or transport statistics, and never supply
+ICE settings. When a call opens a peer, the shell fetches short-lived Cloudflare TURN credentials from its own origin at
+`/__dotli-media/turn` (`nginx/snippets/dotli-media-turn.conf`). The Cloudflare API token stays on the server. Only
+credentialed `turn:`/`turns:` URLs off port 53 are used from that endpoint. Credentials are reused for two thirds of
+their 12-hour lifetime, so a call keeps its relay for at least four hours. A failed, unconfigured (503) or relay-less
+response continues setup without TURN, and the next peer retries. Networks that require a relay still need working TURN.
+The local dev and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
 
 Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
 client (smoldot) completes a new statement subscription with an empty retained snapshot and relays only later gossip. On

@@ -93,9 +93,10 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
 
 ## Media TURN credentials
 
-Host Media calls are relay-only and need TURN. NGINX serves `GET /__dotli-media/turn` on the apex and shell (`*.<site>`)
-servers only (`nginx/snippets/dotli-media-turn.conf`); the app and protocol servers answer 404. Each request mints
-12-hour Cloudflare TURN credentials: NGINX adds the API token and a fixed `{"ttl":43200}` body and posts to
+Host Media calls support direct connectivity with optional TURN fallback for networks that need a relay. NGINX serves
+`GET /__dotli-media/turn` on the apex and shell (`*.<site>`) servers only (`nginx/snippets/dotli-media-turn.conf`). The
+app and protocol servers answer 404. Each request mints 12-hour Cloudflare TURN credentials: NGINX adds the API token
+and a fixed `{"ttl":43200}` body and posts to
 `https://rtc.live.cloudflare.com/v1/turn/keys/<key id>/credentials/generate`. The shell reuses them for two thirds of
 that lifetime. Nothing is baked into the frontend build, so credentials never go stale and no periodic redeploy is
 needed.
@@ -109,8 +110,8 @@ needed.
   same names. It pipes them over SSH into `/etc/nginx/dotli-private/<site>-media-turn.conf` (`root:root`, `0600`). The
   token is not in the rendered site config, `/tmp`, rsync uploads, the frontend build or the make log, and the route has
   access and error logging off.
-- Set both secrets or neither. Unset, `deploy-nginx` warns and writes the file empty: the route answers 503 and calls
-  cannot connect. Removing the secrets and redeploying disables the route.
+- Set both secrets or neither. Unset, `deploy-nginx` warns and writes the file empty. The route answers 503 and calls
+  continue setup without TURN. Removing the secrets and redeploying disables the route, not direct connectivity.
 - The token is the Cloudflare Realtime TURN key's API token (`Authorization: Bearer`), paired with that key's id. Rotate
   it by updating both secrets and rerunning the config rollout.
 
@@ -166,8 +167,8 @@ The selected environment must already be provisioned:
   Brotli modules and the resolver at `127.0.0.53`.
 - Keep the environment's `SENTRY_DSN` secret: CI forwards the value the frontend build uses to render the `/t` tunnel.
   An unset secret disables the tunnel.
-- Keep `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` set as environment secrets wherever calls
-  must connect: every rollout rewrites the server's TURN include, and unset secrets disable the Media TURN route.
+- Keep `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` set as environment secrets wherever relay
+  fallback is needed. Every config rollout rewrites the TURN include, and unset secrets disable the Media TURN route.
 - Keep the `RECEIVING_*` variables set wherever receiving is deployed: a rollout without `RECEIVING_RELAY_URL` installs
   the empty worker CSP, and one without `RECEIVING_PROXY_PORT` makes `/__receiving/` answer 404.
 

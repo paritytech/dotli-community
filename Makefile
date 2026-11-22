@@ -51,7 +51,7 @@ SENTRY_PROJECT   := $(lastword  $(subst /, ,$(_sentry_hostpath)))
 # environment secrets) and pipes them over SSH into the remote's root-only
 # $(NGINX_PRIVATE_DIR)/<site>-media-turn.conf. They never reach the rendered
 # site config, /tmp, rsync, the frontend build or the make log. Unset, the file
-# is written empty and the route answers 503: host Media calls cannot connect.
+# is written empty and the route answers 503. Calls continue without TURN fallback.
 DOTLI_TURN_CLOUDFLARE_KEY_ID ?=
 DOTLI_TURN_CLOUDFLARE_API_TOKEN ?=
 NGINX_PRIVATE_DIR := /etc/nginx/dotli-private
@@ -152,7 +152,7 @@ render-nginx: _require-env-name
 # Values go into nginx `set` strings, so only token-shaped characters pass.
 _turn_check = @set -eu; key="$${DOTLI_TURN_CLOUDFLARE_KEY_ID:-}"; token="$${DOTLI_TURN_CLOUDFLARE_API_TOKEN:-}"; \
 	if [ -z "$$key" ] && [ -z "$$token" ]; then \
-		echo "WARNING: DOTLI_TURN_CLOUDFLARE_KEY_ID/DOTLI_TURN_CLOUDFLARE_API_TOKEN not set — /__dotli-media/turn answers 503; host Media calls cannot connect." >&2; \
+		echo "WARNING: DOTLI_TURN_CLOUDFLARE_KEY_ID/DOTLI_TURN_CLOUDFLARE_API_TOKEN not set. /__dotli-media/turn answers 503. Host Media calls continue without TURN fallback." >&2; \
 	elif [ -z "$$key" ] || [ -z "$$token" ]; then \
 		echo "deploy-nginx: set both DOTLI_TURN_CLOUDFLARE_KEY_ID and DOTLI_TURN_CLOUDFLARE_API_TOKEN, or neither." >&2; exit 1; \
 	else \
