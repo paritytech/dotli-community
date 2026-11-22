@@ -22,6 +22,7 @@ import { createPageCidCache } from '../features/productLoad/index.js';
 import { createProductAuthor } from '../features/productIdentity/index.js';
 import { createProductLoader } from './createProductLoader.js';
 import type { H160Address } from '../kit/h160Address.js';
+import { continuation, markAndReload } from '../kit/createContinuation.js';
 import { loadFailureScreen } from '../features/productLoad/index.js';
 import { pageNotifications } from '../features/notifications/index.js';
 import { PAGE_START } from './pageStart.js';
@@ -84,6 +85,7 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
     bitswap: bridge.hostBitswapClient,
     recents: recentLabels,
     failureScreen: loadFailureScreen,
+    updateReload: { claim: continuation.claimUpdateReload, reload: reloadForUpdate },
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
   });
   await loader.load(label);
@@ -93,6 +95,10 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
 function readLoadedOwner(): H160Address | null {
   const product = productState.store.get();
   return product.status === 'loaded' ? (product.facts.owner ?? null) : null;
+}
+
+function reloadForUpdate(): void {
+  markAndReload('app_update');
 }
 
 /** Runs `callback` once the page is idle, or after the page's idle timeout. */

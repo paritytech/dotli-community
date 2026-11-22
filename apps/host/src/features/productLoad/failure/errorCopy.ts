@@ -21,6 +21,12 @@ export const HOST_ERRORS = {
   PROTOCOL_UPDATED: 'dot.li was updated since this page loaded. Reload to load the new version.',
 } as const;
 
+/** The screen a page shows while it reloads itself to load a newer dot.li. */
+export const UPDATE_LOADING_COPY = {
+  TITLE: 'Loading the new version of dot.li',
+  DETAIL: 'dot.li was updated since this page loaded.',
+} as const;
+
 export const FAILOVER_BTN_LABELS = {
   'rpc-gateway': 'Try Trusted Provider',
   'smoldot-shared-worker': 'Try Light Client',

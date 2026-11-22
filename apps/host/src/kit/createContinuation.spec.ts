@@ -56,4 +56,38 @@ describe('createContinuation', () => {
     // Then
     expect(answers).toEqual({ peeked: null, taken: null });
   });
+
+  it('As a user whose tab meets an update twice on one build, I claim a reload each time and only the first claim holds', () => {
+    // Given
+    const continuation = createContinuation({ store: createMemoryStorage(), build: 'build-b' });
+
+    // When
+    const claims = [continuation.claimUpdateReload(), continuation.claimUpdateReload()];
+
+    // Then
+    expect(claims).toEqual([true, false]);
+  });
+
+  it('As a user whose tab reloaded for an update on an older build, I meet an update on a newer build and my claim holds', () => {
+    // Given
+    const store = createMemoryStorage({ entries: { 'dotli:update-reload': 'build-a' } });
+    const continuation = createContinuation({ store, build: 'build-b' });
+
+    // When
+    const claimed = continuation.claimUpdateReload();
+
+    // Then
+    expect(claimed).toBe(true);
+  });
+
+  it('As a user whose tab has no sessionStorage, I meet an update and my claim to reload does not hold', () => {
+    // Given
+    const continuation = createContinuation({ store: createBlockedStorage(), build: 'build-b' });
+
+    // When
+    const claimed = continuation.claimUpdateReload();
+
+    // Then
+    expect(claimed).toBe(false);
+  });
 });

@@ -66,6 +66,13 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [listener-helper-needs-another-value](listener-helper-needs-another-value.md): a helper that listens to one source of
   events and reports one value per frame, such as one pointer axis, must also report another value from the same
   events.
+- [machine-outcome-with-a-visible-wait](machine-outcome-with-a-visible-wait.md): a flow's state machine gains an
+  outcome that performs an action the user waits on, such as a reload, and the question is whether it gets a state of
+  its own or is decided and performed inside an existing helper.
+- [new-reaction-to-a-signal-a-flow-already-handles](new-reaction-to-a-signal-a-flow-already-handles.md): a new
+  reaction, such as an automatic recovery, joins a lower layer's published signal that an existing flow already turns
+  into an outcome, such as a final failure with a fallback screen, and the question is whether it gets a module of its
+  own or what the smallest affected area means.
 - [page-wide-behaviour-on-an-island-page](page-wide-behaviour-on-an-island-page.md): an Astro page of static markup
   and islands needs a DOM behaviour that spans the whole page, and the question is whether the entry module, an island
   or a page `<script>` starts it.

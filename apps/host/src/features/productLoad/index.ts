@@ -3,7 +3,7 @@
 
 export type { ErrorDescription } from './failure/describeError.js';
 export { describeError } from './failure/describeError.js';
-export { RELOAD_BTN_LABEL } from './failure/errorCopy.js';
+export { RELOAD_BTN_LABEL, UPDATE_LOADING_COPY } from './failure/errorCopy.js';
 export { loadFailureScreen } from './failure/loadFailureScreen.js';
 export type { LoadFailure } from './failure/presentLoadFailure.js';
 export { showNoContentError } from './failure/showNoContentError.js';
