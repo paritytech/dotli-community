@@ -257,8 +257,9 @@ export function toMediaIceServers(response: unknown): RTCIceServer[] {
  * started from cached credentials keeps its relay for at least the last third.
  * Concurrent peers share one request. A failed, unconfigured (503) or relay-less
  * answer supplies no optional relays, allowing direct ICE setup to continue.
- * Acquisition, including the response body, has a two-second deadline so it
- * leaves time for peer setup within the core's deadline. The next peer retries.
+ * The backend limits each peer's optional wait to two seconds without cancelling
+ * this shared request. Acquisition, including the response body, has its own
+ * fifteen-second deadline; a late answer warms the cache for subsequent peers.
  */
 export function mediaTurnIceServers(
   options: { fetch?: typeof fetch; now?: () => number; url?: string } = {},
@@ -273,34 +274,42 @@ export function mediaTurnIceServers(
       console.error('[media]', `Media:TurnUnavailable: ${MEDIA_TURN_PATH} ${reason}. Continuing without TURN.`);
       return [];
     };
-    let response: Response;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort(new DOMException('Timed out', 'TimeoutError'));
+    }, 15_000);
     try {
-      response = await fetchImpl(options.url ?? new URL(MEDIA_TURN_PATH, location.origin).href, {
-        method: 'GET',
-        credentials: 'same-origin',
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(2_000),
-      });
-    } catch {
-      return fail('is unreachable');
+      let response: Response;
+      try {
+        response = await fetchImpl(options.url ?? new URL(MEDIA_TURN_PATH, location.origin).href, {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+      } catch {
+        return fail('is unreachable');
+      }
+      if (!response.ok) {
+        return fail(`answered HTTP ${String(response.status)}`);
+      }
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        return fail('answered invalid JSON');
+      }
+      const servers = toMediaIceServers(body);
+      if (servers.length === 0) {
+        return fail('returned no credentialed turn:/turns: relay');
+      }
+      const ttl = Number(response.headers.get(MEDIA_TURN_TTL_HEADER));
+      cached = { servers, reuseUntil: Number.isFinite(ttl) && ttl > 0 ? requestedAt + (ttl * 1000 * 2) / 3 : 0 };
+      return servers;
+    } finally {
+      clearTimeout(timeout);
     }
-    if (!response.ok) {
-      return fail(`answered HTTP ${String(response.status)}`);
-    }
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      return fail('answered invalid JSON');
-    }
-    const servers = toMediaIceServers(body);
-    if (servers.length === 0) {
-      return fail('returned no credentialed turn:/turns: relay');
-    }
-    const ttl = Number(response.headers.get(MEDIA_TURN_TTL_HEADER));
-    cached = { servers, reuseUntil: Number.isFinite(ttl) && ttl > 0 ? requestedAt + (ttl * 1000 * 2) / 3 : 0 };
-    return servers;
   }
   return async () => {
     if (cached !== undefined && now() < cached.reuseUntil) {

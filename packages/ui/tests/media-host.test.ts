@@ -262,18 +262,84 @@ describe('Media TURN credentials', () => {
   });
 
   it.each(['headers', 'body'] as const)(
-    'As a caller, I stop waiting for TURN %s after two seconds and retry with the next peer',
+    'As a caller, a three-second TURN %s response warms the cache after my direct setup starts',
+    async phase => {
+      // Given
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn<typeof fetch>((_input, init) => {
+        const signal = must(init?.signal, 'TURN abort signal');
+        if (phase === 'headers') {
+          const { promise, resolve, reject } = Promise.withResolvers<Response>();
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(signal.reason);
+          };
+          const timer = setTimeout(() => {
+            signal.removeEventListener('abort', onAbort);
+            resolve(turnResponse({ iceServers: [TURN] }));
+          }, 3_000);
+          signal.addEventListener('abort', onAbort, { once: true });
+          return promise;
+        }
+        return Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                const onAbort = () => {
+                  clearTimeout(timer);
+                  controller.error(signal.reason);
+                };
+                const timer = setTimeout(() => {
+                  signal.removeEventListener('abort', onAbort);
+                  controller.enqueue(new TextEncoder().encode(JSON.stringify({ iceServers: [TURN] })));
+                  controller.close();
+                }, 3_000);
+                signal.addEventListener('abort', onAbort, { once: true });
+              },
+            }),
+            { headers: { 'Dotli-Media-Turn-Ttl': '43200' } },
+          ),
+        );
+      });
+      const iceServers = mediaTurnIceServers({ fetch: fetchImpl, url: TURN_URL });
+      const credentials = iceServers();
+      // Model the browser backend's existing optional wait at the provider
+      // boundary: it races the result, never cancels the shared acquisition.
+      let settled = false;
+      const directSetup = Promise.withResolvers<RTCIceServer[]>();
+      setTimeout(() => {
+        directSetup.resolve([]);
+      }, 2_000);
+      const firstPeer = Promise.race([credentials, directSetup.promise]).then(servers => {
+        settled = true;
+        return servers;
+      });
+      const concurrentConsumer = iceServers();
+      const signal = must(fetchImpl.mock.calls[0]?.[1]?.signal, 'TURN abort signal');
+
+      // When / Then
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(firstPeer).resolves.toEqual([]);
+      expect(signal.aborted).toBe(false);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(Promise.all([credentials, concurrentConsumer])).resolves.toEqual([[TURN], [TURN]]);
+      await expect(iceServers()).resolves.toEqual([TURN]);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(12_000);
+      expect(signal.aborted).toBe(false);
+    },
+  );
+
+  it.each(['headers', 'body'] as const)(
+    'As a caller, a shared TURN %s request is bounded to fifteen seconds and then retried',
     async phase => {
       // Given
       vi.useFakeTimers();
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(milliseconds => {
-        const controller = new AbortController();
-        setTimeout(() => {
-          controller.abort(new DOMException('Timed out', 'TimeoutError'));
-        }, milliseconds);
-        return controller.signal;
-      });
       const fetchImpl = vi.fn<typeof fetch>().mockImplementationOnce((_input, init) => {
         const signal = must(init?.signal, 'TURN abort signal');
         if (phase === 'headers') {
@@ -313,17 +379,17 @@ describe('Media TURN credentials', () => {
         return servers;
       });
       const second = iceServers();
-      await vi.advanceTimersByTimeAsync(1_999);
+      await vi.advanceTimersByTimeAsync(14_999);
 
       // Then
       expect(settled).toBe(false);
       expect(fetchImpl).toHaveBeenCalledTimes(1);
-      expect(timeout).toHaveBeenCalledWith(2_000);
       await vi.advanceTimersByTimeAsync(1);
       await expect(Promise.all([first, second])).resolves.toEqual([[], []]);
       await expect(iceServers()).resolves.toEqual([TURN]);
       await expect(iceServers()).resolves.toEqual([TURN]);
       expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
     },
   );
 
