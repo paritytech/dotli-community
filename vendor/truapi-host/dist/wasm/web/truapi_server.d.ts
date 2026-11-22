@@ -480,12 +480,12 @@ export interface InitOutput {
     readonly wasmproductruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmrenderersubscription_cancel: (a: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_8681: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_8738: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_8683: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_8740: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_3587: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_3578: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_3582: (a: number, b: number) => number;
-    readonly __wasm_bindgen_func_elem_8551: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_8553: (a: number, b: number) => void;
     readonly __wasm_bindgen_func_elem_3584: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
