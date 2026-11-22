@@ -77,11 +77,11 @@ export const wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number
 export const wasmsigninghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
 export const wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
 export const wireSchemaHash: (a: number) => void;
-export const __wasm_bindgen_func_elem_10751: (a: number, b: number, c: number, d: number) => void;
-export const __wasm_bindgen_func_elem_10808: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_10753: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_10810: (a: number, b: number, c: number, d: number) => void;
 export const __wasm_bindgen_func_elem_4942: (a: number, b: number, c: number) => void;
 export const __wasm_bindgen_func_elem_4935: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_10621: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_10623: (a: number, b: number) => void;
 export const __wasm_bindgen_func_elem_4939: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;
 export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

@@ -9,6 +9,7 @@ const MAX_SUBSCRIPTIONS = 8;
 const MAX_RUNTIMES = 64;
 const MAX_ICE_CANDIDATES = 256;
 const CONNECTION_TIMEOUT = 30_000;
+const ICE_GATHERING_TIMEOUT = 1_000;
 class CommandRejected extends Error {
     failure;
     constructor(failure) {
@@ -951,13 +952,121 @@ export function createBrowserMediaBackend(options) {
         peer.serial = next.catch(() => undefined);
         return next;
     }
-    function emitDescription(peer) {
+    function candidateKey(candidate) {
+        // Browsers can put the generation's ufrag in events but not SDP candidates.
+        return candidate.replace(/ ufrag \S+/g, "");
+    }
+    function emitCandidate(peer, candidate) {
+        if (!peerAlive(peer) || !candidate.candidate)
+            return;
+        const ice = peer.localIce;
+        if (!ice)
+            return;
+        if (!ice.media) {
+            if (ice.pending.length >= MAX_ICE_CANDIDATES) {
+                failPeer(peer);
+                return;
+            }
+            ice.pending.push(candidate);
+            return;
+        }
+        const media = candidate.sdpMid !== null
+            ? ice.media.find((section) => section.mid === candidate.sdpMid)
+            : ice.media[candidate.sdpMLineIndex ?? -1];
+        if (media?.candidates.has(candidateKey(candidate.candidate)) ||
+            (candidate.usernameFragment &&
+                media?.usernameFragment &&
+                candidate.usernameFragment !== media.usernameFragment))
+            return;
+        emit(peer.session.runtime, {
+            tag: "IceCandidate",
+            value: {
+                sessionId: peer.session.id,
+                participantId: peer.id,
+                candidate: {
+                    candidate: candidate.candidate,
+                    mid: candidate.sdpMid ?? undefined,
+                    mlineIndex: candidate.sdpMLineIndex ?? undefined,
+                },
+            },
+        });
+    }
+    async function setLocalDescription(peer, description) {
+        const pc = peer.pc;
+        const ice = { pending: [] };
+        peer.localIce = ice;
+        try {
+            await pc.setLocalDescription(webIdl(description));
+            return peerAlive(peer) ? ice : undefined;
+        }
+        catch (error) {
+            peer.localIce = undefined;
+            throw error;
+        }
+    }
+    async function publishGatheredDescription(peer, ice) {
         if (!peerAlive(peer))
             return;
-        const description = peer.pc?.localDescription;
+        const pc = peer.pc;
+        try {
+            // Embed the initial gathering burst in one statement, but never wait on
+            // a slow TURN server indefinitely. Later candidates retain V1 trickle.
+            if (pc.iceGatheringState !== "complete") {
+                await new Promise((resolve) => {
+                    const finish = () => {
+                        win.clearTimeout(timer);
+                        pc.removeEventListener("icegatheringstatechange", changed);
+                        ice.finishGathering = undefined;
+                        resolve();
+                    };
+                    const changed = () => {
+                        if (pc.iceGatheringState === "complete")
+                            finish();
+                    };
+                    const timer = win.setTimeout(finish, ICE_GATHERING_TIMEOUT);
+                    ice.finishGathering = finish;
+                    pc.addEventListener("icegatheringstatechange", changed);
+                    changed();
+                });
+            }
+            if (!peerAlive(peer))
+                return;
+            emitDescription(peer, ice);
+        }
+        catch (error) {
+            peer.localIce = undefined;
+            throw error;
+        }
+    }
+    function emitDescription(peer, ice) {
+        const description = peer.pc.localDescription;
         if (!description ||
             (description.type !== "offer" && description.type !== "answer"))
-            return;
+            throw failure("InvalidDescription");
+        const media = [];
+        let section;
+        let usernameFragment;
+        for (const line of description.sdp.split(/\r?\n/)) {
+            if (line.startsWith("m=")) {
+                section = { usernameFragment, candidates: new Set() };
+                media.push(section);
+            }
+            else if (line.startsWith("a=ice-ufrag:")) {
+                if (section)
+                    section.usernameFragment = line.slice(12);
+                else
+                    usernameFragment = line.slice(12);
+            }
+            else if (section) {
+                if (line.startsWith("a=mid:"))
+                    section.mid = line.slice(6);
+                else if (line.startsWith("a=candidate:"))
+                    section.candidates.add(candidateKey(line.slice(2)));
+            }
+        }
+        // Keep the published snapshot, not the live SDP, so candidates gathered
+        // after the deadline are still delivered and delayed embedded events are not.
+        ice.media = media;
         emit(peer.session.runtime, {
             tag: "Description",
             value: {
@@ -969,6 +1078,9 @@ export function createBrowserMediaBackend(options) {
                 },
             },
         });
+        for (const candidate of ice.pending)
+            emitCandidate(peer, candidate);
+        ice.pending.length = 0;
     }
     function negotiate(peer) {
         void serializePeer(peer, async () => {
@@ -981,11 +1093,12 @@ export function createBrowserMediaBackend(options) {
                 const offer = await pc.createOffer();
                 if (!peerAlive(peer) || pc.signalingState !== "stable")
                     return;
-                await pc.setLocalDescription(webIdl({
+                const ice = await setLocalDescription(peer, {
                     type: offer.type,
                     sdp: offer.sdp,
-                }));
-                emitDescription(peer);
+                });
+                if (ice)
+                    await publishGatheredDescription(peer, ice);
             }
             finally {
                 peer.makingOffer = false;
@@ -1109,21 +1222,8 @@ export function createBrowserMediaBackend(options) {
                 })));
             }
             pc.onicecandidate = (event) => {
-                if (!peerAlive(peer) || !event.candidate)
-                    return;
-                const candidate = event.candidate;
-                emit(session.runtime, {
-                    tag: "IceCandidate",
-                    value: {
-                        sessionId: session.id,
-                        participantId: id,
-                        candidate: {
-                            candidate: candidate.candidate,
-                            mid: candidate.sdpMid ?? undefined,
-                            mlineIndex: candidate.sdpMLineIndex ?? undefined,
-                        },
-                    },
-                });
+                if (event.candidate)
+                    emitCandidate(peer, event.candidate);
             };
             pc.onnegotiationneeded = () => {
                 if (peerAlive(peer))
@@ -1214,54 +1314,63 @@ export function createBrowserMediaBackend(options) {
             media[1] !== "m=video" ||
             media[2] !== "m=video")
             throw failure("InvalidDescription");
-        await serializePeer(peer, () => serializeSession(peer.session, async () => {
-            const pc = peer.pc;
-            const offer = description.kind === "Offer";
-            const collision = offer && (peer.makingOffer || pc.signalingState !== "stable");
-            peer.ignoreOffer = peer.offerer && collision;
-            if (peer.ignoreOffer)
-                return;
-            if (collision)
-                await pc.setLocalDescription(webIdl({ type: "rollback" }));
-            if (!peerAlive(peer))
-                return;
-            await pc.setRemoteDescription(webIdl({
-                type: offer ? "offer" : "answer",
-                sdp: description.sdp,
-            }));
-            if (!peerAlive(peer))
-                return;
-            adoptRemoteSlots(peer);
-            // Serialize initial sender binding with local track commits. Even a
-            // receive-only offer has slots, despite producing no incoming track event.
-            if (offer) {
-                await Promise.all(TRACK_KINDS.map((kind, index) => peer.slots[index].sender.replaceTrack(peer.session.tracks[kind] ?? null)));
+        await serializePeer(peer, async () => {
+            const ice = await serializeSession(peer.session, async () => {
+                const pc = peer.pc;
+                const offer = description.kind === "Offer";
+                const collision = offer && (peer.makingOffer || pc.signalingState !== "stable");
+                peer.ignoreOffer = peer.offerer && collision;
+                if (peer.ignoreOffer)
+                    return;
+                if (collision) {
+                    peer.localIce = undefined;
+                    await pc.setLocalDescription(webIdl({ type: "rollback" }));
+                }
                 if (!peerAlive(peer))
                     return;
-                TRACK_KINDS.forEach((kind, index) => {
-                    peer.slots[index].direction = peer.session.tracks[kind]
-                        ? "sendrecv"
-                        : "recvonly";
-                });
-            }
-            peer.remoteOfferSeen = true;
-            for (const candidate of peer.candidates.splice(0)) {
-                await pc.addIceCandidate(webIdl(candidate));
-                if (!peerAlive(peer))
-                    return;
-            }
-            if (offer) {
-                const answer = await pc.createAnswer();
-                if (!peerAlive(peer))
-                    return;
-                await pc.setLocalDescription(webIdl({
-                    type: answer.type,
-                    sdp: answer.sdp,
+                await pc.setRemoteDescription(webIdl({
+                    type: offer ? "offer" : "answer",
+                    sdp: description.sdp,
                 }));
-                emitDescription(peer);
-            }
-            publishRemote(peer);
-        }));
+                if (!peerAlive(peer))
+                    return;
+                adoptRemoteSlots(peer);
+                // Serialize initial sender binding with local track commits. Even a
+                // receive-only offer has slots, despite producing no incoming track event.
+                if (offer) {
+                    await Promise.all(TRACK_KINDS.map((kind, index) => peer.slots[index].sender.replaceTrack(peer.session.tracks[kind] ?? null)));
+                    if (!peerAlive(peer))
+                        return;
+                    TRACK_KINDS.forEach((kind, index) => {
+                        peer.slots[index].direction = peer.session.tracks[kind]
+                            ? "sendrecv"
+                            : "recvonly";
+                    });
+                }
+                peer.remoteOfferSeen = true;
+                for (const candidate of peer.candidates.splice(0)) {
+                    await pc.addIceCandidate(webIdl(candidate));
+                    if (!peerAlive(peer))
+                        return;
+                }
+                if (offer) {
+                    const answer = await pc.createAnswer();
+                    if (!peerAlive(peer))
+                        return;
+                    const ice = await setLocalDescription(peer, {
+                        type: answer.type,
+                        sdp: answer.sdp,
+                    });
+                    publishRemote(peer);
+                    return ice;
+                }
+                publishRemote(peer);
+            });
+            // Gathering is per-peer work: do not delay other peers' descriptions or
+            // local track commits behind a slow TURN allocation.
+            if (ice)
+                await publishGatheredDescription(peer, ice);
+        });
     }
     async function addCandidate(peer, candidate) {
         if (candidate.candidate.length > 8192 || (candidate.mid?.length ?? 0) > 256)
@@ -1297,6 +1406,8 @@ export function createBrowserMediaBackend(options) {
         peer.closed = true;
         if (peer.timer !== undefined)
             win.clearTimeout(peer.timer);
+        peer.localIce?.finishGathering?.();
+        peer.localIce = undefined;
         if (peer.pc) {
             peer.pc.onicecandidate = null;
             peer.pc.ontrack = null;
