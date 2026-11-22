@@ -7,15 +7,27 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { createRandomId } from '@dotli/shared';
-import { runWhenIdle } from '@dotli/ui';
+import { getProtocolClient } from '@dotli/protocol';
+import { runWhenIdle, showError } from '@dotli/ui';
 import { createReporter } from '@dotli/metrics';
 import { startPage } from './startPage.js';
 import { startHost } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
 import { framePeerCounts } from '../features/network/index.js';
 import { startKeyboardPin } from '../features/landing/index.js';
+import { UPDATE_LOADING_COPY } from '../features/productLoad/index.js';
+import { continuation, markAndReload } from '../kit/createContinuation.js';
 
 const report = createReporter({ flow: 'boot' });
+
+/** Reloads the page once per build for a newer release, under the screen that says so. A claimed build does nothing. */
+function reloadOnVersionMismatch(): void {
+  if (!continuation.claimUpdateReload()) {
+    return;
+  }
+  showError(UPDATE_LOADING_COPY.TITLE, { detail: UPDATE_LOADING_COPY.DETAIL });
+  markAndReload('app_update');
+}
 
 async function main(): Promise<void> {
   startPage();
@@ -28,6 +40,9 @@ async function main(): Promise<void> {
 
   // Before the frame boots, since the feed keeps no replay and the frame replays its counts when the feed opens.
   framePeerCounts.start();
+  // Before the frame boots, which replays a mismatch it already met. The page hears it for its whole life, so the stop
+  // goes unused.
+  getProtocolClient().frame.subscribeVersionMismatch(reloadOnVersionMismatch);
   const { bridge } = await startHost({ bootFlowId: createRandomId(), role: 'landing' });
   // Idle, so the core boot never competes with the page's first paint or its boot.
   runWhenIdle(() => {
