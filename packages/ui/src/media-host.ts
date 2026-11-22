@@ -201,8 +201,31 @@ export const MEDIA_TURN_PATH = '/__dotli-media/turn';
 /** Credential lifetime in seconds, announced by the TURN route. */
 const MEDIA_TURN_TTL_HEADER = 'Dotli-Media-Turn-Ttl';
 
-/** Port 53 relays are blocked by many networks and collide with DNS filtering. */
-const PORT_53 = /^turns?:(?:\[[^\]]*\]|[^:?]*):53(?:\?|$)/i;
+function isMediaTurnUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || /\s/.test(value)) {
+    return false;
+  }
+  // TURN URIs have no authority prefix, userinfo, path or fragment.
+  const match =
+    /^turns?:((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.?|\[[0-9a-f:.]+\])(?::([0-9]+))?(?:\?transport=(?:udp|tcp))?$/i.exec(
+      value,
+    );
+  if (match?.[1] === undefined) {
+    return false;
+  }
+  const port = match[2] === undefined ? undefined : Number(match[2]);
+  // Port 53 relays collide with DNS filtering.
+  if (port !== undefined && (port < 1 || port > 65535 || port === 53)) {
+    return false;
+  }
+  try {
+    // Validate IP literals too, rather than accepting malformed IPv6 brackets.
+    new URL(`http://${match[1]}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Converts Cloudflare's `credentials/generate` response into optional TURN
@@ -221,9 +244,7 @@ export function toMediaIceServers(response: unknown): RTCIceServer[] {
     if (typeof username !== 'string' || username === '' || typeof credential !== 'string' || credential === '') {
       return [];
     }
-    const list = (typeof urls === 'string' ? [urls] : Array.isArray(urls) ? urls : []).filter(
-      (url): url is string => typeof url === 'string' && /^turns?:/i.test(url) && !PORT_53.test(url),
-    );
+    const list = (typeof urls === 'string' ? [urls] : Array.isArray(urls) ? urls : []).filter(isMediaTurnUrl);
     return list.length === 0 ? [] : [{ urls: list, username, credential }];
   });
 }
@@ -236,7 +257,8 @@ export function toMediaIceServers(response: unknown): RTCIceServer[] {
  * started from cached credentials keeps its relay for at least the last third.
  * Concurrent peers share one request. A failed, unconfigured (503) or relay-less
  * answer supplies no optional relays, allowing direct ICE setup to continue.
- * The next peer retries.
+ * Acquisition, including the response body, has a two-second deadline so it
+ * leaves time for peer setup within the core's deadline. The next peer retries.
  */
 export function mediaTurnIceServers(
   options: { fetch?: typeof fetch; now?: () => number; url?: string } = {},
@@ -258,7 +280,7 @@ export function mediaTurnIceServers(
         credentials: 'same-origin',
         cache: 'no-store',
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(2_000),
       });
     } catch {
       return fail('is unreachable');

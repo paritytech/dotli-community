@@ -29,9 +29,9 @@ export interface NativeChatContactsSnapshot {
  */
 export type Awaitable<T> = T | Promise<T>;
 /** Canonical SCALE results returned by resident receiving runtime hooks. */
-export declare const receivingRegistrationsCodec: import("scale-ts").Codec<ReceivingRegistration[]>;
-export declare const receivingEventsCodec: import("scale-ts").Codec<ReceivingEvent[]>;
-export declare const receivingEventCodec: import("scale-ts").Codec<ReceivingEvent | undefined>;
+export declare const receivingRegistrationsCodec: import("@parity/truapi").Codec<ReceivingRegistration[]>;
+export declare const receivingEventsCodec: import("@parity/truapi").Codec<ReceivingEvent[]>;
+export declare const receivingEventCodec: import("@parity/truapi").Codec<ReceivingEvent | undefined>;
 /** Minimal host-owned callbacks for a wallet-free service-worker receiver. */
 export interface NotificationReceiverCallbacks {
     /** Resolve current verified artifact/account state, never product message claims. */

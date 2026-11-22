@@ -1,5 +1,4 @@
 const __esm_import_meta_url = require('url').pathToFileURL(__filename).href;
-"use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;

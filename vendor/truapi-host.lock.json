@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "9c46468d42ea4e780c84cf61af4e0fa7fa53c065",
+  "upstreamRevision": "ea4024a8f9dbdfdcffb7cacc01481f5fe78a09e4",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
@@ -13,20 +13,20 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.25.0",
-      "sourceArchiveSha256": "039bc6b7d3f00663e726d157f7622c6dcc526f40ef5ad6b869ffe21a1e9f25d9",
+      "sourceArchiveSha256": "29ae2c8532d9da5aeba8acdcc3f67ce007356a21b2e1b34cdaa2a20a6338053a",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
-          "sha256": "6acd71e45ba47a6d221e2854709884561a74eb4bd32505c63636b68354175fa7",
+          "sha256": "c1707142c2504eca7f4e2f05404f2be441755558c1427aaa9504d395d9d7c3c9",
           "features": ["runtime"]
         },
         "testing": {
-          "sha256": "96c98d33e2cc56b01aff3d0e77e7d7255295d80e06215a332b83ac976c031d38",
+          "sha256": "9ef05986b47fc3bc9b132986d1fd9f669c01ab28b648d30c7ef1e5dfa03c5d63",
           "features": ["wasm-signing-host", "test-host"]
         }
       }
     }
   },
-  "wasmUpstreamRevision": "9c46468d42ea4e780c84cf61af4e0fa7fa53c065",
+  "wasmUpstreamRevision": "ea4024a8f9dbdfdcffb7cacc01481f5fe78a09e4",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217"
 }

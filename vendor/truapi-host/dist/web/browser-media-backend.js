@@ -1007,6 +1007,27 @@ export function createBrowserMediaBackend(options) {
         }
         peer.slots = slots;
     }
+    async function iceServersForPeer(runtimeId) {
+        let timer;
+        try {
+            const servers = await Promise.race([
+                Promise.resolve().then(() => typeof options.iceServers === "function"
+                    ? options.iceServers(runtimeId)
+                    : options.iceServers),
+                new Promise((resolve) => {
+                    timer = win.setTimeout(() => resolve([]), 2_000);
+                }),
+            ]);
+            return Array.isArray(servers) ? servers : [];
+        }
+        catch {
+            return [];
+        }
+        finally {
+            if (timer !== undefined)
+                win.clearTimeout(timer);
+        }
+    }
     async function createPeer(session, id, offerer) {
         if (!session.committed)
             throw failure("InvalidState");
@@ -1054,19 +1075,29 @@ export function createBrowserMediaBackend(options) {
             tag: "PeerStateChanged",
             value: { sessionId: session.id, participantId: id, state: "Connecting" },
         });
-        peer.ready = Promise.resolve()
-            .then(() => typeof options.iceServers === "function"
-            ? options.iceServers(session.runtime.id)
-            : options.iceServers)
-            .catch(() => [])
+        peer.ready = iceServersForPeer(session.runtime.id)
             .then((iceServers) => serializeSession(session, async () => {
             if (!peerAlive(peer))
                 throw failure("SessionEnded");
             // Signalling is host-to-host; products never receive transport details.
-            const pc = new win.RTCPeerConnection(webIdl({
-                iceServers: [...(iceServers ?? [])],
-                iceTransportPolicy: options.iceTransportPolicy ?? "all",
-            }));
+            const iceTransportPolicy = options.iceTransportPolicy ?? "all";
+            if (iceTransportPolicy === "relay" && iceServers.length === 0)
+                throw failure();
+            let pc;
+            try {
+                pc = new win.RTCPeerConnection(webIdl({
+                    iceServers, iceTransportPolicy,
+                    bundlePolicy: "max-bundle", rtcpMuxPolicy: "require",
+                }));
+            }
+            catch (error) {
+                if (iceTransportPolicy === "relay" || iceServers.length === 0)
+                    throw error;
+                pc = new win.RTCPeerConnection(webIdl({
+                    iceServers: [], iceTransportPolicy,
+                    bundlePolicy: "max-bundle", rtcpMuxPolicy: "require",
+                }));
+            }
             peer.pc = pc;
             // Only the offerer creates slots. An answerer's addTransceiver() slots
             // are not reused by setRemoteDescription(), which would create extras.

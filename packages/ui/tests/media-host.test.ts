@@ -87,6 +87,7 @@ afterEach(() => {
   host?.dispose();
   host = undefined;
   vi.restoreAllMocks();
+  vi.useRealTimers();
   document.body.replaceChildren();
 });
 
@@ -143,6 +144,45 @@ describe('Media ICE configuration', () => {
       toMediaIceServers({ iceServers: [{ ...TURN, urls: ['turn:[2001:db8::1]:53', 'turns:[2001:db8::1]:5349'] }] }),
     ).toEqual([{ ...TURN, urls: ['turns:[2001:db8::1]:5349'] }]);
   });
+
+  it.each([
+    'turn:',
+    'turns:',
+    'turn::3478',
+    'turn://turn.example:3478',
+    'turn:user@turn.example',
+    'turn:turn.example/path',
+    'turn:turn.example#fragment',
+    'turn:turn.example?transport=invalid',
+    'turn:turn.example?transport=tcp&extra=1',
+    'turn:turn.example:',
+    'turn:turn.example:0',
+    'turn:turn.example:65536',
+    'turn:turn.example:0053',
+    'turn:turn.example:abc',
+    'turn:turn example',
+    'turn:turn.example\n',
+    'turn:-turn.example',
+    'turn:turn..example',
+    'turn:[not-ipv6]:3478',
+    'turn:[2001:::1]:3478',
+    'turn:2001:db8::1',
+    'turn:999.999.999.999',
+  ])('As a dotli integrator, I discard malformed relay %s without losing valid relays', url => {
+    // Given / When
+    const servers = toMediaIceServers({ iceServers: [{ ...TURN, urls: [url, ...TURN.urls] }] });
+
+    // Then
+    expect(servers).toEqual([TURN]);
+  });
+
+  it.each(['turn:turn.example', 'turn:192.0.2.1:3478', 'turn:[::1]', 'turns:turn.example:65535?transport=tcp'])(
+    'As a dotli integrator, I retain valid relay %s',
+    url => {
+      // Given / When / Then
+      expect(toMediaIceServers({ iceServers: [{ ...TURN, urls: url }] })).toEqual([{ ...TURN, urls: [url] }]);
+    },
+  );
 
   it.each([
     ['no iceServers', {}],
@@ -221,6 +261,72 @@ describe('Media TURN credentials', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it.each(['headers', 'body'] as const)(
+    'As a caller, I stop waiting for TURN %s after two seconds and retry with the next peer',
+    async phase => {
+      // Given
+      vi.useFakeTimers();
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(milliseconds => {
+        const controller = new AbortController();
+        setTimeout(() => {
+          controller.abort(new DOMException('Timed out', 'TimeoutError'));
+        }, milliseconds);
+        return controller.signal;
+      });
+      const fetchImpl = vi.fn<typeof fetch>().mockImplementationOnce((_input, init) => {
+        const signal = must(init?.signal, 'TURN abort signal');
+        if (phase === 'headers') {
+          const { promise, reject } = Promise.withResolvers<Response>();
+          signal.addEventListener(
+            'abort',
+            () => {
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+          return promise;
+        }
+        return Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    controller.error(signal.reason);
+                  },
+                  { once: true },
+                );
+              },
+            }),
+          ),
+        );
+      });
+      fetchImpl.mockResolvedValue(turnResponse({ iceServers: [TURN] }));
+      const iceServers = mediaTurnIceServers({ fetch: fetchImpl, url: TURN_URL });
+      let settled = false;
+
+      // When
+      const first = iceServers().then(servers => {
+        settled = true;
+        return servers;
+      });
+      const second = iceServers();
+      await vi.advanceTimersByTimeAsync(1_999);
+
+      // Then
+      expect(settled).toBe(false);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(timeout).toHaveBeenCalledWith(2_000);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(Promise.all([first, second])).resolves.toEqual([[], []]);
+      await expect(iceServers()).resolves.toEqual([TURN]);
+      await expect(iceServers()).resolves.toEqual([TURN]);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it.each([
     ['unreachable', () => Promise.reject(new TypeError('Failed to fetch')), 'is unreachable'],
     ['timed out', () => Promise.reject(new DOMException('Timed out', 'TimeoutError')), 'is unreachable'],
@@ -230,6 +336,11 @@ describe('Media TURN credentials', () => {
     [
       'relay-less',
       () => Promise.resolve(turnResponse({ iceServers: [{ urls: ['stun:stun.example'] }] })),
+      'returned no credentialed turn:/turns: relay',
+    ],
+    [
+      'malformed',
+      () => Promise.resolve(turnResponse({ iceServers: [{ ...TURN, urls: ['turn:', 'turn:bad host'] }] })),
       'returned no credentialed turn:/turns: relay',
     ],
   ])(
