@@ -69,8 +69,6 @@ function rectValid(rect) {
         Number.isSafeInteger(rect.x + rect.width) &&
         Number.isSafeInteger(rect.y + rect.height));
 }
-/** Only TURN relay candidates may leave the host; anything else names an address. */
-const RELAY_CANDIDATE = /(?:^|\s)typ\s+relay(?:\s|$)/;
 function intersect(...rects) {
     const x = Math.max(...rects.map((rect) => rect.x));
     const y = Math.max(...rects.map((rect) => rect.y));
@@ -967,11 +965,7 @@ export function createBrowserMediaBackend(options) {
                 participantId: peer.id,
                 description: {
                     kind: description.type === "offer" ? "Offer" : "Answer",
-                    // Descriptions created after gathering embed candidates; keep relays only.
-                    sdp: description.sdp
-                        .split("\r\n")
-                        .filter((line) => !line.startsWith("a=candidate:") || RELAY_CANDIDATE.test(line))
-                        .join("\r\n"),
+                    sdp: description.sdp,
                 },
             },
         });
@@ -1064,14 +1058,14 @@ export function createBrowserMediaBackend(options) {
             .then(() => typeof options.iceServers === "function"
             ? options.iceServers(session.runtime.id)
             : options.iceServers)
+            .catch(() => [])
             .then((iceServers) => serializeSession(session, async () => {
             if (!peerAlive(peer))
                 throw failure("SessionEnded");
-            // Relay-only is not negotiable: host or reflexive candidates would
-            // reveal this device's addresses to every remote participant.
+            // Signalling is host-to-host; products never receive transport details.
             const pc = new win.RTCPeerConnection(webIdl({
-                iceServers: [...iceServers],
-                iceTransportPolicy: "relay",
+                iceServers: [...(iceServers ?? [])],
+                iceTransportPolicy: options.iceTransportPolicy ?? "all",
             }));
             peer.pc = pc;
             // Only the offerer creates slots. An answerer's addTransceiver() slots
@@ -1087,9 +1081,6 @@ export function createBrowserMediaBackend(options) {
                 if (!peerAlive(peer) || !event.candidate)
                     return;
                 const candidate = event.candidate;
-                if (!RELAY_CANDIDATE.test(candidate.candidate) ||
-                    (candidate.type ?? "relay") !== "relay")
-                    return;
                 emit(session.runtime, {
                     tag: "IceCandidate",
                     value: {
