@@ -205,9 +205,9 @@ const MEDIA_TURN_TTL_HEADER = 'Dotli-Media-Turn-Ttl';
 const PORT_53 = /^turns?:(?:\[[^\]]*\]|[^:?]*):53(?:\?|$)/i;
 
 /**
- * Converts Cloudflare's `credentials/generate` response into relay-only
- * `RTCIceServer`s: credentialed `turn:`/`turns:` URLs off port 53. STUN or
- * host candidates would expose addresses; everything else is dropped. Accepts
+ * Converts Cloudflare's `credentials/generate` response into optional TURN
+ * servers: credentialed `turn:`/`turns:` URLs off port 53. This credential
+ * endpoint does not configure STUN or the host's ICE transport policy. Accepts
  * both the array and the older single-object `iceServers` shapes.
  */
 export function toMediaIceServers(response: unknown): RTCIceServer[] {
@@ -234,9 +234,9 @@ export function toMediaIceServers(response: unknown): RTCIceServer[] {
  * server). Credentials are reused for the first two thirds of their announced
  * lifetime: a Cloudflare allocation ends when its credential expires, so a call
  * started from cached credentials keeps its relay for at least the last third.
- * Concurrent peers share one request. Fails closed: a failed, unconfigured
- * (503) or relay-less answer rejects with `Media:NoTurnRelay`, the peer fails
- * and the next peer retries.
+ * Concurrent peers share one request. A failed, unconfigured (503) or relay-less
+ * answer supplies no optional relays, allowing direct ICE setup to continue.
+ * The next peer retries.
  */
 export function mediaTurnIceServers(
   options: { fetch?: typeof fetch; now?: () => number; url?: string } = {},
@@ -247,10 +247,9 @@ export function mediaTurnIceServers(
   let pending: Promise<RTCIceServer[]> | undefined;
   async function mint(): Promise<RTCIceServer[]> {
     const requestedAt = now();
-    const fail = (reason: string): never => {
-      const error = new Error(`Media:NoTurnRelay: ${MEDIA_TURN_PATH} ${reason}; host Media calls cannot connect`);
-      console.error('[media]', error.message);
-      throw error;
+    const fail = (reason: string): RTCIceServer[] => {
+      console.error('[media]', `Media:TurnUnavailable: ${MEDIA_TURN_PATH} ${reason}. Continuing without TURN.`);
+      return [];
     };
     let response: Response;
     try {
@@ -308,8 +307,8 @@ export function createMediaHost(options: {
   if (new URL(options.origin).origin !== options.origin || options.origin === location.origin) {
     throw new Error('Media:UnsafeContainer');
   }
-  // Relay-only ICE from trusted host facilities, never product values. With
-  // no TURN relay from the shell route, calls cannot connect.
+  // ICE configuration belongs to trusted host facilities, never products.
+  // TURN is optional. Direct connectivity remains available without relays.
   const iceServers = options.iceServers ?? (shellTurnIceServers ??= mediaTurnIceServers());
   const indicator = document.createElement('div');
   indicator.className = 'host-media-indicator';
