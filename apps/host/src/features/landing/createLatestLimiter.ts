@@ -12,6 +12,10 @@ type Params<Value> = {
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
+// Idle until a value goes out. Then open while its interval runs, or holding once a later value waits for the end.
+type LimiterState<Value> =
+  { kind: 'idle' } | { kind: 'open'; timer: unknown } | { kind: 'holding'; timer: unknown; value: Value };
+
 /**
  * Hands a value on at once when none went out in the last interval of `1000 / perSecond` ms, and otherwise holds the
  * latest one until that interval ends, so a fast stream of readings reaches `onValue` at most `perSecond` times a
@@ -19,9 +23,7 @@ type Params<Value> = {
  */
 export function createLatestLimiter<Value>({ perSecond, onValue, timers = realTimers }: Params<Value>) {
   const intervalMs = 1000 / perSecond;
-  // The interval running since a value went out, with the latest value held for its end, or null when none runs. The
-  // held value is boxed, so a value that is itself null is held too.
-  let interval: { timer: unknown; held: { value: Value } | null } | null = null;
+  let state: LimiterState<Value> = { kind: 'idle' };
 
   return {
     /** Takes a value, handing it on now or at the end of the running interval in place of any value held before. */
@@ -31,31 +33,31 @@ export function createLatestLimiter<Value>({ perSecond, onValue, timers = realTi
   };
 
   function push(value: Value): void {
-    if (interval !== null) {
-      interval.held = { value };
+    if (state.kind === 'idle') {
+      handOn(value);
       return;
     }
-    handOn(value);
+    state = { kind: 'holding', timer: state.timer, value };
   }
 
   function stop(): void {
-    if (interval !== null) {
-      timers.clearTimeout(interval.timer);
+    if (state.kind !== 'idle') {
+      timers.clearTimeout(state.timer);
     }
-    interval = null;
+    state = { kind: 'idle' };
   }
 
-  // The interval starts before `onValue` runs, so a value it pushes back is held rather than handed on twice at once.
+  // The interval opens before `onValue` runs, so a value it pushes back is held rather than handed on twice at once.
   function handOn(value: Value): void {
-    interval = { timer: timers.setTimeout(endInterval, intervalMs), held: null };
+    state = { kind: 'open', timer: timers.setTimeout(endInterval, intervalMs) };
     onValue(value);
   }
 
   function endInterval(): void {
-    const held = interval?.held ?? null;
-    interval = null;
-    if (held !== null) {
-      handOn(held.value);
+    const ended = state;
+    state = { kind: 'idle' };
+    if (ended.kind === 'holding') {
+      handOn(ended.value);
     }
   }
 }
