@@ -98,8 +98,8 @@ falls back to the system face while it loads or where it lacks a script. Monospa
   `data-overlays`, so a full-page screen keeps it.
 - **One layer stack:** floating layers share one stack. It makes the page inert under the top modal layer.
 - **Placed at the trigger:** a floating layer anchored to a trigger opens below it when its content fits there, and
-  otherwise on the side with more room. It stays on screen across, follows the trigger while open, and grows only as far
-  as the visible area, the on-screen keyboard included, scrolling inside past that.
+  otherwise on the side with more room. It stays on screen from side to side. It follows the trigger while open. It
+  grows only as far as the visible area, the on-screen keyboard included, and scrolls inside past that.
 - **Responsive popovers:** `Popover` and `DropdownMenu` anchor on a wide screen and become a bottom sheet on a phone.
   The sheet loads in its own chunk, preloaded when the browser is idle on a phone. Heavy content is the app's to load
   with `lazy()`. On a wide screen `DropdownMenu` is a `Listbox` hung from its button's end, which the button drives as a
