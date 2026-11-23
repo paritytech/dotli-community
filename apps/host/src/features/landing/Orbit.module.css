@@ -27,13 +27,18 @@
   initial-value: 0deg;
 }
 
-/* The floor's resting tilt and how far it sits below the page's foot, which differ between a phone and a wider screen.
-   Registered so that crossing between the two, as a window is resized or a device turned, glides the floor over rather
-   than jumping. They inherit, since the stage reads the drop. */
+/* The floor's resting tilt, how far a full shift tilts it off that rest, and how far it sits below the page's foot, which
+   differ between a phone and a wider screen. Registered so that crossing between the two, as a window is resized or a
+   device turned, glides the floor over rather than jumping. They inherit, since the stage reads the drop. */
 @property --orbit-rest-tilt {
   syntax: '<angle>';
   inherits: true;
   initial-value: 80deg;
+}
+@property --orbit-tilt-range {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 3deg;
 }
 @property --orbit-drop {
   syntax: '<number>';
@@ -228,6 +233,8 @@
   --orbit-line: 1px;
   /* The floor's tilt with the shift at rest, or for a visitor who asks for less motion. */
   --orbit-rest-tilt: 80deg;
+  /* How far a full shift up or down the page tilts the floor off its rest. */
+  --orbit-tilt-range: 3deg;
   --orbit-tilt: var(--orbit-rest-tilt);
   /* How far the floor turns off its own clock with the shift at rest, or for a visitor who asks for less motion. */
   --orbit-shift-turn: 0deg;
@@ -264,16 +271,17 @@
   }
 }
 
-/* The shift tips the floor a little back as the shift rises up the page and toward the viewer
-   as it falls, and swings the floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with
-   y down, so a larger turn carries the near side left, and a shift to the right turns it the other way. Everything
-   drawn on the floor reads the one tilt and turn, so it moves as one piece. A zero shift leaves the floor at rest. */
+/* The shift tips the floor back by up to its tilt range as the shift rises up the page and toward the viewer as it
+   falls, and swings the floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with y
+   down, so a larger turn carries the near side left, and a shift to the right turns it the other way. Everything drawn
+   on the floor reads the one tilt and turn, so it moves as one piece. A zero shift leaves the floor at rest. */
 @media (prefers-reduced-motion: no-preference) {
   .orbit {
-    --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-shift-y) * 3deg);
+    --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-shift-y) * var(--orbit-tilt-range));
     --orbit-shift-turn: calc(var(--orbit-shift-x) * -12deg);
     transition:
       --orbit-rest-tilt var(--reshape) ease-in-out,
+      --orbit-tilt-range var(--reshape) ease-in-out,
       --orbit-drop var(--reshape) ease-in-out,
       --orbit-shift-x 400ms ease-out,
       --orbit-shift-y 400ms ease-out;
@@ -294,10 +302,12 @@
   perspective: calc(var(--orbit-depth) * var(--orbit-unit));
 }
 
-/* A phone has height to spare under the form, so the floor stands nearly upright and in full view. */
+/* A phone has height to spare under the form, so the floor stands nearly upright and in full view. Near upright a few
+   degrees barely change its shape, so the shift swings it from upright to well tipped back. */
 @media (max-width: 560px) {
   .orbit {
-    --orbit-rest-tilt: 10deg;
+    --orbit-rest-tilt: 20deg;
+    --orbit-tilt-range: 20deg;
     --orbit-drop: 0;
   }
 }
