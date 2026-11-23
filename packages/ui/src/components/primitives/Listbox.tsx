@@ -8,7 +8,6 @@ import { CloseIcon } from '../icons/CloseIcon.js';
 import { DrawIcon } from '../icons/DrawIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { createOverflow } from '../createOverflow.js';
-import { anchorName } from '../floating/anchorName.js';
 import { FloatingLayer } from '../floating/FloatingLayer.js';
 import { SectionLabel } from './SectionLabel.js';
 import { Spinner } from './Spinner.js';
@@ -17,11 +16,10 @@ import s from './Listbox.module.css';
 export const Listbox = Object.assign(ListboxRoot, { Group, Option });
 
 /**
- * A list of options in a floating layer placed below `anchor`, at least as wide as it, which never takes focus, so the
- * control that opened it keeps its keys. It names the anchor for the placement itself while it holds one. A press
- * outside the anchor and the list, Escape and focus leaving them close it through `onClose`, and its caller sets `open`
- * from that. A press on the anchor leaves it open. While `loading` is set, a status row with that text follows the
- * options.
+ * A list of options in a floating layer at `anchor`, below it unless the side above has more room, at least as wide as
+ * it, which never takes focus, so the control that opened it keeps its keys. A press outside the anchor and the list,
+ * Escape and focus leaving them close it through `onClose`, and its caller sets `open` from that. A press on the anchor
+ * leaves it open. While `loading` is set, a status row with that text follows the options.
  */
 function ListboxRoot(props: {
   id: string;
@@ -38,18 +36,6 @@ function ListboxRoot(props: {
   const layerId = (): string => `${props.id}-layer`;
   // From the first opening on, so a list that never opens adds nothing to the page.
   const mounted = createMemo<boolean>(wasMounted => wasMounted === true || props.open);
-  createEffect(
-    () => ({ anchor: props.anchor, name: anchorName(layerId()) }),
-    ({ anchor, name }) => {
-      if (anchor === undefined) {
-        return;
-      }
-      anchor.style.setProperty('anchor-name', name);
-      return () => {
-        anchor.style.removeProperty('anchor-name');
-      };
-    },
-  );
   return (
     <Show when={mounted()}>
       <FloatingLayer
