@@ -39,7 +39,11 @@ export type OrbitDot = {
 };
 
 export type OrbitLayout = {
-  /** From the centre outward, each with its radius in the orbit's length unit, which the renderer scales. */
+  /**
+   * From the centre outward, each with its radius in the orbit's length unit, which the renderer scales. Each ring lists
+   * its real nodes first, in join order, and the real nodes fill the rings from the centre, so the real nodes read ring
+   * after ring come in join order.
+   */
   readonly rings: readonly { readonly ring: OrbitRing; readonly radius: number; readonly dots: readonly OrbitDot[] }[];
 };
 
