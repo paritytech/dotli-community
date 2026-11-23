@@ -34,6 +34,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [build-feature-the-framework-lacks](build-feature-the-framework-lacks.md): a build step would fill a gap in the
   framework, such as post-processing its emitted pages, and the question is whether to write custom code and how it
   reacts when the framework's output stops matching.
+- [source-an-embedded-interpreter-evaluates](source-an-embedded-interpreter-evaluates.md): a package hands source to an
+  embedded interpreter VM, such as code defining the VM's own globals, and the question is whether the rule against
+  shipping JavaScript as a string covers it.
 
 ## Code structure
 
