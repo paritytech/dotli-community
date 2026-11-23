@@ -79,6 +79,8 @@ export type ChatStage = {
   messages: ChatMessageRecord[];
   /** While set, the room list cannot be read. */
   contactsFail: boolean;
+  /** While set, no read lands, so the room list stays loading. */
+  readsHeld: boolean;
   /** While set, the shown conversation cannot be read. */
   messagesFail: boolean;
   /** While set, a reply is kept but cannot reach the product, with this error. */
@@ -130,7 +132,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
   };
 
   const read = (): void => {
-    if (!following) {
+    if (!following || stage.readsHeld) {
       return;
     }
     const last = feed.get();
@@ -258,6 +260,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     bots: [],
     messages: [],
     contactsFail: false,
+    readsHeld: false,
     messagesFail: false,
     sendError: null,
     refuseError: null,

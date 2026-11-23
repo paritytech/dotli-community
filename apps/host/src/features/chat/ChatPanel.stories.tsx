@@ -8,6 +8,7 @@ import { expect, waitFor, within } from 'storybook/test';
 import { query } from '@dotli/ui/testing';
 import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { ChatPanel } from './ChatPanel.js';
+import type { ChatMessageRecord } from './createChatStore.js';
 
 /** The story's chat with the panel open, fresh for each. */
 let stage: ChatStage = chatStage({ open: true });
@@ -119,6 +120,147 @@ async function openRoom(canvasElement: HTMLElement, name: string, count: number)
   return list;
 }
 
+const MINUTE = 60_000;
+const PHONE = { viewport: { value: 'phone', isRotated: false } };
+
+/** Adds a message in `roomId`, `minutesAgo` before now, from the product unless another author is given. */
+function say(
+  roomId: string,
+  text: string,
+  { minutesAgo, author = 'product' }: { minutesAgo: number; author?: ChatMessageRecord['author'] },
+): void {
+  const seq = stage.messages.length + 1;
+  stage.messages.push({
+    seq,
+    productId: 'chatty.dot',
+    roomId,
+    messageId: `m${String(seq)}`,
+    author,
+    content: textOf(text),
+    timestamp: Date.now() - minutesAgo * MINUTE,
+  });
+}
+
+/** Rooms of a shop: two with unread messages, a bot, and one the user can only read. */
+function seedShop(): void {
+  stage.rooms = [
+    { roomId: 'orders', name: 'Market orders', icon: '', createdAt: 0 },
+    { roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 },
+    { roomId: 'promos', name: 'Promotions', icon: '', createdAt: 0, footer: 'Empty' },
+  ];
+  stage.bots = [{ botId: 'support', name: 'Support', icon: '', createdAt: 0 }];
+  say('promos', 'Free delivery all weekend.', { minutesAgo: 3 * 24 * 60 });
+  say('courier', 'I am two streets away.', { minutesAgo: 24 * 60 + 5 });
+  say('courier', 'Is the gate open?', { minutesAgo: 24 * 60 + 4 });
+  say('courier', 'Code is 4521', { minutesAgo: 24 * 60, author: 'user' });
+  say('support', 'How can we help?', { minutesAgo: 60 });
+  say('orders', 'Your order #4821 is confirmed.', { minutesAgo: 3 });
+  say('orders', 'When should we bring it?', { minutesAgo: 2 });
+  stage.update({ unreadByRoom: { orders: 2, support: 1 } });
+}
+
+/** As a user of a product with one room, I see its conversation with no way back, and Send waits for my text. */
+export const OneRoom: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    stage.rooms = [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }];
+    say('courier', 'I am two streets away.', { minutesAgo: 4 });
+    say('courier', 'Is the gate open?', { minutesAgo: 4 });
+    say('courier', 'Code is 4521', { minutesAgo: 0, author: 'user' });
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    const send = await canvas.findByRole('button', { name: 'Send' });
+    await step('Given the conversation with nothing typed, Send is off', async () => {
+      await expect(send).toBeDisabled();
+    });
+    await step('When I type a message', async () => {
+      await userEvent.type(canvas.getByPlaceholderText('Message'), 'Thanks!');
+    });
+    await step('Then Send is on', async () => {
+      await expect(send).toBeEnabled();
+    });
+  },
+};
+
+/** As a user of a product with several rooms, I see each room's kind, last message time and unread count. */
+export const RoomList: Story = {
+  tags: ['!autodocs'],
+  beforeEach: seedShop,
+};
+
+/** As a user, I see a room opened from the list, with a way back to it. */
+export const RoomOpen: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    seedShop();
+    stage.update({ activeRoomId: 'courier' });
+  },
+};
+
+/** As a phone user, I see the room list at the phone's size. */
+export const PhoneRoomList: Story = {
+  tags: ['!autodocs'],
+  globals: PHONE,
+  beforeEach: seedShop,
+};
+
+/** As a phone user, I see an open room at the phone's size. */
+export const PhoneRoomOpen: Story = {
+  tags: ['!autodocs'],
+  globals: PHONE,
+  beforeEach: () => {
+    seedShop();
+    stage.update({ activeRoomId: 'orders' });
+  },
+};
+
+/** As a user, I see the chat loading before its rooms are read. */
+export const RoomsLoading: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    stage.readsHeld = true;
+  },
+};
+
+/** As a logged-out user, I am told chat opens once I log in. */
+export const LoggedOut: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    stage.update({ loggedIn: false });
+  },
+};
+
+/** As a user of a product that has started no chat, I am told the app has not started one yet. */
+export const NoRooms: Story = {
+  tags: ['!autodocs'],
+};
+
+/** As a user, I am told when the room list cannot be read. */
+export const RoomsFailed: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    stage.contactsFail = true;
+  },
+};
+
+/** As a user, I see a room with no messages say so. */
+export const NoMessages: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    stage.seed(2);
+    stage.update({ activeRoomId: 'r0' });
+  },
+};
+
+/** As a user whose message did not send, I am told so above the composer. */
+export const SendFailed: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    seedShop();
+    stage.update({ activeRoomId: 'orders', composerError: 'Message not sent. Try again.' });
+  },
+};
+
 /** As a reader, I am told when chat cannot be read and the notice goes once reads work again. */
 export const ReadFails: Story = {
   tags: ['!autodocs'],
@@ -130,7 +272,7 @@ export const ReadFails: Story = {
     const hint = query(canvasElement, '#chat-panel-hint');
     await step('Given the room list cannot be read, the panel says so', async () => {
       await waitFor(() => expect(hint).toBeVisible());
-      await expect(hint).toHaveTextContent('Chat could not be loaded.');
+      await expect(hint).toHaveTextContent('Chat could not be loaded');
     });
     await step('When reads work again and the app posts a message, the hint goes', async () => {
       stage.contactsFail = false;

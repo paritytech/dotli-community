@@ -9,13 +9,17 @@ import {
   createMemo,
   createSignal,
   For,
+  Match,
   onCleanup,
   onSettled,
   Show,
+  Switch,
   untrack,
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ChevronLeftIcon, SendIcon } from '@dotli/ui/icons';
+import { IconButton, Spinner } from '@dotli/ui';
+import { ChatIcon, ChevronLeftIcon, CircleAlertIcon, LockIcon, SendIcon } from '@dotli/ui/icons';
+import { ContactIcon } from './ContactIcon.js';
 import { ContactRow } from './ContactRow.js';
 import { MessageRow } from './MessageRow.js';
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
@@ -28,6 +32,22 @@ import s from './ChatPanel.module.css';
 const TIME_REFRESH_MS = 60_000;
 
 type View = 'loading' | 'empty' | 'list' | 'conversation';
+
+/** What the panel tells the user in place of, or below, its rooms and messages. */
+type Hint =
+  | { kind: 'loading' | 'loggedOut' | 'noRooms' | 'failed' | 'noMessages' | 'readOnly' }
+  | { kind: 'error'; text: string };
+
+/** A hint either fills the space the rooms or messages would take, or sits at the foot above the composer. */
+const HINT_PLACES = {
+  loading: 'center',
+  loggedOut: 'center',
+  noRooms: 'center',
+  failed: 'center',
+  noMessages: 'center',
+  readOnly: 'foot',
+  error: 'foot',
+} satisfies Record<Hint['kind'], 'center' | 'foot'>;
 
 // Within this many px of the end, the reader counts as at the newest message.
 const STICK_THRESHOLD_PX = 24;
@@ -179,27 +199,46 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
   // The product chose what its room shows below the messages.
   const composing = (): boolean => view() === 'conversation' && shownContact()?.footer !== 'Empty';
 
-  const hint = createMemo((): { text: string; error: boolean } | null => {
-    const v = view();
-    if (feed.contactsFailed() || (v === 'conversation' && feed.messagesFailed())) {
-      return { text: 'Chat could not be loaded.', error: true };
-    }
-    if (v === 'empty') {
-      const text = chat.loggedIn() ? 'Waiting for the app to start a chat.' : 'Log in to chat with this app.';
-      return { text, error: false };
-    }
-    if (v !== 'conversation') {
-      return null;
-    }
+  const conversationHint = (): Hint | null => {
     const composerError = chat.composerError();
     if (composerError !== null) {
-      return { text: composerError, error: true };
+      return { kind: 'error', text: composerError };
     }
     if (!composing()) {
-      return { text: 'This chat is read only.', error: false };
+      return { kind: 'readOnly' };
     }
-    return feed.messages()?.length === 0 ? { text: 'No messages yet.', error: false } : null;
+    return feed.messages()?.length === 0 ? { kind: 'noMessages' } : null;
+  };
+
+  const hint = createMemo((): Hint | null => {
+    const v = view();
+    if (feed.contactsFailed() || (v === 'conversation' && feed.messagesFailed())) {
+      // Only a panel with nothing to show fills with the failure. Rooms or messages read before stay in view.
+      return v === 'loading' || v === 'empty'
+        ? { kind: 'failed' }
+        : { kind: 'error', text: 'Chat could not be loaded.' };
+    }
+    switch (v) {
+      case 'loading':
+        return { kind: 'loading' };
+      case 'empty':
+        return { kind: chat.loggedIn() ? 'noRooms' : 'loggedOut' };
+      case 'list':
+        return null;
+      case 'conversation':
+        return conversationHint();
+    }
   });
+
+  const hintPlace = (): string | undefined => {
+    const shown = hint();
+    return shown === null ? undefined : HINT_PLACES[shown.kind];
+  };
+
+  const errorText = (): string | null => {
+    const shown = hint();
+    return shown?.kind === 'error' ? shown.text : null;
+  };
 
   // Mirrors the input, so Send is off while there is nothing to send.
   const [draft, setDraft] = createSignal('');
@@ -239,27 +278,28 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
   };
 
   return (
-    <>
-      <Show when={view() === 'conversation'}>
-        <div class={s['header']}>
-          <Show when={soleContact() === undefined}>
-            <button
-              type="button"
-              class={s['headerButton']}
-              id="chat-panel-back"
-              title="Back to rooms"
-              aria-label="Back to rooms"
-              onClick={() => {
-                chat.backToRooms();
-              }}
-            >
-              <ChevronLeftIcon />
-            </button>
-          </Show>
-          <span class={s['title']} id="chat-panel-title">
-            {shownContact()?.name}
-          </span>
-        </div>
+    <div class={s['panel']}>
+      <Show when={shownContact()}>
+        {contact => (
+          <div class={s['header']}>
+            <Show when={soleContact() === undefined}>
+              <IconButton
+                id="chat-panel-back"
+                title="Back to rooms"
+                aria-label="Back to rooms"
+                onClick={() => {
+                  chat.backToRooms();
+                }}
+              >
+                <ChevronLeftIcon />
+              </IconButton>
+            </Show>
+            <ContactIcon name={contact().name} icon={contact().icon} size="sm" />
+            <span class={s['title']} id="chat-panel-title">
+              {contact().name}
+            </span>
+          </div>
+        )}
       </Show>
       {/* role="list" again because Safari drops it from a list without bullets. */}
       <ul class={s['rooms']} id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden={view() !== 'list'}>
@@ -333,14 +373,35 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
           </Show>
         </div>
       </div>
-      <p
-        class={s['hint']}
-        id="chat-panel-hint"
-        data-error={hint()?.error === true ? '' : undefined}
-        hidden={hint() === null}
-      >
-        {hint()?.text ?? ''}
-      </p>
+      <div class={s['hint']} id="chat-panel-hint" data-place={hintPlace()} hidden={hint() === null}>
+        <Switch>
+          <Match when={hint()?.kind === 'loading'}>
+            <Spinner class={s['spinner']} />
+            <p class={s['line']}>Loading chat</p>
+          </Match>
+          <Match when={hint()?.kind === 'loggedOut'}>
+            <LockIcon class={s['mark']} size={28} />
+            <p class={s['heading']}>Log in to chat</p>
+            <p class={s['line']}>Chats with this app open once you log in.</p>
+          </Match>
+          <Match when={hint()?.kind === 'noRooms'}>
+            <ChatIcon class={s['mark']} size={28} />
+            <p class={s['heading']}>No chats yet</p>
+            <p class={s['line']}>Waiting for the app to start a chat.</p>
+          </Match>
+          <Match when={hint()?.kind === 'failed'}>
+            <CircleAlertIcon class={s['failedMark']} size={28} />
+            <p class={s['heading']}>Chat could not be loaded</p>
+          </Match>
+          <Match when={hint()?.kind === 'noMessages'}>
+            <p class={s['line']}>No messages yet.</p>
+          </Match>
+          <Match when={hint()?.kind === 'readOnly'}>
+            <p class={s['note']}>This chat is read only.</p>
+          </Match>
+          <Match when={errorText()}>{text => <p class={s['error']}>{text()}</p>}</Match>
+        </Switch>
+      </div>
       <form
         class={s['composer']}
         id="chat-panel-composer"
@@ -349,33 +410,35 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
           void submit(event);
         }}
       >
-        <input
-          id="chat-panel-input"
-          class={s['input']}
-          type="text"
-          placeholder="Message"
-          autocomplete="off"
-          maxlength="4000"
-          disabled={!composing()}
-          ref={el => {
-            inputEl = el;
-          }}
-          onInput={event => {
-            setDraft(event.currentTarget.value);
-          }}
-        />
-        <button
-          type="submit"
-          class={s['send']}
-          id="chat-panel-send"
-          title="Send"
-          aria-label="Send"
-          disabled={draft().trim() === ''}
-        >
-          <SendIcon />
-        </button>
+        <div class={s['field']}>
+          <input
+            id="chat-panel-input"
+            class={s['input']}
+            type="text"
+            placeholder="Message"
+            autocomplete="off"
+            maxlength="4000"
+            disabled={!composing()}
+            ref={el => {
+              inputEl = el;
+            }}
+            onInput={event => {
+              setDraft(event.currentTarget.value);
+            }}
+          />
+          <button
+            type="submit"
+            class={s['send']}
+            id="chat-panel-send"
+            title="Send"
+            aria-label="Send"
+            disabled={draft().trim() === ''}
+          >
+            <SendIcon size={16} />
+          </button>
+        </div>
       </form>
-    </>
+    </div>
   );
 }
 
