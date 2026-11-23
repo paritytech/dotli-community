@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { atom, onSet, type WritableAtom } from 'nanostores';
+import { atom, type WritableAtom } from 'nanostores';
 import type { PersistentAtomParams } from './createPersistentAtom.js';
-import { readOnFirstUse } from './readOnFirstUse.js';
+import { bindToStorage } from './bindToStorage.js';
 
 /**
  * An atom that holds only what its storage keeps. It reads its stored value once, on the first read, listen or set,
@@ -17,30 +17,9 @@ import { readOnFirstUse } from './readOnFirstUse.js';
  * const claim = createStoredAtom({ key: 'claim', storage, initial: '', decode: raw => raw, encode: build => build });
  */
 export function createStoredAtom<Value>(params: PersistentAtomParams<Value>): WritableAtom<Value> {
-  const { key, storage, initial, encode } = params;
+  const { key, storage, initial } = params;
   const stored = atom<Value>(initial);
-  const lazy = readOnFirstUse(stored, params);
-  onSet(stored, event => {
-    lazy.readOnce();
-    // The stored value's own read writes nothing back.
-    if (lazy.isReading()) {
-      return;
-    }
-    if (!writeThrough(event.newValue)) {
-      event.abort();
-    }
-  });
+  // Compares the stored text, so a value that decode rebuilds as a new object still reads back as held.
+  bindToStorage(stored, params, written => storage.getItem(key) === written);
   return stored;
-
-  /** Writes `value`, or removes the key at the initial value, and says whether the storage now holds it. */
-  function writeThrough(value: Value): boolean {
-    if (Object.is(value, initial)) {
-      storage.removeItem(key);
-      return storage.getItem(key) === null;
-    }
-    // Compares the stored text, so a value that decode rebuilds as a new object still reads back as held.
-    const text = encode(value);
-    storage.setItem(key, text);
-    return storage.getItem(key) === text;
-  }
 }

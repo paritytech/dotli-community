@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { atom, onNotify, onSet, type WritableAtom } from 'nanostores';
+import { atom, type WritableAtom } from 'nanostores';
 import type { SafeStorage } from '@dotli/shared';
-import { readOnFirstUse } from './readOnFirstUse.js';
+import { bindToStorage } from './bindToStorage.js';
 
 export type PersistentAtomParams<Value> = {
   /** The storage key. */
@@ -19,7 +19,7 @@ export type PersistentAtomParams<Value> = {
 };
 
 /**
- * An atom that reads its stored value once, on the first read, listen or set, and writes each change back.
+ * An atom that reads its stored value once, on the first read, listen or set, and writes each set back.
  *
  * A set before that read applies after it, so the caller's value wins. A storage that fails on every call leaves the
  * atom working in memory. It never follows the `storage` event, so another tab's write shows when it came before the
@@ -29,23 +29,8 @@ export type PersistentAtomParams<Value> = {
  * const dock = createPersistentAtom({ key: 'panel.dock', storage, initial: 'right', decode: parseDock, encode: String });
  */
 export function createPersistentAtom<Value>(params: PersistentAtomParams<Value>): WritableAtom<Value> {
-  const { key, storage, initial, encode } = params;
-  const persistent = atom<Value>(initial);
-  const lazy = readOnFirstUse(persistent, params);
-  onSet(persistent, lazy.readOnce);
-  onNotify(persistent, writeChange);
+  const persistent = atom<Value>(params.initial);
+  // Every set applies, so the atom keeps working in memory when the storage drops the write.
+  bindToStorage(persistent, params, () => true);
   return persistent;
-
-  function writeChange(): void {
-    // The stored value's own read writes nothing back.
-    if (lazy.isReading()) {
-      return;
-    }
-    const value = persistent.get();
-    if (Object.is(value, initial)) {
-      storage.removeItem(key);
-      return;
-    }
-    storage.setItem(key, encode(value));
-  }
 }

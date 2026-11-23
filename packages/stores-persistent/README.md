@@ -22,14 +22,13 @@ Keeps a nanostores atom in web storage.
 
 ## Design
 
-Two atoms, one read. They differ in a write the storage drops.
+Two atoms, one read and one write. They differ only in whether a write the storage drops aborts the set.
 
 ```mermaid
 flowchart LR
-  storage -- "first start: read once, decode" --> persistent[persistent atom]
-  persistent -- "each change: encode, or remove at initial" --> storage
-  storage -- "first start: read once, decode" --> stored[stored atom]
-  stored -- "each set: encode, write, read back, abort when it did not stick" --> storage
+  storage -- "first start: read once, decode" --> atom[persistent or stored atom]
+  atom -- "each set: encode, or remove at initial" --> storage
+  storage -- "stored atom only: read back, abort the set when it did not stick" --> atom
 ```
 
 - **Lazy read:** building the atom reads nothing, so a module may build it at import. Storage is read once, on first
