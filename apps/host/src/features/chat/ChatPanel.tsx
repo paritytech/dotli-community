@@ -24,7 +24,7 @@ import { contactEntries, type ContactEntry } from './contacts.js';
 import { endsRun } from './messageRuns.js';
 import s from './ChatPanel.module.css';
 
-// Relative bubble timestamps go stale while the panel sits open.
+// Relative timestamps on bubbles and rows go stale while the panel sits open.
 const TIME_REFRESH_MS = 60_000;
 
 type View = 'loading' | 'empty' | 'list' | 'conversation';
@@ -277,8 +277,12 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
                     rowEls.set(id, el);
                   }}
                   id={id}
+                  kind={contact().kind}
                   name={contact().name}
                   icon={contact().icon}
+                  readOnly={contact().footer === 'Empty'}
+                  lastMessageAt={contact().lastMessageAt}
+                  now={now()}
                   unread={chat.unreadByRoom()[id] ?? 0}
                   onOpen={chat.openRoom}
                 />

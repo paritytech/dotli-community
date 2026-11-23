@@ -5,14 +5,17 @@
 .icon {
   flex-shrink: 0;
   box-sizing: border-box;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full);
   background: var(--chrome-avatar);
-  box-shadow: var(--chrome-shadow-raised);
   outline: 1px solid var(--chrome-ring-subtle);
   outline-offset: -1px;
   object-fit: cover;
+}
+.icon.small {
+  width: 32px;
+  height: 32px;
 }
 
 .icon[data-fallback] {
@@ -20,16 +23,20 @@
   align-items: center;
   justify-content: center;
   color: var(--chrome-text);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
+}
+.icon.small[data-fallback] {
+  font-size: var(--fs-body);
 }
 
 @media (max-width: 560px) {
   .icon {
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
   }
-  .icon[data-fallback] {
-    font-size: var(--fs-body);
+  .icon.small {
+    width: 36px;
+    height: 36px;
   }
 }

@@ -24,6 +24,16 @@ type Story = StoryObj<typeof meta>;
 /** As a user, I see a contact with an icon as its image. */
 export const WithIcon: Story = {};
 
+/** As a user, I see the smaller icon a conversation's head shows beside the room's name. */
+export const InHead: Story = {
+  render: () => (
+    <>
+      <ContactIcon name="Courier" icon="" size="sm" />
+      <ContactIcon name="Team" icon={GOOD} size="sm" />
+    </>
+  ),
+};
+
 /** As a user, I see the initial of a contact with no icon or a broken one, and the image of one with an icon. */
 export const InitialWithoutIcon: Story = {
   render: () => (
