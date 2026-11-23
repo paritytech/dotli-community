@@ -6,7 +6,13 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
 import { expectPhone, TopbarFrame } from '../../testing/stories/topbarFrame.js';
-import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
+import {
+  type ChatStage,
+  chatStage,
+  seedEveryKind,
+  seedShop,
+  type StageState,
+} from '../../testing/stories/chatFixtures.js';
 import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
 import type { ChatPanelModule } from './ChatDock.js';
 import { ChatItem } from './ChatButton.js';
@@ -15,6 +21,7 @@ import { ChatDock } from './ChatDock.js';
 // The topbar's chat button and the chat drawer it opens, on a story's chat.
 
 const SLOW = { timeout: 5000 };
+const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
 /** A bot's icon that loads, so its row shows the image and not the letter fallback. */
 const ICON =
@@ -87,6 +94,64 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+/** Opens the drawer on a shop's product, as each story of a canvas state starts. */
+function openShop(patch: Partial<StageState> = {}): void {
+  stage.update({ open: true, productName: 'Market', ...patch });
+}
+
+/** The shop's one room, the default, holding every kind of message. */
+function seedOneRoom(): void {
+  stage.rooms = [{ roomId: 'market', name: 'Market', icon: '', createdAt: 0 }];
+  seedEveryKind(stage, 'market');
+}
+
+/** As a user of a product with one room, I see the drawer open on its conversation, with every kind of message. */
+export const OneRoom: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    seedOneRoom();
+    openShop();
+  },
+};
+
+/** As a phone user of a product with one room, I see the sheet open on its conversation. */
+export const OneRoomOnPhone: Story = {
+  tags: ['!autodocs'],
+  globals: PHONE,
+  beforeEach: () => {
+    seedOneRoom();
+    openShop();
+  },
+};
+
+/** As a user of a product with several rooms, I see the drawer open on their list, with each room's kind, time and unread. */
+export const Rooms: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    seedShop(stage);
+    openShop();
+  },
+};
+
+/** As a user, I see a room opened from the list in the drawer, with a way back to the list. */
+export const RoomOpen: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    seedShop(stage);
+    openShop({ activeRoomId: 'orders' });
+  },
+};
+
+/** As a phone user of a product with several rooms, I see the sheet open on their list. */
+export const RoomsOnPhone: Story = {
+  tags: ['!autodocs'],
+  globals: PHONE,
+  beforeEach: () => {
+    seedShop(stage);
+    openShop();
+  },
+};
 
 /** As a user, I see a waiting hint while the room list is empty. */
 export const EmptyRoomListHint: Story = {
@@ -568,7 +633,7 @@ export const PressTogglesPanel: Story = {
 /** As a phone user, the chat button collapsed into More opens the panel from its row. */
 export const MoreRowOpensPanel: Story = {
   tags: ['!autodocs'],
-  globals: { viewport: { value: 'phone', isRotated: false } },
+  globals: PHONE,
   parameters: { chrome: true },
   render: () => (
     <>

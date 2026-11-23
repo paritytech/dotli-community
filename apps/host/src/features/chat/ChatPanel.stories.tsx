@@ -6,9 +6,8 @@ import type { ChatMessageContent } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { query } from '@dotli/ui/testing';
-import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
+import { type ChatStage, chatStage, seedShop } from '../../testing/stories/chatFixtures.js';
 import { ChatPanel } from './ChatPanel.js';
-import type { ChatMessageRecord } from './createChatStore.js';
 
 /** The story's chat with the panel open, fresh for each. */
 let stage: ChatStage = chatStage({ open: true });
@@ -120,53 +119,16 @@ async function openRoom(canvasElement: HTMLElement, name: string, count: number)
   return list;
 }
 
-const MINUTE = 60_000;
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
-
-/** Adds a message in `roomId`, `minutesAgo` before now, from the product unless another author is given. */
-function say(
-  roomId: string,
-  text: string,
-  { minutesAgo, author = 'product' }: { minutesAgo: number; author?: ChatMessageRecord['author'] },
-): void {
-  const seq = stage.messages.length + 1;
-  stage.messages.push({
-    seq,
-    productId: 'chatty.dot',
-    roomId,
-    messageId: `m${String(seq)}`,
-    author,
-    content: textOf(text),
-    timestamp: Date.now() - minutesAgo * MINUTE,
-  });
-}
-
-/** Rooms of a shop: two with unread messages, a bot, and one the user can only read. */
-function seedShop(): void {
-  stage.rooms = [
-    { roomId: 'orders', name: 'Market orders', icon: '', createdAt: 0 },
-    { roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 },
-    { roomId: 'promos', name: 'Promotions', icon: '', createdAt: 0, footer: 'Empty' },
-  ];
-  stage.bots = [{ botId: 'support', name: 'Support', icon: '', createdAt: 0 }];
-  say('promos', 'Free delivery all weekend.', { minutesAgo: 3 * 24 * 60 });
-  say('courier', 'I am two streets away.', { minutesAgo: 24 * 60 + 5 });
-  say('courier', 'Is the gate open?', { minutesAgo: 24 * 60 + 4 });
-  say('courier', 'Code is 4521', { minutesAgo: 24 * 60, author: 'user' });
-  say('support', 'How can we help?', { minutesAgo: 60 });
-  say('orders', 'Your order #4821 is confirmed.', { minutesAgo: 3 });
-  say('orders', 'When should we bring it?', { minutesAgo: 2 });
-  stage.update({ unreadByRoom: { orders: 2, support: 1 } });
-}
 
 /** As a user of a product with one room, I see its conversation with no way back, and Send waits for my text. */
 export const OneRoom: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     stage.rooms = [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }];
-    say('courier', 'I am two streets away.', { minutesAgo: 4 });
-    say('courier', 'Is the gate open?', { minutesAgo: 4 });
-    say('courier', 'Code is 4521', { minutesAgo: 0, author: 'user' });
+    stage.say('courier', textOf('I am two streets away.'), { minutesAgo: 4 });
+    stage.say('courier', textOf('Is the gate open?'), { minutesAgo: 4 });
+    stage.say('courier', textOf('Code is 4521'), { minutesAgo: 0, author: 'user' });
   },
   play: async ({ canvas, userEvent, step }) => {
     const send = await canvas.findByRole('button', { name: 'Send' });
@@ -182,35 +144,13 @@ export const OneRoom: Story = {
   },
 };
 
-/** As a user of a product with several rooms, I see each room's kind, last message time and unread count. */
-export const RoomList: Story = {
-  tags: ['!autodocs'],
-  beforeEach: seedShop,
-};
-
-/** As a user, I see a room opened from the list, with a way back to it. */
-export const RoomOpen: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    seedShop();
-    stage.update({ activeRoomId: 'courier' });
-  },
-};
-
-/** As a phone user, I see the room list at the phone's size. */
-export const PhoneRoomList: Story = {
-  tags: ['!autodocs'],
-  globals: PHONE,
-  beforeEach: seedShop,
-};
-
 /** As a phone user, I see an open room at the phone's size. */
 export const PhoneRoomOpen: Story = {
   tags: ['!autodocs'],
   globals: PHONE,
   beforeEach: () => {
-    seedShop();
-    stage.update({ activeRoomId: 'orders' });
+    seedShop(stage);
+    stage.update({ activeRoomId: 'courier' });
   },
 };
 
@@ -256,8 +196,8 @@ export const NoMessages: Story = {
 export const SendFailed: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    seedShop();
-    stage.update({ activeRoomId: 'orders', composerError: 'Message not sent. Try again.' });
+    seedShop(stage);
+    stage.update({ activeRoomId: 'courier', composerError: 'Message not sent. Try again.' });
   },
 };
 
