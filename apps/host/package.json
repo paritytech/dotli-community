@@ -54,6 +54,7 @@
     "@dotli/content": "*",
     "@dotli/metrics": "*",
     "@dotli/protocol": "*",
+    "@dotli/quickjs-runtime": "*",
     "@dotli/resolver": "*",
     "@dotli/sandbox-wire": "*",
     "@dotli/shared": "*",

@@ -51,11 +51,11 @@ The source is grouped by what it is for:
 
 The features:
 
-| Group             | Features                                                            |
-| ----------------- | ------------------------------------------------------------------- |
-| Opening a product | landing, product load, product identity, topbar, page               |
-| Signing in        | account, sign-in window, site sign-in                               |
-| Around a product  | signing, permissions, network, settings, chat, notifications, debug |
+| Group             | Features                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| Opening a product | landing, product load, product identity, topbar, page                               |
+| Signing in        | account, sign-in window, site sign-in                                               |
+| Around a product  | signing, permissions, network, settings, chat, notifications, debug, product worker |
 
 - **Product runtime:** the TrUAPI side whole. It holds the core connection and the host callbacks. The runtime bridge
   sits there too.
@@ -214,6 +214,15 @@ request in session storage, so a reload answers the same round.
 - The product card's author is read and cached with the manifests.
 - The product's worker executable is its worker manifest with the CID of its `worker` subname, read once per label in a
   page and cached per label. Whether the product declares chat derives from it.
+
+### Product worker
+
+- A product page runs its product's worker in a QuickJS VM, in a Web Worker of its own, on a `Worker`-kind connection to
+  the page core.
+- The core's ledger alone starts and stops it. The page holds one reference on it, and the core counts the rest.
+- A run that fails, or finds no worker, is not tried again until the demand turns wanted again.
+- When the core goes down, the run goes with it, and the reference and the demand are taken again on the replacement.
+- The worker's console output goes to the debug log, never to the always-on channels.
 
 ### Network
 

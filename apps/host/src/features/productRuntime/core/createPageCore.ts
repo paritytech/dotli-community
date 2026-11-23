@@ -84,6 +84,8 @@ export type CoreConnection = {
 
 export type CoreLease = {
   runtime: WorkerPairingHostRuntime;
+  /** The id the core parsed for the page's product, which its connections run under. */
+  productId: ProductId;
   /**
    * Resolves with a connection to the core for a product that runs as `executionKind`, an app by default. Rejects when
    * the core refuses the connection, which takes the core down.
@@ -652,6 +654,7 @@ export function createPageCore({
 
     return {
       runtime: core.booted.runtime,
+      productId: core.booted.productId,
       connect: ({ executionKind = 'App' } = {}) =>
         connectCore({
           booted: core.booted,

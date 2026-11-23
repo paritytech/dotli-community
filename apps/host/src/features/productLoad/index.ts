@@ -10,6 +10,7 @@ export { showNoContentError } from './failure/showNoContentError.js';
 export type { ProductFrame, ProductFrameParams } from './frame/createProductFrame.js';
 export { createProductFrame } from './frame/createProductFrame.js';
 export { createProductFrameView, getProductFrameContainer, productFrameView } from './frame/createProductFrameView.js';
+export { pipeProviders } from './frame/pipeProviders.js';
 export type { LoadEffect, LoadTelemetry } from './progress/createLoadTelemetry.js';
 export { createLoadTelemetry } from './progress/createLoadTelemetry.js';
 export { pageLoading } from './progress/createLoadingController.js';
