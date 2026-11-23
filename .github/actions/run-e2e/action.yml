@@ -1,0 +1,32 @@
+name: Run host-playground E2E
+description:
+  'Run the host-playground E2E suite from apps/host. Exit code 99 means pairing failed after the sign-in page loaded,
+  which an outage of the pairing and signing infrastructure causes, so it passes with a warning and sets
+  signing_unavailable. Requires setup-playwright and setup-truapi-host first, and SIGNING_HOST_NETWORK in the
+  environment.'
+
+outputs:
+  signing_unavailable:
+    description: "'true' when the suite could not pair because the signing infrastructure is down"
+    value: ${{ steps.e2e.outputs.signing_unavailable }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run E2E
+      id: e2e
+      working-directory: apps/host
+      env:
+        # The CLI self-updates by default, which would make CI runs nondeterministic.
+        TRUAPI_HOST_NO_UPDATE: '1'
+      run: |
+        set +e
+        npx playwright test --config=tests/e2e/playwright.config.ts
+        code=$?
+        if [ "$code" -eq 99 ]; then
+          echo "::warning::Signing infrastructure unavailable. E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."
+          echo "signing_unavailable=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        exit $code
+      shell: bash

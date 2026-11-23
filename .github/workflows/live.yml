@@ -1,0 +1,144 @@
+name: Live E2E
+
+# The host-playground suite against a deployed site, which the localhost runs in Tests cannot cover: the site's server
+# config, TLS and the build made for that environment.
+
+run-name: Live E2E on ${{ inputs.environment }}
+
+on:
+  workflow_call:
+    inputs:
+      environments:
+        description: Environments to check, as a JSON array of their names
+        required: true
+        type: string
+      ref:
+        description:
+          The commit those environments run, so the suite matches the deployed build. Defaults to the triggering commit.
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      environment:
+        description:
+          Environment to check with this ref's suite. Its branch policy admits only the ref it deploys from, a release
+          tag for paseo.li and main for paseoli.dev.
+        required: true
+        type: choice
+        options:
+          - paseo.li
+          - paseoli.dev
+          - testnet.li
+
+permissions:
+  contents: read
+
+jobs:
+  targets:
+    name: Pick environments
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.pick.outputs.environments }}
+    steps:
+      # paseo.fyi needs a reviewer for every job that uses its environment, so a check there would wait on a second
+      # approval after its deploy.
+      - id: pick
+        env:
+          REQUESTED: ${{ inputs.environments || format('["{0}"]', inputs.environment) }}
+        run: echo "environments=$(jq -c 'map(select(. != "paseo.fyi"))' <<< "$REQUESTED")" >> "$GITHUB_OUTPUT"
+
+  live:
+    name: Live E2E ${{ matrix.environment }}
+    needs: targets
+    if: needs.targets.outputs.environments != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    # Reads the environment's APP_URL and NETWORKS without recording a deployment.
+    environment:
+      name: ${{ matrix.environment }}
+      deployment: false
+    # Over Playwright's 30 min globalTimeout, so Playwright cuts a stuck run off with diagnostics.
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.targets.outputs.environments) }}
+    steps:
+      # The truapi-host installer runs in this job, so the token is not left in .git/config for it.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Setup Playwright
+        uses: ./.github/actions/setup-playwright
+
+      - name: Setup truapi-host
+        uses: ./.github/actions/setup-truapi-host
+
+      # The signer must attest on the site's default network, the first one it is built with.
+      - name: Resolve the site's network
+        env:
+          NETWORKS: ${{ vars.NETWORKS }}
+        run: echo "SIGNING_HOST_NETWORK=${NETWORKS%%,*}" >> "$GITHUB_ENV"
+
+      - name: Run E2E
+        id: e2e
+        uses: ./.github/actions/run-e2e
+        env:
+          E2E_ORIGIN: ${{ vars.APP_URL }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-e2e-results-${{ matrix.environment }}
+          path: apps/host/tests/e2e/test-results/
+
+      # A signing infrastructure outage is not a site failure, so it neither opens nor closes the issue.
+      - name: Track the result in an issue
+        if:
+          ${{ !cancelled() && (steps.e2e.outcome == 'failure' || (steps.e2e.outcome == 'success' &&
+          steps.e2e.outputs.signing_unavailable != 'true')) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ENVIRONMENT: ${{ matrix.environment }}
+          SITE: ${{ vars.APP_URL }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          ACTOR: ${{ github.actor }}
+          REF: ${{ inputs.ref || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # Explicit, so the script runs with pipefail and a failed issue lookup fails the step.
+        shell: bash
+        run: |
+          title="Live E2E failing on $ENVIRONMENT"
+          issue=$(gh issue list --label live-e2e --state open --json number,title |
+            jq -r --arg title "$title" '[.[] | select(.title == $title)][0].number // empty')
+          if [ "$E2E_OUTCOME" = success ]; then
+            if [ -n "$issue" ]; then gh issue close "$issue" --comment "Passed in $RUN_URL"; fi
+            exit 0
+          fi
+          results=apps/host/tests/e2e/test-results/results.json
+          if [ -f "$results" ]; then
+            failures=$(jq -r '.suites[] | recurse(.suites[]?) | .specs[]? | select(.ok == false) | "- " + .title' "$results")
+            failures="${failures:-The results do not list a failed test.}"
+          else
+            failures='The suite stopped before the first test, at the sign-in page or the truapi-host CLI.'
+          fi
+          body="Live E2E failed on $SITE at \`$REF\`.
+
+          $failures
+
+          $RUN_URL"
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+            exit 0
+          fi
+          gh label create live-e2e --force --color B60205 --description 'Live E2E fails on a deployed site'
+          assignee=()
+          if [[ "$ACTOR" != *'[bot]' ]]; then assignee=(--assignee "$ACTOR"); fi
+          gh issue create --title "$title" --label live-e2e "${assignee[@]}" --body "$body"

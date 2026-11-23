@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { baseConfig, previewServer } from '../playwright.base.config.js';
+import { dotliOrigin, isLocalOrigin } from './fixtures/origin.js';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
 
@@ -21,12 +22,14 @@ if (existsSync(envFile)) {
 
 const localProductUrl = process.env['E2E_PRODUCT_URL'];
 
-const dotliWebServer = { ...previewServer, url: `http://localhost:${process.env['PORT'] ?? '5173'}` };
-
-const webServer: (typeof dotliWebServer & {
-  cwd?: string;
-})[] = [dotliWebServer];
+// A deployed origin serves itself, so only a local run starts the preview server.
+const webServer: (typeof previewServer & { cwd?: string })[] = isLocalOrigin()
+  ? [{ ...previewServer, url: dotliOrigin() }]
+  : [];
 if (localProductUrl !== undefined) {
+  if (!isLocalOrigin()) {
+    throw new Error('E2E_PRODUCT_URL serves a local product, which only the local preview server can load');
+  }
   const productUrl = new URL(localProductUrl);
   if (productUrl.protocol !== 'http:' || (productUrl.hostname !== 'localhost' && productUrl.hostname !== '127.0.0.1')) {
     throw new Error(`E2E_PRODUCT_URL must be a loopback HTTP URL, got ${localProductUrl}`);

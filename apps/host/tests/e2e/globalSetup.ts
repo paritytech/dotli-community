@@ -16,6 +16,7 @@ import {
 import { extractQrPayload } from './helpers/extractQrPayload.js';
 import { E2E_CHAIN_BACKEND, initializeChainBackend } from './helpers/chainBackend.js';
 import { STATE_FILE, SESSION_FILE, SIGNING_HOST_STATE_DIR, type PersistedSession } from './fixtures/paths.js';
+import { dotliOrigin, isLocalOrigin } from './fixtures/origin.js';
 
 // Must equal the host's default network, or pairing succeeds but the badge never appears: the CLI attests on another
 // chain.
@@ -29,9 +30,11 @@ const PRODUCT_ID =
   (process.env['E2E_PRODUCT_URL'] === undefined
     ? `${process.env['E2E_HOST'] ?? 'host-playground'}.dot`
     : new URL(process.env['E2E_PRODUCT_URL']).host);
-const PORT = process.env['PORT'] ?? '5173';
 // The bare host origin, since loading the product can open its permission modals before the auth button is clicked.
-const AUTH_HOST = process.env['E2E_AUTH_HOST'] ?? 'localhost';
+const AUTH_ORIGIN =
+  process.env['E2E_AUTH_HOST'] === undefined
+    ? dotliOrigin()
+    : `http://${process.env['E2E_AUTH_HOST']}:${process.env['PORT'] ?? '5173'}`;
 
 function nonEmptyEnv(name: string): string | undefined {
   const value = process.env[name];
@@ -113,10 +116,14 @@ class SigningHostExitError extends Error {
   }
 }
 
-// A dist older than the lockfile is stale, and its failures look like obscure SDK bugs. CI always builds fresh. Checked
-// here rather than in the config, which tools such as knip load without running the tests.
+// A sign-in page that fails to load or hydrate is dot.li's own failure, such as its server, its TLS or its scripts.
+class SignInPageError extends Error {}
+
+// A dist older than the lockfile is stale, and its failures look like obscure SDK bugs. CI always builds fresh, and a
+// deployed origin serves its own build. Checked here rather than in the config, which tools such as knip load without
+// running the tests.
 function assertFreshDist(): void {
-  if (process.env['CI'] === 'true') {
+  if (process.env['CI'] === 'true' || !isLocalOrigin()) {
     return;
   }
   const repoRoot = resolve(import.meta.dirname, '../../../..');
@@ -199,11 +206,17 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
 
   await browser.close();
   console.error(`[globalSetup] PAIR EXHAUSTED after ${String(PAIR_ATTEMPTS)} attempts: ${(lastErr as Error).message}`);
-  // A usage error or instant death is deterministic, so a broken release hard-fails rather than passing as an outage.
-  const deterministic =
-    lastErr instanceof SigningHostExitError &&
-    (lastErr.exitCode === CLI_USAGE_EXIT_CODE || lastErr.elapsedMs < FAST_CLI_EXIT_MS);
-  process.exit(deterministic ? 1 : SIGNING_UNAVAILABLE_EXIT_CODE);
+  process.exit(isDeterministicFailure(lastErr) ? 1 : SIGNING_UNAVAILABLE_EXIT_CODE);
+}
+
+// A dot.li page failure, a usage error or an instant CLI death is deterministic, so a broken release hard-fails rather
+// than passing as an outage.
+function isDeterministicFailure(error: unknown): boolean {
+  return (
+    error instanceof SignInPageError ||
+    (error instanceof SigningHostExitError &&
+      (error.exitCode === CLI_USAGE_EXIT_CODE || error.elapsedMs < FAST_CLI_EXIT_MS))
+  );
 }
 
 // A crashed prior run can leave its signing host alive and still holding the
@@ -240,19 +253,9 @@ async function pairOnce(
 
   let signingHost: SigningHostProcess | null = null;
   try {
-    // Pins the host to the CLI's network, so the two cannot drift apart.
-    await page.goto(`http://${AUTH_HOST}:${PORT}/?network=${NETWORK}`, {
-      timeout: 60_000,
-    });
+    await openSignIn(page);
 
-    // The button is in the built page, so it is visible before its island hydrates.
-    const authBtn = page.locator('#landing-auth-button');
-    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0, undefined, {
-      timeout: 30_000,
-    });
-    // The landing page pairs on the page itself, in the main store.
-    await authBtn.click();
-
+    // The code waits on the core's pairing link, which an outage of the network it pairs over can hold back.
     const qrCanvas = page.locator('#auth-modal-qr canvas');
     await qrCanvas.waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -282,6 +285,26 @@ async function pairOnce(
       await stopSigningHost(signingHost);
     }
     await ctx.close();
+  }
+}
+
+/** Opens the landing page's sign-in. Throws SignInPageError when the page fails to load or hydrate. */
+async function openSignIn(page: Page): Promise<void> {
+  try {
+    // Pins the host to the CLI's network, so the two cannot drift apart.
+    await page.goto(`${AUTH_ORIGIN}/?network=${NETWORK}`, {
+      timeout: 60_000,
+    });
+
+    // The button is in the built page, so it is visible before its island hydrates.
+    const authBtn = page.locator('#landing-auth-button');
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0, undefined, {
+      timeout: 30_000,
+    });
+    // The landing page pairs on the page itself, in the main store.
+    await authBtn.click();
+  } catch (e) {
+    throw new SignInPageError(`dot.li sign-in page failed to load: ${(e as Error).message}`, { cause: e });
   }
 }
 

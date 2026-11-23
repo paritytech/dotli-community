@@ -7,8 +7,8 @@ import { STATE_FILE } from './paths.js';
 import { E2E_CHAIN_BACKEND, initializeChainBackend } from '../helpers/chainBackend.js';
 import { answerAccountDialog } from '../helpers/signing.js';
 import { BROWSER_PERMISSIONS } from '../../browserPermissions.js';
+import { dotliOrigin, productOrigin } from './origin.js';
 
-const PORT = process.env['PORT'] ?? '5173';
 const HOST = process.env['E2E_HOST'] ?? 'host-playground';
 const PRODUCT_URL = process.env['E2E_PRODUCT_URL'];
 
@@ -67,9 +67,7 @@ async function waitForHostModalsSettled(page: Page): Promise<void> {
 /** A test that sends the page to another product calls this to hand the next test a host-playground page. */
 export async function openHostPlayground(page: Page): Promise<void> {
   const productHostUrl =
-    PRODUCT_URL === undefined
-      ? `http://${HOST}.localhost:${PORT}/`
-      : `http://localhost:${PORT}/${new URL(PRODUCT_URL).host}`;
+    PRODUCT_URL === undefined ? `${productOrigin(HOST)}/` : `${dotliOrigin()}/${new URL(PRODUCT_URL).host}`;
   await page.goto(productHostUrl, {
     timeout: 60_000,
   });

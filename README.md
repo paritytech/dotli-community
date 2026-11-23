@@ -149,21 +149,28 @@ It needs the product at `../host-playground` and the `truapi-host` CLI from
 curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
 ```
 
-| Env var                | Purpose                                                   |
-| ---------------------- | --------------------------------------------------------- |
-| `E2E_PRODUCT_REPO`     | Product checkout path                                     |
-| `E2E_PRODUCT_URL`      | Product server URL (default `http://localhost:5199`)      |
-| `E2E_CHAIN_BACKEND`    | Chain backend (default `rpc-gateway`)                     |
-| `SIGNING_HOST_BIN`     | A local `truapi-host` binary instead of the installed one |
-| `SIGNING_HOST_NETWORK` | A non-default network                                     |
+| Env var                | Purpose                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| `E2E_ORIGIN`           | A deployed dot.li to test instead of a local build, such as `https://paseo.li`                |
+| `E2E_PRODUCT_REPO`     | Product checkout path                                                                         |
+| `E2E_PRODUCT_URL`      | Product server URL (default `http://localhost:5199`)                                          |
+| `E2E_CHAIN_BACKEND`    | Chain backend (default `rpc-gateway`)                                                         |
+| `SIGNING_HOST_BIN`     | A local `truapi-host` binary instead of the installed one                                     |
+| `SIGNING_HOST_NETWORK` | The network the signer attests on, the host's default (`test:e2e:local` sets `paseo-next-v2`) |
 
 The first run registers a test account on the network and can take a few minutes. Later runs reuse it from
 `apps/host/tests/e2e/.auth/signing-host`.
 
+With `E2E_ORIGIN` set, `npm run test:e2e` from `apps/host` needs no build and starts no server.
+
 ### Releases
 
-- **Deploy:** pushing a `vX.Y.Z` tag deploys to `paseo.li` and `testnet.li`. The GitHub Release is published once both
-  succeed.
+- **Deploy:** pushing a `vX.Y.Z` tag runs the Tests suite on it, then deploys to `paseo.li` and `testnet.li`. The GitHub
+  Release is published once both deploys succeed.
+- **Live check:** after every deploy except to `paseo.fyi`, Live E2E runs the host-playground suite against the deployed
+  site. Live E2E daily runs it at 06:00 UTC on `paseo.li` and `testnet.li` from the latest release and on `paseoli.dev`
+  from `main`. A failure opens a `live-e2e` issue for that site, or comments on the open one, and the next pass closes
+  it. Run it by hand from the Actions tab, from the ref the site deploys from.
 - **Verify:** check out the tag from the [Releases page](https://github.com/paritytech/dotli-community/releases), then
   run `npm ci && npm run build:prod`.
 
