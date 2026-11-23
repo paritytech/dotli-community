@@ -10,8 +10,9 @@
 // links to, come from the seed and the real node alone, never from how many real nodes there are. Neighbouring trees
 // only prune each other where they meet, so a real node that stays carries its tree along unchanged while others come
 // and go. A light client's trees fill the circle between them once a few peers have joined, so the picture reads as the
-// network going on behind the real connections. The trusted provider's one tree stays a narrow fan, and loose dots linked to nothing fill the rings
-// around it, so a trusted provider backend's floor looks full but reads as one connection, not a network of its own.
+// network going on behind the real connections. The trusted provider's one tree stays a narrow fan, and loose dots
+// linked to nothing fill the rings around it, so a trusted provider backend's floor looks full but reads as one
+// connection, not a network of its own.
 // Every turn is drawn from a seed and the dot's key, so for one seed a dot keeps its turn while others come and go,
 // and another seed lays out another picture.
 
