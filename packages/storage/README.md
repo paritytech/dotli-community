@@ -8,6 +8,7 @@ dotli's persistent browser data in IndexedDB:
 - local chat
 - the local wallet
 - site grants
+- fetch grants
 - scheduled notifications
 
 ## Responsibilities
@@ -23,6 +24,7 @@ dotli's persistent browser data in IndexedDB:
   - chat
   - local wallet
   - site grants
+  - fetch grants
   - scheduled notifications
 - **Does not own** what to cache or when. Callers decide.
 
@@ -30,18 +32,19 @@ dotli's persistent browser data in IndexedDB:
 
 ### `@dotli/storage`
 
-| Export                                                                           | What it does                                                 |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `WALLET_DB_NAME`, `SITE_GRANTS_DB_NAME`                                          | Databases an origin wipe keeps.                              |
-| `isExpectedDbError`                                                              | Whether a database error is not a fault.                     |
-| `blockCache`                                                                     | Bitswap block cache.                                         |
-| `cidCache`, `CachedCid`, `CachedManifests`                                       | Label to CID cache.                                          |
-| `nameList`, `NameList`, `NameListRecord`                                         | The landing page's dotNS name list, which it can also clear. |
-| `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`            | The local wallet.                                            |
-| `LocalWalletStore`                                                               | Local wallet type.                                           |
-| `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`              | Site grants.                                                 |
-| `chat`, `ChatRoomFooter`, `ChatRoomRecord`, `ChatBotRecord`, `ChatMessageRecord` | Chat rooms and messages. Also chat bots.                     |
-| `scheduledNotifications`, `ScheduledNotificationRecord`                          | Scheduled notification queue.                                |
+| Export                                                                                   | What it does                                                 |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `WALLET_DB_NAME`, `SITE_GRANTS_DB_NAME`                                                  | Databases an origin wipe keeps.                              |
+| `isExpectedDbError`                                                                      | Whether a database error is not a fault.                     |
+| `blockCache`                                                                             | Bitswap block cache.                                         |
+| `cidCache`, `CachedCid`, `CachedManifests`                                               | Label to CID cache.                                          |
+| `nameList`, `NameList`, `NameListRecord`                                                 | The landing page's dotNS name list, which it can also clear. |
+| `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`                    | The local wallet.                                            |
+| `LocalWalletStore`                                                                       | Local wallet type.                                           |
+| `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`                      | Site grants.                                                 |
+| `createFetchGrantStore`, `fetchGrants`, `FetchGrant`, `FetchGrantKey`, `FetchGrantStore` | Fetch grants.                                                |
+| `chat`, `ChatRoomFooter`, `ChatRoomRecord`, `ChatBotRecord`, `ChatMessageRecord`         | Chat rooms and messages. Also chat bots.                     |
+| `scheduledNotifications`, `ScheduledNotificationRecord`                                  | Scheduled notification queue.                                |
 
 ### `@dotli/storage/testing`
 
@@ -68,5 +71,7 @@ In-memory databases (fake-indexeddb) for tests:
   saved since the load.
 - **Site grants:** what a session window keeps of each site the user signed in to. One grant per token, or per group and
   owner.
+- **Fetch grants:** the user's lasting answer, allowed or denied, to a product fetching a host. One decision per product
+  and host. They are the page's own data, so they live in its database, which a reset of the page empties.
 - **Own databases:** the wallet and site grants survive a wipe of the origin the windows share with the landing page.
 - **Chat** lives on the product origin.

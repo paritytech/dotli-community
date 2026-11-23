@@ -112,7 +112,7 @@ flowchart TD
 | Resolving a `.dot` name to its manifests and content hash through dotNS, and the dotNS naming rules                            | `packages/resolver` (`@dotli/resolver`)                   |
 | The protocol between the host and a sandbox frame: URL params, messages and the host's listener                                | `packages/sandbox-wire` (`@dotli/sandbox-wire`)           |
 | A small, framework-free helper every other package may use: logging, errors, task pool, listener set                           | `packages/shared` (`@dotli/shared`)                       |
-| Persistent browser data in IndexedDB databases: caches, local chat, the local wallet, site grants, scheduled notifications     | `packages/storage` (`@dotli/storage`)                     |
+| Persistent browser data in IndexedDB: caches, local chat, the local wallet, site and fetch grants, scheduled notifications     | `packages/storage` (`@dotli/storage`)                     |
 | Keeping a nanostores atom in web storage                                                                                       | `packages/stores-persistent` (`@dotli/stores-persistent`) |
 | Reading a nanostores store in a Solid 2 component                                                                              | `packages/stores-solid` (`@dotli/stores-solid`)           |
 | A generic transport between documents, with requests and subscriptions declared from codecs                                    | `packages/transport` (`@dotli/transport`)                 |

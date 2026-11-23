@@ -4,7 +4,7 @@
 // The "dotli" database's one schema, and the frame's wallet and the session windows' grants databases.
 
 export const DB_NAME = 'dotli';
-export const DB_VERSION = 7;
+export const DB_VERSION = 8;
 
 export const CID_STORE = 'cids';
 export const NAME_LIST_STORE = 'name_lists';
@@ -19,6 +19,7 @@ export const CHAT_BOT_STORE = 'chat_bots';
 export const BLOCK_STORE = 'blocks';
 export const BLOCK_META_STORE = 'block_meta';
 export const BLOCK_META_BY_LAST_USED = 'byLastUsed';
+export const FETCH_GRANT_STORE = 'fetch_grants';
 
 /** Creates the stores and indexes an older version lacks. */
 export function upgradeDotliDb(db: IDBDatabase): void {
@@ -69,6 +70,10 @@ export function upgradeDotliDb(db: IDBDatabase): void {
   // v7: the landing page's dotNS name lists.
   if (!db.objectStoreNames.contains(NAME_LIST_STORE)) {
     db.createObjectStore(NAME_LIST_STORE, { keyPath: 'network' });
+  }
+  // v8: the user's lasting answers to a product fetching a host.
+  if (!db.objectStoreNames.contains(FETCH_GRANT_STORE)) {
+    db.createObjectStore(FETCH_GRANT_STORE, { keyPath: ['label', 'host'] });
   }
 }
 
