@@ -97,12 +97,15 @@ falls back to the system face while it loads or where it lacks a script. Monospa
 - **Overlays mount late:** toasts and dialogs queue until the app mounts `Overlays`. Its container is marked
   `data-overlays`, so a full-page screen keeps it.
 - **One layer stack:** floating layers share one stack. It makes the page inert under the top modal layer.
+- **Placed at the trigger:** a floating layer anchored to a trigger opens below it when its content fits there, and
+  otherwise on the side with more room. It stays on screen across, follows the trigger while open, and grows only as far
+  as the visible area, the on-screen keyboard included, scrolling inside past that.
 - **Responsive popovers:** `Popover` and `DropdownMenu` anchor on a wide screen and become a bottom sheet on a phone.
   The sheet loads in its own chunk, preloaded when the browser is idle on a phone. Heavy content is the app's to load
   with `lazy()`. On a wide screen `DropdownMenu` is a `Listbox` hung from its button's end, which the button drives as a
   combobox while it keeps focus, and each item is an option. On a phone its items are menu rows in the sheet, which take
   focus, and the button is a menu button. The button's ARIA follows the viewport.
-- **Listbox:** drops below its anchor in a floating layer, at least as wide as the anchor, and never takes focus, so the
+- **Listbox:** opens at its anchor in a floating layer, at least as wide as the anchor, and never takes focus, so the
   control that opened it keeps its keys. It names the anchor for its placement itself. A press outside the anchor and
   the list, Escape and focus leaving them close it through `onClose`, and its caller sets `open` from that. A press on
   the anchor leaves it open. The caller also owns which option is active and which is chosen. A pick hands the caller

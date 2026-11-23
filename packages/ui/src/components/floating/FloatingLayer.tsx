@@ -4,10 +4,10 @@
 import { createEffect, onCleanup, Show, untrack, useContext } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { containTab } from '../focus.js';
-import { anchorName } from './anchorName.js';
 import type { CloseReason } from './closeReason.js';
 import { LayerTracker } from './layerContext.js';
 import { createPresence } from './createPresence.js';
+import { placeAtTrigger } from './placeAtTrigger.js';
 import s from './FloatingLayer.module.css';
 
 export type Placement = 'topbar-end' | 'trigger-start' | 'trigger-end';
@@ -18,12 +18,11 @@ type LayerKind = 'auto' | 'manual' | 'self-dismiss';
 
 const EXIT_MS = 220;
 
-/** Each placement's class, and whether it sits against its trigger's anchor. */
-const PLACEMENTS = {
-  'topbar-end': { class: s['topbarEnd'], anchored: false },
-  'trigger-start': { class: s['triggerStart'], anchored: true },
-  'trigger-end': { class: s['triggerEnd'], anchored: true },
-} satisfies Record<Placement, { class: string | undefined; anchored: boolean }>;
+const PLACEMENT_CLASSES = {
+  'topbar-end': s['topbarEnd'],
+  'trigger-start': s['triggerStart'],
+  'trigger-end': s['triggerEnd'],
+} satisfies Record<Placement, string | undefined>;
 
 /**
  * Each kind's popover type, and who closes it on a press outside it and its trigger. A kind with a closer also closes on
@@ -95,6 +94,22 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         return;
       }
       element.hidePopover();
+    },
+  );
+
+  // While open, a surface against its trigger follows it. A closed one stays put while its exit plays.
+  // The trigger is read in the compute, since a caller's getter may build a memo, which the effect phase cannot own.
+  createEffect(
+    () => ({ open: props.open, placement: props.placement, trigger: props.open ? props.trigger() : undefined }),
+    ({ open, placement, trigger }) => {
+      const element = surface;
+      if (!open || element === undefined || trigger === undefined) {
+        return;
+      }
+      if (placement === undefined || placement === 'topbar-end') {
+        return;
+      }
+      return placeAtTrigger({ trigger, surface: element, placement });
     },
   );
 
@@ -191,8 +206,6 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
     props.onKeyDown?.(event, event.currentTarget);
   }
 
-  const placement = () => PLACEMENTS[props.placement ?? 'topbar-end'];
-
   return (
     <Portal>
       <div
@@ -202,8 +215,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         }}
         popover={KINDS[props.kind].popover}
         id={props.id}
-        class={[s['layer'], placement().class, props.class]}
-        style={placement().anchored ? { 'position-anchor': anchorName(props.id) } : undefined}
+        class={[s['layer'], PLACEMENT_CLASSES[props.placement ?? 'topbar-end'], props.class]}
         data-chrome=""
         data-open={props.open ? '' : undefined}
         data-testid={props.testId}

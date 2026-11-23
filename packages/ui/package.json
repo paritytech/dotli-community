@@ -33,6 +33,7 @@
     "@dotli/metrics": "*",
     "@dotli/shared": "*",
     "@dotli/stores-solid": "*",
+    "@floating-ui/dom": "1.8.0",
     "@fontsource-variable/geist": "5.3.0",
     "@solidjs/web": "2.0.3",
     "nanostores": "1.5.5",
