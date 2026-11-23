@@ -21,7 +21,6 @@ import {
   type Transition,
 } from '@dotli/shared';
 import type { CachedCid } from '@dotli/storage';
-import { showError } from '@dotli/ui';
 import { readChatCapability } from '../features/productLoad/index.js';
 import { describeError, isFromNewerRelease, type ErrorDescription } from '../features/productLoad/index.js';
 import { assertLaunchable } from '../features/productLoad/index.js';
@@ -36,7 +35,6 @@ import type { LoadEffect, LoadTelemetry } from '../features/productLoad/index.js
 import type { PageCidCache } from '../features/productLoad/index.js';
 import type { CachedCopy, ServedCopy } from '../features/productLoad/index.js';
 import type { loadFailureScreen } from '../features/productLoad/index.js';
-import { UPDATE_LOADING_COPY } from '../features/productLoad/index.js';
 import type { HostBridge } from '../features/productRuntime/index.js';
 import type { CoreLease } from '../features/productRuntime/index.js';
 import type { ProductFrame } from '../features/productLoad/index.js';
@@ -45,6 +43,7 @@ import { productState } from '../features/page/index.js';
 import { startShieldAutoHide } from '../features/productIdentity/index.js';
 import { urlPillState } from '../features/productIdentity/index.js';
 import { pageTopbarAutoHide } from '../features/page/index.js';
+import type { UpdateReload } from '../kit/createUpdateReload.js';
 
 const resolveReport = createReporter({ flow: 'resolve' });
 
@@ -169,12 +168,7 @@ type Params = {
   recents: Pick<RecentLabels, 'record'>;
   failureScreen: typeof loadFailureScreen;
   /** The page's one reload per build for a newer release. */
-  updateReload: {
-    /** Claims this build's reload. True when the page may reload. */
-    claim: () => boolean;
-    /** Reloads the page to load the newer release. */
-    reload: () => void;
-  };
+  updateReload: UpdateReload;
   onProtocolVersionMismatch: ProtocolClient['frame']['subscribeVersionMismatch'];
   /** Reads the product's icon. */
   bitswap: Pick<BitswapClient, 'get'>;
@@ -502,13 +496,9 @@ export function createProductLoader(params: Params) {
           return;
         case 'updateReloadDue':
           // This build already reloaded the page, or the page cannot remember that it did, so a reload would not help.
-          if (!params.updateReload.claim()) {
+          if (!params.updateReload.start()) {
             machine.update({ kind: 'reloadRefused' });
-            return;
           }
-          // No buttons, since the page is already doing what a Reload button would.
-          showError(UPDATE_LOADING_COPY.TITLE, { detail: UPDATE_LOADING_COPY.DETAIL });
-          params.updateReload.reload();
           return;
         case 'failureShown': {
           const { label, error, description, failure } = effect;

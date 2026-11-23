@@ -22,7 +22,7 @@ import { createPageCidCache } from '../features/productLoad/index.js';
 import { createProductAuthor } from '../features/productIdentity/index.js';
 import { createProductLoader } from './createProductLoader.js';
 import type { H160Address } from '../kit/h160Address.js';
-import { continuation, reloadForUpdate } from '../kit/createContinuation.js';
+import { updateReload } from '../kit/createUpdateReload.js';
 import { loadFailureScreen } from '../features/productLoad/index.js';
 import { pageNotifications } from '../features/notifications/index.js';
 import { PAGE_START } from './pageStart.js';
@@ -85,7 +85,7 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
     bitswap: bridge.hostBitswapClient,
     recents: recentLabels,
     failureScreen: loadFailureScreen,
-    updateReload: { claim: continuation.claimUpdateReload, reload: reloadForUpdate },
+    updateReload,
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
   });
   await loader.load(label);

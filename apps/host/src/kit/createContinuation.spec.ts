@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { createManualTimers, createMemoryStorage } from '@dotli/shared/testing';
-import { createContinuation, reloadForUpdate, type Continuation } from './createContinuation.js';
+import { createMemoryStorage } from '@dotli/shared/testing';
+import { createContinuation } from './createContinuation.js';
 import { createBlockedStorage } from '../testing/createBlockedStorage.js';
 
 describe('createContinuation', () => {
@@ -55,54 +55,5 @@ describe('createContinuation', () => {
 
     // Then
     expect(answers).toEqual({ peeked: null, taken: null });
-  });
-
-  it('As a user whose tab meets an update twice on one build, I claim a reload each time and only the first claim holds', () => {
-    // Given
-    const continuation = createContinuation({ store: createMemoryStorage(), build: 'build-b' });
-
-    // When
-    const claims = [continuation.claimUpdateReload(), continuation.claimUpdateReload()];
-
-    // Then
-    expect(claims).toEqual([true, false]);
-  });
-
-  it('As a user whose tab reloaded for an update on an older build, I meet an update on a newer build and my claim holds', () => {
-    // Given
-    const store = createMemoryStorage({ entries: { 'dotli:update-reload': 'build-a' } });
-    const continuation = createContinuation({ store, build: 'build-b' });
-
-    // When
-    const claimed = continuation.claimUpdateReload();
-
-    // Then
-    expect(claimed).toBe(true);
-  });
-
-  it('As a user whose tab has no sessionStorage, I meet an update and my claim to reload does not hold', () => {
-    // Given
-    const continuation = createContinuation({ store: createBlockedStorage(), build: 'build-b' });
-
-    // When
-    const claimed = continuation.claimUpdateReload();
-
-    // Then
-    expect(claimed).toBe(false);
-  });
-
-  it('As a user whose page reloads for an update, I have about a second to read why before the page reloads as an update', async () => {
-    // Given
-    const timers = createManualTimers();
-    const reloads: Continuation[] = [];
-
-    // When
-    reloadForUpdate({ timers, reload: reason => reloads.push(reason) });
-    await timers.advance(999);
-    const beforeTheSecond = [...reloads];
-    await timers.advance(1);
-
-    // Then
-    expect({ beforeTheSecond, reloads }).toEqual({ beforeTheSecond: [], reloads: ['app_update'] });
   });
 });

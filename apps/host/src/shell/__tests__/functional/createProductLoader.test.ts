@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The product loader on a page. The name source, the frame and the recent list sit in other frames or origins, and the
-// CID cache, the failure screen and the update's reload reload or write the page, so all six are fakes. The URL pill, the product state,
-// the journey, the resolution trace and the debug panel's events are the page's own. The trace keeps only its last
-// step, so the step sequence is not asserted.
+// CID cache and the failure screen write the page, so all five are fakes. The update reload is real over a memory store,
+// the page's timers and a counted reload. The URL pill, the product state, the journey, the resolution trace and the
+// debug panel's events are the page's own. The trace keeps only its last step, so the step sequence is not asserted.
 
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -15,7 +15,7 @@ import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
 import { createListenerSet, noop, waitForStatus } from '@dotli/shared';
-import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createManualTimers, createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
@@ -27,6 +27,7 @@ import { pageLoading } from '../../../features/productLoad/index.js';
 import type { NameSource } from '../../../features/productLoad/index.js';
 import { createLoadTelemetry } from '../../../features/productLoad/index.js';
 import { createProductLoader } from '../../createProductLoader.js';
+import { createUpdateReload } from '../../../kit/createUpdateReload.js';
 import type { PageCidCache } from '../../../features/productLoad/index.js';
 import type { ProductFrame } from '../../../features/productLoad/index.js';
 import { SandboxSilentError, type SandboxLoad, type SandboxLoadReport } from '../../../features/productLoad/index.js';
@@ -660,11 +661,12 @@ describe('createProductLoader', () => {
     'As a visitor whose protocol frame refuses this page $when, I open a name and see the update loading while the page reloads, and the operator still gets the mismatch reported',
     async ({ params }) => {
       // Given a page that has not reloaded for this build yet
-      const { loader, failures, countReloads, readResolution } = setupLoader({ ...params, mayReload: true });
+      const { loader, failures, countReloads, readResolution, timers } = setupLoader({ ...params, mayReload: true });
 
       // When
       await loader.load('doom');
       flush();
+      await timers.advance(1_000);
 
       // Then
       expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_LOADING);
@@ -673,7 +675,7 @@ describe('createProductLoader', () => {
 
   it('As a visitor with the app open, I meet a protocol frame rebuilt from a newer release and see the update loading while the page reloads, and the operator still gets the mismatch reported', async () => {
     // Given an app on screen on a page that has not reloaded for this build yet
-    const { loader, failures, countReloads, readResolution, refuseWire } = setupLoader({
+    const { loader, failures, countReloads, readResolution, refuseWire, timers } = setupLoader({
       published: { doom: 'bafy-base' },
       mayReload: true,
     });
@@ -683,6 +685,7 @@ describe('createProductLoader', () => {
     refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
     await waitForStatus(productState.store, product => product.status === 'error');
     flush();
+    await timers.advance(1_000);
 
     // Then
     expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_LOADING);
@@ -929,12 +932,15 @@ function setupLoader(params: Params = {}) {
         forgotten += 1;
       },
     },
-    updateReload: {
-      claim: () => params.mayReload === true,
+    updateReload: createUpdateReload({
+      // A page that already reloaded for this build holds its claim.
+      store: createMemoryStorage({ entries: params.mayReload === true ? {} : { 'dotli:update-reload': 'build-a' } }),
+      build: 'build-a',
+      timers,
       reload() {
         reloads += 1;
       },
-    },
+    }),
     onProtocolVersionMismatch(listener) {
       if (params.latchedMismatch !== undefined) {
         listener(params.latchedMismatch);
