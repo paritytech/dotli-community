@@ -53,6 +53,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [component-reports-before-it-restores](component-reports-before-it-restores.md): a component that boots
   asynchronously reports an empty state before it restores what it stored, and a display, a cache or a watcher reading
   the layer above acts on that gap, including when the layer above's own store-changed nudge causes it.
+- [domain-free-runtime-one-app-uses](domain-free-runtime-one-app-uses.md): a runtime with no domain, such as an
+  interpreter VM with its worker entry, is used by one app through a domain-specific unit on top, and the question is
+  whether it lives in the app's feature, an existing package or a new package.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
   protocol's set is dropped, several pieces of logic walk the catalog built on those names, and the protocol can still
   send the name, so the question is how to keep it out of all of them and which answer the request gets.
