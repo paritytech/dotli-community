@@ -7,7 +7,9 @@ import { createListenerSet } from '@dotli/shared';
 import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten-core';
 
 import type { VmBytes } from './createVmBytes.js';
+import { defineVmFunctions } from './defineVmFunctions.js';
 import { getVmErrorMessage } from './getVmErrorMessage.js';
+import { runVmJobs } from './runVmJobs.js';
 
 type Params = {
   vm: QuickJSContext;
@@ -57,41 +59,43 @@ export function createHostApiPort({ vm, bytes, onError }: Params) {
 
   function installPort(): void {
     const port = vm.newObject();
-    defineMethod(port, 'postMessage', data => {
-      if (closed) {
-        return;
-      }
-      try {
-        frames.emit(bytes.fromVm(data));
-      } catch (error) {
-        onError(new Error('The VM posted a frame that is not bytes', { cause: error }));
-      }
+    defineVmFunctions(vm, port, {
+      postMessage(data) {
+        if (closed) {
+          return;
+        }
+        try {
+          frames.emit(bytes.fromVm(data));
+        } catch (error) {
+          onError(new Error('The VM posted a frame that is not bytes', { cause: error }));
+        }
+      },
+      addEventListener(type, listener) {
+        if (closed || vm.getString(type) !== 'message' || vm.typeof(listener) !== 'function') {
+          return;
+        }
+        if (listeners.some(added => isSameValue(added, listener))) {
+          return;
+        }
+        // Dropped rather than thrown, since a DOM port never throws from `addEventListener`.
+        if (listeners.length >= MAX_MESSAGE_LISTENERS) {
+          onError(new Error(`The VM added more than ${String(MAX_MESSAGE_LISTENERS)} message listeners`));
+          return;
+        }
+        listeners.push(listener.dup());
+      },
+      removeEventListener(type, listener) {
+        if (vm.getString(type) !== 'message') {
+          return;
+        }
+        const index = listeners.findIndex(added => isSameValue(added, listener));
+        if (index !== -1) {
+          listeners.splice(index, 1)[0]?.dispose();
+        }
+      },
+      start: () => undefined,
+      close,
     });
-    defineMethod(port, 'addEventListener', (type, listener) => {
-      if (closed || vm.getString(type) !== 'message' || vm.typeof(listener) !== 'function') {
-        return;
-      }
-      if (listeners.some(added => isSameValue(added, listener))) {
-        return;
-      }
-      // Dropped rather than thrown, since a DOM port never throws from `addEventListener`.
-      if (listeners.length >= MAX_MESSAGE_LISTENERS) {
-        onError(new Error(`The VM added more than ${String(MAX_MESSAGE_LISTENERS)} message listeners`));
-        return;
-      }
-      listeners.push(listener.dup());
-    });
-    defineMethod(port, 'removeEventListener', (type, listener) => {
-      if (vm.getString(type) !== 'message') {
-        return;
-      }
-      const index = listeners.findIndex(added => isSameValue(added, listener));
-      if (index !== -1) {
-        listeners.splice(index, 1)[0]?.dispose();
-      }
-    });
-    defineMethod(port, 'start', () => undefined);
-    defineMethod(port, 'close', close);
     vm.defineProp(port, 'onmessage', {
       configurable: false,
       enumerable: true,
@@ -103,12 +107,6 @@ export function createHostApiPort({ vm, bytes, onError }: Params) {
     });
     vm.setProp(vm.global, '__HOST_API_PORT__', port);
     port.dispose();
-  }
-
-  function defineMethod(port: QuickJSHandle, name: string, method: (...args: QuickJSHandle[]) => void): void {
-    const handle = vm.newFunction(name, method);
-    vm.setProp(port, name, handle);
-    handle.dispose();
   }
 
   function deliver(frame: Uint8Array): void {
@@ -133,11 +131,7 @@ export function createHostApiPort({ vm, bytes, onError }: Params) {
       }
     }
     event.dispose();
-    const jobs = vm.runtime.executePendingJobs();
-    if (jobs.error) {
-      onError(new Error(`A job after a message failed in the VM: ${getVmErrorMessage(vm.dump(jobs.error))}`));
-      jobs.error.dispose();
-    }
+    runVmJobs(vm, onError, 'a message');
   }
 
   function close(): void {

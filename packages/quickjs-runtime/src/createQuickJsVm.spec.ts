@@ -1,20 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import type { QuickJsVm } from './createQuickJsVm.js';
-import { createQuickJsVm } from './createQuickJsVm.js';
-
-const started: QuickJsVm[] = [];
+import { startVm } from './testing/startVm.js';
 
 describe('createQuickJsVm', () => {
-  afterEach(() => {
-    for (const vm of started.splice(0)) {
-      vm.dispose();
-    }
-  });
-
   it('As a host, I hear the bytes a module posts on the host API port', async () => {
     // Given
     const { vm, frames } = await startVm({ 'main.js': `__HOST_API_PORT__.postMessage(new Uint8Array([1, 2, 3]));` });
@@ -51,7 +42,7 @@ describe('createQuickJsVm', () => {
           export function reply() { __HOST_API_PORT__.postMessage(new Uint8Array([BYTE])); }`,
         'app/constants.js': `export const BYTE = 7;`,
       },
-      'app/main.js',
+      { entrypoint: 'app/main.js' },
     );
 
     // When
@@ -168,14 +159,3 @@ describe('createQuickJsVm', () => {
     });
   });
 });
-
-async function startVm(sources: Record<string, string>, entrypoint = 'main.js') {
-  const encoder = new TextEncoder();
-  const files = new Map(Object.entries(sources).map(([path, source]) => [path, encoder.encode(source)]));
-  const errors: Error[] = [];
-  const vm = await createQuickJsVm({ files, entrypoint, onError: error => errors.push(error) });
-  started.push(vm);
-  const frames: Uint8Array[] = [];
-  vm.wire.subscribe(frame => frames.push(frame));
-  return { vm, frames, errors };
-}

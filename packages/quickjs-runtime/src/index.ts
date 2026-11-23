@@ -5,3 +5,4 @@ export type { ByteWire } from './createHostApiPort.js';
 export type { ModuleFiles } from './createModuleLoader.js';
 export type { QuickJsVm, QuickJsVmParams } from './createQuickJsVm.js';
 export { createQuickJsVm } from './createQuickJsVm.js';
+export type { ConsoleLevel, ConsoleSink } from './installConsole.js';

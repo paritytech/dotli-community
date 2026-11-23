@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { Timers } from '@dotli/shared';
+import { realTimers } from '@dotli/shared';
 import releaseAsyncify from '@jitl/quickjs-wasmfile-release-asyncify';
 import type { QuickJSAsyncContext, QuickJSHandle } from 'quickjs-emscripten-core';
 import { newQuickJSAsyncWASMModuleFromVariant } from 'quickjs-emscripten-core';
@@ -8,8 +10,14 @@ import { newQuickJSAsyncWASMModuleFromVariant } from 'quickjs-emscripten-core';
 import { createHostApiPort } from './createHostApiPort.js';
 import type { ModuleFiles } from './createModuleLoader.js';
 import { createModuleLoader } from './createModuleLoader.js';
+import type { VmBytes } from './createVmBytes.js';
 import { createVmBytes } from './createVmBytes.js';
+import { createVmCrypto } from './createVmCrypto.js';
+import { createVmTimers } from './createVmTimers.js';
 import { getVmErrorMessage } from './getVmErrorMessage.js';
+import type { ConsoleSink } from './installConsole.js';
+import { installConsole } from './installConsole.js';
+import { installTextCodecs } from './installTextCodecs.js';
 
 export type QuickJsVmParams = {
   /** The module files, by path. Imports resolve against them alone. */
@@ -17,10 +25,16 @@ export type QuickJsVmParams = {
   /** The path in `files` of the ES module that `run` evaluates. */
   entrypoint: string;
   /**
-   * Hears what goes wrong in the VM outside a run: a listener that threw, a frame that is not bytes, a job that
-   * failed, or a VM that aborted while it was freed.
+   * Hears what goes wrong in the VM outside a run: a listener or a timer callback that threw, a frame that is not
+   * bytes, a job that failed, microtasks dropped past the cap, or a VM that aborted while it was freed.
    */
   onError: (error: Error) => void;
+  /** Hears each `console` call of the VM's code. The runtime logs nothing itself. */
+  onConsole: ConsoleSink;
+  /** The WebCrypto behind the VM's `crypto`. */
+  crypto: Crypto;
+  /** The host timers behind the VM's timers. */
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
 export type QuickJsVm = Awaited<ReturnType<typeof createQuickJsVm>>;
@@ -31,7 +45,14 @@ export type QuickJsVm = Awaited<ReturnType<typeof createQuickJsVm>>;
  *
  * Rejects when the WebAssembly module fails to load or the VM cannot be set up.
  */
-export async function createQuickJsVm({ files, entrypoint, onError }: QuickJsVmParams) {
+export async function createQuickJsVm({
+  files,
+  entrypoint,
+  onError,
+  onConsole,
+  crypto,
+  timers = realTimers,
+}: QuickJsVmParams) {
   // One WebAssembly module per VM, since freeing a VM can abort its module, which must take no other VM with it.
   // The variant's types describe its CommonJS build, whose default export wraps the variant. The loader unwraps either
   // shape, and takes the wrapped one only as a promise.
@@ -41,7 +62,7 @@ export async function createQuickJsVm({ files, entrypoint, onError }: QuickJsVmP
   vm.runtime.setModuleLoader(loader.load, loader.normalize);
   const bytes = createVmBytes({ vm });
   const port = createHostApiPort({ vm, bytes, onError });
-  injectGlobals(vm);
+  const globals = injectGlobals({ vm, bytes, onError, onConsole, crypto, timers });
   let running: Promise<void> | null = null;
   let disposed = false;
 
@@ -65,6 +86,7 @@ export async function createQuickJsVm({ files, entrypoint, onError }: QuickJsVmP
         return;
       }
       disposed = true;
+      globals.dispose();
       port.dispose();
       bytes.dispose();
       try {
@@ -118,8 +140,13 @@ export async function createQuickJsVm({ files, entrypoint, onError }: QuickJsVmP
   }
 }
 
-/** Sets the globals the VM's code reads beside the port. */
-function injectGlobals(vm: QuickJSAsyncContext): void {
+type InjectGlobalsParams = Required<Pick<QuickJsVmParams, 'onError' | 'onConsole' | 'crypto' | 'timers'>> & {
+  vm: QuickJSAsyncContext;
+  bytes: VmBytes;
+};
+
+/** Sets the globals the VM's code reads beside the port, and returns what stops the ones that hold host work. */
+function injectGlobals({ vm, bytes, onError, onConsole, crypto, timers }: InjectGlobalsParams) {
   vm.setProp(vm.global, '__HOST_WEBVIEW_MARK__', vm.true);
   // Code that checks for a browser, such as `window === self`, finds one. Neither can be replaced or deleted, so VM
   // code cannot swap in a global of its own.
@@ -130,4 +157,15 @@ function injectGlobals(vm: QuickJSAsyncContext): void {
       }`,
     ),
   ).dispose();
+  installConsole(vm, onConsole);
+  installTextCodecs(vm, bytes);
+  const vmTimers = createVmTimers({ vm, timers, onError });
+  const vmCrypto = createVmCrypto({ vm, bytes, crypto, onError });
+
+  return {
+    dispose() {
+      vmTimers.dispose();
+      vmCrypto.dispose();
+    },
+  };
 }
