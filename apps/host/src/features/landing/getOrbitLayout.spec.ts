@@ -35,8 +35,9 @@ const TRUSTED_PROVIDER: OrbitMode = { kind: 'trustedProvider' };
 /** How far, in degrees, the trusted provider's tree reaches further either way on each ring out. */
 const TRUSTED_PROVIDER_REACH = 8;
 
-/** The most simulated nodes the trusted provider's tree holds. */
+/** The simulated nodes the trusted provider's tree is budgeted, and the one more each of its four rings may hold. */
 const TRUSTED_PROVIDER_TREE = 20;
+const TRUSTED_PROVIDER_RINGS = 4;
 
 describe('getOrbitLayout', () => {
   it('As a visitor whose light client has no peers yet, I see no dots', () => {
@@ -274,9 +275,18 @@ describe('getOrbitLayout', () => {
     });
     expect(astray).toEqual([]);
     const trees = layouts.map(layout => listDots(layout).filter(({ kind }) => kind === 'simulated'));
-    expect(trees.filter(tree => tree.length > TRUSTED_PROVIDER_TREE)).toEqual([]);
+    expect(trees.filter(tree => tree.length > TRUSTED_PROVIDER_TREE + TRUSTED_PROVIDER_RINGS)).toEqual([]);
     const branching = layouts.map(layout => listDots(layout).some(dot => countChildren(layout, dot) >= 2));
     expect(branching).toEqual(layouts.map(() => true));
+  });
+
+  it("As a visitor on a trusted provider backend, I see the trusted provider's one tree hold its budget however the seed turns its dots", () => {
+    // When
+    const layouts = SEEDS.map(seed => getOrbitLayout(TRUSTED_PROVIDER, seed));
+
+    // Then
+    const trees = layouts.map(layout => listDots(layout).filter(({ kind }) => kind === 'simulated'));
+    expect(trees.filter(tree => tree.length < TRUSTED_PROVIDER_TREE)).toEqual([]);
   });
 
   it("As a visitor on a trusted provider backend, I see loose dots on every ring, linked to nothing and outside the trusted provider's tree", () => {

@@ -9,8 +9,8 @@
 // A tree's shape is fixed relative to its real node: where each of its dots sits from the real node, and which dot it
 // links to, come from the seed and the real node alone, never from how many real nodes there are. Neighbouring trees
 // only prune each other where they meet, so a real node that stays carries its tree along unchanged while others come
-// and go. A light client's trees fill the circle between them, so the picture reads as the network going on behind the
-// real connections. The trusted provider's one tree stays a narrow fan, and loose dots linked to nothing fill the rings
+// and go. A light client's trees fill the circle between them once a few peers have joined, so the picture reads as the
+// network going on behind the real connections. The trusted provider's one tree stays a narrow fan, and loose dots linked to nothing fill the rings
 // around it, so a trusted provider backend's floor looks full but reads as one connection, not a network of its own.
 // Every turn is drawn from a seed and the dot's key, so for one seed a dot keeps its turn while others come and go,
 // and another seed lays out another picture.
@@ -273,16 +273,18 @@ function getTreePlaces(mode: OrbitMode, seed: number, root: Node): Place[] {
     const outside: Place[] = [];
     for (let step = -most; step <= most; step += 1) {
       const key = `${root.dot.key}.${ring}.${String(step)}`;
-      const offset = getTurned(step * stride, stride * JITTER, getUnitHash(seed, key));
-      const reached = inside.filter(place => Math.abs(place.offset - offset) <= reach);
-      // A parent no further from the real node than its place stays in the tree's part of the ring whenever the place
-      // does, so a neighbour that takes room leaves no place it spared without its parent.
-      const nearer = reached.filter(place => Math.abs(place.offset) <= Math.abs(offset));
-      const [parent] = (nearer.length > 0 ? nearer : reached).sort(
-        (a, b) => Math.abs(a.offset - offset) - Math.abs(b.offset - offset),
-      );
+      const turned = getTurned(step * stride, stride * JITTER, getUnitHash(seed, key));
+      const byDistance = [...inside].sort((a, b) => Math.abs(a.offset - turned) - Math.abs(b.offset - turned));
+      const reached = byDistance.filter(place => Math.abs(place.offset - turned) <= reach);
+      // A parent on the place's own side of the real node and no further from it stays in the tree's part of the ring
+      // whenever the place does, so a neighbour that takes room leaves no place it spared without its parent. When
+      // none is in reach the nearest one in reach takes the place, and when none at all is, the nearest parent holds
+      // the place at its reach, so the tree keeps its budget and its shape still reads only fixed offsets.
+      const nearer = reached.filter(place => place.offset * turned >= 0 && Math.abs(place.offset) <= Math.abs(turned));
+      const parent = nearer[0] ?? reached[0] ?? byDistance[0];
       if (parent) {
-        outside.push({ index, key, offset, parent: parent.key });
+        const lead = Math.max(-reach, Math.min(reach, turned - parent.offset));
+        outside.push({ index, key, offset: parent.offset + lead, parent: parent.key });
       }
     }
     places.push(...outside);
