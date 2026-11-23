@@ -411,14 +411,14 @@ export const RenderErrorClosesThenRecovers: Story = {
   beforeEach: () => bindCaptureSink({ exception: fn(), expected: fn() }),
   play: async ({ step }) => {
     await step('As a user, a render error closes the panel and the next open recovers it', async () => {
-      // Given a shown room that cannot be read the first time, which the panel reads as it renders
+      // Given a session the empty room list cannot read the first time, which its hint shows
       let thrown = false;
-      stage.conversation.activeRoomId = () => {
+      stage.conversation.loggedIn = () => {
         if (!thrown) {
           thrown = true;
           throw new Error('render boom');
         }
-        return null;
+        return true;
       };
 
       // When
