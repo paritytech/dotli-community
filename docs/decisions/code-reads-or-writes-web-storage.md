@@ -51,6 +51,6 @@ if (tabStorage.getItem('digest-sent') === null) {
   accept a reload loop, asked for a new adapter from nanostores to `SafeStorage` and a migration to it. (PR #508,
   reduce-complexity run on refactor/complexity-mismatch-reload)
 
-Related: [machine-outcome-with-a-visible-wait](machine-outcome-with-a-visible-wait.md) places the claim in that case.
+Related: [new-outcome-in-an-existing-flow](new-outcome-in-an-existing-flow.md) places the claim in that case.
 
 Status: active

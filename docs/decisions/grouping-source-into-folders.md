@@ -1,7 +1,9 @@
 # Grouping source into folders
 
 An app's source is grouped or regrouped into folders, and the question is how much structure it gets. A level, an
-`index.ts`, a lint boundary or a set of subfolders each look useful on their own.
+`index.ts`, a lint boundary or a set of subfolders each look useful on their own. Or the code is already grouped by
+feature, but some files that serve a single feature still sit in a top-level folder filed by kind, such as functional
+and end-to-end tests under `tests/`.
 
 ## How to resolve
 
@@ -11,12 +13,17 @@ An app's source is grouped or regrouped into folders, and the question is how mu
 2. Keep a folder flat while it is small, with specs beside their modules.
 3. Past about 30 source files, split it into subfolders named for what the code does. Never split by file kind, such as
    `ui/` or `state/`.
-4. Give a folder an `index.ts` and a lint boundary when other folders depend on it as a whole, as on a feature. A small
+4. Move each file that serves one feature into that feature's folder, wherever it sat by kind. Tests that do not sit
+   beside a module go under the feature's `__tests__/`, one folder per kind of test.
+5. Put what spans several features in the folder that composes them, such as the shell. Keep in a central folder only
+   what several features share, such as suite configs and fixtures.
+6. Give a folder an `index.ts` and a lint boundary when other folders depend on it as a whole, as on a feature. A small
    app whose folders have a few cycles, each resting on one import, gets neither
    ([an import cycle between folders](import-cycle-between-folders.md)).
 
-The owner chose these without stating a reason. Together they add structure only where it pays, and keep the parts of
-one purpose side by side.
+The owner's reason for moving a feature's files into its folder: it is much simpler. The owner chose the other steps
+without stating a reason. Together they add structure only where it pays, and keep the parts of one purpose side by
+side.
 
 ## Example
 
@@ -30,13 +37,20 @@ src/
       cart.ts
       cart.spec.ts
       index.ts
+      __tests__/
+        functional/cartFlow.spec.ts
+        e2e/checkout.spec.ts
     payments/            past about 30 files, split by what the code does
       cards/
       refunds/
       index.ts
   pages/
   shell/
+    __tests__/           specs that span several features
   kit/
+tests/                   only what several features share
+  playwright.config.ts
+  fixtures/
 ```
 
 An app with no user flows:
@@ -55,6 +69,9 @@ features/payments/
   ui/
   state/
   utils/
+tests/
+  functional/cartFlow.spec.ts
+  e2e/checkout.spec.ts
 ```
 
 ## Cases
@@ -63,5 +80,7 @@ features/payments/
   their folders straight in `src/`. (PR #479)
 - Feature folders stay flat and split by sub-flow past about 30 source files. (PR #479)
 - The two small apps with no user flows got no `index.ts` files and no boundaries. (PR #479)
+- Each feature's functional and end-to-end tests moved into the feature folder, under `__tests__/functional/` and
+  `__tests__/e2e/`. The suite configs, fixtures and helpers stayed in the app's `tests/`. (PR #479)
 
 Status: active
