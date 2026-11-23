@@ -11,7 +11,7 @@ import s from './ChatButton.module.css';
 export type ChatButtonProps = {
   /** Chat is available to this session in this product. */
   visible: Accessor<boolean>;
-  /** The docked chat panel is open. */
+  /** The chat panel is open. */
   open: Accessor<boolean>;
   /** The unread count as shown, undefined while there is none to show (the panel is open or nothing is unread). */
   unread: Accessor<string | undefined>;
@@ -23,7 +23,7 @@ export type ChatButtonProps = {
 };
 
 /**
- * The topbar's button for the docked chat panel.
+ * The topbar's button for the chat panel.
  * The unread count shows only while the panel is closed, since the room rows carry their own. When the panel
  * closes with focus inside it, focus returns here, or to `fallbackFocus` while this button is not on show.
  */

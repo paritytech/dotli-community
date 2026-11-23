@@ -10,7 +10,7 @@ import { ChatDock as Dock } from './ChatDock.js';
 import { useChatDock } from './useChatDock.js';
 
 /**
- * The docked product-chat panel, bound to the page's chat state. Astro hydrates it with no props, so the page's own
+ * The product-chat drawer, bound to the page's chat state. Astro hydrates it with no props, so the page's own
  * chat store is the default.
  */
 export function ChatDockIsland(props: { chat?: ChatStore }): JSX.Element {

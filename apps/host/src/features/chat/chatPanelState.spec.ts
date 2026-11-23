@@ -13,10 +13,9 @@ import { authState } from '../account/index.js';
 import { recordNotified } from '../../testing/recordNotified.js';
 import { chatPanelState } from './chatPanelState.js';
 import { createDeferred, noop } from '@dotli/shared';
-import { createMemoryStorage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
+import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
 let remove: () => void = noop;
-let local: Storage;
 let chat: ChatStore;
 let connections: ReturnType<typeof createChatConnections>;
 
@@ -34,10 +33,9 @@ async function postProductMessage(label: string, roomId: string): Promise<void> 
 }
 
 beforeEach(() => {
-  local = createMemoryStorage();
   connections = createChatConnections();
   chat = createChatStore({ repo: createMemoryChatRepo(), connections });
-  remove = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
+  remove = chatPanelState.start({ chat: () => Promise.resolve(chat) });
 });
 
 afterEach(() => {
@@ -170,7 +168,7 @@ describe('chat panel state', () => {
     productState.setLoaded({ label: 'early', productId: asProductId('early.dot') });
 
     // When
-    remove = chatPanelState.start({ storage: local });
+    remove = chatPanelState.start();
 
     // Then
     expect(chatPanelState.store.get().runtimeProductId).toBe('early.dot');
@@ -189,48 +187,6 @@ describe('chat panel state', () => {
     // Then
     expect(chatPanelState.store.get()).toMatchObject({ activeRoomId: null, composerError: null });
   });
-
-  it('As a user, I drag the panel width past its bounds and see it clamped, persisted and restored when the panel opens', () => {
-    // Given
-    showProduct('app');
-
-    // When the panel is dragged wide and saved, then dragged narrow, then opens
-    chatPanelState.setWidth(9999);
-    chatPanelState.persistWidth();
-    const persisted = chatPanelState.store.get().width;
-    const stored = local.getItem('dotli:chat-panel-width');
-    chatPanelState.setWidth(10);
-    const narrowed = chatPanelState.store.get().width;
-    chatPanelState.setOpen(true);
-
-    // Then
-    expect({ persisted, stored, narrowed, opened: chatPanelState.store.get().width }).toEqual({
-      persisted: 560,
-      stored: '560',
-      narrowed: 280,
-      opened: 560,
-    });
-  });
-
-  it.each([
-    { stored: '480', opened: 480 },
-    { stored: 'wide', opened: 360 },
-    { stored: '100', opened: 360 },
-    { stored: '900', opened: 560 },
-  ])(
-    'As a returning user, I open the panel at the width I saved, a stored width that does not parse opens at the default, a stored width below the minimum opens at the default, and one above the maximum opens at the maximum (stored $stored)',
-    ({ stored, opened }) => {
-      // Given a width saved in an earlier session and a product with chat
-      local.setItem('dotli:chat-panel-width', stored);
-      showProduct('app');
-
-      // When
-      chatPanelState.setOpen(true);
-
-      // Then
-      expect(chatPanelState.store.get().width).toBe(opened);
-    },
-  );
 
   it('As the chat panel, I follow the login, product and chat changes and read each new value at once', async () => {
     // Given each input set from inside the listener of the one before, and every listener reading the panel
@@ -268,25 +224,22 @@ describe('chat panel state', () => {
     });
   });
 
-  it('As a user, I drag the panel past its clamp and clear no error, and the panel redraws only for a new width', () => {
+  it('As a user, I clear no error, and the panel redraws only for a new error', () => {
     // Given
     productState.setLoaded({ label: 'app', productId: asProductId('app.dot'), details: { chat: true } });
-    chatPanelState.setWidth(10_000);
     const notified = recordNotified(chatPanelState.store);
 
     // When
-    chatPanelState.setWidth(10_000);
-    chatPanelState.setWidth(900);
     chatPanelState.setComposerError(null);
-    chatPanelState.setWidth(400);
+    chatPanelState.setComposerError('oops');
 
     // Then
-    expect(notified.map(state => state.width)).toEqual([400]);
+    expect(notified.map(state => state.composerError)).toEqual(['oops']);
   });
 
   it('As a user whose page started the chat panel state twice, I get a product message and see it count once as unread', async () => {
     // Given
-    onTestFinished(chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local }));
+    onTestFinished(chatPanelState.start({ chat: () => Promise.resolve(chat) }));
     showProduct('app');
 
     // When
@@ -302,7 +255,7 @@ describe('chat panel state', () => {
     authState.set({ tag: 'Connected', session: { connected: true } });
 
     // When
-    remove = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
+    remove = chatPanelState.start({ chat: () => Promise.resolve(chat) });
 
     // Then
     expect(chatPanelState.store.get().loggedIn).toBe(true);
@@ -312,7 +265,7 @@ describe('chat panel state', () => {
     // Given a panel state stopped while its chat store still loads
     remove();
     const loading = createDeferred<ChatStore>();
-    chatPanelState.start({ chat: () => loading.promise, storage: local })();
+    chatPanelState.start({ chat: () => loading.promise })();
     remove = noop;
     showProduct('app');
 
@@ -332,7 +285,7 @@ describe('chat panel state, rooms seen', () => {
     repo.reads.hold.messages = true;
     remove();
     chat = createChatStore({ repo, connections });
-    remove = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
+    remove = chatPanelState.start({ chat: () => Promise.resolve(chat) });
     return {
       /** Lets the waiting read land, once it has started. */
       async release() {

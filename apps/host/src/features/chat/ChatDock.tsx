@@ -3,7 +3,7 @@
 
 import { type Accessor, createEffect, createSignal, lazy, Loading, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { preloadWhenIdle, RootBoundary } from '@dotli/ui';
+import { Drawer, preloadWhenIdle, RootBoundary } from '@dotli/ui';
 import type { ChatConversation } from './chat.js';
 import type * as ChatPanelNamespace from './ChatPanel.js';
 import s from './ChatDock.module.css';
@@ -14,31 +14,25 @@ const PageChatPanel = lazy(() => import('./ChatPanel.js'), { export: 'ChatPanel'
 
 export type ChatDockProps = {
   open: Accessor<boolean>;
-  /** In px. The panel is border-box, so this is exactly the room it takes. */
-  width: Accessor<number>;
-  topbarHidden: Accessor<boolean>;
   /** Whether the chat button shows, which loads the panel's code while the page is idle. */
   available: Accessor<boolean>;
-  onClose: () => void;
-  /** The width a drag on the panel's edge asks for, before any clamp. */
-  onResize: (width: number) => void;
-  /** The drag ended, so the width can be kept. */
-  onResizeEnd: () => void;
+  /** Escape, a press outside, the close button, a swipe or a broken panel closes it. */
+  onOpenChange: (open: boolean) => void;
   conversation: ChatConversation;
-  /** Hands the panel's element over once it is on the page. Returns the hand back. */
+  /** Hands the panel's dialog over once it is on the page. Returns the hand back. */
   handOver?: ((panel: HTMLElement) => () => void) | undefined;
   /** Read once. Without one, the panel's own chunk. */
   loadPanel?: (() => Promise<ChatPanelModule>) | undefined;
 };
 
 /**
- * The docked product-chat panel. A chunk that fails to load or a panel that throws is reported and
- * the panel closes, so the next open tries again.
+ * The product-chat panel, in a drawer over the product. A chunk that fails to load or a panel that throws is reported
+ * and the panel closes, so the next open tries again.
  */
 export function ChatDock(props: ChatDockProps): JSX.Element {
   const loadPanel = untrack(() => props.loadPanel);
   const ChatPanel = loadPanel === undefined ? PageChatPanel : lazy(loadPanel, { export: 'ChatPanel' });
-  let aside: HTMLElement | undefined;
+  let body: HTMLDivElement | undefined;
 
   // Keeps the panel rendered while closed once it has opened.
   const [opened, setOpened] = createSignal(false);
@@ -55,48 +49,42 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
       }
     },
   );
-  // Lets the chat button take focus back on close unless the user moved it off the panel.
-  onSettled(() => (aside === undefined ? undefined : props.handOver?.(aside)));
+  // Lets the chat button take focus back on close unless the user moved it off the panel. The whole dialog, so focus
+  // on the drawer's own head counts as inside.
+  onSettled(() => {
+    const dialog = body?.closest<HTMLElement>('[role="dialog"]') ?? null;
+    return dialog === null ? undefined : props.handOver?.(dialog);
+  });
 
   return (
-    <aside
-      ref={el => {
-        aside = el;
-      }}
-      onKeyDown={ev => {
-        if (ev.key === 'Escape') {
-          props.onClose();
-        }
-      }}
-      class={s['panel']}
-      data-topbar-hidden={props.topbarHidden() ? '' : undefined}
+    <Drawer
+      open={props.open()}
+      onOpenChange={props.onOpenChange}
+      title={props.conversation.productName() ?? 'Chat'}
       id="chat-panel"
-      role="complementary"
-      aria-label="Product chat"
-      hidden={!props.open()}
-      style={{ width: `${String(props.width())}px` }}
+      testId="chat-panel"
     >
-      <Show when={opened()}>
-        {/* A broken panel closes and unmounts, so the next open renders it afresh. */}
-        <RootBoundary
-          root="chat"
-          onBroken={() => {
-            setOpened(false);
-            props.onClose();
-          }}
-        >
-          <Loading>
-            <ChatPanel
-              open={props.open}
-              width={props.width}
-              onClose={props.onClose}
-              onResize={props.onResize}
-              onResizeEnd={props.onResizeEnd}
-              conversation={props.conversation}
-            />
-          </Loading>
-        </RootBoundary>
-      </Show>
-    </aside>
+      <div
+        ref={el => {
+          body = el;
+        }}
+        class={s['panel']}
+      >
+        <Show when={opened()}>
+          {/* A broken panel closes and unmounts, so the next open renders it afresh. */}
+          <RootBoundary
+            root="chat"
+            onBroken={() => {
+              setOpened(false);
+              props.onOpenChange(false);
+            }}
+          >
+            <Loading>
+              <ChatPanel open={props.open} conversation={props.conversation} />
+            </Loading>
+          </RootBoundary>
+        </Show>
+      </div>
+    </Drawer>
   );
 }

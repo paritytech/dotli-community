@@ -45,9 +45,6 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-.header-button[hidden] {
-  display: none;
-}
 
 .rooms {
   display: flex;

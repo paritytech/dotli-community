@@ -2,24 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The ChatDock island against the page's real chat state: the panel element the dock hands over, which a chat button
-// needs to take focus back, the topbar it follows and the chat it reads. A missing binding would fail silently, so
+// needs to take focus back, the close it reports and the chat it reads. A missing binding would fail silently, so
 // these pin the wiring. The views are tested by the chat story plays.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
-import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
+import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections } from '../../createChatConnections.js';
 import { createChatStore, type ChatStore } from '../../createChatStore.js';
 import { toProductId } from '../../../../kit/getAskedProductId.js';
 import { authState } from '../../../account/session/authState.js';
 import { productState } from '../../../page/productState.js';
 import { createMemoryChatRepo } from '../../createChatStore.fake.js';
-import { topbarState } from '../../../page/topbarState.js';
 import { ChatDockIsland } from '../../ChatDockIsland.js';
 import { chatPanelState } from '../../chatPanelState.js';
-import { appears, byId, byTestId } from '@dotli/ui/testing';
+import { byId, byTestId } from '@dotli/ui/testing';
 
 const LABEL = 'chatty';
 const PRODUCT = asProductId(toProductId(LABEL));
@@ -38,8 +37,7 @@ function mountIsland(): void {
 
 beforeEach(() => {
   chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
-  const local = createMemoryStorage();
-  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
+  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat) });
   productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
   authState.set({ tag: 'Connected', session: { connected: true } });
 });
@@ -63,7 +61,7 @@ describe('ChatDock island', () => {
 
     // Then
     await waitForDom(() => document.querySelector('[data-testid="chat-room-name"]')?.textContent === 'Main');
-    expect(byId('chat-panel').hidden).toBe(false);
+    expect(byId('chat-panel').hasAttribute('data-open')).toBe(true);
     expect(byTestId('chat-room-name').textContent).toBe('Main');
   });
 
@@ -76,29 +74,11 @@ describe('ChatDock island', () => {
 
     // When
     chatPanelState.setOpen(true);
-    await appears('#chat-panel-close');
-    byId('chat-panel-close').focus();
-    byId('chat-panel-close').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await waitForDom(() => byId('chat-panel').hasAttribute('data-open'));
+    byTestId('chat-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
     // Then
-    await waitForDom(() => byId('chat-panel').hidden === true);
+    await waitForDom(() => !byId('chat-panel').hasAttribute('data-open'));
     expect(chatPanelState.store.get().open).toBe(false);
-  });
-
-  it('As a user, the panel stretches to the top while the topbar hides', async () => {
-    // Given
-    mountIsland();
-
-    // When
-    topbarState.setVisible(false);
-
-    // Then
-    await waitForDom(() => byId('chat-panel').hasAttribute('data-topbar-hidden'));
-
-    // When
-    topbarState.setVisible(true);
-
-    // Then
-    await waitForDom(() => !byId('chat-panel').hasAttribute('data-topbar-hidden'));
   });
 });

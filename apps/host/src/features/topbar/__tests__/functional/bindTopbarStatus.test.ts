@@ -6,7 +6,7 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { atom } from 'nanostores';
-import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
+import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections } from '../../../chat/createChatConnections.js';
 import { createChatStore } from '../../../chat/createChatStore.js';
 import { toProductId } from '../../../../kit/getAskedProductId.js';
@@ -24,7 +24,7 @@ describe('bindTopbarStatus', () => {
     document.body.innerHTML = '<header id="topbar"></header>';
     const bar = byId('topbar');
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
-    const stopChat = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: createMemoryStorage() });
+    const stopChat = chatPanelState.start({ chat: () => Promise.resolve(chat) });
     const product = asProductId(toProductId('chatty'));
     productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
     authState.set({ tag: 'Connected', session: { connected: true } });

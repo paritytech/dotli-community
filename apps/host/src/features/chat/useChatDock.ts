@@ -5,11 +5,9 @@ import { createEffect, onCleanup } from 'solid-js';
 import type { ChatStore } from './createChatStore.js';
 import { productState } from '../page/index.js';
 import { useStore } from '@dotli/stores-solid';
-import { productFrameLayout } from '../page/index.js';
 import type { ChatConversation, ChatFeed } from './chat.js';
 import type { ChatDockProps } from './ChatDock.js';
 import { chatPanelState } from './chatPanelState.js';
-import { topbarState } from '../page/index.js';
 
 /** The open panel's view of `chat`, read only while the panel body lives. */
 function openFeed(chat: ChatStore): ChatFeed {
@@ -42,7 +40,7 @@ function openFeed(chat: ChatStore): ChatFeed {
 
 /** What the chat panel shows of the page's chat state, for an island's own lifetime. */
 function useChatConversation(chat: ChatStore): ChatConversation {
-  // Slices, so a width drag or the composer-focus flag never re-runs the rows.
+  // Slices, so the composer-focus flag never re-runs the rows.
   const label = useStore(chatPanelState.store, state => state.label);
   const displayName = useStore(productState.store, state =>
     state.status === 'loaded' ? state.facts.displayName : undefined,
@@ -71,34 +69,12 @@ function useChatConversation(chat: ChatStore): ChatConversation {
   };
 }
 
-/**
- * The docked panel's props, for an island's own lifetime. It keeps the product frame clear of the open panel through
- * `reserveRight`, which takes the px the panel covers at the page's right edge.
- */
-export function useChatDock(
-  chat: ChatStore,
-  reserveRight: (px: number) => void = productFrameLayout.setChatWidth,
-): ChatDockProps {
-  const open = useStore(chatPanelState.store, state => state.open);
-  const width = useStore(chatPanelState.store, state => state.width);
-  createEffect(
-    () => (open() ? width() : 0),
-    (px, previous) => {
-      if (px !== 0 || (previous ?? 0) !== 0) {
-        reserveRight(px);
-      }
-    },
-  );
+/** The chat drawer's props, for an island's own lifetime. */
+export function useChatDock(chat: ChatStore): ChatDockProps {
   return {
-    open,
-    width,
-    topbarHidden: useStore(topbarState.store, state => !state.visible),
+    open: useStore(chatPanelState.store, state => state.open),
     available: useStore(chatPanelState.store, chatPanelState.isButtonVisible),
-    onClose: () => {
-      chatPanelState.setOpen(false);
-    },
-    onResize: chatPanelState.setWidth,
-    onResizeEnd: chatPanelState.persistWidth,
+    onOpenChange: chatPanelState.setOpen,
     conversation: useChatConversation(chat),
     handOver: chatPanelState.setElement,
   };

@@ -3,7 +3,7 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { bindCaptureSink } from '@dotli/metrics';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
 import { expectPhone, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
@@ -12,7 +12,7 @@ import type { ChatPanelModule } from './ChatDock.js';
 import { ChatItem } from './ChatButton.js';
 import { ChatDock } from './ChatDock.js';
 
-// The topbar's chat button over the docked panel, on a story's chat.
+// The topbar's chat button and the chat drawer it opens, on a story's chat.
 
 const SLOW = { timeout: 5000 };
 
@@ -34,6 +34,11 @@ function rowNamed(name: string): HTMLElement {
 
 function openChat(): void {
   byId('chat-button').click();
+}
+
+/** The drawer's close button in its wide form. */
+function closeButton(): HTMLElement {
+  return within(document.body).getByTestId('chat-panel-side-close');
 }
 
 async function openRoom(name: string): Promise<void> {
@@ -303,7 +308,7 @@ export const PerRoomUnreadUntilOpened: Story = {
       );
 
       // When
-      byId('chat-panel-close').click();
+      closeButton().click();
 
       // Then
       await waitFor(() => expect(byId('chat-unread-badge')).toBeVisible());
@@ -319,8 +324,8 @@ export const EscapeClosesAndRefocusesButton: Story = {
     await step('As a user, Escape closes the panel and returns focus to the chat button', async () => {
       // Given
       openChat();
-      await waitFor(() => expect(byId('chat-panel-close')).toBeVisible(), SLOW);
-      byId('chat-panel-close').focus();
+      await waitFor(() => expect(closeButton()).toBeVisible(), SLOW);
+      closeButton().focus();
 
       // When
       await userEvent.keyboard('{Escape}');
@@ -406,14 +411,14 @@ export const RenderErrorClosesThenRecovers: Story = {
   beforeEach: () => bindCaptureSink({ exception: fn(), expected: fn() }),
   play: async ({ step }) => {
     await step('As a user, a render error closes the panel and the next open recovers it', async () => {
-      // Given a product whose published name cannot be read the first time, which the panel title reads with no room open
+      // Given a shown room that cannot be read the first time, which the panel reads as it renders
       let thrown = false;
-      stage.conversation.productName = () => {
+      stage.conversation.activeRoomId = () => {
         if (!thrown) {
           thrown = true;
           throw new Error('render boom');
         }
-        return 'Broken render';
+        return null;
       };
 
       // When
@@ -427,8 +432,8 @@ export const RenderErrorClosesThenRecovers: Story = {
       openChat();
 
       // Then
-      await waitFor(() => expect(byId('chat-panel-close')).toBeVisible(), SLOW);
-      await expect(byId('chat-panel-title')).toHaveTextContent('Broken render');
+      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible(), SLOW);
+      await expect(byId('chat-panel-hint')).toHaveTextContent('Waiting for the app to start a chat.');
     });
   },
 };

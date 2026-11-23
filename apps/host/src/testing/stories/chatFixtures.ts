@@ -22,8 +22,6 @@ const PRODUCT = 'chatty.dot';
 /** The page's chat state, as the views read it. */
 export type StageState = {
   open: boolean;
-  width: number;
-  topbarHidden: boolean;
   /** Whether the chat button shows. */
   available: boolean;
   loggedIn: boolean;
@@ -38,8 +36,6 @@ export type StageState = {
 
 const INITIAL: StageState = {
   open: false,
-  width: 360,
-  topbarHidden: false,
   available: true,
   loggedIn: true,
   productName: 'chatty',
@@ -60,18 +56,14 @@ type FeedState = {
 /** The page's chat state as the host's dock reads it. */
 export type StageDock = {
   open: Accessor<boolean>;
-  width: Accessor<number>;
-  topbarHidden: Accessor<boolean>;
   available: Accessor<boolean>;
-  onClose: () => void;
-  onResize: (width: number) => void;
-  onResizeEnd: () => void;
+  onOpenChange: (open: boolean) => void;
   conversation: ChatConversation;
   handOver: (panel: HTMLElement) => () => void;
 };
 
 /** The part of the dock's props the dock hands its panel. */
-export type StagePanel = Pick<StageDock, 'open' | 'width' | 'onClose' | 'onResize' | 'onResizeEnd' | 'conversation'>;
+export type StagePanel = Pick<StageDock, 'open' | 'conversation'>;
 
 /** A user reply as it reached the product. */
 export type Published = {
@@ -99,8 +91,6 @@ export type ChatStage = {
   renders: { request: ProductRendererRenderRequest; sink: ChatRenderSink }[];
   /** How many renders were disposed. */
   disposedRenders: () => number;
-  resizes: number[];
-  resizeEnds: () => number;
   createRoom(roomId: string, name: string, icon?: string): void;
   registerBot(botId: string, name: string, icon?: string): void;
   productSays(roomId: string, content: ChatMessageContent | string): void;
@@ -133,7 +123,6 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
   let shownRoom: string | null = null;
   let following = false;
   let disposed = 0;
-  let resizeEnds = 0;
   let panelElement: HTMLElement | undefined;
 
   const update = (patch: Partial<StageState>): void => {
@@ -262,19 +251,6 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     },
   };
 
-  const frame = {
-    onClose: () => {
-      update({ open: false });
-    },
-    onResize: (width: number) => {
-      stage.resizes.push(width);
-      update({ width });
-    },
-    onResizeEnd: () => {
-      resizeEnds += 1;
-    },
-  };
-
   const stage: ChatStage = {
     state,
     update,
@@ -290,8 +266,6 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     rendererActions: [],
     renders: [],
     disposedRenders: () => disposed,
-    resizes: [],
-    resizeEnds: () => resizeEnds,
     createRoom: (roomId, name, icon = '') => {
       stage.rooms.push({ roomId, name, icon, createdAt: stamp() });
       readSoon();
@@ -325,16 +299,14 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     conversation,
     panel: {
       open: () => current().open,
-      width: () => current().width,
-      ...frame,
       conversation,
     },
     dock: {
       open: () => current().open,
-      width: () => current().width,
-      topbarHidden: () => current().topbarHidden,
       available: () => current().available,
-      ...frame,
+      onOpenChange: open => {
+        update({ open });
+      },
       conversation,
       handOver: el => {
         panelElement = el;

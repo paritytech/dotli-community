@@ -19,7 +19,7 @@ function textOf(text: string): ChatMessageContent {
 const LONG = 'A message long enough to take a few lines in the panel.';
 const FORTY = Array.from({ length: 40 }, (_, i) => textOf(`${String(i + 1)}. ${LONG}`));
 
-/** Stands in for the host's chat dock, whose aside sizes the panel by its width. */
+/** Stands in for the drawer the host's chat dock puts the panel in. */
 function PanelFrame(props: { children: JSX.Element }): JSX.Element {
   return (
     <aside
@@ -31,8 +31,7 @@ function PanelFrame(props: { children: JSX.Element }): JSX.Element {
         top: '0',
         right: '0',
         bottom: '0',
-        width: `${String(stage.panel.width())}px`,
-        // A phone's dock is never wider than the screen, whatever width a drag asked for.
+        width: '360px',
         'max-width': '100%',
         display: 'flex',
         'flex-direction': 'column',
@@ -304,40 +303,6 @@ export const EmptyFooterHasNoComposer: Story = {
     await step('Then its conversation shows no message box and says it is read only', async () => {
       await expect(within(canvasElement).getByPlaceholderText('Message')).not.toBeVisible();
       await expect(query(canvasElement, '#chat-panel-hint')).toHaveTextContent('This chat is read only.');
-    });
-  },
-};
-
-/** As a reader, I drag the panel edge to resize it, and the drag ends at the width the pointer last asked for. */
-export const DragEdgeResizes: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    stage.seed(3);
-  },
-  play: async ({ canvasElement, step }) => {
-    const handle = query(canvasElement, '#chat-panel-resize');
-    const drag = (type: string, clientX = 0): void => {
-      handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }));
-    };
-    await step('Given a 360 px panel', async () => {
-      await expect(stage.panel.width()).toBe(360);
-    });
-    await step('When I drag its edge 100 px out, it asks to widen by as much', async () => {
-      drag('pointerdown', 1000);
-      drag('pointermove', 900);
-      await expect(stage.resizes).toEqual([460]);
-    });
-    await step('When I drag far past the widest, it asks for all of it, which the page clamps', async () => {
-      drag('pointermove', 0);
-      await expect(stage.resizes.at(-1)).toBe(1360);
-    });
-    await step('When the pointer is cancelled and moves on, the drag ends at the width it last asked for', async () => {
-      drag('pointermove', 950);
-      drag('pointercancel');
-      drag('pointermove', 1100);
-      await expect(stage.resizes.at(-1)).toBe(410);
-      await expect(stage.resizes).toHaveLength(3);
-      await expect(stage.resizeEnds()).toBe(1);
     });
   },
 };

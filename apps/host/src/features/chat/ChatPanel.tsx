@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The chat panel's contents. The host's chat dock owns the panel element.
+// The chat panel's contents, below the drawer's head that names the product and closes the panel.
 
 import {
   type Accessor,
@@ -15,9 +15,8 @@ import {
   untrack,
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ChevronLeftIcon, CloseIcon, SendIcon } from '@dotli/ui/icons';
+import { ChevronLeftIcon, SendIcon } from '@dotli/ui/icons';
 import { ContactRow } from './ContactRow.js';
-import { ResizeHandle } from './ResizeHandle.js';
 import { MessageRow } from './MessageRow.js';
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
@@ -33,7 +32,7 @@ type View = 'loading' | 'empty' | 'list' | 'conversation';
 // Within this many px of the end, the reader counts as at the newest message.
 const STICK_THRESHOLD_PX = 24;
 
-function PanelBody(props: { conversation: ChatConversation; onClose: () => void }): JSX.Element {
+function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
   // The binding is fixed for the panel's life.
   const chat = untrack(() => props.conversation);
   const feed = chat.openFeed();
@@ -161,8 +160,6 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
     };
   });
 
-  const title = (): string => activeContact()?.name ?? chat.productName() ?? 'Chat';
-
   // The product chose what its room shows below the messages.
   const composing = (): boolean => view() === 'conversation' && activeContact()?.footer !== 'Empty';
 
@@ -227,36 +224,25 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
 
   return (
     <>
-      <div class={s['header']}>
-        <button
-          type="button"
-          class={s['headerButton']}
-          id="chat-panel-back"
-          title="Back to rooms"
-          aria-label="Back to rooms"
-          hidden={view() !== 'conversation'}
-          onClick={() => {
-            chat.backToRooms();
-          }}
-        >
-          <ChevronLeftIcon />
-        </button>
-        <span class={s['title']} id="chat-panel-title">
-          {title()}
-        </span>
-        <button
-          type="button"
-          class={s['headerButton']}
-          id="chat-panel-close"
-          title="Close chat"
-          aria-label="Close chat"
-          onClick={() => {
-            props.onClose();
-          }}
-        >
-          <CloseIcon size={14} />
-        </button>
-      </div>
+      <Show when={view() === 'conversation'}>
+        <div class={s['header']}>
+          <button
+            type="button"
+            class={s['headerButton']}
+            id="chat-panel-back"
+            title="Back to rooms"
+            aria-label="Back to rooms"
+            onClick={() => {
+              chat.backToRooms();
+            }}
+          >
+            <ChevronLeftIcon />
+          </button>
+          <span class={s['title']} id="chat-panel-title">
+            {activeContact()?.name}
+          </span>
+        </div>
+      </Show>
       {/* role="list" again because Safari drops it from a list without bullets. */}
       <ul class={s['rooms']} id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden={view() !== 'list'}>
         <Show when={view() === 'list'}>
@@ -373,28 +359,13 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
 
 export type ChatPanelProps = {
   open: Accessor<boolean>;
-  /** In px, which a drag on the panel's edge starts from. */
-  width: Accessor<number>;
-  onClose: () => void;
-  /** The width a drag on the edge asks for, before any clamp. */
-  onResize: (width: number) => void;
-  /** The drag ended, so the width can be kept. */
-  onResizeEnd: () => void;
   conversation: ChatConversation;
 };
 
 export function ChatPanel(props: ChatPanelProps): JSX.Element {
   return (
-    <>
-      <ResizeHandle
-        id="chat-panel-resize"
-        width={props.width}
-        onResize={props.onResize}
-        onResizeEnd={props.onResizeEnd}
-      />
-      <Show when={props.open()}>
-        <PanelBody conversation={props.conversation} onClose={props.onClose} />
-      </Show>
-    </>
+    <Show when={props.open()}>
+      <PanelBody conversation={props.conversation} />
+    </Show>
   );
 }

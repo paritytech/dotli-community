@@ -3,14 +3,7 @@
 
 // Outside Solid, since islands that hydrate apart read it. It keeps no rooms, bots or messages.
 
-import {
-  createSharedRun,
-  pageLocalStorage,
-  registerStoreStateReset,
-  registerAtomReset,
-  isShallowEqual,
-  type SafeStorage,
-} from '@dotli/shared';
+import { createSharedRun, registerStoreStateReset, registerAtomReset, isShallowEqual } from '@dotli/shared';
 import type { ProductId } from '@parity/truapi';
 import { atom, type ReadableAtom } from 'nanostores';
 import { createReporter } from '@dotli/metrics';
@@ -33,24 +26,14 @@ export type ChatPanelState = {
   composerError: string | null;
   /** One-shot: focus the composer after picking a room. */
   focusComposer: boolean;
-  width: number;
 };
-
-type WidthStorage = Pick<SafeStorage, 'getItem' | 'setItem'>;
 
 type Params = {
   /** Loads the chat store whose product messages count as unread, the page's by default. */
   chat?: () => Promise<Pick<ChatStore, 'subscribe'>>;
-  /** Keeps the dragged panel width across sessions, the page's local storage by default. */
-  storage?: WidthStorage;
 };
 
 const report = createReporter({ flow: 'chat' });
-
-const PANEL_WIDTH_KEY = 'dotli:chat-panel-width';
-const MIN_PANEL_WIDTH = 280;
-const MAX_PANEL_WIDTH = 560;
-const DEFAULT_PANEL_WIDTH = 360;
 
 const panel = atom<ChatPanelState>({
   label: null,
@@ -62,14 +45,11 @@ const panel = atom<ChatPanelState>({
   unreadByRoom: {},
   composerError: null,
   focusComposer: false,
-  width: DEFAULT_PANEL_WIDTH,
 });
-// A drag past the clamp and repeated product or session events rebuild an equal state.
+// Repeated product or session events rebuild an equal state.
 panel.eq = isShallowEqual;
 registerAtomReset(panel);
 const store: ReadableAtom<ChatPanelState> = panel;
-
-let widthStorage: WidthStorage = pageLocalStorage;
 
 // The panel hydrates as an island of its own, so its element is handed over here, not passed in.
 let panelElement: HTMLElement | undefined;
@@ -85,7 +65,7 @@ export const chatPanelState = {
   isButtonVisible,
   /** Returns the unread count summed over every room of `state`. Never throws. */
   getTotalUnread,
-  /** Opens the panel at its stored width, or closes it. The panel stays closed while the button is hidden. Never throws. */
+  /** Opens or closes the panel. The panel stays closed while the button is hidden. Never throws. */
   setOpen,
   /** Shows the room `roomId` and focuses its composer. Never throws. */
   openRoom,
@@ -102,10 +82,6 @@ export const chatPanelState = {
   setComposerError,
   /** Returns whether a room asked to focus its composer, and clears that one-shot request. Never throws. */
   claimComposerFocus,
-  /** Sets the panel width, clamped to the allowed range. Never throws. */
-  setWidth,
-  /** Stores the panel's width for later sessions. Never throws. */
-  persistWidth,
   /**
    * Follows the session, the product on show and its chat messages until the returned stop. The messages are followed
    * from once the chat store has loaded. A call while the follows run joins them and ignores its params, and they end
@@ -121,10 +97,8 @@ export const chatPanelState = {
   setElement,
 };
 
-// The store resets itself. The width storage beside it goes back to the page's, the follows end and the element is
-// let go.
+// The store resets itself. The follows end and the element is let go.
 registerStoreStateReset(() => {
-  widthStorage = pageLocalStorage;
   run.end();
   panelElement = undefined;
 });
@@ -143,11 +117,7 @@ function getTotalUnread(state: ChatPanelState = panel.get()): number {
 }
 
 function setOpen(open: boolean): void {
-  const state = panel.get();
-  if (state.open === open) {
-    return;
-  }
-  update(open ? { open, width: readStoredWidth() } : { open });
+  update({ open });
 }
 
 function openRoom(roomId: string): void {
@@ -196,19 +166,8 @@ function claimComposerFocus(): boolean {
   return true;
 }
 
-function setWidth(width: number): void {
-  update({ width: clampWidth(width) });
-}
-
-function persistWidth(): void {
-  widthStorage.setItem(PANEL_WIDTH_KEY, String(panel.get().width));
-}
-
-function start({
-  chat = async () => (await import('./createChatStore.js')).chatStore,
-  storage = pageLocalStorage,
-}: Params = {}): () => void {
-  return run.join({ chat, storage });
+function start({ chat = async () => (await import('./createChatStore.js')).chatStore }: Params = {}): () => void {
+  return run.join({ chat });
 }
 
 function getElement(): HTMLElement | undefined {
@@ -225,8 +184,7 @@ function setElement(element: HTMLElement): () => void {
   return releaseElement;
 }
 
-function beginFollowing({ chat, storage }: Required<Params>): () => void {
-  widthStorage = storage;
+function beginFollowing({ chat }: Required<Params>): () => void {
   followSession();
   followProduct();
   // The store's chunk stays off the boot path, so unread counting starts once it loads.
@@ -298,18 +256,6 @@ function countUnreadMessage(change: ChatChange): void {
       [change.roomId]: (state.unreadByRoom[change.roomId] ?? 0) + 1,
     },
   });
-}
-
-function readStoredWidth(): number {
-  const raw = Number(widthStorage.getItem(PANEL_WIDTH_KEY));
-  if (Number.isFinite(raw) && raw >= MIN_PANEL_WIDTH) {
-    return Math.min(raw, MAX_PANEL_WIDTH);
-  }
-  return DEFAULT_PANEL_WIDTH;
-}
-
-function clampWidth(width: number): number {
-  return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, width));
 }
 
 function commit(next: ChatPanelState): void {
