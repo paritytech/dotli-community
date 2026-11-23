@@ -206,8 +206,8 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     unreadByRoom: () => current().unreadByRoom,
     composerError: () => current().composerError,
     openFeed,
-    openRoom: roomId => {
-      update({ activeRoomId: roomId, focusComposer: true });
+    openRoom: (roomId, { focusComposer = true } = {}) => {
+      update({ activeRoomId: roomId, focusComposer });
     },
     backToRooms: () => {
       update({ activeRoomId: null, composerError: null });

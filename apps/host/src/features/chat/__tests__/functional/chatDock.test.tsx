@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 describe('ChatDock island', () => {
-  it("As a user of a product with one room, the open panel shows that room from the page's chat as open", async () => {
+  it("As a user of a product with one room, the open panel shows that room from the page's chat as open, with the composer unfocused", async () => {
     // Given
     mountIsland();
 
@@ -63,6 +63,8 @@ describe('ChatDock island', () => {
     await waitForDom(() => document.getElementById('chat-panel-title')?.textContent === 'Main');
     expect(byId('chat-panel').hasAttribute('data-open')).toBe(true);
     expect(chatPanelState.store.get().activeRoomId).toBe('main');
+    await waitForDom(() => byId('chat-panel-hint').textContent === 'No messages yet.');
+    expect(document.activeElement).not.toBe(byId('chat-panel-input'));
   });
 
   it('As a user, Escape in the panel closes it on the page', async () => {

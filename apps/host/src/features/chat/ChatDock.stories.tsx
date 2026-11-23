@@ -105,7 +105,10 @@ export const EmptyRoomListHint: Story = {
   },
 };
 
-/** As a user of a product with one room, I land in its conversation, and a second room lets me go back to the list. */
+/**
+ * As a user of a product with one room, I land in its conversation with the keyboard down, and a second room lets me go
+ * back to the list.
+ */
 export const OneRoomOpensOnItsConversation: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -117,14 +120,17 @@ export const OneRoomOpensOnItsConversation: Story = {
       openChat();
       await soleRoomShows();
     });
-    await step('Then its conversation shows, open and ready to type, with no room list and no way back', async () => {
-      await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello from the app'), SLOW);
-      await expect(byId('chat-panel-title')).toHaveTextContent('Main');
-      await expect(stage.state.get().activeRoomId).toBe('main');
-      await waitFor(() => expect(byId('chat-panel-input')).toHaveFocus());
-      await expect(byId('chat-panel-rooms')).not.toBeVisible();
-      await expect(document.getElementById('chat-panel-back')).toBeNull();
-    });
+    await step(
+      'Then its conversation shows, open, with focus on the drawer, no room list and no way back',
+      async () => {
+        await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello from the app'), SLOW);
+        await expect(byId('chat-panel-title')).toHaveTextContent('Main');
+        await expect(stage.state.get().activeRoomId).toBe('main');
+        await expect(within(document.body).getByTestId('chat-panel')).toHaveFocus();
+        await expect(byId('chat-panel-rooms')).not.toBeVisible();
+        await expect(document.getElementById('chat-panel-back')).toBeNull();
+      },
+    );
     await step('When a second room appears', () => {
       stage.createRoom('news', 'News');
     });

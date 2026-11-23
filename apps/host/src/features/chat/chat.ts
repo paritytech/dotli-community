@@ -83,6 +83,12 @@ export type ChatFeed = {
   follow: (shown: Accessor<string | null>) => void;
 };
 
+/** How a room opens. */
+export type OpenRoomParams = {
+  /** Whether its composer takes focus once its messages show. True unless the panel opened the room itself. */
+  focusComposer?: boolean;
+};
+
 /** What the open panel shows of the page's chat state, and what it asks the page to do. */
 export type ChatConversation = {
   loggedIn: Accessor<boolean>;
@@ -94,11 +100,11 @@ export type ChatConversation = {
   composerError: Accessor<string | null>;
   /** Called as the panel body opens, under its owner, so its reads stop as the panel closes. */
   openFeed: () => ChatFeed;
-  openRoom: (roomId: string) => void;
+  openRoom: (roomId: string, params?: OpenRoomParams) => void;
   backToRooms: () => void;
   /** The open room is no longer in the list. */
   roomGone: () => void;
-  /** True once after a room was picked, which asks the composer to take focus. */
+  /** True once after the user picked a room, which asks the composer to take focus. */
   claimComposerFocus: () => boolean;
   setComposerError: (message: string | null) => void;
   /**

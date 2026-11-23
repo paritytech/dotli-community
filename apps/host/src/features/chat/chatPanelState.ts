@@ -9,6 +9,7 @@ import { atom, type ReadableAtom } from 'nanostores';
 import { createReporter } from '@dotli/metrics';
 import type { ChatStore } from './createChatStore.js';
 import type { ChatChange, ChatView } from './createChatView.js';
+import type { OpenRoomParams } from './chat.js';
 import { productState } from '../page/index.js';
 import { authState } from '../account/index.js';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
@@ -26,7 +27,7 @@ export type ChatPanelState = {
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
   composerError: string | null;
-  /** One-shot: focus the composer after picking a room. */
+  /** One-shot: focus the composer once the room the user picked shows. */
   focusComposer: boolean;
 };
 
@@ -72,7 +73,10 @@ export const chatPanelState = {
   getTotalUnread,
   /** Opens or closes the panel. The panel stays closed while the button is hidden. Never throws. */
   setOpen,
-  /** Shows the room `roomId` and focuses its composer. Never throws. */
+  /**
+   * Shows the room `roomId` and focuses its composer, unless `focusComposer` is false, as for a room the panel opens
+   * itself. Never throws.
+   */
   openRoom,
   /** Shows the room list and clears the composer error, also in place of a room that no longer exists. Never throws. */
   backToRooms,
@@ -129,8 +133,8 @@ function setOpen(open: boolean): void {
   update({ open });
 }
 
-function openRoom(roomId: string): void {
-  update({ activeRoomId: roomId, focusComposer: true });
+function openRoom(roomId: string, { focusComposer = true }: OpenRoomParams = {}): void {
+  update({ activeRoomId: roomId, focusComposer });
 }
 
 function backToRooms(): void {

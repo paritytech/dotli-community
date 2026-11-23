@@ -106,11 +106,12 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
   feed.follow(() => shownContact()?.id ?? null);
 
   // Showing the sole room opens it, so it stays open once a second room appears, and the page treats it as open.
+  // The user did not pick it, so its composer leaves the keyboard down.
   createEffect(
     () => (chat.activeRoomId() === null ? (soleContact()?.id ?? null) : null),
     roomId => {
       if (roomId !== null) {
-        chat.openRoom(roomId);
+        chat.openRoom(roomId, { focusComposer: false });
       }
     },
   );
