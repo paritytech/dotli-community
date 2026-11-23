@@ -3,7 +3,8 @@
 
 import type { Middleware } from '@floating-ui/dom';
 import { describe, expect, it } from 'vitest';
-import { getPositionConfig, type TriggerPlacement } from './placeAtTrigger.js';
+import type { TriggerPlacement } from './FloatingLayer.js';
+import { getPositionConfig } from './placeAtTrigger.js';
 
 describe('getPositionConfig', () => {
   it.each<[TriggerPlacement, string, string]>([

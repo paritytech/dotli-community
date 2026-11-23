@@ -13,12 +13,9 @@ import {
   type SizeOptions,
 } from '@floating-ui/dom';
 import { createReporter, defineCount } from '@dotli/metrics';
-import type { Placement } from './FloatingLayer.js';
+import type { TriggerPlacement } from './FloatingLayer.js';
 
-/** A placement against the layer's trigger. */
-export type TriggerPlacement = Exclude<Placement, 'topbar-end'>;
-
-type ConfigParams = {
+type GetPositionConfigParams = {
   /** The space between the trigger and the surface, in px. */
   gap: number;
   /** Writes the room the pass found. */
@@ -87,7 +84,10 @@ export function placeAtTrigger({ trigger, surface, placement }: Params): () => v
  * The Floating UI options for a placement: below the trigger when the content fits there, else the side with more
  * room, kept on screen across and sized to the room it gets.
  */
-export function getPositionConfig(placement: TriggerPlacement, { gap, apply }: ConfigParams): ComputePositionConfig {
+export function getPositionConfig(
+  placement: TriggerPlacement,
+  { gap, apply }: GetPositionConfigParams,
+): ComputePositionConfig {
   const { preferred, fallback } = SIDES[placement];
   return {
     strategy: 'fixed',
