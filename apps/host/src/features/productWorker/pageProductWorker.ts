@@ -4,13 +4,10 @@
 // The page product's worker over the page's own core, prompts, grants and content. Loaded once the product is first
 // done, so the VM's client, the fetch gate and the archive reader stay out of the boot and bridge chunks.
 
-import { getBackend, hasLightClient } from '@dotli/config';
-import { readArchiveFiles } from '@dotli/content';
 import { createQuickJsWorker, type ModuleFiles } from '@dotli/quickjs-runtime';
 import QuickJsWorker from '@dotli/quickjs-runtime/worker?worker';
-import { blockCache } from '@dotli/storage';
 import { createHostFetchGate } from '../permissions/index.js';
-import { readWorkerExecutable, type NameSource } from '../productLoad/index.js';
+import { readServedArchive, readWorkerExecutable, type NameSource } from '../productLoad/index.js';
 import type { HostBridge } from '../productRuntime/index.js';
 import { startProductWorker } from './startProductWorker.js';
 
@@ -32,11 +29,7 @@ export function startPageProductWorker({ label, names, bridge }: PageProductWork
     core: { acquire: bridge.acquirePageCore },
     readExecutable: name => readWorkerExecutable(name, names),
     readFiles: async cid => {
-      // As the sandbox is served: blocks on the light client, the gateway on rpc-gateway.
-      const files = await readArchiveFiles(
-        cid,
-        hasLightClient(getBackend()) ? { blockSource: relayBlock } : { gateway: true },
-      );
+      const files = await readServedArchive(cid, bridge.hostBitswapClient);
       return new Map(Object.entries(files)) satisfies ModuleFiles;
     },
     openGate: () => {
@@ -55,9 +48,4 @@ export function startPageProductWorker({ label, names, bridge }: PageProductWork
         createWorker: () => new QuickJsWorker(),
       }),
   });
-
-  /** From the block cache, else over bitswap. */
-  async function relayBlock(cid: string): Promise<Uint8Array> {
-    return (await blockCache.get(cid)) ?? bridge.hostBitswapClient.get(cid);
-  }
 }
