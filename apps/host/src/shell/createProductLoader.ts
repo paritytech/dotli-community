@@ -178,32 +178,21 @@ type Params = {
 
 /** Builds the page's loader. Never throws. */
 export function createProductLoader(params: Params) {
-  /** Fails a load whose product is not on screen yet, and queues its failure screen. */
+  /** Fails a load whose product is not on screen yet, and reloads or queues its failure screen. */
   const failLoad: HandlerOf<
     LoadMachine,
     'readingCache' | 'resolvingName' | 'readingManifests' | 'holdingCore' | 'rendering',
     'stepFailed'
-  > = (state, { error }, { emitState, emitSideEffect, update }) => {
+  > = (state, { error }, transition) => {
     const { run } = state;
     const description = describe(error);
-    const updated = isFromNewerRelease(description);
-    emitState(
-      updated
-        ? { kind: 'reloading', label: run.label, error, description, stood: { kind: 'beforeScreen' } }
-        : { kind: 'failing', label: run.label, error, description },
-    );
-    emitSideEffect({ kind: 'failed', error, description });
-    emitSideEffect({ kind: 'coreReleased', coreHold: run.coreHold });
+    transition.emitSideEffect({ kind: 'failed', error, description });
+    transition.emitSideEffect({ kind: 'coreReleased', coreHold: run.coreHold });
     // A render that failed after it mounted the product leaves it holding its core under the failure screen.
     if (state.kind === 'rendering') {
-      emitSideEffect({ kind: 'frameHalted' });
+      transition.emitSideEffect({ kind: 'frameHalted' });
     }
-    if (updated) {
-      emitSideEffect({ kind: 'updateReloadDue' });
-      return;
-    }
-    // Its own transition after these effects, so the report, the error state and the halt land before the screen shows.
-    update({ kind: 'showFailure' });
+    reloadOrFallBack({ label: run.label, error, description, stood: { kind: 'beforeScreen' } }, transition);
   };
   const machine = createStateMachine<LoadMachine>({
     initial: { kind: 'idle' },
@@ -362,22 +351,12 @@ export function createProductLoader(params: Params) {
         },
       },
       handingOff: {
-        productFailed({ run, stopListening }, { error }, { emitState, emitSideEffect, update }) {
+        productFailed({ run, stopListening }, { error }, transition) {
           const description = describe(error);
-          const updated = isFromNewerRelease(description);
+          transition.emitSideEffect({ kind: 'failed', error, description });
+          transition.emitSideEffect({ kind: 'frameHalted' });
           // The first load still waits, so it ends as one that failed before the product reached the screen.
-          emitState(
-            updated
-              ? { kind: 'reloading', label: run.label, error, description, stood: { kind: 'beforeScreen' } }
-              : { kind: 'failing', label: run.label, error, description },
-          );
-          emitSideEffect({ kind: 'failed', error, description });
-          emitSideEffect({ kind: 'frameHalted' });
-          if (updated) {
-            emitSideEffect({ kind: 'updateReloadDue' });
-          } else {
-            update({ kind: 'showFailure' });
-          }
+          reloadOrFallBack({ label: run.label, error, description, stood: { kind: 'beforeScreen' } }, transition);
           // Last, so a stop that throws cannot drop the failure's report, the halt or the screen.
           stopListening();
         },
@@ -399,23 +378,12 @@ export function createProductLoader(params: Params) {
         },
       },
       onScreen: {
-        productFailed({ run, stopListening }, { error, failure }, { emitState, emitSideEffect }) {
+        productFailed({ run, stopListening }, { error, failure }, transition) {
           const description = describe(error);
-          const updated = isFromNewerRelease(description);
-          // Nothing waits on a load whose product reached the screen, so it ends here and its screen is an effect.
-          emitState(
-            updated
-              ? { kind: 'reloading', label: run.label, error, description, stood: { kind: 'onScreen', failure } }
-              : { kind: 'ended', error: null },
-          );
-          emitSideEffect({ kind: 'failed', error, description });
+          transition.emitSideEffect({ kind: 'failed', error, description });
           // Only a reload brings back a product that was on screen, so the frame stops showing it.
-          emitSideEffect({ kind: 'frameHalted' });
-          emitSideEffect(
-            updated
-              ? { kind: 'updateReloadDue' }
-              : { kind: 'failureShown', label: run.label, error, description, failure },
-          );
+          transition.emitSideEffect({ kind: 'frameHalted' });
+          reloadOrFallBack({ label: run.label, error, description, stood: { kind: 'onScreen', failure } }, transition);
           // Last, so a stop that throws cannot drop the failure's report, the halt or the screen.
           stopListening();
         },
@@ -435,19 +403,8 @@ export function createProductLoader(params: Params) {
         },
       },
       reloading: {
-        reloadRefused({ label, error, description, stood }, _event, { emitState, emitSideEffect, update }) {
-          switch (stood.kind) {
-            case 'beforeScreen':
-              // The first load still waits, so its screen shows in a transition of its own and sets what it settles
-              // with.
-              emitState({ kind: 'failing', label, error, description });
-              update({ kind: 'showFailure' });
-              return;
-            case 'onScreen':
-              emitState({ kind: 'ended', error: null });
-              emitSideEffect({ kind: 'failureShown', label, error, description, failure: stood.failure });
-              return;
-          }
+        reloadRefused(state, _event, transition) {
+          fallBack(state, transition);
         },
       },
       ended: null,
@@ -572,6 +529,42 @@ function holdCore(
       () => ({ kind: 'coreHeld' }),
     ),
   );
+}
+
+/** A failed load: its label, its error and that error's description, and where the load stood when it failed. */
+type FailedLoad = Omit<Extract<LoadState, { kind: 'reloading' }>, 'kind'>;
+
+/** Reloads the page for a failure that a newer release causes, and otherwise falls back to where the load stood. */
+function reloadOrFallBack(failed: FailedLoad, transition: Transition<LoadMachine>): void {
+  if (isFromNewerRelease(failed.description)) {
+    transition.emitState({ kind: 'reloading', ...failed });
+    transition.emitSideEffect({ kind: 'updateReloadDue' });
+    return;
+  }
+  fallBack(failed, transition);
+}
+
+/**
+ * Ends a failed load as it stood: before the screen with a screen of its own, or once on screen with its screen as an
+ * effect.
+ */
+function fallBack(
+  { label, error, description, stood }: FailedLoad,
+  { emitState, emitSideEffect, update }: Transition<LoadMachine>,
+): void {
+  switch (stood.kind) {
+    case 'beforeScreen':
+      // The first load still waits, so its screen shows in a transition of its own, after the failure's report, error
+      // state and halt, and sets what the load settles with.
+      emitState({ kind: 'failing', label, error, description });
+      update({ kind: 'showFailure' });
+      return;
+    case 'onScreen':
+      // Nothing waits on a load whose product reached the screen, so it ends here and its screen is an effect.
+      emitState({ kind: 'ended', error: null });
+      emitSideEffect({ kind: 'failureShown', label, error, description, failure: stood.failure });
+      return;
+  }
 }
 
 /** Runs `work` and makes `toEvent`'s event of its value, or a step failure of its failure, a throw included. */
