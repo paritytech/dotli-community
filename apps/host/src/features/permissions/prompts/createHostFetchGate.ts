@@ -125,8 +125,8 @@ export function createHostFetchGate({ label, scope, prompts = hostPrompts, grant
 
   return {
     /**
-     * Resolves whether the worker may fetch from `host`, as a URL names it. Never rejects: a grant that cannot be read
-     * or saved, or an ask that fails, denies.
+     * Resolves whether the worker may fetch from `host`, as a URL names it. A grant that cannot be read or saved, or
+     * an ask that fails, denies.
      */
     isHostAllowed(host: string): Promise<boolean> {
       const calledAt = verdictCount;

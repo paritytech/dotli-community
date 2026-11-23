@@ -169,7 +169,6 @@ export function createNameSource({ backend, remote, loadRpc, report = reportOwne
 
 /** A worker manifest and its subname's CID, as the worker they make, or null when they make none. */
 function toWorkerExecutable(manifest: ManifestResult<ExecutableManifest>, cid: string | null): WorkerExecutable | null {
-  // The resolver judges a manifest whose kind disagrees with its subname invalid, so only the type needs the kind.
   if (manifest.kind !== 'ok' || manifest.value.kind !== 'worker') {
     resolveReport.log.event('Product has no usable worker manifest, so no worker', { manifest: manifest.kind });
     return null;

@@ -47,7 +47,7 @@ export type ProductWorkerParams = {
    * the boot's error when the core it dials cannot boot.
    */
   core: { acquire(): Promise<WorkerLease> };
-  /** Resolves the worker executable `label` publishes, or null for none. Never rejects. */
+  /** Resolves the worker executable `label` publishes, or null for none. */
   readExecutable: (label: string) => Promise<WorkerExecutable | null>;
   /** Resolves the files `cid` names, each checked against its hash. Rejects when they cannot be read. */
   readFiles: (cid: string) => Promise<ModuleFiles>;
