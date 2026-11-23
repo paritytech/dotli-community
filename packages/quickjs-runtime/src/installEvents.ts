@@ -5,8 +5,8 @@ import type { QuickJSContext } from 'quickjs-emscripten-core';
 
 import { runVmInstaller } from './runVmInstaller.js';
 
-// Evaluated by the VM, not by the browser, so it stays a string
-// (docs/decisions/source-an-embedded-interpreter-evaluates.md). An event target has one phase, at the target, since the VM has no tree for an event to travel.
+// Evaluated by the VM, not by the browser, so it stays a string.
+// An event target has one phase, at the target, since the VM has no tree for an event to travel.
 const INSTALLER_SOURCE = `() => {
   const exceptionCodes = new Map([
     ['IndexSizeError', 1], ['HierarchyRequestError', 3], ['WrongDocumentError', 4], ['InvalidCharacterError', 5],

@@ -5,9 +5,8 @@ import type { QuickJSContext } from 'quickjs-emscripten-core';
 
 import { runVmInstaller } from './runVmInstaller.js';
 
-// Evaluated by the VM, not by the browser, so it stays a string
-// (docs/decisions/source-an-embedded-interpreter-evaluates.md). The globals it builds on are bound when it runs, so VM
-// code that later replaces one cannot change how a signal aborts.
+// Evaluated by the VM, not by the browser, so it stays a string. The globals it builds on are
+// bound when it runs, so VM code that later replaces one cannot change how a signal aborts.
 const INSTALLER_SOURCE = `() => {
   const BaseEventTarget = EventTarget;
   const BaseEvent = Event;

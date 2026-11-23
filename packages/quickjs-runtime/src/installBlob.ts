@@ -3,9 +3,8 @@
 
 import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten-core';
 
-// Evaluated by the VM, not by the browser, so it stays a string
-// (docs/decisions/source-an-embedded-interpreter-evaluates.md). It evaluates to the function that reads a blob's bytes,
-// which only the host holds, so VM code cannot change the bytes of a blob it was handed.
+// Evaluated by the VM, not by the browser, so it stays a string. It evaluates to the function that
+// reads a blob's bytes, which only the host holds, so VM code cannot change the bytes of a blob it was handed.
 const SOURCE = `(() => {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();

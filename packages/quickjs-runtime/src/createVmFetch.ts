@@ -54,9 +54,8 @@ type InFlight = {
   deferred: QuickJSDeferredPromise;
 };
 
-// Evaluated by the VM, not by the browser, so it stays a string
-// (docs/decisions/source-an-embedded-interpreter-evaluates.md). The globals it builds on are bound when it runs, so VM
-// code that later replaces one cannot change what a request carries.
+// Evaluated by the VM, not by the browser, so it stays a string. The globals it builds on are
+// bound when it runs, so VM code that later replaces one cannot change what a request carries.
 const INSTALLER_SOURCE = `({ sendRequest, abortRequest }, readBlobBytes) => {
   const { AbortController, AbortSignal, Blob, FormData } = globalThis;
   const encoder = new TextEncoder();
