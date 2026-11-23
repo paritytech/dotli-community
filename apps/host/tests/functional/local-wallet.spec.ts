@@ -58,3 +58,68 @@ test('As a developer, I switch every app to a local wallet with my phrase and ba
     await context.close();
   }
 });
+
+test('As a developer, I create a local wallet only after confirming its recovery phrase backup', async ({
+  browser,
+}) => {
+  // Given
+  const { context, page } = await setupTest(browser, { backend: 'smoldot-shared-worker' });
+  try {
+    await page.goto(APP_URL);
+    await openWalletTab(page);
+
+    // When
+    await page.getByTestId('td-wallet-create').click();
+    const phrase = await page.getByTestId('td-wallet-generated-phrase').textContent();
+
+    // Then: revealing the phrase alone does not activate or persist the wallet.
+    expect(phrase?.split(' ')).toHaveLength(24);
+    await expect(page.getByTestId('user-badge')).toHaveCount(0);
+
+    // When
+    await Promise.all([page.waitForEvent('load'), page.getByTestId('td-wallet-confirm-backup').click()]);
+
+    // Then
+    await expect(page.getByTestId('user-badge')).toHaveAttribute('data-wallet', 'local', { timeout: TIMEOUT_MS });
+    await openWalletTab(page);
+    await expect(page.getByTestId('td-wallet-account')).toHaveText(/^0x[0-9a-f]{64}$/, { timeout: TIMEOUT_MS });
+  } finally {
+    await context.close();
+  }
+});
+
+test('As a developer, I move the local wallet to a second tab and take it back in the first', async ({ browser }) => {
+  // Given: the product signing with a local wallet in one tab
+  const { context, page: first } = await setupTest(browser, { backend: 'smoldot-shared-worker' });
+  try {
+    await first.goto(APP_URL);
+    await openWalletTab(first);
+    await first.getByTestId('td-wallet-phrase').fill(DEV_PHRASE);
+    await Promise.all([first.waitForEvent('load'), first.getByTestId('td-wallet-use-local').click()]);
+    await getProductFrame(first, TIMEOUT_MS);
+    await expect(first.getByTestId('wallet-paused-banner')).toHaveCount(0);
+
+    // When: the same app opens in a second tab
+    const second = await context.newPage();
+    await second.goto(APP_URL);
+    await getProductFrame(second, TIMEOUT_MS);
+
+    // Then: the first tab stops signing and says how to take the wallet back
+    await expect(first.getByTestId('wallet-paused-banner')).toHaveText(
+      'Paused: the test wallet is in use in another tab. Click or type here to use it in this tab.',
+      { timeout: TIMEOUT_MS },
+    );
+    await expect(second.getByTestId('wallet-paused-banner')).toHaveCount(0);
+
+    // When: the user comes back to the first tab
+    await first.bringToFront();
+    await Promise.all([first.waitForEvent('load'), first.mouse.click(5, 300)]);
+    await getProductFrame(first, TIMEOUT_MS);
+
+    // Then: the wallet is back in the first tab, and the second one is paused
+    await expect(second.getByTestId('wallet-paused-banner')).toBeVisible({ timeout: TIMEOUT_MS });
+    await expect(first.getByTestId('wallet-paused-banner')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});

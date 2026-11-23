@@ -56,7 +56,10 @@ afterEach(() => {
 });
 
 function mount(options?: SetupOptions): () => void {
-  const dispose = panelModule.setupTruapiDebugPanel(options);
+  const dispose = panelModule.setupTruapiDebugPanel({
+    localWalletEnabled: options?.localWalletEnabled ?? true,
+    ...options,
+  });
   disposers.push(dispose);
   return dispose;
 }
@@ -316,6 +319,20 @@ describe('truapi debug panel: mount and dispose', () => {
       'Select an event on the left to inspect its payload.',
     );
     expect(root.querySelector('[data-testid="td-tooltip"]')).not.toBeNull();
+  });
+
+  it('As a user with the experiment off, I cannot open or restore the Wallet surface', () => {
+    // Given
+    localStorage.setItem('truapi-debug:section', 'wallet');
+
+    // When
+    mount({ localWalletEnabled: false });
+
+    // Then
+    const sections = [...panel().querySelectorAll<HTMLElement>('[data-testid="td-section"]')];
+    expect(sections.map(item => item.textContent)).toEqual(['TrUAPI', 'Resolution', 'Archive', 'Diagnostics']);
+    expect(panel().getAttribute('data-section')).toBe('truapi');
+    expect(panel().querySelector('[data-testid="td-wallet"]')).toBeNull();
   });
 
   it('As a dotli developer, a second setup while mounted is a no-op', () => {

@@ -9,7 +9,27 @@ const walletSwitch = vi.hoisted(() => ({
   switchToPolkadotApp: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('../../src/wallet-switch.js', () => walletSwitch);
-vi.mock('../../src/wallet-boot.js', () => ({ reportLocalWalletFailure: vi.fn() }));
+const walletBoot = vi.hoisted(() => ({
+  readWalletBoot: vi.fn(() => Promise.resolve(null)),
+  reportLocalWalletFailure: vi.fn(),
+}));
+vi.mock('../../src/wallet-boot.js', () => walletBoot);
+const identity = vi.hoisted(() => ({
+  readNetworkLiteUsername: vi.fn(() => Promise.resolve<string | null>(null)),
+  adoptLiteUsername: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../../src/local-wallet-identity.js', () => identity);
+const username = vi.hoisted(() => ({
+  LITE_USERNAME_BASE: /^[a-z]{6,29}$/,
+  checkUsernameAvailability: vi.fn(() => Promise.resolve({ status: 'available', digits: [42] })),
+  claimLiteUsername: vi.fn(),
+}));
+vi.mock('../../src/local-wallet-username.js', () => username);
+vi.mock('../../src/components/truapi-debug/wallet/AllowanceSnapshot.js', () => ({
+  AllowanceSection: (props: { identityAccountId: string }) => (
+    <p data-testid="td-wallet-allowances-stub">{props.identityAccountId}</p>
+  ),
+}));
 
 import { WalletView } from '../../src/components/truapi-debug/WalletView.js';
 import { setAuthState } from '../../src/state/auth.js';
@@ -47,6 +67,45 @@ describe('WalletView', () => {
 
     // Then
     expect(walletSwitch.switchToLocalWallet).toHaveBeenCalledWith(mnemonicToEntropy(DEV_PHRASE));
+  });
+
+  it('As a new user, I back up a generated phrase before this browser saves the wallet', async () => {
+    // Given
+    renderComponent(() => <WalletView active />);
+    await settle();
+
+    // When
+    byTestId('td-wallet-create', document, HTMLButtonElement).click();
+    await settle();
+    const phrase = byTestId('td-wallet-generated-phrase').textContent;
+
+    // Then: showing the phrase does not save it.
+    expect(phrase.split(' ')).toHaveLength(24);
+    expect(walletSwitch.switchToLocalWallet).not.toHaveBeenCalled();
+
+    // When
+    byTestId('td-wallet-confirm-backup', document, HTMLButtonElement).click();
+    await settle();
+
+    // Then
+    expect(walletSwitch.switchToLocalWallet).toHaveBeenCalledWith(mnemonicToEntropy(phrase));
+  });
+
+  it('As a new user who did not save the generated phrase, I cancel without creating a wallet', async () => {
+    // Given
+    renderComponent(() => <WalletView active />);
+    await settle();
+    byTestId('td-wallet-create', document, HTMLButtonElement).click();
+    await settle();
+
+    // When
+    byTestId('td-wallet-cancel-backup', document, HTMLButtonElement).click();
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="td-wallet-generated-phrase"]')).toBeNull();
+    expect(byTestId('td-wallet-phrase', document, HTMLTextAreaElement)).not.toBeNull();
+    expect(walletSwitch.switchToLocalWallet).not.toHaveBeenCalled();
   });
 
   it('As a Polkadot App user, I am told what a local wallet is and warned that it is not secure', async () => {
@@ -169,5 +228,32 @@ describe('WalletView', () => {
 
     // Then
     expect(byTestId('td-wallet-failure').textContent).toBe('Local wallet could not be decrypted and was forgotten');
+  });
+
+  it('As a local wallet user without a username, I see People has none, check a name and see my allowances', async () => {
+    // Given
+    const boot = { status: 'ok', entropy: new Uint8Array(32), identity: null } as const;
+    walletBoot.readWalletBoot.mockResolvedValue(boot as never);
+    setWalletModeState({ mode: 'local', failure: null });
+    setAuthState({ tag: 'Connected', session: { connected: true, identityAccountId: IDENTITY_ACCOUNT } });
+    renderComponent(() => <WalletView active />);
+    await settle();
+    await settle();
+
+    // When
+    const input = byTestId('td-wallet-username-base', document, HTMLInputElement);
+    input.value = 'alicex';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    byTestId('td-wallet-username-check', document, HTMLButtonElement).click();
+    await settle();
+    await settle();
+
+    // Then
+    expect(byTestId('td-wallet-username-verified').textContent).toMatch(/^None on /);
+    expect(username.checkUsernameAvailability).toHaveBeenCalledWith(boot.entropy, IDENTITY_ACCOUNT, 'alicex');
+    expect(byTestId('td-wallet-username-availability').textContent).toBe('Available · e.g. alicex.42');
+    expect(byTestId('td-wallet-username-claim', document, HTMLButtonElement).disabled).toBe(false);
+    expect(byTestId('td-wallet-allowances-stub').textContent).toBe(IDENTITY_ACCOUNT);
   });
 });

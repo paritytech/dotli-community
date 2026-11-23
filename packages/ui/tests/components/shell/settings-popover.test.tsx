@@ -221,6 +221,7 @@ function expectPopoverMatches(
     expect(toggle('Archive cache').getAttribute('aria-checked')).toBe(String(!settings.cache.skipArchiveCache));
     expect(toggle('Worker cache').getAttribute('aria-checked')).toBe(String(!settings.cache.skipWorkerCache));
     expect(toggle('PolkaVM apps').getAttribute('aria-checked')).toBe('true');
+    expect(toggle('Local wallet').getAttribute('aria-checked')).toBe('true');
     expect(byTestId('mode-receiving-enable', popover, HTMLButtonElement).disabled).toBe(false);
     expect(byTestId('mode-receiving-revoke', popover, HTMLButtonElement).disabled).toBe(false);
     expect(popover.querySelector('[data-testid="mode-debug-row"]') !== null).toBe(!settings.debugOn);
@@ -458,6 +459,7 @@ describe('The settings popover island', () => {
     // When
     toggle('Worker cache').click();
     toggle('PolkaVM apps').click();
+    toggle('Local wallet').click();
     await settle();
     await showCategory('network');
     radio('dotli-network', 'previewnet').click();
@@ -474,12 +476,14 @@ describe('The settings popover island', () => {
         network: 'previewnet',
         cache: { ...DEFAULT_CACHE, skipWorkerCache: true },
         polkaVmAppsEnabled: false,
+        localWalletEnabled: false,
       },
       {
         chain: 'smoldot-direct',
         network: 'paseo-next-v2',
         cache: DEFAULT_CACHE,
         polkaVmAppsEnabled: true,
+        localWalletEnabled: true,
       },
     );
     expect(applyButton().disabled).toBe(true);
@@ -508,8 +512,20 @@ describe('The settings popover island', () => {
     // Then
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(
-      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE, polkaVmAppsEnabled: true },
-      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, polkaVmAppsEnabled: true },
+      {
+        chain: 'smoldot-direct',
+        network: 'previewnet',
+        cache: DEFAULT_CACHE,
+        polkaVmAppsEnabled: true,
+        localWalletEnabled: true,
+      },
+      {
+        chain: 'smoldot-direct',
+        network: 'paseo-next-v2',
+        cache: DEFAULT_CACHE,
+        polkaVmAppsEnabled: true,
+        localWalletEnabled: true,
+      },
     );
   });
 
@@ -589,6 +605,7 @@ describe('The settings popover island', () => {
       network: 'paseo-next-v2',
       cache: DEFAULT_CACHE,
       polkaVmAppsEnabled: true,
+      localWalletEnabled: true,
     };
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {

@@ -18,10 +18,13 @@ ENV VITE_NETWORKS=paseo-next-v2,previewnet \
 RUN npm run build:prod
 
 FROM nginx:alpine
-ENV DOMAIN=localhost WEBROOT=/srv/dotli PORT=5173
+# NGINX_ENTRYPOINT_LOCAL_RESOLVERS makes the image's entrypoint export /etc/resolv.conf's nameservers as
+# NGINX_LOCAL_RESOLVERS, which the identity proxy resolves through. Docker's embedded DNS exists only on user-defined
+# networks, so a fixed 127.0.0.11 would fail under a plain `docker run`.
+ENV DOMAIN=localhost WEBROOT=/srv/dotli PORT=5173 NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
-# jq: the entrypoint validates the runtime network config before nginx starts.
-RUN apk add --no-cache jq
+# jq validates the runtime network config before nginx starts; CA roots verify the identity backend upstream.
+RUN apk add --no-cache jq ca-certificates
 
 COPY --from=build /src/apps/host/dist     /srv/dotli/host
 COPY --from=build /src/apps/sandbox/dist  /srv/dotli/app

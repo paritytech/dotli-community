@@ -21,6 +21,8 @@ export const HOST_ERRORS = {
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
   MANIFEST_UNSUPPORTED_VERSION: "This app is published in a format dot.li doesn't support yet.",
   MANIFEST_INVALID: "This app's manifest is invalid, so dot.li can't tell how to open it.",
+  WALLET_IN_OTHER_TAB:
+    'Only one tab can use the test wallet at a time, and the tab that has it did not hand it over. Close that tab, then reload this one.',
 } as const;
 
 export const FAILOVER_BTN_LABELS = {
@@ -45,4 +47,5 @@ export const ERROR_TITLES = {
   CONTENT_UNAVAILABLE: "This app couldn't be downloaded",
   /** The files arrived intact but are not a runnable app. */
   APP_UNUSABLE: "This app can't be opened",
+  WALLET_IN_OTHER_TAB: 'Test wallet is open in another tab',
 } as const;

@@ -36,9 +36,9 @@ DOTLI_NETWORK='{
 ```
 
 `enabled` limits which networks the Settings selector offers; the first is the default. Overridable fields are `label`,
-`rpcs` and `ipfsGateways` only — `genesis` and contract addresses are fixed at build time, because they are the trust
-root for name resolution. A forked chain that preserves upstream genesis (zombie-bite and similar) needs no more than
-the endpoints above.
+`rpcs`, `ipfsGateways` and `identityBackendBaseUrl` (a root-relative proxy path or HTTPS; HTTP only on loopback) —
+`genesis` and contract addresses are fixed at build time, because they are the trust root for name resolution. A forked
+chain that preserves upstream genesis (zombie-bite and similar) needs no more than the endpoints above.
 
 Anything unrecognised is rejected at startup rather than ignored, so a typo fails loudly instead of silently leaving you
 on the public chain.
@@ -46,6 +46,9 @@ on the public chain.
 **Overridden RPCs only apply under the Trusted Providers backend.** The light client backends sync from chain specs and
 ignore `rpcs` entirely — so a container pointed at a dead endpoint can still look healthy. Switch in Settings, or open
 with `?chainBackend=rpc-gateway`.
+
+`serve.mjs` also proxies `/__dotli-identity/paseo` and `/__dotli-identity/testnet`, the experimental local wallet's
+username backend, to the public identity service. It answers only same-origin requests on the shell origins.
 
 ## Options
 

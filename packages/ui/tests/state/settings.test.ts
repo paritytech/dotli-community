@@ -2,7 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { getSettingsState } from '../../src/state/settings.js';
+import { getSettingsState, initSettingsStore } from '../../src/state/settings.js';
+import {
+  getBackend,
+  getCacheSettings,
+  getLocalWalletEnabled,
+  getPolkaVmAppsEnabled,
+  isSharedWorkerAvailable,
+  isVerifiedSession,
+  getEnabledNetworks,
+  getNetwork,
+  SITE_ID,
+} from '@dotli/config';
 
 import { resetStores } from '../helpers/solid.js';
 
@@ -14,5 +25,22 @@ describe('settings store', () => {
 
   it('As the prerendered shell, the settings store is empty until the host seeds it', () => {
     expect(getSettingsState()).toBeNull();
+  });
+
+  it('As the settings popover, initSettingsStore snapshots the config getters', () => {
+    // When
+    initSettingsStore();
+
+    // Then
+    expect(getSettingsState()).toEqual({
+      backend: getBackend(),
+      cache: getCacheSettings(),
+      network: getNetwork(),
+      polkaVmAppsEnabled: getPolkaVmAppsEnabled(SITE_ID),
+      localWalletEnabled: getLocalWalletEnabled(SITE_ID),
+      enabledNetworks: getEnabledNetworks(),
+      sharedWorkerAvailable: isSharedWorkerAvailable(),
+      verified: isVerifiedSession(getBackend()),
+    });
   });
 });

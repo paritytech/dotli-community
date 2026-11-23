@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getActiveServicesConfig } from '@dotli/config';
+import { getActiveServicesConfig, LOCAL_WALLET_KEY } from '@dotli/config';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import type { ModeDraft } from '../src/settings-actions.js';
 
 const mocks = vi.hoisted(() => ({
   clearInstalledExecutableCache: vi.fn(() => Promise.resolve()),
   clearBlockCache: vi.fn(() => Promise.resolve()),
+  revokeReceivingOnLogout: vi.fn(() => Promise.resolve()),
 }));
+
+vi.mock('../src/receiving.js', () => ({ revokeReceivingOnLogout: mocks.revokeReceivingOnLogout }));
 
 vi.mock('../../storage/src/cid-cache.js', async importOriginal => ({
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- required for mock typing
@@ -40,11 +43,13 @@ const prior: ModeDraft = {
   network: 'paseo-next-v2',
   cache: CACHE_ON,
   polkaVmAppsEnabled: true,
+  localWalletEnabled: true,
 };
 
 describe('applyAndReset: archive cache', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     sessionStorage.clear();
     vi.spyOn(window.location, 'reload').mockImplementation(() => {});
   });
@@ -83,6 +88,61 @@ describe('applyAndReset: archive cache', () => {
 
     // Then
     expect(mocks.clearBlockCache).not.toHaveBeenCalled();
+  });
+
+  it('As a user, turning the local-wallet experiment off persists the preference before reload', async () => {
+    // Given
+    const { applyAndReset } = await import('../src/settings-actions.js');
+
+    // When
+    await applyAndReset({ ...prior, localWalletEnabled: false }, prior);
+
+    // Then
+    expect(localStorage.getItem(LOCAL_WALLET_KEY)).toBe('0');
+  });
+
+  it('As a local wallet user, turning the local wallet off revokes my receiving before the reload logs me out', async () => {
+    // Given
+    const { applyAndReset } = await import('../src/settings-actions.js');
+    const { setWalletModeState } = await import('../src/state/wallet-mode.js');
+    setWalletModeState({ mode: 'local', failure: null });
+
+    // When
+    await applyAndReset({ ...prior, localWalletEnabled: false }, prior);
+
+    // Then
+    expect(mocks.revokeReceivingOnLogout).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(LOCAL_WALLET_KEY)).toBe('0');
+  });
+
+  it('As a local wallet user whose receiving cannot be revoked, turning the local wallet off keeps it on', async () => {
+    // Given
+    const { applyAndReset } = await import('../src/settings-actions.js');
+    const { setWalletModeState } = await import('../src/state/wallet-mode.js');
+    setWalletModeState({ mode: 'local', failure: null });
+    mocks.revokeReceivingOnLogout.mockRejectedValueOnce(new Error('relay down'));
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+
+    // When
+    const applied = applyAndReset({ ...prior, localWalletEnabled: false }, prior);
+
+    // Then
+    await expect(applied).rejects.toThrow('relay down');
+    expect(localStorage.getItem(LOCAL_WALLET_KEY)).toBeNull();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('As a Polkadot App user, turning the unused local wallet off leaves my receiving alone', async () => {
+    // Given
+    const { applyAndReset } = await import('../src/settings-actions.js');
+    const { setWalletModeState } = await import('../src/state/wallet-mode.js');
+    setWalletModeState({ mode: 'app', failure: null });
+
+    // When
+    await applyAndReset({ ...prior, localWalletEnabled: false }, prior);
+
+    // Then
+    expect(mocks.revokeReceivingOnLogout).not.toHaveBeenCalled();
   });
 });
 

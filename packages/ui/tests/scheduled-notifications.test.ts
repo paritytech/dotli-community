@@ -28,7 +28,7 @@ vi.mock('@dotli/storage/notification-activations', () => ({
   findNotification: vi.fn(() => Promise.resolve({ scope: {} })),
 }));
 vi.mock('../src/notification-activation.js', () => ({
-  notificationContextIsCurrent: () => true,
+  notificationDeliveryIsCurrent: () => true,
   presentProductNotification: vi.fn(() => Promise.resolve()),
 }));
 

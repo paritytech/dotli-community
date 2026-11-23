@@ -33,6 +33,18 @@ vi.mock('../../protocol/src/client.js', () => ({
         return Promise.resolve(undefined);
       case 'read':
         return Promise.resolve(custody.records.get(operation.key));
+      case 'compareExchange': {
+        const current = custody.records.get(operation.key) ?? null;
+        const matches =
+          current === null || operation.expected === null
+            ? current === operation.expected
+            : current.length === operation.expected.length &&
+              current.every((byte, index) => byte === operation.expected?.[index]);
+        if (matches) {
+          custody.records.set(operation.key, operation.replacement);
+        }
+        return Promise.resolve(matches);
+      }
       case 'clear':
         custody.records.delete(operation.key);
         return Promise.resolve(undefined);
@@ -82,6 +94,18 @@ function memoryStorage(): CoreStorage & { values: Map<string, Uint8Array> } {
       values.delete(memoryKey(key));
       return Promise.resolve();
     },
+    compareExchangeCoreStorage: (key, expected, replacement) => {
+      const current = values.get(memoryKey(key));
+      const matches =
+        current === undefined || expected === undefined
+          ? current === expected
+          : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+      if (matches) {
+        values.set(memoryKey(key), replacement);
+      }
+      return Promise.resolve(matches);
+    },
+    coreStorageChanged: () => undefined,
   };
 }
 
@@ -113,6 +137,45 @@ describe('native Chat beside the local wallet core', () => {
     expect(custody.operations.filter(operation => operation.action === 'write')).toEqual([
       expect.objectContaining({ lease: 'lease-1' }),
     ]);
+    chat.dispose();
+  });
+
+  it('As a local wallet core, compare-exchange of a Chat record goes to custody and other slots to host storage', async () => {
+    // Given
+    const chat = createLocalWalletChat(WALLET, () => true);
+    const base = memoryStorage();
+    const storage = chat.coreStorage(base);
+
+    // When
+    const created = await storage.compareExchangeCoreStorage(PURSE, undefined, new Uint8Array([1]), false);
+    const stale = await storage.compareExchangeCoreStorage(PURSE, new Uint8Array([2]), new Uint8Array([3]), false);
+    const replaced = await storage.compareExchangeCoreStorage(PURSE, new Uint8Array([1]), new Uint8Array([4]), false);
+    const granted = await storage.compareExchangeCoreStorage(GRANT, undefined, new Uint8Array([5]), true);
+
+    // Then
+    expect([created, stale, replaced, granted]).toEqual([true, false, true, true]);
+    expect(await storage.readCoreStorage(PURSE)).toEqual(new Uint8Array([4]));
+    expect(base.values.has(memoryKey(PURSE))).toBe(false);
+    expect(base.values.get(memoryKey(GRANT))).toEqual(new Uint8Array([5]));
+    chat.dispose();
+  });
+
+  it('As a returning person, I compare against migrated profile state before replacing it', async () => {
+    // Given
+    const base = memoryStorage();
+    const key = nth(PROFILE_KEYS, 0);
+    await base.writeCoreStorage(key, new Uint8Array([3]));
+    const chat = createLocalWalletChat(WALLET, () => true);
+    const storage = chat.coreStorage(base);
+
+    // When
+    const absent = await storage.compareExchangeCoreStorage(key, undefined, new Uint8Array([4]), false);
+    const replaced = await storage.compareExchangeCoreStorage(key, new Uint8Array([3]), new Uint8Array([5]), false);
+
+    // Then
+    expect([absent, replaced]).toEqual([false, true]);
+    expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([5]));
+    expect(await base.readCoreStorage(key)).toBeUndefined();
     chat.dispose();
   });
 

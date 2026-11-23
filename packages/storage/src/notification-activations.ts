@@ -127,7 +127,7 @@ export async function retainNotification(
     all.onsuccess = () => {
       const now = Date.now();
       const current = (all.result as NotificationRecord[]).filter(record => {
-        if (record.expiresAt <= now || record.acknowledged) {
+        if (record.expiresAt <= now || record.acknowledged || (record.activated && record.route === null)) {
           store.delete(record.sequence);
           return false;
         }
@@ -175,6 +175,8 @@ export async function activateNotification(token: string): Promise<NotificationR
       }
       if (!record.activated) {
         record.activated = true;
+        // No route is exposed to the product, so there can be no guest acknowledgement.
+        record.acknowledged = record.route === null;
         store.put(record);
       }
       result(record);

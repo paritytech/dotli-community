@@ -69,15 +69,21 @@ describe('shared auth storage helpers', () => {
     expect(isSharedAuthRequestMethod('warmup')).toBe(false);
   });
 
-  it('As the protocol frame, I route only the four local wallet methods to the wallet handler', () => {
+  it('As the protocol frame, I route only the five local wallet methods to the wallet handler', () => {
     // Given
-    const wallet = ['localWalletRead', 'localWalletSave', 'localWalletIdentity', 'localWalletForget'] as const;
+    const wallet = [
+      'localWalletRead',
+      'localWalletSave',
+      'localWalletIdentity',
+      'localWalletForget',
+      'localWalletOwner',
+    ] as const;
 
     // When
     const routed = wallet.map(method => isSharedWalletRequestMethod(method));
 
     // Then
-    expect(routed).toEqual([true, true, true, true]);
+    expect(routed).toEqual([true, true, true, true, true]);
     expect(isSharedWalletRequestMethod('authStorageRead')).toBe(false);
     expect(isSharedWalletRequestMethod('resolveDotName')).toBe(false);
   });

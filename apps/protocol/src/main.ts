@@ -43,7 +43,7 @@ window.addEventListener('vite:preloadError', event => {
   }
 });
 
-import { log, serializeError } from '@dotli/shared';
+import { log, serializeError, fromHex, toHex } from '@dotli/shared';
 import {
   SITE_ID,
   TIMEOUTS,
@@ -55,6 +55,7 @@ import {
 } from '@dotli/config';
 
 import {
+  createWalletOwner,
   requireBrokerLocalProvider,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
@@ -65,10 +66,12 @@ import {
   isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
+  SHARED_CORE_SESSION_KEY,
   isProtocolEnvelope,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
+  type WalletOwner,
 } from '@dotli/protocol';
 
 import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
@@ -77,7 +80,7 @@ import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
 import { errorResponse } from './error-response.js';
 import { CORE_CUSTODY_DB_NAME } from './core-custody.js';
-import { handleLocalWalletRequest } from './local-wallet-handler.js';
+import { handleLocalWalletRequest, type LocalWalletFrame } from './local-wallet-handler.js';
 
 initSentry('protocol');
 installGlobalErrorHandlers('protocol');
@@ -223,14 +226,12 @@ function bindSharedAuthListener(): void {
     // On every request, in case the parent navigated.
     parentOrigin = event.origin;
 
-    try {
-      handleSharedAuthRequest(data, event.origin, response => {
-        postToSource(event.source, event.origin, response);
-      });
-    } catch (error: unknown) {
+    void handleSharedAuthRequest(data, event.origin, response => {
+      postToSource(event.source, event.origin, response);
+    }).catch((error: unknown) => {
       countSharedReject('auth', 'validation');
       postToSource(event.source, event.origin, errorResponse(data.id, error));
-    }
+    });
   });
 }
 
@@ -831,7 +832,74 @@ function bindSharedModeListener(): void {
   });
 }
 
+// One tab of the profile signs with the local wallet. The lease lives here, on the host origin every app page shares,
+// and ends with this page.
+function createPageWalletOwner(): WalletOwner {
+  if (typeof navigator.locks === 'undefined') {
+    throw new Error('The local wallet requires secure-context Web Locks');
+  }
+  const owner = createWalletOwner({
+    locks: navigator.locks,
+    channel: new BroadcastChannel('dotli:local-wallet-owner'),
+    randomId: () => crypto.randomUUID(),
+  });
+  owner.onRevoked(lease => {
+    if (parentOrigin === null || window.parent === window) {
+      void owner.handle({ action: 'release', lease });
+      return;
+    }
+    // The page stops its signer, then releases the lease itself.
+    window.parent.postMessage(
+      { namespace: 'dotli:protocol', kind: 'local-wallet-owner-revoked', siteId: SITE_ID, lease } as const,
+      parentOrigin,
+    );
+  });
+  window.addEventListener('pagehide', () => {
+    owner.releaseAll();
+  });
+  return owner;
+}
+
+// A save or forget makes sibling tabs' wallet mode or entropy stale. BroadcastChannel skips the sender, whose page
+// reloads itself.
+function createLocalWalletFrame(): LocalWalletFrame {
+  const changes = new BroadcastChannel('dotli:local-wallet');
+  changes.addEventListener('message', (event: MessageEvent) => {
+    const data: unknown = event.data;
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('siteId' in data) ||
+      data.siteId !== SITE_ID ||
+      parentOrigin === null ||
+      window.parent === window
+    ) {
+      return;
+    }
+    window.parent.postMessage(
+      { namespace: 'dotli:protocol', kind: 'local-wallet-changed', siteId: SITE_ID } as const,
+      parentOrigin,
+    );
+  });
+  let owner: WalletOwner | undefined;
+  return {
+    owner() {
+      owner ??= createPageWalletOwner();
+      return owner;
+    },
+    changed() {
+      try {
+        changes.postMessage({ siteId: SITE_ID });
+      } catch (error: unknown) {
+        // The change itself committed and is answered, so the host never hears that other tabs missed it.
+        captureException(error, { flow: 'storage', step: 'local_wallet_broadcast' });
+      }
+    },
+  };
+}
+
 function bindLocalWalletListener(): void {
+  const frame = createLocalWalletFrame();
   window.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
     if (!isProtocolEnvelope(data) || data.kind !== 'request' || !isSharedWalletRequestMethod(data.method)) {
@@ -842,7 +910,9 @@ function bindLocalWalletListener(): void {
       countSharedReject('wallet', 'origin');
       return;
     }
-    handleLocalWalletRequest(data, event.origin).then(
+    // On every request, in case the parent navigated: revocations and changes go to it.
+    parentOrigin = event.origin;
+    handleLocalWalletRequest(data, event.origin, frame).then(
       result => {
         postToSource(event.source, event.origin, {
           namespace: 'dotli:protocol',
@@ -861,7 +931,18 @@ function bindLocalWalletListener(): void {
   });
 }
 
-function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback): void {
+function withSharedAuthSlot<T>(siteId: SiteId, key: string, operation: () => T | Promise<T>): Promise<T> {
+  if (typeof navigator.locks === 'undefined') {
+    return Promise.reject(new Error('Atomic shared auth storage is unavailable'));
+  }
+  return navigator.locks.request(`dotli:core-slot:${buildSharedAuthStorageKey(siteId, key)}`, operation);
+}
+
+async function handleSharedAuthRequest(
+  request: ProtocolRequestEnvelope,
+  origin: string,
+  respond: ResponseCallback,
+): Promise<void> {
   if (!isSharedAuthRequestMethod(request.method)) {
     throw new Error(`Not a shared auth request: ${request.method as string}`);
   }
@@ -890,8 +971,11 @@ function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: strin
       if (typeof payload.value !== 'string') {
         throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_AUTH_VALUE);
       }
-      localStorage.setItem(buildSharedAuthStorageKey(payload.siteId, payload.key), payload.value);
-      broadcastSharedAuthChange(payload.siteId, payload.key, payload.value);
+      const { siteId, key, value } = payload;
+      await withSharedAuthSlot(siteId, key, () => {
+        localStorage.setItem(buildSharedAuthStorageKey(siteId, key), value);
+        broadcastSharedAuthChange(siteId, key, value);
+      });
       respond({
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -906,8 +990,10 @@ function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: strin
       const payload = request.payload as ProtocolRequestMap['authStorageClear'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedAuthKey(payload.key);
-      localStorage.removeItem(buildSharedAuthStorageKey(payload.siteId, payload.key));
-      broadcastSharedAuthChange(payload.siteId, payload.key, null);
+      await withSharedAuthSlot(payload.siteId, payload.key, () => {
+        localStorage.removeItem(buildSharedAuthStorageKey(payload.siteId, payload.key));
+        broadcastSharedAuthChange(payload.siteId, payload.key, null);
+      });
       respond({
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -915,6 +1001,37 @@ function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: strin
         ok: true,
         result: true,
       });
+      return;
+    }
+    case 'authStorageCompareExchange': {
+      const payload = request.payload as ProtocolRequestMap['authStorageCompareExchange'];
+      assertSharedAuthSiteId(payload.siteId);
+      assertSharedAuthKey(payload.key);
+      if (
+        payload.key !== SHARED_CORE_SESSION_KEY ||
+        !(payload.replacement instanceof Uint8Array) ||
+        (payload.expected !== null && !(payload.expected instanceof Uint8Array))
+      ) {
+        throw new Error('Invalid shared core storage compare-exchange');
+      }
+      const { expected, replacement } = payload;
+      const result = await withSharedAuthSlot(payload.siteId, payload.key, () => {
+        const slot = buildSharedAuthStorageKey(payload.siteId, payload.key);
+        const raw = localStorage.getItem(slot);
+        const current = raw === null ? null : fromHex(raw);
+        const matches =
+          current === null || expected === null
+            ? current === expected
+            : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+        if (!matches) {
+          return false;
+        }
+        const value = toHex(replacement);
+        localStorage.setItem(slot, value);
+        broadcastSharedAuthChange(payload.siteId, payload.key, value);
+        return true;
+      });
+      respond({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result });
       return;
     }
   }
