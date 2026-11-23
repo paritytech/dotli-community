@@ -5,7 +5,8 @@ import { createMemo, createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect } from 'storybook/test';
-import { getOrbitLayout } from './getOrbitLayout.js';
+import { anchorOrbitLayout } from './anchorOrbitLayout.js';
+import { getOrbitLayout, type OrbitLayout } from './getOrbitLayout.js';
 import { Orbit } from './Orbit.js';
 
 type FrameProps = {
@@ -24,10 +25,14 @@ type FrameProps = {
 /** The orbit behind a box the size of a small landing page, with controls that add and drop a peer. */
 function Frame(props: FrameProps): JSX.Element {
   const [peers, setPeers] = createSignal(() => props.peers);
-  const layout = createMemo(() =>
-    getOrbitLayout(
-      props.trustedProvider ? { kind: 'trustedProvider' } : { kind: 'lightClient', peers: peers() },
-      props.seed,
+  // So adding or dropping a peer keeps the latest peer that stays in place.
+  const layout = createMemo((previous?: OrbitLayout) =>
+    anchorOrbitLayout(
+      previous ?? null,
+      getOrbitLayout(
+        props.trustedProvider ? { kind: 'trustedProvider' } : { kind: 'lightClient', peers: peers() },
+        props.seed,
+      ),
     ),
   );
   return (

@@ -30,11 +30,13 @@ export function Orbit(props: { layout: OrbitLayout; pointerX: number; pointerY: 
       class={s['orbit']}
       aria-hidden="true"
       data-testid="orbit"
-      style={{ '--pointer-x': String(props.pointerX), '--pointer-y': String(props.pointerY) }}
+      style={{ '--orbit-pointer-x': String(props.pointerX), '--orbit-pointer-y': String(props.pointerY) }}
     >
       <div
         class={s['stage']}
-        style={Object.fromEntries(shown().layout.rings.map(({ ring, radius }) => [`--${ring}-radius`, String(radius)]))}
+        style={Object.fromEntries(
+          shown().layout.rings.map(({ ring, radius }) => [`--orbit-${ring}-radius`, String(radius)]),
+        )}
       >
         <div class={s['floor']} />
         <div class={s['lines']}>
@@ -54,8 +56,8 @@ export function Orbit(props: { layout: OrbitLayout; pointerX: number; pointerY: 
                         data-link={dot().kind}
                         data-join={join}
                         style={{
-                          '--from-start': `${String(dot().from)}deg`,
-                          '--to-start': `${String(dot().start)}deg`,
+                          '--orbit-from-start': `${String(dot().from)}deg`,
+                          '--orbit-to-start': `${String(dot().start)}deg`,
                         }}
                       />
                     </Show>
@@ -77,7 +79,7 @@ export function Orbit(props: { layout: OrbitLayout; pointerX: number; pointerY: 
                         class={s['dot']}
                         data-kind={dot().kind}
                         data-join={join}
-                        style={{ '--start': `${String(dot().start)}deg` }}
+                        style={{ '--orbit-start': `${String(dot().start)}deg` }}
                       >
                         <Show when={dot().label}>{label => <span class={s['label']}>{label()}</span>}</Show>
                       </div>

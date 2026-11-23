@@ -6,11 +6,15 @@
 // trusted provider, is spread evenly around the whole circle, whatever ring each node takes, and each is turned off its even
 // place at random. Each node that joins takes a place between the ones already shown, so the first few stay spread
 // round the circle however many follow. Each of those grows a simulated tree outward, like the peers of that peer.
-// A light client's trees tile the circle, so the picture reads as the network going on behind the real connections.
-// The trusted provider's one tree stays a narrow fan, and loose dots linked to nothing fill the rings around it, so a trusted provider
-// backend's floor looks full but reads as one connection, not a network of its own. Every turn is drawn from a seed
-// and the dot's key, so for one seed a dot keeps its turn while others come and go, and another seed lays out another
-// picture.
+// A tree's shape is fixed relative to its real node: where each of its dots sits from the real node, and which dot it
+// links to, come from the seed and the real node alone, never from how many real nodes there are. Neighbouring trees
+// only prune each other where they meet, so a real node that stays carries its tree along unchanged while others come
+// and go. A light client's trees fill the circle between them once a few peers have joined, so the picture reads as the
+// network going on behind the real connections. The trusted provider's one tree stays a narrow fan, and loose dots
+// linked to nothing fill the rings around it, so a trusted provider backend's floor looks full but reads as one
+// connection, not a network of its own.
+// Every turn is drawn from a seed and the dot's key, so for one seed a dot keeps its turn while others come and go,
+// and another seed lays out another picture.
 
 type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
 
@@ -19,6 +23,27 @@ type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
  * node's tree, or a loose simulated dot linked to nothing.
  */
 type OrbitDotKind = 'peer' | 'trustedProvider' | 'simulated' | 'loose';
+
+/**
+ * For each kind of dot, whether it is a real node, and where its one link starts: at the `centre`, at the `dot` it grew
+ * from, or nowhere.
+ */
+const KIND_FACTS = {
+  peer: { real: true, link: 'centre' },
+  trustedProvider: { real: true, link: 'centre' },
+  simulated: { real: false, link: 'dot' },
+  loose: { real: false, link: null },
+} satisfies Record<OrbitDotKind, { real: boolean; link: 'centre' | 'dot' | null }>;
+
+/** Returns whether `dot` is a real node, one the centre really reaches the network through. */
+export function isRealDot({ kind }: OrbitDot): boolean {
+  return KIND_FACTS[kind].real;
+}
+
+/** Returns whether `dot`'s link starts at another dot, so it moves with that dot, rather than at the centre or nowhere. */
+export function linksToDot({ kind }: OrbitDot): boolean {
+  return KIND_FACTS[kind].link === 'dot';
+}
 
 export type OrbitDot = {
   /** Stays the same while the dot exists, so a renderer keeps its element. A dot never changes kind. */
@@ -39,7 +64,11 @@ export type OrbitDot = {
 };
 
 export type OrbitLayout = {
-  /** From the centre outward, each with its radius in the orbit's length unit, which the renderer scales. */
+  /**
+   * From the centre outward, each with its radius in the orbit's length unit, which the renderer scales. Each ring lists
+   * its real nodes first, in join order, and the real nodes fill the rings from the centre, so the real nodes read ring
+   * after ring come in join order.
+   */
   readonly rings: readonly { readonly ring: OrbitRing; readonly radius: number; readonly dots: readonly OrbitDot[] }[];
 };
 
@@ -50,27 +79,18 @@ export type OrbitMode = { readonly kind: 'lightClient'; readonly peers: number }
 type Node = { readonly index: number; readonly dot: OrbitDot };
 
 /**
- * A real node's tree that grows onto a ring: every node it holds, the real node first, its nodes on the ring inside,
- * and the part of the ring it spreads across.
+ * A place of a real node's tree: the ring it sits on, its key, its angle from the real node, and the key of the place
+ * it links to on the ring inside, or of the real node itself on the first ring out.
  */
-type Growth = {
-  readonly tree: Node[];
-  readonly parents: readonly [Node, ...Node[]];
-  readonly low: number;
-  readonly high: number;
-  /**
-   * How far in from each end of its part the outermost place sits, as a share of the spacing between places: half at
-   * an end it shares with a neighbour, so the two trees' places keep that spacing too, and none at the end of its reach.
-   */
-  readonly insets: { readonly low: number; readonly high: number };
-};
+type Place = { readonly index: number; readonly key: string; readonly offset: number; readonly parent: string };
 
 /**
  * The rings from the centre outward, each with its radius in the orbit's length unit, which `MIN_GAP` is in too, and
- * for each mode the most simulated nodes the trees hold on it and the loose dots it spreads round the whole circle. A
- * light client's ring holds twice the one inside it, so its trees branch ring by ring. The trusted provider's tree stays small,
- * and its loose dots and tree together never outnumber the light client's simulated nodes, so either field stays light
- * enough to sit behind the page.
+ * for each mode how many simulated nodes it holds and the loose dots it spreads round the whole circle. A light client's
+ * ring holds its simulated nodes round the whole circle and the trusted provider's across its one fan, each node one
+ * stride from the next, so the budget sets the stride. A light client's ring holds twice the one inside it, so its
+ * trees branch ring by ring. The trusted provider's tree stays small, and its loose dots and tree together never
+ * outnumber the light client's simulated nodes, so either field stays light enough to sit behind the page.
  */
 const RINGS: readonly {
   readonly ring: OrbitRing;
@@ -119,16 +139,17 @@ const OFFSET = 282;
 /**
  * How far a dot turns at most either way off its even place, among the real nodes, among its tree's places on its ring
  * or among a ring's loose places, as a share of the spacing between those places. Under half, so two neighbours never
- * meet or swap. A light client's simulated node also sits at most this share of the peers' spacing from the node it
- * grew from.
+ * meet or swap. A tree also takes this share of the real nodes' spacing more of a ring, for each ring it grew out, from
+ * a neighbour whose tree grew out less.
  */
 const JITTER = 0.3;
 
 /**
- * How far, in degrees, the trusted provider's tree reaches further either way on each ring out, which is also the most a node of
- * it sits from the node it grew from. Small, so the tree grows out in one narrow fan.
+ * For each mode, how far, in degrees, a tree reaches further either way on each ring out, which is also the most a node
+ * of it sits from the node it grew from. The same for any count of real nodes, so a tree keeps its shape as they come
+ * and go. The trusted provider's is small, so its tree grows out in one narrow fan.
  */
-const TRUSTED_PROVIDER_REACH = 8;
+const REACH = { lightClient: 30, trustedProvider: 8 } satisfies Record<OrbitMode['kind'], number>;
 
 /** The least distance along its ring between a simulated node and another node on that ring. */
 const MIN_GAP = 10;
@@ -140,59 +161,62 @@ const MIN_GAP = 10;
  * the centre outward in join order, and each peer's and the trusted provider's link starts at the centre.
  *
  * Each real node grows a tree of simulated nodes outward to the last ring, its link starting at the node it grew from.
- * Ring by ring, the trees split the ring between them, each tree takes a share of the ring's budget in proportion to its
- * part, spreads its share evenly across it, and links each to its nearest node on the ring inside, moved to at most the
- * mode's reach from it: `JITTER` of the peers' spacing, or `TRUSTED_PROVIDER_REACH`. A tree so reaches further on each ring out,
- * and fans wider the further out.
+ * The tree's places sit at fixed angles from its real node and link to fixed parents, which only the seed and the real
+ * node's key and ring choose: on each ring out, one stride apart either way from the real node, each turned by at most
+ * `JITTER` of the stride, as far as the tree's reach of `REACH` per ring out. A place links to the nearest of its tree's
+ * places on the ring inside within `REACH` of it, preferring those no further from the real node than itself, and is
+ * not part of the tree when there is none. A tree so fans wider the further out, and a real node that stays keeps its
+ * tree's shape however the others change.
+ *
+ * A place shows only while its parent shows and it lies in its tree's part of the ring. Two trees split a ring where
+ * the gap to each real node, less `JITTER` of the real nodes' spacing for each ring its tree grew out, is even, so a
+ * deeper tree takes more of it, and a real node on the ring itself reaches no further than itself. The trees place
+ * their dots ring by ring in their real nodes' join order.
  *
  * The trusted provider's rings then spread loose dots, with no link, over even places round the whole circle from a turn of the
  * seed's, each turned by at most `JITTER` of their spacing. A place within a tree's reach on its ring, and one reach
  * more so the tree stands apart, is left empty.
  *
- * A simulated or loose dot less than `MIN_GAP` along its ring from a dot placed before it is left out.
+ * A simulated or loose dot less than `MIN_GAP` along its ring from a dot placed before it is left out, and so are the
+ * places of its tree that grow from it.
  */
 export function getOrbitLayout(mode: OrbitMode, seed: number): OrbitLayout {
   const real = getRealNodes(mode);
   const spacing = 360 / real.length;
-  const reach = getReach(mode, spacing);
+  const reach = REACH[mode.kind];
+  const turn = spacing * JITTER;
   const roots = real.map(({ index, key, kind }, order): Node => {
-    const turn = spacing * JITTER;
     const start = getTurned(OFFSET + getEvenPlace(order, real.length) * spacing, turn, getUnitHash(seed, key));
     return { index, dot: { key, start, from: 0, kind, label: key } };
   });
-  const trees = [...roots].sort((a, b) => a.dot.start - b.dot.start).map((root): Node[] => [root]);
+  const trees = roots.map(root => ({ root, places: getTreePlaces(mode, seed, root) }));
   const nodes = [...roots];
-  for (const [index, { ring, radius, budget, loose }] of RINGS.entries()) {
+  const shown = new Map(roots.map(root => [root.dot.key, root]));
+  for (const [index, { ring, radius, loose }] of RINGS.entries()) {
     const clearance = (MIN_GAP / radius) * (180 / Math.PI);
-    const growing = getGrowth(trees, index, reach);
-    const reached = growing.reduce((sum, { low, high }) => sum + high - low, 0);
-    // Every tree takes one place, so none stops, and the rest of the budget goes by the part each spreads across.
-    // Each share is rounded on the running total, so the shares add up to the budget.
-    const rest = budget[mode.kind] - growing.length;
-    let share = 0;
-    for (const { tree, parents, low, high, insets } of growing) {
-      const before = Math.round(share);
-      share += (rest * (high - low)) / reached;
-      // No more places than keep two neighbours, each turned off its place, at least the clearance apart, though one
-      // place always fits.
-      const room = Math.floor(((high - low) * (1 - 2 * JITTER)) / clearance + 1 - insets.low - insets.high);
-      const count = Math.min(1 + Math.round(share) - before, Math.max(1, room));
-      const width = count === 1 ? high - low : (high - low) / (count - 1 + insets.low + insets.high);
-      const children = new Map<Node, number>();
-      for (let place = 0; place < count; place += 1) {
-        const centre = count === 1 ? (low + high) / 2 : low + width * (place + insets.low);
-        const parent = getNearest(parents, centre);
-        const child = children.get(parent) ?? 0;
-        children.set(parent, child + 1);
-        const key = `${parent.dot.key}.${String(child)}`;
-        const turned = getTurned(centre, width * JITTER, getUnitHash(seed, key));
-        const start = Math.min(Math.max(turned, parent.dot.start - reach), parent.dot.start + reach);
-        if (nodes.some(other => other.index === index && getAngleGap(other.dot.start, start) < clearance)) {
+    for (const { root, places } of trees) {
+      for (const { key, offset, parent } of places.filter(place => place.index === index)) {
+        const from = shown.get(parent);
+        const start = root.dot.start + offset;
+        // A tree leads by the most a real node turns for each ring it grew out, not by its reach, which can pass the
+        // real nodes' spacing and would let a deeper tree take a neighbour's whole part.
+        const own = getAngleGap(root.dot.start, start) - (index - root.index) * turn;
+        const claimed = roots.some(
+          other =>
+            other !== root &&
+            other.index <= index &&
+            getAngleGap(other.dot.start, start) - (index - other.index) * turn < own,
+        );
+        if (
+          !from ||
+          claimed ||
+          nodes.some(other => other.index === index && getAngleGap(other.dot.start, start) < clearance)
+        ) {
           continue;
         }
-        const node: Node = { index, dot: { key, start, from: parent.dot.start, kind: 'simulated', label: null } };
+        const node: Node = { index, dot: { key, start, from: from.dot.start, kind: 'simulated', label: null } };
         nodes.push(node);
-        tree.push(node);
+        shown.set(key, node);
       }
     }
     const stride = 360 / loose[mode.kind];
@@ -233,15 +257,54 @@ function getRealNodes(mode: OrbitMode): { index: number; key: string; kind: 'pee
 }
 
 /**
- * Returns how far, in degrees, a tree of `mode` reaches further either way on each ring out, given the real nodes'
- * `spacing`.
+ * Returns the places of the tree that `root` grows in `mode`, ring by ring outward, each ring's in order round the
+ * circle. They depend on `seed` and on the root's key and ring alone.
  */
-function getReach(mode: OrbitMode, spacing: number): number {
+function getTreePlaces(mode: OrbitMode, seed: number, root: Node): Place[] {
+  const reach = REACH[mode.kind];
+  const places: Place[] = [];
+  let inside: readonly { key: string; offset: number }[] = [{ key: root.dot.key, offset: 0 }];
+  for (const [index, { ring, budget }] of RINGS.entries()) {
+    const depth = index - root.index;
+    if (depth < 1) {
+      continue;
+    }
+    const stride = getStride(mode, budget[mode.kind], depth);
+    const most = Math.floor((depth * reach) / stride);
+    const outside: Place[] = [];
+    for (let step = -most; step <= most; step += 1) {
+      const key = `${root.dot.key}.${ring}.${String(step)}`;
+      const turned = getTurned(step * stride, stride * JITTER, getUnitHash(seed, key));
+      const byDistance = [...inside].sort((a, b) => Math.abs(a.offset - turned) - Math.abs(b.offset - turned));
+      const reached = byDistance.filter(place => Math.abs(place.offset - turned) <= reach);
+      // A parent on the place's own side of the real node and no further from it stays in the tree's part of the ring
+      // whenever the place does, so a neighbour that takes room leaves no place it spared without its parent. When
+      // none is in reach the nearest one in reach takes the place, and when none at all is, the nearest parent holds
+      // the place at its reach, so the tree keeps its budget and its shape still reads only fixed offsets.
+      const nearer = reached.filter(place => place.offset * turned >= 0 && Math.abs(place.offset) <= Math.abs(turned));
+      const parent = nearer[0] ?? reached[0] ?? byDistance[0];
+      if (parent) {
+        const lead = Math.max(-reach, Math.min(reach, turned - parent.offset));
+        outside.push({ index, key, offset: parent.offset + lead, parent: parent.key });
+      }
+    }
+    places.push(...outside);
+    inside = outside;
+  }
+  return places;
+}
+
+/**
+ * Returns the degrees between two neighbouring places of a tree of `mode` on a ring `depth` past its real node's that
+ * holds `budget` simulated nodes. A light client's ring spreads them round the whole circle, and the trusted
+ * provider's across its one fan, so its one tree holds about its budget.
+ */
+function getStride(mode: OrbitMode, budget: number, depth: number): number {
   switch (mode.kind) {
     case 'lightClient':
-      return spacing * JITTER;
+      return 360 / budget;
     case 'trustedProvider':
-      return TRUSTED_PROVIDER_REACH;
+      return (2 * depth * REACH.trustedProvider) / budget;
   }
 }
 
@@ -268,46 +331,6 @@ function getThirdsPoint(order: number): number {
     weight /= 3;
   }
   return point;
-}
-
-/**
- * Returns the trees of `trees`, in order round the circle, that grow onto ring `index`, each with the part of the ring
- * it spreads across. A tree reaches `bound` further either way on each ring out from its real node, so a tree that
- * grew narrow on one ring still widens toward the side with more room. Two neighbours whose reaches overlap split the
- * overlap at its middle, which for two trees as deep is the midpoint between their real nodes, so the trees tile the
- * ring and a deeper tree fills the room a shallower one cannot reach. A real node on the ring is a neighbour that
- * reaches no further than itself, so the trees beside it stop halfway to it.
- */
-function getGrowth(trees: readonly Node[][], index: number, bound: number): Growth[] {
-  const reaching = trees.flatMap(tree => {
-    const [root] = tree;
-    const parents = tree.filter(node => node.index === index - 1);
-    if (!root || root.index > index || (root.index < index && parents.length === 0)) {
-      return [];
-    }
-    const reach = (index - root.index) * bound;
-    return [{ tree, parents, low: root.dot.start - reach, high: root.dot.start + reach }];
-  });
-  return reaching.flatMap((growth, order): Growth[] => {
-    const [first, ...others] = growth.parents;
-    if (!first) {
-      return [];
-    }
-    // The first tree's previous and the last's next are its neighbours round the circle, a turn away.
-    const previous = (reaching.at(order - 1)?.high ?? growth.high) - (order === 0 ? 360 : 0);
-    const next = reaching[order + 1]?.low ?? (reaching[0]?.low ?? growth.low) + 360;
-    const low = Math.max(growth.low, (previous + growth.low) / 2);
-    const high = Math.min(growth.high, (growth.high + next) / 2);
-    const insets = { low: low > growth.low ? 0.5 : 0, high: high < growth.high ? 0.5 : 0 };
-    return [{ tree: growth.tree, parents: [first, ...others], low, high, insets }];
-  });
-}
-
-/** Returns the node of `nodes` whose angle is nearest `angle`. */
-function getNearest(nodes: readonly [Node, ...Node[]], angle: number): Node {
-  return nodes.reduce((nearest, node) =>
-    Math.abs(node.dot.start - angle) < Math.abs(nearest.dot.start - angle) ? node : nearest,
-  );
 }
 
 /** Returns `angle` turned by at most `spread` degrees either way, as `share` in [0, 1) says. */
