@@ -219,7 +219,8 @@ request in session storage, so a reload answers the same round.
 
 - A product page runs its product's worker in a QuickJS VM, in a Web Worker of its own, on a `Worker`-kind connection to
   the page core.
-- The core's ledger alone starts and stops it. The page holds one reference on it, and the core counts the rest.
+- The core's ledger alone starts and stops it. The page takes one reference on it at the product's first done, and the
+  core counts the rest.
 - A run that fails, or finds no worker, is not tried again until the demand turns wanted again.
 - When the core goes down, the run goes with it, and the reference and the demand are taken again on the replacement.
 - The worker's console output goes to the debug log, never to the always-on channels.
@@ -233,9 +234,9 @@ request in session storage, so a reload answers the same round.
 
 ### Loading and failures
 
-- The bridge, chat store, panel bodies, product card, debug panel, local wallet, host runtime, chain client and QR
-  encoder load on demand, each in its own chunk. The chat panel counts unread messages from once the chat store loads.
-  CI startup size budgets guard what each page loads first.
+- The bridge, chat store, panel bodies, product card, debug panel, local wallet, host runtime, chain client, QR encoder
+  and product worker load on demand, each in its own chunk. The chat panel counts unread messages from once the chat
+  store loads. CI startup size budgets guard what each page loads first.
 - A shared lazy module loads once. A failed load is forgotten, so the next caller retries without a page reload.
 - Islands that must stand in for themselves wrap their trees in an error boundary. An island whose code never ran offers
   a reload.

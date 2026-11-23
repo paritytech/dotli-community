@@ -30,10 +30,12 @@ import { reportLazyMiss } from '../kit/reportLazyMiss.js';
 import { productState } from '../features/page/index.js';
 import type { ShellRoute } from '../kit/shellRoute.js';
 import type { Shell } from './startShell.js';
+import type { PageProductWorkerParams } from '../features/productWorker/pageProductWorker.js';
 import { startSandboxContent } from '../features/productLoad/index.js';
 import { productCardState } from '../features/productIdentity/index.js';
 
 const contentReport = createReporter({ flow: 'content' });
+const workerReport = createReporter({ flow: 'product_worker' });
 
 /** Idle work still runs this long after it was asked for, so a busy page cannot starve it. */
 const IDLE_WORK_TIMEOUT_MS = 2_000;
@@ -59,6 +61,10 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
     backend: settings.backend,
     remote: protocol.resolve,
     loadRpc: loadRpcResolver,
+  });
+  // The product's worker runs from its first done for the page's life, so the stops go unused.
+  shell.sandboxLoad.subscribeCleared(() => {
+    void startProductWorker({ label, names, bridge });
   });
   const author = createProductAuthor({
     readOwner: readLoadedOwner,
@@ -89,6 +95,18 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
   });
   await loader.load(label);
+}
+
+/**
+ * Starts the worker of the page's product once its chunk loads. A chunk that fails to load is reported, and no worker
+ * runs.
+ */
+async function startProductWorker(params: PageProductWorkerParams): Promise<void> {
+  const chunk = await import('../features/productWorker/pageProductWorker.js').catch((error: unknown) => {
+    reportLazyMiss({ report: workerReport, step: 'product_worker_load', error });
+    return null;
+  });
+  chunk?.startPageProductWorker(params);
 }
 
 /** The loaded product's owner, null while no product is loaded or when its owner is not known. */
