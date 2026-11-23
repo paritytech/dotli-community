@@ -27,7 +27,8 @@ import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
 import { pipeProviders, type PipeProvidersParams } from './pipeProviders.js';
 import { buildFrameUrl, getAppOrigin, getFrameSandbox, type FrameTarget } from './productFrameUrl.js';
-import { ImageUnavailableError, registerProductChat, type FetchedImageSource } from '../../chat/index.js';
+import { registerProductChat } from '../../chat/index.js';
+import { createProductImages } from './createProductImages.js';
 import { traceProductRender, type RenderTrace } from './traceProductRender.js';
 import { productState } from '../../page/index.js';
 import type { PermissionsChange } from '../../permissions/index.js';
@@ -294,6 +295,9 @@ export function createProductFrame({
   page = BROWSER_PAGE,
   timers = realTimers,
 }: ProductFrameParams) {
+  // The page's one product frame reads each archive once for the page, across every connection it registers.
+  const images = createProductImages();
+
   // A core that goes down before the product's connection is open closes that connection with it, so the attempt
   // leases the replacement instead, once.
   const retryOnCoreDown: HandlerOf<RunMachine, 'readingChat' | 'connecting', 'coreDown'> = (run, event, transition) => {
@@ -685,7 +689,9 @@ export function createProductFrame({
           chatReport.log.event('chat capability resolved', { capable: effect.capable });
           return;
         case 'chatRegistered':
-          effect.attempt.core.hold(registerProductChat(effect.connection, readNoImage));
+          effect.attempt.core.hold(
+            registerProductChat(effect.connection, images.createRead({ readArchiveCid: readNoArchiveCid })),
+          );
           return;
         case 'walletConnected':
           walletReport.log.event('product connected to wallet core', { kind: effect.chat ? 'Worker' : 'App' });
@@ -1151,7 +1157,7 @@ function showReloadNotice(notify: ShowNotification, page: ProductFramePage): voi
   });
 }
 
-/** The frame reads no Bulletin or archive image yet, so each draws as unavailable. */
-function readNoImage(source: FetchedImageSource): Promise<Uint8Array> {
-  return Promise.reject(new ImageUnavailableError('fetch', `The host reads no ${source.tag} image yet`));
+/** The frame knows no product's worker archive yet, so an archive image draws as unavailable. */
+function readNoArchiveCid(): Promise<string | null> {
+  return Promise.resolve(null);
 }
