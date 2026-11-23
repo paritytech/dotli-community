@@ -27,6 +27,7 @@ const service = {
     service.actions.push(item);
     return service.actionFails ? Promise.reject(new Error('unreachable')) : Promise.resolve();
   },
+  loadImage: () => Promise.reject(new Error('No image in this story')),
 };
 
 /** The row's place on screen, scrolled by the play. */

@@ -8,6 +8,8 @@ import type {
   ColorToken,
   ContentAlignment,
   HorizontalAlignment,
+  ImageFit,
+  ImageSource,
   Modifier,
   RendererNode,
   TypographyStyle,
@@ -15,7 +17,8 @@ import type {
 } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import { CustomNode, type CustomActionHandler } from './CustomNode.js';
+import { CustomNode, type CustomActionHandler, type CustomImageLoad } from './CustomNode.js';
+import { readChatImage } from './readChatImage.js';
 
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
@@ -30,11 +33,45 @@ const live: { send: (node: RendererNode) => void } = {
   },
 };
 
-function Live(props: { node: RendererNode; onAction: CustomActionHandler }) {
+function Live(props: { node: RendererNode; onAction: CustomActionHandler; loadImage: CustomImageLoad }) {
   const [node, setNode] = createSignal<RendererNode>(untrack(() => props.node));
   live.send = next => setNode(() => next);
-  return <CustomNode node={node()} onAction={props.onAction} />;
+  return <CustomNode node={node()} onAction={props.onAction} loadImage={props.loadImage} />;
 }
+
+/** An 8 by 8 gradient, as a product draws one at run time. */
+const GRADIENT_PNG =
+  '0x89504e470d0a1a0a0000000d49484452000000080000000808020000004b6d29dc000000a54944415478da05c1210e04210c00409ec80b7801fa42102b1b148a542248836c1a04b21245902b1027ef1d37637e367c5d787d3831ac1414c3a4c02398af85d7c1f1b022688289c0047d80796d39ae2c5f3496990a63e954ea28e6d8b65c53df666c9c5ac756a9e16866595127d30b47e9492a0a92e42146ad4ea7ecb547ad49113593c25033ed66b7bbdf356e4c3be306dacfd886ededee567f31de9c2ee07de87ec6fd03402b7601ecc881940000000049454e44ae426082';
+
+const BULLETIN_PHOTO: ImageSource = {
+  tag: 'Bulletin',
+  value: 'bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku',
+};
+
+/** Loads inline bytes as the page does, and finds no fetched image. */
+function loadInline(source: ImageSource, signal: AbortSignal) {
+  return readChatImage(source, () => Promise.reject(new Error('No fetched image in this story')), signal);
+}
+
+/** A load that never settles, as a slow backend's. */
+function loadForever(): Promise<never> {
+  return new Promise(() => undefined);
+}
+
+/** A load that fails, as for a source the backend does not have. */
+function loadNothing(): Promise<never> {
+  return Promise.reject(new Error('No image in this story'));
+}
+
+function image(source: ImageSource, modifiers: Modifier[], fit?: ImageFit): RendererNode {
+  return { tag: 'Image', value: { modifiers, props: fit === undefined ? { source } : { source, fit } } };
+}
+
+function sized(width: number, height: number, shape?: Modifier): Modifier[] {
+  return [{ tag: 'Width', value: width }, { tag: 'Height', value: height }, ...(shape === undefined ? [] : [shape])];
+}
+
+const INLINE_GRADIENT: ImageSource = { tag: 'Inline', value: GRADIENT_PNG };
 
 function button(props: { text: string; clickAction: string; loading?: boolean; enabled?: boolean }): RendererNode {
   return { tag: 'Button', value: { modifiers: [], props, children: [] } };
@@ -123,8 +160,11 @@ function alignedBox(contentAlignment: ContentAlignment): RendererNode {
   return { tag: 'Box', value: { modifiers: frame(64), props: { contentAlignment }, children: [dot()] } };
 }
 
-/** Nodes side by side, each over a caption that names what it shows. */
-function Gallery(props: { items: { caption: string; node: RendererNode }[]; columns: number }): JSX.Element {
+/** Nodes side by side, each over a caption that names what it shows. An item loads no image unless it says how. */
+function Gallery(props: {
+  items: { caption: string; node: RendererNode; loadImage?: CustomImageLoad }[];
+  columns: number;
+}): JSX.Element {
   return (
     <div
       style={{
@@ -137,7 +177,7 @@ function Gallery(props: { items: { caption: string; node: RendererNode }[]; colu
       <For each={props.items}>
         {item => (
           <figure style={{ display: 'grid', gap: 'var(--sp-1_5)', margin: '0' }}>
-            <CustomNode node={item.node} onAction={fn()} />
+            <CustomNode node={item.node} onAction={fn()} loadImage={item.loadImage ?? loadNothing} />
             <figcaption style={{ color: 'var(--text-muted)', 'font-size': 'var(--fs-label)' }}>
               {item.caption}
             </figcaption>
@@ -216,7 +256,7 @@ const ALL_KINDS: RendererNode = {
                         { tag: 'Width', value: 24 },
                         { tag: 'Height', value: 24 },
                       ],
-                      props: { source: { tag: 'Archive', value: 'icon.png' }, fit: 'Cover' },
+                      props: { source: INLINE_GRADIENT, fit: 'Cover' },
                     },
                   },
                 ],
@@ -233,14 +273,15 @@ const meta = {
   title: 'Entities/Chat/CustomNode',
   component: Live,
   parameters: { chrome: true },
-  args: { node: ALL_KINDS, onAction: fn() },
+  args: { node: ALL_KINDS, onAction: fn(), loadImage: fn(loadNothing) },
 } satisfies Meta<typeof Live>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a user, I see every layout node of a product tree as a host element, and an image never loads a URL. */
+/** As a user, I see every layout node of a product tree as a host element. */
 export const AllNodeKinds: Story = {
+  args: { loadImage: fn(loadInline) },
   play: async ({ canvas, step }) => {
     const root = within(canvas.getByTestId('chat-custom-column'));
     const row = root.getByTestId('chat-custom-row');
@@ -253,10 +294,8 @@ export const AllNodeKinds: Story = {
       await expect(within(row).queryAllByTestId(/^chat-custom-/)).toHaveLength(1);
       await expect(within(row).getByTestId('chat-custom-spacer')).toBeInTheDocument();
     });
-    await step('Then a materials node draws its children and an image is empty space, never a URL', async () => {
-      const image = within(materials).getByTestId('chat-custom-image');
-      await expect(image.childNodes).toHaveLength(0);
-      await expect(image.querySelector('img')).toBeNull();
+    await step('Then a materials node draws its children', async () => {
+      await expect(within(materials).getByTestId('chat-custom-image')).toBeInTheDocument();
     });
   },
 };
@@ -691,5 +730,102 @@ export const MaterialsDrawsChildren: Story = {
         ],
       },
     },
+  },
+};
+
+/** As a user, I see an image hold its box while its bytes are on their way. */
+export const ImageLoading: Story = {
+  args: { node: image(BULLETIN_PHOTO, sized(160, 120), 'Cover'), loadImage: fn(loadForever) },
+  play: async ({ canvas, step }) => {
+    await step('Then the image shows as loading', async () => {
+      await expect(canvas.getByRole('img', { name: 'Image loading' })).toHaveAttribute('data-state', 'loading');
+    });
+  },
+};
+
+/** As a user, I see an image the product carries in its tree. */
+export const ImageLoadedInline: Story = {
+  args: { node: image(INLINE_GRADIENT, sized(160, 120), 'Cover'), loadImage: fn(loadInline) },
+  play: async ({ canvas, step }) => {
+    await step('Then the image draws its decoded bytes', async () => {
+      await waitFor(() => expect(canvas.getByTestId('chat-custom-image')).toHaveAttribute('data-state', 'loaded'));
+      const drawn = canvas.getByTestId('chat-custom-image');
+      await waitFor(() => expect(drawn instanceof HTMLImageElement && drawn.naturalWidth).toBe(8));
+    });
+  },
+};
+
+/** As a user, I see an image the product cannot serve as unavailable. */
+export const ImageUnavailable: Story = {
+  args: { node: image(BULLETIN_PHOTO, sized(160, 120), 'Cover'), loadImage: fn(loadNothing) },
+  play: async ({ canvas, step }) => {
+    await step('Then the image shows as unavailable', async () => {
+      await expect(await canvas.findByRole('img', { name: 'Image unavailable' })).toBeVisible();
+    });
+  },
+};
+
+/** As a user, I see bytes that look like an image but do not decode as unavailable. */
+export const ImageThatFailsToDecode: Story = {
+  args: {
+    node: image({ tag: 'Inline', value: '0x89504e470d0a1a0a00000000' }, sized(160, 120)),
+    loadImage: fn(loadInline),
+  },
+  play: async ({ canvas, step }) => {
+    await step('Then the image shows as unavailable once the browser gives up on it', async () => {
+      await expect(await canvas.findByRole('img', { name: 'Image unavailable' })).toBeVisible();
+    });
+  },
+};
+
+/** As a user, I see a product's new tree that names the same image keep the image it drew. */
+export const NewTreeKeepsImage: Story = {
+  args: { node: image(INLINE_GRADIENT, sized(160, 120), 'Cover'), loadImage: fn(loadInline) },
+  play: async ({ args, canvas, step }) => {
+    await waitFor(() => expect(canvas.getByTestId('chat-custom-image')).toHaveAttribute('data-state', 'loaded'));
+    const drawn = canvas.getByTestId('chat-custom-image');
+    await step('When the product sends a tree that resizes the same image', () => {
+      live.send(image(INLINE_GRADIENT, sized(120, 120), 'Contain'));
+    });
+    await step('Then the image stays drawn without a second load', async () => {
+      await expect(args.loadImage).toHaveBeenCalledTimes(1);
+      await expect(canvas.getByTestId('chat-custom-image')).toBe(drawn);
+    });
+  },
+};
+
+const IMAGE_FITS: ImageFit[] = ['Fill', 'Cover', 'Contain', 'ScaleDown', 'None'];
+
+/** As a user, I see a product image meet its box as each fit says, and a circle background clip it. */
+export const ImageFits: Story = {
+  render: () => (
+    <Gallery
+      columns={3}
+      items={[
+        ...IMAGE_FITS.map(fit => ({
+          caption: fit,
+          node: image(INLINE_GRADIENT, sized(160, 96), fit),
+          loadImage: loadInline,
+        })),
+        {
+          caption: 'Circle',
+          node: image(
+            INLINE_GRADIENT,
+            sized(56, 56, { tag: 'Background', value: { color: 'BgSurfaceNested', shape: { tag: 'Circle' } } }),
+            'Cover',
+          ),
+          loadImage: loadInline,
+        },
+      ]}
+    />
+  ),
+  play: async ({ canvas, step }) => {
+    await step('Then every fit draws the image', async () => {
+      await waitFor(async () => {
+        for (const drawn of canvas.getAllByTestId('chat-custom-image')) {
+          await expect(drawn).toHaveAttribute('data-state', 'loaded');
+        }
+      });
+    });
   },
 };

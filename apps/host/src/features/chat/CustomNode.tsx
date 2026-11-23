@@ -4,16 +4,39 @@
 // Product strings land as JSX text and every style comes from the closed mapping in customStyles.ts.
 // Nodes match by tag and children by position, so an updated tree keeps a focused field's caret and text.
 
-import { createEffect, createUniqueId, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+  untrack,
+} from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { RendererNode } from '@parity/truapi';
+import type { ImageSource, RendererNode } from '@parity/truapi';
 import { InlineActionButton, type InlineActionButtonVariant } from './InlineActionButton.js';
-import { boxStyle, columnStyle, modifierStyle, rowStyle, textStyle } from './customStyles.js';
+import { ImageOffIcon } from './ImageOffIcon.js';
+import { boxStyle, columnStyle, imageStyle, modifierStyle, rowStyle, textStyle } from './customStyles.js';
 import { createEchoHold } from './echoHold.js';
+import { ImageUnavailableError, reportUnavailableImage } from './imageUnavailableError.js';
+import type { LoadedImage } from './readChatImage.js';
 import s from './CustomNode.module.css';
 
 /** Reports a user gesture inside a rendered tree back to the product. */
 export type CustomActionHandler = (actionId: string, payload?: Uint8Array) => void;
+
+/** Resolves an image a tree names. Rejects when it cannot be drawn, and with the signal's reason once it aborts. */
+export type CustomImageLoad = (source: ImageSource, signal: AbortSignal) => Promise<LoadedImage>;
+
+/** What a rendered tree asks of the message around it. */
+type NodeHost = { onAction: CustomActionHandler; loadImage: CustomImageLoad };
+
+/** An image node's bytes: on their way, drawn from an object URL, or unavailable. */
+type ImageState = { kind: 'loading' } | { kind: 'loaded'; url: string } | { kind: 'unavailable' };
 
 type NodeTag = Exclude<RendererNode['tag'], 'Nil'>;
 type NodeValues = {
@@ -36,10 +59,10 @@ function buttonVariant(variant: NodeValue<'Button'>['props']['variant']): Inline
   return variant === 'Secondary' ? 'secondary' : 'text';
 }
 
-function Children(props: { nodes: RendererNode[]; onAction: CustomActionHandler }): JSX.Element {
+function Children(props: NodeHost & { nodes: RendererNode[] }): JSX.Element {
   return (
     <For each={props.nodes} keyed={false}>
-      {child => <CustomNode node={child()} onAction={props.onAction} />}
+      {child => <CustomNode node={child()} onAction={props.onAction} loadImage={props.loadImage} />}
     </For>
   );
 }
@@ -120,8 +143,92 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
   );
 }
 
+/** What makes an image the same image from one tree to the next. */
+function sourceIdentity(source: ImageSource): string {
+  return `${source.tag}\u0000${source.value}`;
+}
+
+/**
+ * Draws its source once loaded, sized by its modifiers or else at its natural size. It keeps a box while loading and
+ * shows bytes that fail to load or decode as unavailable.
+ */
+function CustomImage(props: { value: NodeValue<'Image'>; loadImage: CustomImageLoad }): JSX.Element {
+  const [state, setState] = createSignal<ImageState>({ kind: 'loading' });
+  // A memo, so a new tree that names the same source keeps the drawn image.
+  const identity = createMemo(() => sourceIdentity(props.value.props.source));
+  createEffect(identity, () => {
+    const source = untrack(() => props.value.props.source);
+    const aborter = new AbortController();
+    let url: string | null = null;
+    setState({ kind: 'loading' });
+    props.loadImage(source, aborter.signal).then(
+      image => {
+        if (aborter.signal.aborted) {
+          return;
+        }
+        url = URL.createObjectURL(new Blob([image.bytes.slice()], { type: image.type }));
+        setState({ kind: 'loaded', url });
+      },
+      () => {
+        if (!aborter.signal.aborted) {
+          setState({ kind: 'unavailable' });
+        }
+      },
+    );
+    return () => {
+      aborter.abort();
+      if (url !== null) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  });
+  const loadedUrl = (): string | false => {
+    const current = state();
+    return current.kind === 'loaded' && current.url;
+  };
+  return (
+    <Switch
+      fallback={
+        <div
+          class={s['imageSlot']}
+          data-testid="chat-custom-image"
+          data-state={state().kind}
+          role="img"
+          aria-label={state().kind === 'unavailable' ? 'Image unavailable' : 'Image loading'}
+          style={modifierStyle(props.value.modifiers)}
+        >
+          <Show when={state().kind === 'unavailable'} fallback={<span class={s['shimmer']} />}>
+            <ImageOffIcon size={22} />
+            <span class={s['imageNote']}>Image unavailable</span>
+          </Show>
+        </div>
+      }
+    >
+      <Match when={loadedUrl()}>
+        {url => (
+          <img
+            class={s['image']}
+            data-testid="chat-custom-image"
+            data-state="loaded"
+            alt=""
+            src={url()}
+            style={imageStyle(props.value.props.fit, props.value.modifiers)}
+            onError={() => {
+              reportUnavailableImage(
+                new ImageUnavailableError('undecodable', 'The browser could not decode an image'),
+                'chat_image_decode',
+              );
+              setState({ kind: 'unavailable' });
+            }}
+          />
+        )}
+      </Match>
+    </Switch>
+  );
+}
+
 /** One node of a product-authored render tree. `Nil` renders nothing. */
-export function CustomNode(props: { node: RendererNode; onAction: CustomActionHandler }): JSX.Element {
+export function CustomNode(props: NodeHost & { node: RendererNode }): JSX.Element {
   return (
     <Switch>
       <Match when={valueOf(props.node, 'String')}>{value => <>{value().text}</>}</Match>
@@ -133,7 +240,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             data-testid="chat-custom-box"
             style={boxStyle(value().props.contentAlignment, value().modifiers)}
           >
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} loadImage={props.loadImage} />
           </div>
         )}
       </Match>
@@ -145,7 +252,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             data-testid="chat-custom-column"
             style={columnStyle(value().props.horizontalAlignment, value().props.verticalArrangement, value().modifiers)}
           >
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} loadImage={props.loadImage} />
           </div>
         )}
       </Match>
@@ -157,7 +264,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             data-testid="chat-custom-row"
             style={rowStyle(value().props.horizontalArrangement, value().props.verticalAlignment, value().modifiers)}
           >
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} loadImage={props.loadImage} />
           </div>
         )}
       </Match>
@@ -173,7 +280,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             data-testid="chat-custom-text"
             style={textStyle(value().props.style, value().props.color, value().modifiers)}
           >
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} loadImage={props.loadImage} />
           </span>
         )}
       </Match>
@@ -203,17 +310,15 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
         {value => <TextField value={value()} onAction={props.onAction} />}
       </Match>
 
-      {/* The host frame has no fetch path for Bulletin or archive image bytes yet,
-          so an image draws as empty space. */}
       <Match when={valueOf(props.node, 'Image')}>
-        {value => <div class={s['image']} data-testid="chat-custom-image" style={modifierStyle(value().modifiers)} />}
+        {value => <CustomImage value={value()} loadImage={props.loadImage} />}
       </Match>
 
       {/* The host has no materials renderer yet, so the children draw without the layers. */}
       <Match when={valueOf(props.node, 'Materials')}>
         {value => (
           <div class={s['materials']} data-testid="chat-custom-materials">
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} loadImage={props.loadImage} />
           </div>
         )}
       </Match>

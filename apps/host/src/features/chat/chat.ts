@@ -8,10 +8,12 @@ import type { Accessor } from 'solid-js';
 import type {
   HexString,
   HostRendererActionSubscribeItem,
+  ImageSource,
   ProductRendererRenderRequest,
   RendererNode,
 } from '@parity/truapi';
 import type { ChatMessageRecord, ChatRoomFooter } from './createChatStore.js';
+import type { LoadedImage } from './readChatImage.js';
 
 /** Where a custom message's renderer streams its trees. */
 export type ChatRenderSink = {
@@ -19,7 +21,7 @@ export type ChatRenderSink = {
   onError?: (error: Error) => void;
 };
 
-/** What a message asks of the product: a custom tree, a tap on an action or a gesture inside a tree. */
+/** What a message asks of the product: a custom tree, an image in it, a tap on an action or a gesture inside a tree. */
 export type ChatMessageActions = {
   /** Streams replacement trees into `sink` until disposed. Never throws: a failure reaches `sink.onError`. */
   renderCustomMessage: (params: {
@@ -35,6 +37,11 @@ export type ChatMessageActions = {
   }) => Promise<void>;
   /** Hands a gesture inside a custom message's tree to the product. Rejects when it cannot reach the product. */
   triggerRendererAction: (productId: string, item: HostRendererActionSubscribeItem) => Promise<void>;
+  /**
+   * Resolves the bytes and type of an image a custom message's tree names. Rejects when it cannot be drawn, and with
+   * the signal's reason once `signal` aborts.
+   */
+  loadImage: (productId: string, source: ImageSource, signal: AbortSignal) => Promise<LoadedImage>;
 };
 
 export type ChatRoom = {

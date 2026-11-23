@@ -52,6 +52,7 @@ function chat() {
     triggerAction: fn(() => Promise.resolve()),
     renderCustomMessage: fn(() => () => undefined),
     triggerRendererAction: fn(() => Promise.resolve()),
+    loadImage: fn(() => Promise.reject(new Error('No image in this story'))),
   };
 }
 

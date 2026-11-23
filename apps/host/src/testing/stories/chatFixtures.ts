@@ -250,6 +250,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
         stage.rendererActions.push(item);
         return Promise.resolve();
       },
+      loadImage: () => Promise.reject(new Error('No image in this story')),
     },
   };
 

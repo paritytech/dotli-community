@@ -10,7 +10,7 @@ import type { HexString, RenderContext, RendererNode } from '@parity/truapi';
 import { toHex } from '@dotli/shared';
 import { Spinner } from '@dotli/ui';
 import { CircleAlertIcon } from '@dotli/ui/icons';
-import { CustomNode } from './CustomNode.js';
+import { CustomNode, type CustomImageLoad } from './CustomNode.js';
 import type { ChatMessageActions } from './chat.js';
 import { visibilityWatcher, type WatchVisibility } from './visibility.js';
 import s from './CustomMessage.module.css';
@@ -18,7 +18,7 @@ import s from './CustomMessage.module.css';
 const LOADING = 'Loading…';
 
 export type CustomMessageProps = {
-  chat: Pick<ChatMessageActions, 'renderCustomMessage' | 'triggerRendererAction'>;
+  chat: Pick<ChatMessageActions, 'renderCustomMessage' | 'triggerRendererAction' | 'loadImage'>;
   /** Without one, the browser's IntersectionObserver. */
   watchVisibility?: WatchVisibility | undefined;
   productId: string;
@@ -61,6 +61,8 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
         setActionFailed(true);
       });
   };
+
+  const loadImage: CustomImageLoad = (source, signal) => mount.chat.loadImage(mount.productId, source, signal);
 
   let stopRender: (() => void) | null = null;
 
@@ -116,7 +118,9 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
     >
       <Show
         when={placeholder()}
-        fallback={<Show when={tree()}>{node => <CustomNode node={node()} onAction={onAction} />}</Show>}
+        fallback={
+          <Show when={tree()}>{node => <CustomNode node={node()} onAction={onAction} loadImage={loadImage} />}</Show>
+        }
       >
         {text => (
           <span class={s['placeholder']} data-testid="chat-custom-placeholder">
