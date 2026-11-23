@@ -2,9 +2,9 @@
 
 A page component turns a fast stream of input readings, such as sensor or pointer events, into rendered state, and must
 cap it at a few updates per second with the latest reading winning. More than one input source may feed the same state.
-The project bans hand-rolled timers and concurrency limits and points at `createAsyncTaskPool`. So where does the cap
-live? It could go on the pool or into a shared helper. Each source could cap itself, or the feature could hold a small
-limiter of its own.
+The project bans hand-rolled retry timers and concurrency limits and points at `createAsyncTaskPool`. So where does the
+cap live? It could go on the pool or into a shared helper. Each source could cap itself, or the feature could hold a
+small limiter of its own.
 
 ## How to resolve
 
@@ -23,14 +23,27 @@ many sources feed it.
 
 ```ts
 // features/compass/createLatestLimiter.ts
-export const createLatestLimiter = <T>(perSecond: number, emit: (value: T) => void, timers: Timers) => {
-  // keeps the latest value, emits on the leading and trailing edge of each interval
+type Params<Value> = {
+  perSecond: number;
+  onValue: (value: Value) => void;
+  timers: Timers;
 };
 
+export function createLatestLimiter<Value>({ perSecond, onValue, timers }: Params<Value>) {
+  // keeps the latest value, emits on the leading and trailing edge of each interval
+  return { push, dispose }; // dispose drops a held value and clears the timer
+}
+
 // features/compass/startCompass.ts
-const limit = createLatestLimiter<Heading>(10, setHeading, timers);
-const stopTilt = onTilt((event) => limit(headingFromTilt(event)));
-const stopDrag = onDrag((event) => limit(headingFromDrag(event)));
+const limiter = createLatestLimiter<Heading>({ perSecond: 10, onValue: setHeading, timers });
+const stopTilt = onTilt((event) => limiter.push(headingFromTilt(event)));
+const stopDrag = onDrag((event) => limiter.push(headingFromDrag(event)));
+
+return () => {
+  stopTilt();
+  stopDrag();
+  limiter.dispose();
+};
 ```
 
 Not this:
