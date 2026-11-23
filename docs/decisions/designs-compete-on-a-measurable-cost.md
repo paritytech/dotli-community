@@ -10,7 +10,9 @@ visit costs, such as a late asset or a layout shift.
 2. Measure it against what the elaborate designs protect, or run a probe that shows whether that protection is needed.
 3. Show the owner the numbers.
 4. Keep the simple design when the numbers hold, and drop the machinery the probe shows is not needed. A small cost the
-   numbers show, such as a short swap on a first visit that repeat visits never pay, can still hold. The owner judges it.
+   numbers show can still hold, such as a short swap on a first visit that repeat visits never pay, or a few kB a
+   library adds to every bundle that loads at boot when a lazy chunk with an idle preload would keep it out. The owner
+   judges it.
 
 The owner's reason: the owner asks for the simplest form, and keeps it once a measurement backs it.
 
@@ -47,6 +49,10 @@ Build the simple one, compare the eager bundle size on both, and keep the simple
   in every build. Measured on a cold, throttled first visit, the font came a little after first paint with a tiny swap
   shift on one page, and the owner kept the simple import over the framework's font feature with preload and fallback
   faces in one build. (docs/_plans/brand-fonts-design.md, PR #493)
+- A shared floating layer that islands hydrating on load import statically took a positioning library by a static
+  import, about 6 kB compressed on every bundle with a floating surface. The owner chose it over a lazy chunk loaded on
+  first opening and preloaded when idle, which kept boot unchanged but added a loader, an idle preload, a layer hidden
+  until placed and a possible wait on an early first opening. (docs/\_plans/floating-placement-design.md, feat/floating-ui)
 - Counter-case: a cleanup proposed dropping a built gate, named in the design, that keeps an open panel's clock idle
   when nothing is in use. The owner kept it over dropping it or measuring idle CPU first. (feat/network-chain-indicators)
 
