@@ -23,6 +23,27 @@ type OrbitRing = 'inner' | 'ring1' | 'ring2' | 'ring3' | 'ring4';
  */
 type OrbitDotKind = 'peer' | 'trustedProvider' | 'simulated' | 'loose';
 
+/**
+ * For each kind of dot, whether it is a real node, and where its one link starts: at the `centre`, at the `dot` it grew
+ * from, or nowhere.
+ */
+const KIND_FACTS = {
+  peer: { real: true, link: 'centre' },
+  trustedProvider: { real: true, link: 'centre' },
+  simulated: { real: false, link: 'dot' },
+  loose: { real: false, link: null },
+} satisfies Record<OrbitDotKind, { real: boolean; link: 'centre' | 'dot' | null }>;
+
+/** Returns whether `dot` is a real node, one the centre really reaches the network through. */
+export function isRealDot({ kind }: OrbitDot): boolean {
+  return KIND_FACTS[kind].real;
+}
+
+/** Returns whether `dot`'s link starts at another dot, so it moves with that dot, rather than at the centre or nowhere. */
+export function linksToDot({ kind }: OrbitDot): boolean {
+  return KIND_FACTS[kind].link === 'dot';
+}
+
 export type OrbitDot = {
   /** Stays the same while the dot exists, so a renderer keeps its element. A dot never changes kind. */
   readonly key: string;

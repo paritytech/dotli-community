@@ -50,8 +50,10 @@ export function LandingOrbitIsland(): JSX.Element {
 function BoundOrbit(): JSX.Element {
   // The computed builds a new mode on every change the monitor counts, so an equal one keeps the layout.
   const mode = useStore(orbitMode, { initial: NO_PEERS, equals: isShallowEqual });
-  // Each layout turns onto the one shown before, so a real node that stays keeps its place.
-  const layout = createMemo((previous?: OrbitLayout) => anchorOrbitLayout(previous, getOrbitLayout(mode(), SEED)));
+  // Each layout turns onto the one shown before, so the latest real node that stays keeps its place.
+  const layout = createMemo((previous?: OrbitLayout) =>
+    anchorOrbitLayout(previous ?? null, getOrbitLayout(mode(), SEED)),
+  );
   const [pointer, setPointer] = createSignal({ x: 0, y: 0 });
   onSettled(() => followPointer({ onShift: shift => setPointer(shift) }));
   return <Orbit layout={layout()} pointerX={pointer().x} pointerY={pointer().y} />;

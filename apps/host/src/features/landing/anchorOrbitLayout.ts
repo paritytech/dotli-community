@@ -5,18 +5,7 @@
 // its new angle. Turning the whole new layout onto the one shown before keeps one real node where it was drawn, so the
 // picture seems to go on rather than start again.
 
-import type { OrbitDot, OrbitLayout } from './getOrbitLayout.js';
-
-/**
- * What the anchor knows of each kind of dot: whether it is a real node, which can hold its drawn angle, and whether its
- * link starts at another dot, so turns with it, rather than at the centre or nowhere.
- */
-const KIND_FACTS = {
-  peer: { anchors: true, linkTurns: false },
-  trustedProvider: { anchors: true, linkTurns: false },
-  simulated: { anchors: false, linkTurns: true },
-  loose: { anchors: false, linkTurns: false },
-} satisfies Record<OrbitDot['kind'], { anchors: boolean; linkTurns: boolean }>;
+import { isRealDot, linksToDot, type OrbitDot, type OrbitLayout } from './getOrbitLayout.js';
 
 /**
  * Returns `next` turned so the last real node to join of those `previous` drew and `next` still holds, matched by key,
@@ -24,8 +13,8 @@ const KIND_FACTS = {
  * Returns `next` itself when there is no `previous` or the two share no real node. Pass the layout this returned last as
  * `previous`, so the turns add up across layouts.
  */
-export function anchorOrbitLayout(previous: OrbitLayout | undefined, next: OrbitLayout): OrbitLayout {
-  if (previous === undefined) {
+export function anchorOrbitLayout(previous: OrbitLayout | null, next: OrbitLayout): OrbitLayout {
+  if (previous === null) {
     return next;
   }
   const placed = new Map(listRealDots(next).map(({ key, start }) => [key, start]));
@@ -40,7 +29,7 @@ export function anchorOrbitLayout(previous: OrbitLayout | undefined, next: Orbit
 
 /** Returns the real nodes of `layout` in join order, which its rings read from the centre outward give. */
 function listRealDots(layout: OrbitLayout): OrbitDot[] {
-  return layout.rings.flatMap(({ dots }) => dots).filter(({ kind }) => KIND_FACTS[kind].anchors);
+  return layout.rings.flatMap(({ dots }) => dots).filter(isRealDot);
 }
 
 /** Returns `layout` with every dot, and each link that starts at a dot, turned by `delta` degrees. */
@@ -51,7 +40,7 @@ function turnLayout(layout: OrbitLayout, delta: number): OrbitLayout {
       dots: ring.dots.map(dot => ({
         ...dot,
         start: dot.start + delta,
-        from: dot.from !== null && KIND_FACTS[dot.kind].linkTurns ? dot.from + delta : dot.from,
+        from: dot.from !== null && linksToDot(dot) ? dot.from + delta : dot.from,
       })),
     })),
   };

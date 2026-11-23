@@ -57,7 +57,7 @@ describe('anchorOrbitLayout', () => {
   });
 
   it.each([
-    ['no layout was shown before', undefined],
+    ['no layout was shown before', null],
     ['the light client gives way to a trusted provider', getOrbitLayout(lightClient(5), SEED)],
   ])('As a visitor, when %s, I see the new layout unturned', (_, previous) => {
     // Given
