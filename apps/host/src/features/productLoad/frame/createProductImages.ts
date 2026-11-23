@@ -25,6 +25,8 @@ type Params = {
   readFiles?: (cid: string) => Promise<ArchiveFiles>;
 };
 
+export type ProductImages = ReturnType<typeof createProductImages>;
+
 /** What the images of one product read from. */
 type ProductImagesParams = {
   /** Resolves the CID of the product's worker archive, or null when it publishes none. */
