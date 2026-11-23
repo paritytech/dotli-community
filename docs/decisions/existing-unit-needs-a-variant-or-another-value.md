@@ -54,6 +54,12 @@ const stopX = followScrollX((x) => view.setX(x));
 followScroll('x', (x) => view.setX(x)); // generic, one call per value
 ```
 
+## Not when
+
+The variant would only place a shared surface against something other than its trigger, such as a new named placement
+that aligns to an enclosing bar's edge. Add no variant. The surface sits against its trigger, as
+[a surface is placed against its trigger](surface-placed-against-its-trigger.md) says.
+
 ## Cases
 
 - A state machine's effects needed a phase that runs once every queued step has finished. It became an option on the
@@ -65,5 +71,8 @@ followScroll('x', (x) => view.setX(x)); // generic, one call per value
   gained an option rather than a second layer, as
   [light-dismiss-popover-closes-when-it-should-not](light-dismiss-popover-closes-when-it-should-not.md) says.
   (architecture change "Action group More: Listbox on wide screens", docs/\_plans/more-listbox-design.md)
+- Counter-case: a shared tooltip card had to drop from an enclosing bar's edge rather than its trigger's. Offered a new
+  named placement reading the bar's published custom property, the owner added no variant and kept the card against
+  its trigger. (docs/\_plans/floating-placement-design.md, feat/floating-ui)
 
 Status: active
