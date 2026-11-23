@@ -51,7 +51,7 @@ flowchart TD
   content --> config & metrics & shared
   metrics --> shared
   protocol --> chains & config & metrics & resolver & shared & transport
-  quickjsRuntime --> shared
+  quickjsRuntime --> shared & transport
   resolver --> config & metrics & shared
   sandboxWire --> config
   storage --> config & metrics & shared
@@ -108,7 +108,7 @@ flowchart TD
 | Fetching a product's files by CID and proving they are the content the CID names                                               | `packages/content` (`@dotli/content`)                     |
 | Metrics, spans and error capture over Sentry                                                                                   | `packages/metrics` (`@dotli/metrics`)                     |
 | The host page's client for the hidden protocol frame, turning postMessage traffic into promises and streams                    | `packages/protocol` (`@dotli/protocol`)                   |
-| Running an ES module in a QuickJS VM that knows nothing of the host, with a byte port to it and its files by path           | `packages/quickjs-runtime` (`@dotli/quickjs-runtime`)     |
+| Running an ES module in a QuickJS VM that knows nothing of the host, on the page or in a Web Worker, with a byte port to it | `packages/quickjs-runtime` (`@dotli/quickjs-runtime`)     |
 | Resolving a `.dot` name to its manifests and content hash through dotNS, and the dotNS naming rules                            | `packages/resolver` (`@dotli/resolver`)                   |
 | The protocol between the host and a sandbox frame: URL params, messages and the host's listener                                | `packages/sandbox-wire` (`@dotli/sandbox-wire`)           |
 | A small, framework-free helper every other package may use: logging, errors, task pool, listener set                           | `packages/shared` (`@dotli/shared`)                       |

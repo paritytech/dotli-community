@@ -4,9 +4,12 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/worker.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
+    "./worker": "./src/worker.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -20,7 +23,9 @@
   },
   "dependencies": {
     "@dotli/shared": "*",
+    "@dotli/transport": "*",
     "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0",
-    "quickjs-emscripten-core": "0.32.0"
+    "quickjs-emscripten-core": "0.32.0",
+    "scale-ts": "1.6.1"
   }
 }

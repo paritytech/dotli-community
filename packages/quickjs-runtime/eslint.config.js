@@ -17,8 +17,8 @@ export default defineConfig([
   },
   ...importBans([
     onlyAllowedScopes(
-      ['@dotli/shared', '@config/eslint'],
-      'quickjs-runtime is a VM runtime that knows nothing of the host, products or TrUAPI, and sits on shared only.',
+      ['@dotli/shared', '@dotli/transport', '@config/eslint'],
+      'quickjs-runtime is a VM runtime that knows nothing of the host, products or TrUAPI, and sits on shared and transport only.',
     ),
   ]),
 ]);

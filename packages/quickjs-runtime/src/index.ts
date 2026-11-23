@@ -5,5 +5,8 @@ export type { ByteWire } from './createHostApiPort.js';
 export type { ModuleFiles } from './createModuleLoader.js';
 export type { QuickJsVm, QuickJsVmParams } from './createQuickJsVm.js';
 export { createQuickJsVm } from './createQuickJsVm.js';
+export type { QuickJsWorker, QuickJsWorkerParams } from './createQuickJsWorker.js';
+export { createQuickJsWorker } from './createQuickJsWorker.js';
 export type { HostFetch, HostFetchRequest, HostFetchResponse } from './createVmFetch.js';
 export type { ConsoleLevel, ConsoleSink } from './installConsole.js';
+export { QuickJsVmError } from './quickJsVmError.js';

@@ -6,6 +6,9 @@ Runs an ES module in a QuickJS VM, on the release asyncify build of QuickJS. The
 `__HOST_API_PORT__`, a MessagePort-like object that carries bytes. The host holds the other end, the wire. The runtime
 knows nothing of the host, products or TrUAPI. What the bytes mean is the caller's.
 
+A VM runs on the page that builds it, or in a dedicated Web Worker built from the `./worker` entry. The page drives that
+worker through `createQuickJsWorker`.
+
 ## Responsibilities
 
 - **Owns:**
@@ -22,6 +25,8 @@ knows nothing of the host, products or TrUAPI. What the bytes mean is the caller
     - `Blob` and `FormData`
     - `fetch`, `Headers`, `Request` and `Response`, when the caller passes a fetch
   - loading the entrypoint and its imports from a map of files
+  - the Web Worker that runs one VM, and the page's client for it
+  - what the page and that worker say to each other
 - **Does not own:**
   - where the files come from
   - the protocol on the wire
@@ -31,18 +36,24 @@ knows nothing of the host, products or TrUAPI. What the bytes mean is the caller
 
 ## Public API
 
-| Export              | What it is                                      |
-| ------------------- | ----------------------------------------------- |
-| `createQuickJsVm`   | Builds one VM, ready to run its entrypoint      |
-| `QuickJsVm`         | What it builds                                  |
-| `QuickJsVmParams`   | Its options                                     |
-| `ModuleFiles`       | The files: bytes by path                        |
-| `HostFetch`         | The host's side of one request of `fetch`       |
-| `HostFetchRequest`  | The request it gets                             |
-| `HostFetchResponse` | The answer it resolves with                     |
-| `ByteWire`          | The host's end of the port, which carries bytes |
-| `ConsoleSink`       | What hears the VM's console calls               |
-| `ConsoleLevel`      | The console method called                       |
+### `.`
+
+| Export                | What it is                                            |
+| --------------------- | ----------------------------------------------------- |
+| `createQuickJsVm`     | Builds one VM, ready to run its entrypoint            |
+| `QuickJsVm`           | What it builds                                        |
+| `QuickJsVmParams`     | Its options                                           |
+| `createQuickJsWorker` | Runs one VM in a Web Worker it starts                 |
+| `QuickJsWorker`       | What it returns                                       |
+| `QuickJsWorkerParams` | Its options                                           |
+| `QuickJsVmError`      | What went wrong in a worker's VM, as the page sees it |
+| `ModuleFiles`         | The files: bytes by path                              |
+| `HostFetch`           | The host's side of one request of `fetch`             |
+| `HostFetchRequest`    | The request it gets                                   |
+| `HostFetchResponse`   | The answer it resolves with                           |
+| `ByteWire`            | The host's end of the port, which carries bytes       |
+| `ConsoleSink`         | What hears the VM's console calls                     |
+| `ConsoleLevel`        | The console method called                             |
 
 `createQuickJsVm` options:
 
@@ -65,6 +76,30 @@ A `QuickJsVm` has:
   VM's message when the module throws or an import is missing. A repeated call returns the first run.
 - `dispose()`: clears the VM's timers, drops its crypto calls in flight, aborts its requests in flight, closes the port
   and frees the VM. Safe to call again.
+
+`createQuickJsWorker` options:
+
+| Option          | Meaning                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| `createWorker`  | Starts the Web Worker from the `./worker` entry                                                |
+| `files`         | The module files, by path                                                                      |
+| `entrypoint`    | The path of the ES module the worker runs                                                      |
+| `isHostAllowed` | Answers whether the VM's `fetch` may reach a host, with its port when the URL has one          |
+| `onConsole`     | Hears each console call of the VM's code                                                       |
+| `onError`       | Hears what goes wrong outside the run: in the VM, or in its worker once the run has ended well |
+
+A `QuickJsWorker` has:
+
+- `wire`: the page's end of the byte wire, a `MessagePort` whose every message is one frame as a `Uint8Array`.
+- `run`: resolves once the entrypoint and its top-level await finish, while the VM serves on. It rejects with a
+  `QuickJsVmError` when the module fails, and with an `Error` when the worker fails or never answers, after which the
+  worker is terminated. It never settles once `dispose` comes first.
+- `dispose()`: ends the VM and terminates the worker. Safe to call again.
+
+### `./worker`
+
+The Web Worker's module, which exports nothing. Load it as a worker, such as with Vite's `?worker` suffix, and hand a
+function that builds it to `createQuickJsWorker`.
 
 ## Design
 
@@ -114,3 +149,33 @@ flowchart LR
   request cannot make the host copy an unbounded body.
 - **Host functions stay hidden:** a global built in the VM reaches its host functions through a closure, never through a
   global the VM's code could call.
+
+### Worker
+
+```mermaid
+sequenceDiagram
+  participant P as Page
+  participant W as Web Worker
+  P->>W: first message, transferring the control port and the wire's port
+  P->>W: subscribe to the VM's output
+  P->>W: start, with the files and the entrypoint
+  W-->>P: console calls and faults
+  W->>P: may the VM's fetch reach this host?
+  P-->>W: yes or no
+  W-->>P: the run's end, ok or the VM's error
+  P->>W: frames on the byte wire, both ways
+```
+
+- **Two ports:** the page's first message is versioned, and transfers the port the transport runs on and the byte wire's
+  port. A first message of another shape throws in the worker, which the page hears as its error event.
+- **One VM per worker:** a repeated start answers with the first run.
+- **Output first:** the page subscribes to the VM's output before it starts the VM, so nothing the VM says as it starts
+  is lost.
+- **Errors cross as their message:** a run's error or a fault reaches the page as a `QuickJsVmError`, whose message
+  holds every cause.
+- **Fetch gate:** a URL that is not absolute http or https rejects with a `TypeError`, and the page is not asked. For
+  any other, the worker asks the page about its host. A denied host answers 403 with an empty body, as a browser answers
+  a blocked request. An allowed one runs on the worker's own `fetch` with credentials omitted. An ask that fails denies,
+  and its failure reaches `onError`.
+- **Failure:** a worker error event before the run ends, or a handshake that fails, ends the run as a failure and
+  terminates the worker. An error event after a run that ended well reaches `onError`, and the VM serves on.
