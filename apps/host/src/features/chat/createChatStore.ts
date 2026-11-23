@@ -5,7 +5,7 @@
 // only writer of chat data, so every write is announced through `subscribe` and shown through `view`. User replies and
 // custom-message taps reach the product through its live connection.
 
-import type { ChatMessageContent, HostRendererActionSubscribeItem } from '@parity/truapi';
+import type { ChatMessageContent, HostRendererActionSubscribeItem, ImageSource } from '@parity/truapi';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createListenerSet, createRandomId, realTimers, type Timers } from '@dotli/shared';
 import {
@@ -18,6 +18,8 @@ import {
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
 import { createChatView, type ChatChange, type ChatViewRepo } from './createChatView.js';
+import { ImageUnavailableError, reportUnavailableImage } from './imageUnavailableError.js';
+import type { LoadedImage } from './readChatImage.js';
 import { reportFailedChatStorage } from './reportFailedChatStorage.js';
 import { NOT_CONNECTED, startCustomRender, type RenderCustomMessageParams } from './startCustomRender.js';
 
@@ -252,6 +254,27 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
      */
     renderCustomMessage({ productId, request, sink }: RenderCustomMessageParams): () => void {
       return startCustomRender({ connections, productId, request, sink });
+    },
+
+    /**
+     * Resolves the bytes and type of an image a custom message's tree names, on the product's newest connection.
+     * Rejects with `ImageUnavailableError` without a live connection and when the image cannot be read or drawn, each
+     * reported, and with the signal's reason once `signal` aborts.
+     */
+    async loadImage(productId: string, source: ImageSource, signal: AbortSignal): Promise<LoadedImage> {
+      try {
+        const connection = connections.get(productId);
+        if (connection === undefined) {
+          throw new ImageUnavailableError('not_connected', NOT_CONNECTED);
+        }
+        return await connection.loadImage(source, signal);
+      } catch (error) {
+        // A node that let go of its image aborted the load, which is no failure.
+        if (!signal.aborted) {
+          reportUnavailableImage(error, 'chat_image_load');
+        }
+        throw error;
+      }
     },
 
     /**

@@ -27,7 +27,7 @@ import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
 import { pipeProviders, type PipeProvidersParams } from './pipeProviders.js';
 import { buildFrameUrl, getAppOrigin, getFrameSandbox, type FrameTarget } from './productFrameUrl.js';
-import { registerProductChat } from '../../chat/index.js';
+import { ImageUnavailableError, registerProductChat, type FetchedImageSource } from '../../chat/index.js';
 import { traceProductRender, type RenderTrace } from './traceProductRender.js';
 import { productState } from '../../page/index.js';
 import type { PermissionsChange } from '../../permissions/index.js';
@@ -685,7 +685,7 @@ export function createProductFrame({
           chatReport.log.event('chat capability resolved', { capable: effect.capable });
           return;
         case 'chatRegistered':
-          effect.attempt.core.hold(registerProductChat(effect.connection));
+          effect.attempt.core.hold(registerProductChat(effect.connection, readNoImage));
           return;
         case 'walletConnected':
           walletReport.log.event('product connected to wallet core', { kind: effect.chat ? 'Worker' : 'App' });
@@ -1149,4 +1149,9 @@ function showReloadNotice(notify: ShowNotification, page: ProductFramePage): voi
       onClick: page.reload,
     },
   });
+}
+
+/** The frame reads no Bulletin or archive image yet, so each draws as unavailable. */
+function readNoImage(source: FetchedImageSource): Promise<Uint8Array> {
+  return Promise.reject(new ImageUnavailableError('fetch', `The host reads no ${source.tag} image yet`));
 }

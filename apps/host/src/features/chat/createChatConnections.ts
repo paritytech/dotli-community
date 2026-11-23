@@ -6,11 +6,13 @@
 import type {
   HostChatActionSubscribeItem,
   HostRendererActionSubscribeItem,
+  ImageSource,
   ProductRendererRenderRequest,
 } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
 import { createReporter } from '@dotli/metrics';
 import { createListenerSet } from '@dotli/shared';
+import type { LoadedImage } from './readChatImage.js';
 
 const report = createReporter({ flow: 'chat' });
 
@@ -25,6 +27,11 @@ export type ChatConnection = {
    * failure reaches `sink.onError`.
    */
   render(request: ProductRendererRenderRequest, sink: RenderSink): () => void;
+  /**
+   * Resolves the bytes and type of an image a custom message's tree names. Rejects with `ImageUnavailableError` when
+   * they cannot be read or drawn, and with the signal's reason once `signal` aborts.
+   */
+  loadImage(source: ImageSource, signal: AbortSignal): Promise<LoadedImage>;
 };
 
 export type ChatConnections = ReturnType<typeof createChatConnections>;

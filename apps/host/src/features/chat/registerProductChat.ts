@@ -3,10 +3,14 @@
 
 import { noop } from '@dotli/shared';
 import { chatConnections } from './createChatConnections.js';
+import { readChatImage, type ProductImageRead } from './readChatImage.js';
 import type { CoreConnection } from '../productRuntime/index.js';
 
-/** Routes the page's chat for the product to its connection, until the returned removal. */
-export function registerProductChat({ provider, productId }: CoreConnection): () => void {
+/**
+ * Routes the page's chat for the product to its connection, until the returned removal. `readImage` fetches the bytes
+ * of the images the product's trees name from Bulletin or its archive.
+ */
+export function registerProductChat({ provider, productId }: CoreConnection, readImage: ProductImageRead): () => void {
   return chatConnections.register(productId, {
     publish: action =>
       provider.publishChatAction === undefined
@@ -23,5 +27,6 @@ export function registerProductChat({ provider, productId }: CoreConnection): ()
       }
       return provider.render(request, sink);
     },
+    loadImage: (source, signal) => readChatImage(source, readImage, signal),
   });
 }

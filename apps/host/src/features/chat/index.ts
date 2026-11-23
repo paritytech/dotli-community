@@ -5,4 +5,6 @@ export { chatPanelState } from './chatPanelState.js';
 export { chatConnections, createChatConnections } from './createChatConnections.js';
 export type { ChatRoomFooter, ChatRoomRecord, ChatStore } from './createChatStore.js';
 export { chatStore, createChatStore } from './createChatStore.js';
+export { ImageUnavailableError } from './imageUnavailableError.js';
+export type { FetchedImageSource } from './readChatImage.js';
 export { registerProductChat } from './registerProductChat.js';

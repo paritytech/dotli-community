@@ -4,12 +4,15 @@
 import type { HostChatActionSubscribeItem, HostRendererActionSubscribeItem } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
 import type { ChatConnection } from './createChatConnections.js';
+import { ImageUnavailableError } from './imageUnavailableError.js';
 
 type Params = {
   /** Every publish rejects, as for a product that cannot be reached. */
   fails?: boolean;
   /** Every render fails at once through its sink's `onError`. */
   failsRender?: boolean;
+  /** Answers each image load. Without it, every image is missing. */
+  loadImage?: ChatConnection['loadImage'];
 };
 
 /** One render the connection was asked for. */
@@ -20,7 +23,12 @@ export type RecordedRender = {
 };
 
 /** A product connection that records what reaches the product. */
-export function createRecordingConnection({ fails = false, failsRender = false }: Params = {}): ChatConnection & {
+export function createRecordingConnection({
+  fails = false,
+  failsRender = false,
+  loadImage = source =>
+    Promise.reject(new ImageUnavailableError('missing', `No image ${source.tag} in the recording connection`)),
+}: Params = {}): ChatConnection & {
   renders: RecordedRender[];
   published: HostChatActionSubscribeItem[];
   rendererActions: HostRendererActionSubscribeItem[];
@@ -52,5 +60,6 @@ export function createRecordingConnection({ fails = false, failsRender = false }
         recorded.stopped = true;
       };
     },
+    loadImage,
   };
 }
