@@ -7,7 +7,7 @@
 import { withActiveTld } from '@dotli/config';
 import { isGranted, isRetry, type BrowserBlockAnswer, type GrantAnswer, type HostPrompts } from './hostPrompts.js';
 import { modals, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
-import { permissionRequestDialog } from './permissionDialog.js';
+import { hostAccessDialog, permissionRequestDialog } from './permissionDialog.js';
 import { browserBlockDialog } from './browserBlockDialog.js';
 
 type Params = {
@@ -40,6 +40,9 @@ export function createHostPrompts({ present = modals.open, notify = showNotifica
         return undefined;
       }
       return (await ask({ view: dialog, signal, handoff })).result;
+    },
+    async askHostAccess({ label, host, signal }) {
+      return (await ask({ view: hostAccessDialog({ app: withActiveTld(label), host }), signal })).result;
     },
     async askBrowserBlock({ label, permission, signal, retried, onRetry }) {
       const dialog = browserBlockDialog({ app: withActiveTld(label), permission, retried });

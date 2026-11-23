@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ModalButton, ModalView } from '@dotli/ui';
+import { GlobeIcon } from '@dotli/ui/icons';
 import { permissionIcon } from '../panel/permissionIcons.js';
 import { PERMISSION_CATALOG, type EnforceablePermissionName } from '../policy/permissionPolicy.js';
 import type { GrantAnswer } from './hostPrompts.js';
@@ -10,6 +11,13 @@ type PermissionRequest = {
   /** The app's name as the user reads it. */
   app: string;
   permission: EnforceablePermissionName;
+};
+
+type HostAccessRequest = {
+  /** The app's name as the user reads it. */
+  app: string;
+  /** The host the app would fetch from. */
+  host: string;
 };
 
 type GetGrantButtonsParams = {
@@ -29,6 +37,22 @@ export function permissionRequestDialog(request: PermissionRequest): ModalView<G
     fields: [
       { label: 'App', value: request.app },
       { label: 'Permission', value: PERMISSION_CATALOG[request.permission].description },
+    ],
+    buttons: getGrantButtons({ allowOnce: true }),
+    dismissOnBackdrop: true,
+    dismissResult: 'dismissed',
+  };
+}
+
+/** The dialog an app's fetch from a host it has no grant for asks the user with. */
+export function hostAccessDialog(request: HostAccessRequest): ModalView<GrantAnswer> {
+  return {
+    icon: GlobeIcon,
+    title: 'Permission request',
+    fields: [
+      { label: 'App', value: request.app },
+      { label: 'Permission', value: 'Make web requests to this domain' },
+      { label: 'Domain', value: request.host, mono: true },
     ],
     buttons: getGrantButtons({ allowOnce: true }),
     dismissOnBackdrop: true,

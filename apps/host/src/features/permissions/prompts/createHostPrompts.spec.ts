@@ -57,6 +57,10 @@ describe('host prompts', () => {
         }),
     },
     {
+      story: 'a fetch prompt',
+      open: () => void prompts.askHostAccess({ label: 'myapp', host: 'api.example.com', signal: createLiveSignal() }),
+    },
+    {
       story: 'a browser block',
       open: () =>
         void prompts.askBrowserBlock({
