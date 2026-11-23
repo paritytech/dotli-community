@@ -3,7 +3,7 @@
 
 /* One clock for the whole floor, so every ring turns as one piece and a line between two rings keeps the lean it was
    laid out with. Registered so it animates as an angle rather than flipping between its two ends. */
-@property --clock {
+@property --orbit-clock {
   syntax: '<angle>';
   inherits: true;
   initial-value: 0deg;
@@ -11,17 +11,17 @@
 
 /* A dot's and a link's angles at rest, registered so that a dot that moves when the real nodes change glides to its new
    place, its links following, rather than jumping. */
-@property --start {
+@property --orbit-start {
   syntax: '<angle>';
   inherits: false;
   initial-value: 0deg;
 }
-@property --from-start {
+@property --orbit-from-start {
   syntax: '<angle>';
   inherits: false;
   initial-value: 0deg;
 }
-@property --to-start {
+@property --orbit-to-start {
   syntax: '<angle>';
   inherits: false;
   initial-value: 0deg;
@@ -30,12 +30,12 @@
 /* The floor's resting tilt and how far it sits below the page's foot, which differ between a phone and a wider screen.
    Registered so that crossing between the two, as a window is resized or a device turned, glides the floor over rather
    than jumping. They inherit, since the stage reads the drop. */
-@property --rest-tilt {
+@property --orbit-rest-tilt {
   syntax: '<angle>';
   inherits: true;
   initial-value: 80deg;
 }
-@property --drop {
+@property --orbit-drop {
   syntax: '<number>';
   inherits: true;
   initial-value: 0.2;
@@ -43,41 +43,201 @@
 
 /* Where the pointer is in the viewport, from -1 at its left or top edge to 1 at its right or foot. Registered so the
    floor glides to its new turn and tilt rather than jumping with every move. */
-@property --pointer-x {
+@property --orbit-pointer-x {
   syntax: '<number>';
   inherits: false;
   initial-value: 0;
 }
-@property --pointer-y {
+@property --orbit-pointer-y {
   syntax: '<number>';
   inherits: false;
   initial-value: 0;
 }
 
+/* Every other value the orbit works out, typed so an element computes each to one value. Untyped, a custom property
+   keeps its expression as text that every reference pastes in and parses again, and the clock has every dot and link
+   recompute its style each frame. The orbit's, the stage's and a ring's values inherit, and the ones a dot, link or
+   oval works out for itself do not. */
+@property --orbit-unit {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+@property --orbit-line {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 1px;
+}
+@property --orbit-depth {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1920;
+}
+@property --orbit-tilt {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 80deg;
+}
+@property --orbit-pointer-turn {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --orbit-rise {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-turn {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --orbit-inner-radius {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-ring1-radius {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-ring2-radius {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-ring3-radius {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-ring4-radius {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-r {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-parent-r {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-dot {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --orbit-radius {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+@property --orbit-k {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+@property --orbit-a {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-b {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --orbit-size {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-place {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-from-r {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+@property --orbit-from-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --orbit-to-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --orbit-from-scale {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-to-scale {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-from-x {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-from-y {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-dx {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --orbit-dy {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
 /* Fills the page and clips the orbit, which is wider than a phone and runs past the page's foot. Its parts are solid,
    so none shows another through it. One opacity dims them together, and one mask fades the rings out toward the
-   horizon. Lengths are in --unit, a 640th of the stage's width, so the whole orbit scales with the viewport. An
+   horizon. Lengths are in --orbit-unit, a 640th of the stage's width, so the whole orbit scales with the viewport. An
    inherited --orbit-bleed, a length, paints it that far past its box's foot, with the floor kept where it was. */
 .orbit {
   --bleed: var(--orbit-bleed, 0px);
   --width: min(1500px, 220vw);
-  --unit: calc(var(--width) / 640);
+  --orbit-unit: calc(var(--width) / 640);
   /* The perspective, in units. Long, so the floor reads close to isometric while near dots still grow a little. */
-  --depth: 1920;
+  --orbit-depth: 1920;
   /* Every line's width, rings and links alike. */
-  --line: 1px;
+  --orbit-line: 1px;
   /* The floor's tilt with the pointer at the viewport's middle, or with no mouse to follow. */
-  --rest-tilt: 80deg;
-  --tilt: var(--rest-tilt);
+  --orbit-rest-tilt: 80deg;
+  --orbit-tilt: var(--orbit-rest-tilt);
   /* How far the floor turns off its own clock with the pointer across the viewport, or with no mouse to follow. */
-  --pointer-turn: 0deg;
+  --orbit-pointer-turn: 0deg;
   /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
      by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
      and the floor cuts it at no tilt short of edge-on. */
-  --rise: calc((tan(var(--tilt)) + 1) / 2);
+  --orbit-rise: calc((tan(var(--orbit-tilt)) + 1) / 2);
   /* How far the stage sits below the page's foot, as a share of its height. */
-  --drop: 0.2;
-  --fade: calc(370 * var(--unit));
+  --orbit-drop: 0.2;
+  --fade: calc(370 * var(--orbit-unit));
   /* How long the floor takes to settle into a phone's or a wider screen's shape when the page crosses between them. */
   --reshape: 600ms;
   /* How long a dot that stays takes to glide to its new place when the real nodes change. */
@@ -89,8 +249,8 @@
   pointer-events: none;
   opacity: 0.8;
   mask-image: radial-gradient(
-    var(--fade) calc(var(--fade) * cos(var(--tilt))) at 50%
-      calc(100% - var(--bleed) - (0.5 - var(--drop)) * var(--width) * 5 / 12),
+    var(--fade) calc(var(--fade) * cos(var(--orbit-tilt))) at 50%
+      calc(100% - var(--bleed) - (0.5 - var(--orbit-drop)) * var(--width) * 5 / 12),
     #000 45%,
     transparent
   );
@@ -99,8 +259,8 @@
 @media (prefers-reduced-motion: no-preference) {
   .orbit {
     transition:
-      --rest-tilt var(--reshape) ease-in-out,
-      --drop var(--reshape) ease-in-out;
+      --orbit-rest-tilt var(--reshape) ease-in-out,
+      --orbit-drop var(--reshape) ease-in-out;
   }
 }
 
@@ -110,35 +270,35 @@
    one tilt and turn, so it moves as one piece. */
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .orbit {
-    --tilt: calc(var(--rest-tilt) - var(--pointer-y) * 3deg);
-    --pointer-turn: calc(var(--pointer-x) * -12deg);
+    --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-pointer-y) * 3deg);
+    --orbit-pointer-turn: calc(var(--orbit-pointer-x) * -12deg);
     transition:
-      --rest-tilt var(--reshape) ease-in-out,
-      --drop var(--reshape) ease-in-out,
-      --pointer-x 400ms ease-out,
-      --pointer-y 400ms ease-out;
+      --orbit-rest-tilt var(--reshape) ease-in-out,
+      --orbit-drop var(--reshape) ease-in-out,
+      --orbit-pointer-x 400ms ease-out,
+      --orbit-pointer-y 400ms ease-out;
   }
 }
 
-/* Each ring's radius, as --<ring>-radius in units, comes with the layout. */
+/* Each ring's radius, as --orbit-<ring>-radius in units, comes with the layout. */
 .stage {
   /* The fallback holds the dots and links at rest where the clock is not registered. */
-  --turn: calc(var(--clock, 0deg) + var(--pointer-turn));
-  --floor: calc(293 * var(--unit));
+  --orbit-turn: calc(var(--orbit-clock, 0deg) + var(--orbit-pointer-turn));
+  --floor: calc(293 * var(--orbit-unit));
   position: absolute;
   bottom: var(--bleed);
   left: 50%;
   width: var(--width);
   aspect-ratio: 12 / 5;
-  translate: -50% calc(var(--drop) * 100%);
-  perspective: calc(var(--depth) * var(--unit));
+  translate: -50% calc(var(--orbit-drop) * 100%);
+  perspective: calc(var(--orbit-depth) * var(--orbit-unit));
 }
 
 /* A phone has height to spare under the form, so the floor stands nearly upright and in full view. */
 @media (max-width: 560px) {
   .orbit {
-    --rest-tilt: 10deg;
-    --drop: 0;
+    --orbit-rest-tilt: 10deg;
+    --orbit-drop: 0;
   }
 }
 
@@ -149,7 +309,7 @@
 .plane {
   position: absolute;
   inset: calc(50% - var(--floor));
-  transform: rotateX(var(--tilt));
+  transform: rotateX(var(--orbit-tilt));
 }
 .floor {
   background: radial-gradient(closest-side, var(--surface), var(--bg-page));
@@ -169,67 +329,70 @@
    its half-width is r / sqrt(1 - k * k), its half-height r * cos(tilt) / (1 - k * k), and its centre sits k times its
    half-height below the floor's, since the near half comes closer to the viewer. The line is centred on that ellipse. */
 .oval {
-  --k: calc(var(--r) * sin(var(--tilt)) / var(--depth));
-  --a: calc(var(--r) / sqrt(1 - var(--k) * var(--k)) * var(--unit));
-  --b: calc(var(--r) * cos(var(--tilt)) / (1 - var(--k) * var(--k)) * var(--unit));
+  --orbit-k: calc(var(--orbit-r) * sin(var(--orbit-tilt)) / var(--orbit-depth));
+  --orbit-a: calc(var(--orbit-r) / sqrt(1 - var(--orbit-k) * var(--orbit-k)) * var(--orbit-unit));
+  --orbit-b: calc(var(--orbit-r) * cos(var(--orbit-tilt)) / (1 - var(--orbit-k) * var(--orbit-k)) * var(--orbit-unit));
   position: absolute;
-  top: calc(50% + var(--k) * var(--b) - var(--b) - var(--line) / 2);
-  left: calc(50% - var(--a) - var(--line) / 2);
+  top: calc(50% + var(--orbit-k) * var(--orbit-b) - var(--orbit-b) - var(--orbit-line) / 2);
+  left: calc(50% - var(--orbit-a) - var(--orbit-line) / 2);
   box-sizing: border-box;
-  width: calc(2 * var(--a) + var(--line));
-  height: calc(2 * var(--b) + var(--line));
-  border: var(--line) solid var(--ring-color);
+  width: calc(2 * var(--orbit-a) + var(--orbit-line));
+  height: calc(2 * var(--orbit-b) + var(--orbit-line));
+  border: var(--orbit-line) solid var(--ring-color);
   border-radius: 50%;
 }
 
 /* Gives its dots their ring's radius and size. It has no box, so its dots stand in the plane's own 3D space, since
    WebKit can draw the dots of an untransformed wrapper flat on the plane. */
 .ring {
-  --radius: calc(var(--r) * var(--unit));
+  --orbit-radius: calc(var(--orbit-r) * var(--orbit-unit));
   display: contents;
 }
 
 /* Inner orbits carry larger dots, and the innermost ring is brightest. The rings stay dimmer than the links, so the
    connections read first and the orbits sit behind them. A ring's radius and a dot's size are in units. */
 :is(.oval, .ring, .link)[data-ring='inner'] {
-  --r: var(--inner-radius);
+  --orbit-r: var(--orbit-inner-radius);
   --ring-color: var(--border);
-  --dot: 7.5;
+  --orbit-dot: 7.5;
 }
 :is(.oval, .ring, .link)[data-ring='ring1'] {
-  --r: var(--ring1-radius);
-  --parent-r: var(--inner-radius);
+  --orbit-r: var(--orbit-ring1-radius);
+  --orbit-parent-r: var(--orbit-inner-radius);
   --ring-color: var(--chrome-solid);
-  --dot: 5.5;
+  --orbit-dot: 5.5;
 }
 :is(.oval, .ring, .link)[data-ring='ring2'] {
-  --r: var(--ring2-radius);
-  --parent-r: var(--ring1-radius);
+  --orbit-r: var(--orbit-ring2-radius);
+  --orbit-parent-r: var(--orbit-ring1-radius);
   --ring-color: var(--chrome-solid);
-  --dot: 3.5;
+  --orbit-dot: 3.5;
 }
 :is(.oval, .ring, .link)[data-ring='ring3'] {
-  --r: var(--ring3-radius);
-  --parent-r: var(--ring2-radius);
+  --orbit-r: var(--orbit-ring3-radius);
+  --orbit-parent-r: var(--orbit-ring2-radius);
   --ring-color: var(--chrome-solid);
-  --dot: 3;
+  --orbit-dot: 3;
 }
 :is(.oval, .ring, .link)[data-ring='ring4'] {
-  --r: var(--ring4-radius);
-  --parent-r: var(--ring3-radius);
+  --orbit-r: var(--orbit-ring4-radius);
+  --orbit-parent-r: var(--orbit-ring3-radius);
   --ring-color: var(--chrome-solid);
-  --dot: 2.5;
+  --orbit-dot: 2.5;
 }
 
+/* The clock ticks 30 times a second rather than every frame, since each tick restyles every dot and link. A tick moves
+   the outer ring by under a pixel, so the steps do not show. */
 @media (prefers-reduced-motion: no-preference) {
   .stage {
-    animation: turn 270s linear infinite;
+    --turn-steps: 8100;
+    animation: turn calc(var(--turn-steps) * 1s / 30) steps(var(--turn-steps)) infinite;
   }
 }
 
 @keyframes turn {
   to {
-    --clock: 360deg;
+    --orbit-clock: 360deg;
   }
 }
 
@@ -242,12 +405,12 @@
     animation: enter 600ms ease-out var(--glide) backwards;
   }
   .dot {
-    transition: --start var(--glide) ease-in-out;
+    transition: --orbit-start var(--glide) ease-in-out;
   }
   .link {
     transition:
-      --from-start var(--glide) ease-in-out,
-      --to-start var(--glide) ease-in-out;
+      --orbit-from-start var(--glide) ease-in-out,
+      --orbit-to-start var(--glide) ease-in-out;
   }
   /* One that joins an empty floor, as at page load, has nothing to wait for. */
   .dot[data-join='first'],
@@ -263,24 +426,27 @@
 }
 
 .dot {
-  --angle: calc(var(--start) + var(--turn));
-  --size: calc(var(--dot) * var(--unit));
+  --orbit-angle: calc(var(--orbit-start) + var(--orbit-turn));
+  --orbit-size: calc(var(--orbit-dot) * var(--orbit-unit));
   /* Its lift toward the viewer pushes it outward from the centre by the lift's share of the perspective, so it is
      placed that much further in to show on its ring's line. */
-  --place: calc(var(--radius) * (1 - var(--rise) * var(--dot) / var(--depth)));
+  --orbit-place: calc(var(--orbit-radius) * (1 - var(--orbit-rise) * var(--orbit-dot) / var(--orbit-depth)));
   position: absolute;
-  inset: calc(50% - var(--size) / 2);
+  inset: calc(50% - var(--orbit-size) / 2);
   border-radius: 50%;
   background: var(--neutral-solid);
   /* Turned upright against the floor's tilt, so a dot stays round and only its depth scales it. Then lifted toward the
      viewer, so nothing on the floor draws over it. */
-  transform: translate(calc(cos(var(--angle)) * var(--place)), calc(sin(var(--angle)) * var(--place)))
-    rotateX(calc(-1 * var(--tilt))) translateZ(calc(var(--rise) * var(--size)));
+  transform: translate(
+      calc(cos(var(--orbit-angle)) * var(--orbit-place)),
+      calc(sin(var(--orbit-angle)) * var(--orbit-place))
+    )
+    rotateX(calc(-1 * var(--orbit-tilt))) translateZ(calc(var(--orbit-rise) * var(--orbit-size)));
 }
 
 /* The one trusted provider a backend with no light client talks through, in the first peer's place. */
 .dot[data-kind='trustedProvider'] {
-  --dot: 9;
+  --orbit-dot: 9;
   background: var(--text-muted);
 }
 .dot[data-kind='simulated'] {
@@ -296,7 +462,7 @@
 .label {
   position: absolute;
   bottom: 50%;
-  left: calc(100% + 2 * var(--unit));
+  left: calc(100% + 2 * var(--orbit-unit));
   font-family: var(--font-mono);
   font-size: var(--fs-label);
   line-height: 1;
@@ -311,47 +477,56 @@
    down, with s = 1 / (1 - r sin(a) sin(tilt) / depth). A dot lifted toward the viewer and placed in by the lift's share
    of the perspective projects there exactly, as does the centre, so the link meets its dots' centres. */
 .link {
-  --from-angle: calc(var(--from-start) + var(--turn));
-  --to-angle: calc(var(--to-start) + var(--turn));
-  --from-scale: calc(var(--unit) / (1 - var(--from-r) * sin(var(--from-angle)) * sin(var(--tilt)) / var(--depth)));
-  --to-scale: calc(var(--unit) / (1 - var(--r) * sin(var(--to-angle)) * sin(var(--tilt)) / var(--depth)));
-  --from-x: calc(var(--from-r) * cos(var(--from-angle)) * var(--from-scale));
-  --from-y: calc(var(--from-r) * sin(var(--from-angle)) * cos(var(--tilt)) * var(--from-scale));
-  --dx: calc(var(--r) * cos(var(--to-angle)) * var(--to-scale) - var(--from-x));
-  --dy: calc(var(--r) * sin(var(--to-angle)) * cos(var(--tilt)) * var(--to-scale) - var(--from-y));
+  --orbit-from-angle: calc(var(--orbit-from-start) + var(--orbit-turn));
+  --orbit-to-angle: calc(var(--orbit-to-start) + var(--orbit-turn));
+  --orbit-from-scale: calc(
+    var(--orbit-unit) /
+      (1 - var(--orbit-from-r) * sin(var(--orbit-from-angle)) * sin(var(--orbit-tilt)) / var(--orbit-depth))
+  );
+  --orbit-to-scale: calc(
+    var(--orbit-unit) / (1 - var(--orbit-r) * sin(var(--orbit-to-angle)) * sin(var(--orbit-tilt)) / var(--orbit-depth))
+  );
+  --orbit-from-x: calc(var(--orbit-from-r) * cos(var(--orbit-from-angle)) * var(--orbit-from-scale));
+  --orbit-from-y: calc(
+    var(--orbit-from-r) * sin(var(--orbit-from-angle)) * cos(var(--orbit-tilt)) * var(--orbit-from-scale)
+  );
+  --orbit-dx: calc(var(--orbit-r) * cos(var(--orbit-to-angle)) * var(--orbit-to-scale) - var(--orbit-from-x));
+  --orbit-dy: calc(
+    var(--orbit-r) * sin(var(--orbit-to-angle)) * cos(var(--orbit-tilt)) * var(--orbit-to-scale) - var(--orbit-from-y)
+  );
   position: absolute;
-  top: calc(50% - var(--line) / 2);
+  top: calc(50% - var(--orbit-line) / 2);
   left: 50%;
-  width: hypot(var(--dx), var(--dy));
-  height: var(--line);
+  width: hypot(var(--orbit-dx), var(--orbit-dy));
+  height: var(--orbit-line);
   transform-origin: 0 50%;
-  transform: translate(var(--from-x), var(--from-y)) rotate(atan2(var(--dy), var(--dx)));
+  transform: translate(var(--orbit-from-x), var(--orbit-from-y)) rotate(atan2(var(--orbit-dy), var(--orbit-dx)));
 }
 .link[data-link='peer'],
 .link[data-link='trustedProvider'] {
-  --from-r: 0;
+  --orbit-from-r: 0;
   background: var(--text-faint);
 }
 .link[data-link='simulated'] {
-  --from-r: var(--parent-r);
+  --orbit-from-r: var(--orbit-parent-r);
   background: var(--chrome-action-dim);
 }
 
 /* The visitor's light client, a dot inside a thin ring. Upright and moved toward the viewer like the dots. The ring is
    the box's own border, since Chrome can drop what a 3D layer paints outside its box. */
 .centre {
-  --size: calc(17 * var(--unit));
+  --orbit-size: calc(17 * var(--orbit-unit));
   position: absolute;
-  inset: calc(50% - var(--size) / 2);
+  inset: calc(50% - var(--orbit-size) / 2);
   box-sizing: border-box;
-  border: var(--line) solid var(--neutral-solid);
+  border: var(--orbit-line) solid var(--neutral-solid);
   border-radius: 50%;
-  transform: rotateX(calc(-1 * var(--tilt))) translateZ(calc(var(--rise) * var(--size)));
+  transform: rotateX(calc(-1 * var(--orbit-tilt))) translateZ(calc(var(--orbit-rise) * var(--orbit-size)));
 }
 .centre::after {
   content: '';
   position: absolute;
-  inset: calc(2.5 * var(--unit));
+  inset: calc(2.5 * var(--orbit-unit));
   border-radius: 50%;
   background: var(--text-muted);
 }
