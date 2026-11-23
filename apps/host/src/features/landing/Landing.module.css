@@ -31,6 +31,8 @@
   background: var(--bg-page);
   color: var(--text-strong);
   font-family: var(--font-sans);
+  /* The height the page has to show itself in, cut by the keyboard while it is open. */
+  --landing-height: var(--visible-height, 100dvh);
 }
 
 /* Mobile Safari shows a strip under the home indicator below 100lvh, and no unit or inset measures it, so the orbit
@@ -44,23 +46,20 @@
   pointer-events: none;
 }
 
-/* The visible area, so the footer stays above a mobile browser's toolbar. */
+/* The visible area, so the footer stays above a mobile browser's toolbar and the content shrinks above the keyboard. */
 .content {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  height: 100dvh;
+  height: var(--landing-height);
   margin: 0;
   padding: 0;
   overflow-y: auto;
 }
 
-/* While the keyboard is open, the page follows the visible area Safari pans to, and the content box shrinks to it. */
+/* While the keyboard is open, the page follows the visible area Safari pans to. */
 .landing[data-keyboard-open] {
   transform: translateY(var(--pan-offset));
-}
-.landing[data-keyboard-open] .content {
-  height: var(--visible-height);
 }
 
 /* The page has no topbar, so the header clears the status bar in an installed PWA. */
@@ -109,7 +108,8 @@
   box-sizing: border-box;
   width: 100%;
   margin: 0;
-  padding: clamp(var(--sp-10), 9vh, var(--sp-14)) calc(var(--sp-4) + var(--safe-right)) 0
+  /* Shrinks with the page's height, so the title and the field still fit above the keyboard. */
+  padding: clamp(var(--sp-10), calc(var(--landing-height) * 0.09), var(--sp-14)) calc(var(--sp-4) + var(--safe-right)) 0
     calc(var(--sp-4) + var(--safe-left));
 }
 
@@ -125,8 +125,8 @@
 .title {
   margin: 0;
   padding: 0;
-  /* The brand grid's Heading step, 56/64, at its widest. */
-  font-size: clamp(32px, 4vw, 56px);
+  /* The brand grid's Heading step, 56/64, at its widest, and smaller on a short page. */
+  font-size: min(clamp(32px, 4vw, 56px), calc(var(--landing-height) * 0.06));
   font-weight: var(--fw-medium);
   line-height: var(--lh-heading);
   letter-spacing: -0.04em;
@@ -214,10 +214,10 @@
     --landing-edge: var(--sp-4);
   }
   .main {
-    padding-top: 18vh;
+    padding-top: calc(var(--landing-height) * 0.18);
   }
   /* Under about 330px the clamp's floor would push the longer line past the screen. */
   .title {
-    font-size: min(32px, 9vw);
+    font-size: min(32px, 9vw, calc(var(--landing-height) * 0.06));
   }
 }
