@@ -41,15 +41,14 @@
   initial-value: 0.2;
 }
 
-/* The input's shift on each axis, from -1 at the viewport's left or top edge to 1 at its right or foot, as the
-   pointer's place or the phone's tilt gives it. Registered so the floor glides to its new turn and tilt rather than
+/* The shift on each axis, from -1 at the viewport's left or top edge to 1 at its right or foot. Registered so the floor glides to its new turn and tilt rather than
    jumping with every move. */
-@property --orbit-pointer-x {
+@property --orbit-shift-x {
   syntax: '<number>';
   inherits: false;
   initial-value: 0;
 }
-@property --orbit-pointer-y {
+@property --orbit-shift-y {
   syntax: '<number>';
   inherits: false;
   initial-value: 0;
@@ -79,7 +78,7 @@
   inherits: true;
   initial-value: 80deg;
 }
-@property --orbit-pointer-turn {
+@property --orbit-shift-turn {
   syntax: '<angle>';
   inherits: true;
   initial-value: 0deg;
@@ -231,7 +230,7 @@
   --orbit-rest-tilt: 80deg;
   --orbit-tilt: var(--orbit-rest-tilt);
   /* How far the floor turns off its own clock with the shift at rest, or for a visitor who asks for less motion. */
-  --orbit-pointer-turn: 0deg;
+  --orbit-shift-turn: 0deg;
   /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
      by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
      and the floor cuts it at no tilt short of edge-on. */
@@ -265,27 +264,26 @@
   }
 }
 
-/* The pointer, or the phone's tilt, tips the floor a little back as the shift rises up the page and toward the viewer
+/* The shift tips the floor a little back as the shift rises up the page and toward the viewer
    as it falls, and swings the floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with
    y down, so a larger turn carries the near side left, and a shift to the right turns it the other way. Everything
-   drawn on the floor reads the one tilt and turn, so it moves as one piece. The shift stays at rest wherever no input
-   runs. */
+   drawn on the floor reads the one tilt and turn, so it moves as one piece. A zero shift leaves the floor at rest. */
 @media (prefers-reduced-motion: no-preference) {
   .orbit {
-    --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-pointer-y) * 3deg);
-    --orbit-pointer-turn: calc(var(--orbit-pointer-x) * -12deg);
+    --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-shift-y) * 3deg);
+    --orbit-shift-turn: calc(var(--orbit-shift-x) * -12deg);
     transition:
       --orbit-rest-tilt var(--reshape) ease-in-out,
       --orbit-drop var(--reshape) ease-in-out,
-      --orbit-pointer-x 400ms ease-out,
-      --orbit-pointer-y 400ms ease-out;
+      --orbit-shift-x 400ms ease-out,
+      --orbit-shift-y 400ms ease-out;
   }
 }
 
 /* Each ring's radius, as --orbit-<ring>-radius in units, comes with the layout. */
 .stage {
   /* The fallback holds the dots and links at rest where the clock is not registered. */
-  --orbit-turn: calc(var(--orbit-clock, 0deg) + var(--orbit-pointer-turn));
+  --orbit-turn: calc(var(--orbit-clock, 0deg) + var(--orbit-shift-turn));
   --floor: calc(293 * var(--orbit-unit));
   position: absolute;
   bottom: var(--bleed);

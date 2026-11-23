@@ -16,7 +16,7 @@ import { createLatestLimiter } from './createLatestLimiter.js';
 import { getOrbitLayout, type OrbitLayout, type OrbitMode } from './getOrbitLayout.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
 import { Orbit } from './Orbit.js';
-import { pickOrbitFollower } from './pickOrbitFollower.js';
+import { pickOrbitFollower, type OrbitShift } from './pickOrbitFollower.js';
 
 /** What the orbit draws until boot sets the settings, the build render included. */
 const NO_PEERS: OrbitMode = { kind: 'lightClient', peers: 0 };
@@ -55,21 +55,18 @@ function BoundOrbit(): JSX.Element {
   const layout = createMemo((previous?: OrbitLayout) =>
     anchorOrbitLayout(previous ?? null, getOrbitLayout(mode(), SEED)),
   );
-  const [pointer, setPointer] = createSignal({ x: 0, y: 0 });
+  const [shift, setShift] = createSignal<OrbitShift>({ x: 0, y: 0 });
   onSettled(() => {
     const follow = pickOrbitFollower();
     if (follow === null) {
       return;
     }
-    const limiter = createLatestLimiter({
-      perSecond: 15,
-      onValue: (shift: { x: number; y: number }) => setPointer(shift),
-    });
+    const limiter = createLatestLimiter<OrbitShift>({ perSecond: 15, onValue: setShift });
     const stopFollowing = follow({ onShift: limiter.push });
     return () => {
       stopFollowing();
-      limiter.stop();
+      limiter.dispose();
     };
   });
-  return <Orbit layout={layout()} pointerX={pointer().x} pointerY={pointer().y} />;
+  return <Orbit layout={layout()} shiftX={shift().x} shiftY={shift().y} />;
 }

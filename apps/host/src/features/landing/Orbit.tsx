@@ -11,11 +11,10 @@ import s from './Orbit.module.css';
  * links' lines lie flat in a layer under the dots, drawn where the floor's perspective shows them. CSS draws and turns
  * it, and the layout says only how far out each ring lies, which dots exist, where each one's link starts, if it has
  * one, and how a dot is labelled. A dot that stays across layouts keeps its element and its link's, so it glides to a
- * new angle rather than drawing anew. The input's shift on each axis, from -1 at the viewport's left or top edge to 1
- * at its right or foot, as the pointer's place or the phone's tilt gives it, turns the floor a little around its centre
- * across it and tilts it a little up it.
+ * new angle rather than drawing anew. The shift on each axis, from -1 at the viewport's left or top edge to 1 at its
+ * right or foot, turns the floor a little around its centre across it and tilts it a little up it.
  */
-export function Orbit(props: { layout: OrbitLayout; pointerX: number; pointerY: number }): JSX.Element {
+export function Orbit(props: { layout: OrbitLayout; shiftX: number; shiftY: number }): JSX.Element {
   // Each layout with whether the one before it had no dots. Its dots then join an empty floor, where nothing glides out
   // of their way.
   const shown = createMemo<{ readonly layout: OrbitLayout; readonly first: boolean }>(previous => ({
@@ -31,7 +30,7 @@ export function Orbit(props: { layout: OrbitLayout; pointerX: number; pointerY: 
       class={s['orbit']}
       aria-hidden="true"
       data-testid="orbit"
-      style={{ '--orbit-pointer-x': String(props.pointerX), '--orbit-pointer-y': String(props.pointerY) }}
+      style={{ '--orbit-shift-x': String(props.shiftX), '--orbit-shift-y': String(props.shiftY) }}
     >
       <div
         class={s['stage']}

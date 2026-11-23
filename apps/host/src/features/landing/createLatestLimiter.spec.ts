@@ -61,14 +61,14 @@ describe('createLatestLimiter', () => {
     expect(values).toEqual([1, 2]);
   });
 
-  it('As a reader that stops, I drop the reading I held and leave no timer behind', async () => {
+  it('As a reader that is disposed, I drop the reading I held and leave no timer behind', async () => {
     // Given
     const { limiter, values, timers } = setup();
     limiter.push(1);
     limiter.push(2);
 
     // When
-    limiter.stop();
+    limiter.dispose();
     await timers.advance(INTERVAL_MS);
 
     // Then

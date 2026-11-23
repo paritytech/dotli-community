@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { OrbitShift } from './pickOrbitFollower.js';
+
 /** How far, in degrees, the phone tilts from where it was first held to shift the orbit all the way. */
 const FULL_TILT = 20;
 
@@ -10,7 +12,7 @@ type Params = {
    * the screen's right edge away gives a positive x, as a pointer moving right does, and tipping its top edge away a
    * negative y, as a pointer moving up does.
    */
-  onShift: (shift: { x: number; y: number }) => void;
+  onShift: (shift: OrbitShift) => void;
   view?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   /** The screen's rotation from the device's natural orientation in degrees, 90 with the device turned a quarter left. */
   getScreenAngle?: () => number;

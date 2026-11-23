@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { followOrientation } from './followOrientation.js';
+import type { OrbitShift } from './pickOrbitFollower.js';
 
 /** Where the phone is first held in the fake window. */
 const HELD = { beta: 40, gamma: 5 };
@@ -80,5 +81,5 @@ function setup() {
   function tilt(beta: number | null, gamma: number | null) {
     view.dispatchEvent(Object.assign(new Event('deviceorientation'), { beta, gamma }));
   }
-  return { view, shifts: [] as { x: number; y: number }[], tilt };
+  return { view, shifts: [] as OrbitShift[], tilt };
 }

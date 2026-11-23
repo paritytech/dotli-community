@@ -16,10 +16,10 @@ type FrameProps = {
   peers: number;
   /** What turns each dot off its even place. */
   seed: number;
-  /** Where the pointer is across the viewport, from -1 at its left edge to 1 at its right. */
-  pointerX: number;
-  /** Where the pointer is up the viewport, from -1 at its top to 1 at its foot. */
-  pointerY: number;
+  /** How far across the viewport the floor is shifted, from -1 at its left edge to 1 at its right. */
+  shiftX: number;
+  /** How far up the viewport the floor is shifted, from -1 at its top to 1 at its foot. */
+  shiftY: number;
 };
 
 /** The orbit behind a box the size of a small landing page, with controls that add and drop a peer. */
@@ -37,7 +37,7 @@ function Frame(props: FrameProps): JSX.Element {
   );
   return (
     <div style={{ position: 'relative', isolation: 'isolate', height: '480px' }}>
-      <Orbit layout={layout()} pointerX={props.pointerX} pointerY={props.pointerY} />
+      <Orbit layout={layout()} shiftX={props.shiftX} shiftY={props.shiftY} />
       <button type="button" onClick={() => setPeers(count => count + 1)}>
         Add a peer
       </button>
@@ -51,10 +51,10 @@ function Frame(props: FrameProps): JSX.Element {
 const meta = {
   title: 'Host/Landing/Orbit',
   component: Frame,
-  args: { trustedProvider: false, peers: 0, seed: 1, pointerX: 0, pointerY: 0 },
+  args: { trustedProvider: false, peers: 0, seed: 1, shiftX: 0, shiftY: 0 },
   argTypes: {
-    pointerX: { control: { type: 'range', min: -1, max: 1, step: 0.1 } },
-    pointerY: { control: { type: 'range', min: -1, max: 1, step: 0.1 } },
+    shiftX: { control: { type: 'range', min: -1, max: 1, step: 0.1 } },
+    shiftY: { control: { type: 'range', min: -1, max: 1, step: 0.1 } },
   },
   parameters: {
     // Contrast is unnecessary for background graphics: the orbit is decorative and hidden from assistive technology.

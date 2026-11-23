@@ -1,9 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { OrbitShift } from './pickOrbitFollower.js';
+
 type Params = {
   /** Takes where the pointer is in the viewport on each axis, from -1 at its left or top edge to 1 at its right or foot. */
-  onShift: (shift: { x: number; y: number }) => void;
+  onShift: (shift: OrbitShift) => void;
   view?: Pick<Window, 'innerWidth' | 'innerHeight' | 'addEventListener' | 'removeEventListener'>;
 };
 

@@ -29,7 +29,7 @@ export function createLatestLimiter<Value>({ perSecond, onValue, timers = realTi
     /** Takes a value, handing it on now or at the end of the running interval in place of any value held before. */
     push,
     /** Drops a held value and ends the running interval. A value pushed later goes out at once. */
-    stop,
+    dispose,
   };
 
   function push(value: Value): void {
@@ -40,7 +40,7 @@ export function createLatestLimiter<Value>({ perSecond, onValue, timers = realTi
     state = { kind: 'holding', timer: state.timer, value };
   }
 
-  function stop(): void {
+  function dispose(): void {
     if (state.kind !== 'idle') {
       timers.clearTimeout(state.timer);
     }

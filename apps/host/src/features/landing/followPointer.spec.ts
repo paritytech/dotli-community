@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { followPointer, getPointerShift } from './followPointer.js';
+import type { OrbitShift } from './pickOrbitFollower.js';
 
 /** The viewport's size in the fake window. */
 const WIDTH = 1000;
@@ -65,5 +66,5 @@ function setup() {
   function move(clientX: number, clientY: number) {
     view.dispatchEvent(Object.assign(new Event('pointermove'), { clientX, clientY }));
   }
-  return { view, shifts: [] as { x: number; y: number }[], move };
+  return { view, shifts: [] as OrbitShift[], move };
 }
