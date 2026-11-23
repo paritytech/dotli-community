@@ -90,10 +90,47 @@ export const UnderInput: Story = {
       />
     </InputFrame>
   ),
-  play: async ({ step }) => {
+  play: async ({ canvas, step }) => {
+    await step('Then the list sits below the input', async () => {
+      const input = canvas.getByRole('combobox', { name: 'Search a .paseo name' });
+      const layer = getLayer(body.getByRole('listbox', { name: 'Suggested names' }));
+      await waitFor(async () => {
+        await expect(layer).toHaveAttribute('data-side', 'bottom');
+        await expect(layer.getBoundingClientRect().top).toBeGreaterThanOrEqual(input.getBoundingClientRect().bottom);
+      });
+    });
     await step('Then only one option is active', async () => {
       const active = body.getByRole('option', { name: 'browse-default-relevant-sort00.paseo' });
       await expect(body.getAllByRole('option', { selected: true })).toEqual([active]);
+    });
+  },
+};
+
+/** As a dotli user typing a name in an input near the screen's bottom, I see the list open above it and fit on screen. */
+export const AboveInputNearBottom: Story = {
+  render: args => (
+    <div style={{ position: 'fixed', left: '16px', bottom: '40px' }}>
+      <InputFrame width="236px" inputLabel="Name" listId="listbox-near-bottom" listLabel="Many options">
+        <Options labels={MANY_OPTIONS} onPick={args.onPick} />
+      </InputFrame>
+    </div>
+  ),
+  play: async ({ canvas, step }) => {
+    const input = canvas.getByRole('combobox', { name: 'Name' });
+    const layer = getLayer(body.getByRole('listbox', { name: 'Many options' }));
+    await step('Given the list has taken its side and ended its entry', async () => {
+      await waitFor(() => expect(layer).toHaveAttribute('data-side'));
+      await Promise.all(layer.getAnimations().map(animation => animation.finished));
+    });
+    await step('Then the list sits above the input, inside the visible area', async () => {
+      const visibleHeight = window.visualViewport?.height ?? window.innerHeight;
+      await waitFor(async () => {
+        const box = layer.getBoundingClientRect();
+        await expect(layer).toHaveAttribute('data-side', 'top');
+        await expect(box.bottom).toBeLessThanOrEqual(input.getBoundingClientRect().top);
+        await expect(box.top).toBeGreaterThanOrEqual(0);
+        await expect(box.bottom).toBeLessThanOrEqual(visibleHeight);
+      });
     });
   },
 };
@@ -475,6 +512,15 @@ function GroupsFrame(props: StoryArgs): JSX.Element {
       </Listbox.Group>
     </InputFrame>
   );
+}
+
+/** The open floating layer that holds the list. */
+function getLayer(list: HTMLElement): HTMLElement {
+  const layer = list.closest<HTMLElement>('[data-open]');
+  if (layer === null) {
+    throw new Error(`No open layer holds the list #${list.id}`);
+  }
+  return layer;
 }
 
 /** Asserts the option sits fully inside the list's visible box. */

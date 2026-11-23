@@ -52,6 +52,21 @@ function SwapHarness() {
   );
 }
 
+/** A trigger pinned near the bottom of the screen, with too little room below it for its tooltip. */
+function NearBottomHarness() {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  return (
+    <div style={{ position: 'fixed', left: '16px', bottom: '8px' }}>
+      <button ref={setTrigger} type="button" data-testid="tip-bottom-trigger">
+        Shield
+      </button>
+      <Tooltip id="bottom-tip" trigger={trigger()}>
+        <p style={{ margin: 0, padding: '12px' }}>Loaded through a light client.</p>
+      </Tooltip>
+    </div>
+  );
+}
+
 const meta = {
   title: 'Floating/Tooltip',
   component: Harness,
@@ -177,6 +192,25 @@ export const MovedTriggerKeepsNoAria: Story = {
       await expect(second()).toHaveAttribute('aria-expanded', 'false');
       await expect(first()).not.toHaveAttribute('aria-describedby');
       await expect(first()).not.toHaveAttribute('aria-expanded');
+    });
+  },
+};
+
+/** As a mouse user, I rest on a trigger near the bottom of the screen and the tooltip opens above it. */
+export const OpensAboveNearBottom: Story = {
+  render: () => <NearBottomHarness />,
+  play: async ({ step }) => {
+    const trigger = body.getByTestId('tip-bottom-trigger');
+    await step('When the mouse rests on the trigger', async () => {
+      await (await trustedInput()).hover(trigger);
+    });
+    await step('Then the tooltip shows above the trigger', async () => {
+      await waitFor(async () => {
+        const tip = byId('bottom-tip');
+        await expect(tip).toHaveAttribute('data-open');
+        await expect(tip).toHaveAttribute('data-side', 'top');
+        await expect(tip.getBoundingClientRect().bottom).toBeLessThanOrEqual(trigger.getBoundingClientRect().top);
+      });
     });
   },
 };
