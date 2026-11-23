@@ -31,7 +31,6 @@ import { createFrameChainTransport } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
 import { withTrustedSubmitFallback } from './light-client-submit-fallback.js';
 import { createMediaAdvertisementLookupRoute } from './media-advertisement-lookup.js';
-import { createVoxPresenceSnapshotRoute } from './vox-presence-snapshot.js';
 import { recordBestBlock, recordChainActivity } from '../network-monitor.js';
 import { getWalletMode } from '../state/wallet-mode.js';
 
@@ -156,10 +155,8 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     wake = null;
   };
   // TEMPORARY: the light client returns no stored statements. Media's
-  // marked advertisement lookups and the exact vox.paseo presence snapshot
-  // use the trusted RPC node instead.
+  // marked advertisement lookups use the trusted RPC node instead.
   const mediaLookup = getBackend() === 'rpc-gateway' ? null : createMediaAdvertisementLookupRoute(genesisHash, deliver);
-  const voxPresence = getBackend() === 'rpc-gateway' ? null : createVoxPresenceSnapshotRoute(genesisHash, deliver);
   // A halt drops the lease but the stream stays open, since truapi-host ignores its end and keeps
   // sending. The next send takes a new lease, behind the chain gate or the frame gate.
   const open = (provider: LeaseProvider): void => {
@@ -212,7 +209,6 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     }
     closed = true;
     mediaLookup?.close();
-    voxPresence?.close();
     lease?.disconnect();
     lease = null;
     wake?.();
@@ -229,9 +225,6 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
         return;
       }
       if (mediaLookup?.send(parsed) === true) {
-        return;
-      }
-      if (voxPresence?.send(parsed) === true) {
         return;
       }
       const connection = lease ?? reopen();

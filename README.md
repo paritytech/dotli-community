@@ -121,8 +121,9 @@ gateway backend reads the same storage over a public RPC node instead.)
 The protocol client retries a resolver request once when its chainHead follow stopped, and both resolution backends
 rebuild their client after a stop rather than reading through a dead follow.
 
-On light-client backends, the Media advertisement lookup and the exact `vox.paseo` presence snapshot TEMPORARILY use the
-People chain's trusted RPC node (see [Protected browser Media](#protected-browser-media)).
+On light-client backends, the Media advertisement lookup TEMPORARILY uses the People chain's trusted RPC node
+(see [Protected browser Media](#protected-browser-media)). Product presence traffic uses the selected backend without
+topic-specific host routing.
 
 ## How multi-file SPAs work
 
@@ -533,20 +534,13 @@ that require a relay still need working TURN. The local dev and preview servers 
 
 Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
 client (smoldot) completes a new statement subscription with an empty retained snapshot and relays only later gossip. On
-light-client backends the host therefore TEMPORARILY routes two narrow Statement Store flows to the People chain's
-trusted RPC node:
+light-client backends the host therefore TEMPORARILY routes Media callee-advertisement lookups to the People chain's
+trusted RPC node. The core opens a separate connection per lookup and marks its subscribe and unsubscribe requests
+with `truapi:media-advertisement-lookup:`.
 
-- Media callee-advertisement lookups. The core opens a separate connection per lookup and marks its subscribe and
-  unsubscribe requests with `truapi:media-advertisement-lookup:`.
-- The `vox.paseo` public presence lifecycle: an exact single-topic `MatchAll` subscription for
-  `blake2b-256("vox.paseo/lobby/v1")`, its matching unsubscribe, and submissions whose decoded Statement Store fields
-  carry only that topic. Reading and posting use the same trusted transport so different light-client peers cannot miss
-  each other. `MatchAny`, multi-topic filters, other Vox builds and every other product topic stay on the light client.
-
-Chat, live call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator sees which callee
-advertisement topics are looked up and when, plus when a device reads or posts to the one public `vox.paseo` presence
-topic. It can withhold statements but cannot forge one: the Media core verifies each advertisement proof and signature,
-while Vox accepts only signed self-announcements that have not expired. Remove both route modules and their uses in
+Product presence, Chat, live call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator
+sees which callee advertisement topics are looked up and when. It can withhold statements but cannot forge one: the
+Media core verifies each advertisement proof and signature. Remove `media-advertisement-lookup.ts` and its uses in
 `Chain.ts` once the light client can retrieve retained statements. On Trusted Providers every request already uses RPC.
 
 ## Development
