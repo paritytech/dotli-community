@@ -70,14 +70,30 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
     return shown === null ? null : contactEntries(shown.rooms, shown.bots, shown.lastMessageTimes);
   });
 
-  const activeContact = createMemo(() => {
-    const id = chat.activeRoomId();
-    return id === null ? undefined : contacts()?.find(c => c.id === id);
+  // With one room there is no list to pick from, so that room shows.
+  const soleContact = createMemo(() => {
+    const list = contacts();
+    return list?.length === 1 ? list[0] : undefined;
   });
 
-  // A room that is not in the list yet shows the list, so its messages are not read either.
+  // An open room that is not in the list yet shows the list, so its messages are not read either.
+  const shownContact = createMemo(() => {
+    const id = chat.activeRoomId();
+    return id === null ? soleContact() : contacts()?.find(c => c.id === id);
+  });
+
   // eslint-disable-next-line solid/reactivity -- the feed tracks the shown room in an effect of its own.
-  feed.follow(() => activeContact()?.id ?? null);
+  feed.follow(() => shownContact()?.id ?? null);
+
+  // Showing the sole room opens it, so it stays open once a second room appears, and the page treats it as open.
+  createEffect(
+    () => (chat.activeRoomId() === null ? (soleContact()?.id ?? null) : null),
+    roomId => {
+      if (roomId !== null) {
+        chat.openRoom(roomId);
+      }
+    },
+  );
 
   // Refocus the row a move blurred.
   createEffect(contacts, () => {
@@ -110,7 +126,7 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
     if (list.length === 0) {
       return 'empty';
     }
-    return activeContact() === undefined ? 'list' : 'conversation';
+    return shownContact() === undefined ? 'list' : 'conversation';
   });
 
   // Whether the reader is at the newest message. Growth never clears it, so a reader at the bottom stays there.
@@ -134,7 +150,7 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
   };
 
   createEffect(
-    () => activeContact()?.id,
+    () => shownContact()?.id,
     () => {
       stuck = true;
       focusComposerIfAsked();
@@ -161,7 +177,7 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
   });
 
   // The product chose what its room shows below the messages.
-  const composing = (): boolean => view() === 'conversation' && activeContact()?.footer !== 'Empty';
+  const composing = (): boolean => view() === 'conversation' && shownContact()?.footer !== 'Empty';
 
   const hint = createMemo((): { text: string; error: boolean } | null => {
     const v = view();
@@ -194,9 +210,9 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
 
   const submit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
-    const roomId = chat.activeRoomId();
+    const roomId = shownContact()?.id;
     const input = inputEl;
-    if (roomId === null || input === undefined) {
+    if (roomId === undefined || input === undefined) {
       return;
     }
     const text = input.value.trim();
@@ -226,20 +242,22 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
     <>
       <Show when={view() === 'conversation'}>
         <div class={s['header']}>
-          <button
-            type="button"
-            class={s['headerButton']}
-            id="chat-panel-back"
-            title="Back to rooms"
-            aria-label="Back to rooms"
-            onClick={() => {
-              chat.backToRooms();
-            }}
-          >
-            <ChevronLeftIcon />
-          </button>
+          <Show when={soleContact() === undefined}>
+            <button
+              type="button"
+              class={s['headerButton']}
+              id="chat-panel-back"
+              title="Back to rooms"
+              aria-label="Back to rooms"
+              onClick={() => {
+                chat.backToRooms();
+              }}
+            >
+              <ChevronLeftIcon />
+            </button>
+          </Show>
           <span class={s['title']} id="chat-panel-title">
-            {activeContact()?.name}
+            {shownContact()?.name}
           </span>
         </div>
       </Show>

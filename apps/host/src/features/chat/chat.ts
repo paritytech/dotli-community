@@ -81,7 +81,7 @@ export type ChatConversation = {
   loggedIn: Accessor<boolean>;
   /** The product's published name, else its label. The title while no room is open. */
   productName: Accessor<string | null>;
-  /** Null shows the room list. */
+  /** Null shows the room list, or the room when it is the only one. */
   activeRoomId: Accessor<string | null>;
   unreadByRoom: Accessor<Readonly<Record<string, number>>>;
   composerError: Accessor<string | null>;

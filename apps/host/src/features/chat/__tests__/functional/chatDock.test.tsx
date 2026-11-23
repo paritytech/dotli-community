@@ -51,7 +51,7 @@ afterEach(() => {
 });
 
 describe('ChatDock island', () => {
-  it("As a user, the open panel lists the product's rooms from the page's chat", async () => {
+  it("As a user of a product with one room, the open panel shows that room from the page's chat as open", async () => {
     // Given
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
     mountIsland();
@@ -60,9 +60,9 @@ describe('ChatDock island', () => {
     chatPanelState.setOpen(true);
 
     // Then
-    await waitForDom(() => document.querySelector('[data-testid="chat-room-name"]')?.textContent === 'Main');
+    await waitForDom(() => document.getElementById('chat-panel-title')?.textContent === 'Main');
     expect(byId('chat-panel').hasAttribute('data-open')).toBe(true);
-    expect(byTestId('chat-room-name').textContent).toBe('Main');
+    expect(chatPanelState.store.get().activeRoomId).toBe('main');
   });
 
   it('As a user, Escape in the panel closes it on the page', async () => {

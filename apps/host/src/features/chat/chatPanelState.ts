@@ -20,7 +20,7 @@ export type ChatPanelState = {
   available: boolean;
   loggedIn: boolean;
   open: boolean;
-  /** null shows the room list. */
+  /** null shows the room list, or the room when it is the only one. */
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
   composerError: string | null;

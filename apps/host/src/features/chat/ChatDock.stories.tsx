@@ -47,6 +47,11 @@ async function openRoom(name: string): Promise<void> {
   await waitFor(() => expect(byId('chat-panel-rooms')).not.toBeVisible());
 }
 
+/** Waits for the conversation the panel opens on when the product has one room. */
+async function soleRoomShows(): Promise<void> {
+  await waitFor(() => expect(byId('chat-panel-messages')).toBeVisible(), SLOW);
+}
+
 function send(text: string): void {
   const input = byId('chat-panel-input') as HTMLInputElement;
   input.value = text;
@@ -100,6 +105,43 @@ export const EmptyRoomListHint: Story = {
   },
 };
 
+/** As a user of a product with one room, I land in its conversation, and a second room lets me go back to the list. */
+export const OneRoomOpensOnItsConversation: Story = {
+  tags: ['!autodocs'],
+  play: async ({ step }) => {
+    await step('Given a product with one room', () => {
+      stage.createRoom('main', 'Main');
+      stage.productSays('main', 'hello from the app');
+    });
+    await step('When I open the chat', async () => {
+      openChat();
+      await soleRoomShows();
+    });
+    await step('Then its conversation shows, open and ready to type, with no room list and no way back', async () => {
+      await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello from the app'), SLOW);
+      await expect(byId('chat-panel-title')).toHaveTextContent('Main');
+      await expect(stage.state.get().activeRoomId).toBe('main');
+      await waitFor(() => expect(byId('chat-panel-input')).toHaveFocus());
+      await expect(byId('chat-panel-rooms')).not.toBeVisible();
+      await expect(document.getElementById('chat-panel-back')).toBeNull();
+    });
+    await step('When a second room appears', () => {
+      stage.createRoom('news', 'News');
+    });
+    await step('Then I stay in the conversation and can go back', async () => {
+      await waitFor(() => expect(document.getElementById('chat-panel-back')).toBeVisible(), SLOW);
+      await expect(byId('chat-panel-title')).toHaveTextContent('Main');
+      await expect(byId('chat-panel-messages')).toBeVisible();
+    });
+    await step('When I go back', () => {
+      byId('chat-panel-back').click();
+    });
+    await step('Then the list shows both rooms', async () => {
+      await waitFor(() => expect(rows()).toHaveLength(2), SLOW);
+    });
+  },
+};
+
 /** As a user, I read product messages and my replies reach the product. */
 export const MessagesRenderAndRepliesPublish: Story = {
   tags: ['!autodocs'],
@@ -111,7 +153,7 @@ export const MessagesRenderAndRepliesPublish: Story = {
 
       // When
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
 
       // Then
       await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello from the app'), SLOW);
@@ -141,7 +183,7 @@ export const OneTimePerRun: Story = {
 
       // When
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
       send('mine');
 
       // Then
@@ -215,6 +257,7 @@ export const CustomMessageTreeAndTaps: Story = {
     await step('As a user, custom messages render live trees and taps reach the product', async () => {
       // Given
       stage.createRoom('main', 'Main');
+      stage.createRoom('other', 'Other');
       stage.productSays('main', { tag: 'Custom', value: { messageType: 'poll', payload: '0x0102' } });
       const messageId = stage.messages[0]?.messageId;
 
@@ -346,7 +389,7 @@ export const FailedReplyKeepsMessage: Story = {
       stage.sendError = new Error('boom');
       stage.createRoom('main', 'Main');
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
 
       // When
       send('again');
@@ -370,7 +413,7 @@ export const UnkeptReplyKeepsText: Story = {
       stage.refuseError = new Error('IndexedDB is gone');
       stage.createRoom('main', 'Main');
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
 
       // When
       send('hello');
@@ -390,6 +433,7 @@ export const OpeningRoomFocusesComposer: Story = {
     await step('As a user, opening a room focuses the composer', async () => {
       // Given
       stage.createRoom('main', 'Main');
+      stage.createRoom('other', 'Other');
       openChat();
 
       // When
