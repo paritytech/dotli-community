@@ -48,6 +48,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   finds a style or skill rule that matches the code's shape, such as one event that carries a collaborator's state, and
   the rewrite it describes would read no better than the code it replaces, or would drop a guard that keeps idle work
   from running.
+- [code-reads-or-writes-web-storage](code-reads-or-writes-web-storage.md): code keeps a value in local or session
+  storage through direct `SafeStorage` calls, and the existing persist adapter lacks something the value needs, such as
+  telling whether a write stuck.
 - [component-reports-before-it-restores](component-reports-before-it-restores.md): a component that boots
   asynchronously reports an empty state before it restores what it stored, and a display, a cache or a watcher reading
   the layer above acts on that gap, including when the layer above's own store-changed nudge causes it.

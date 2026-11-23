@@ -3,3 +3,4 @@
 
 export type { PersistentAtomParams } from './createPersistentAtom.js';
 export { createPersistentAtom } from './createPersistentAtom.js';
+export { createStoredAtom } from './createStoredAtom.js';
