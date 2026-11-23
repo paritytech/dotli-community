@@ -27,13 +27,18 @@
   initial-value: 0deg;
 }
 
-/* The floor's resting tilt and how far it sits below the page's foot, which differ between a phone and a wider screen.
-   Registered so that crossing between the two, as a window is resized or a device turned, glides the floor over rather
-   than jumping. They inherit, since the stage reads the drop. */
+/* The floor's resting tilt, how far a full shift tilts it off that rest, and how far it sits below the page's foot, which
+   differ between a phone and a wider screen. Registered so that crossing between the two, as a window is resized or a
+   device turned, glides the floor over rather than jumping. They inherit, since the stage reads the drop. */
 @property --orbit-rest-tilt {
   syntax: '<angle>';
   inherits: true;
   initial-value: 80deg;
+}
+@property --orbit-tilt-range {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 3deg;
 }
 @property --orbit-drop {
   syntax: '<number>';
@@ -41,14 +46,14 @@
   initial-value: 0.2;
 }
 
-/* Where the pointer is in the viewport, from -1 at its left or top edge to 1 at its right or foot. Registered so the
-   floor glides to its new turn and tilt rather than jumping with every move. */
-@property --orbit-pointer-x {
+/* The shift on each axis, from -1 at the viewport's left or top edge to 1 at its right or foot. Registered so the floor glides to its new turn and tilt rather than
+   jumping with every move. */
+@property --orbit-shift-x {
   syntax: '<number>';
   inherits: false;
   initial-value: 0;
 }
-@property --orbit-pointer-y {
+@property --orbit-shift-y {
   syntax: '<number>';
   inherits: false;
   initial-value: 0;
@@ -78,7 +83,7 @@
   inherits: true;
   initial-value: 80deg;
 }
-@property --orbit-pointer-turn {
+@property --orbit-shift-turn {
   syntax: '<angle>';
   inherits: true;
   initial-value: 0deg;
@@ -226,11 +231,13 @@
   --orbit-depth: 1920;
   /* Every line's width, rings and links alike. */
   --orbit-line: 1px;
-  /* The floor's tilt with the pointer at the viewport's middle, or with no mouse to follow. */
+  /* The floor's tilt with the shift at rest, or for a visitor who asks for less motion. */
   --orbit-rest-tilt: 80deg;
+  /* How far a full shift up or down the page tilts the floor off its rest. */
+  --orbit-tilt-range: 3deg;
   --orbit-tilt: var(--orbit-rest-tilt);
-  /* How far the floor turns off its own clock with the pointer across the viewport, or with no mouse to follow. */
-  --orbit-pointer-turn: 0deg;
+  /* How far the floor turns off its own clock with the shift at rest, or for a visitor who asks for less motion. */
+  --orbit-shift-turn: 0deg;
   /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
      by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
      and the floor cuts it at no tilt short of edge-on. */
@@ -264,26 +271,27 @@
   }
 }
 
-/* A mouse tips the floor a little back as it rises up the page and toward the viewer as it falls, and swings the
-   floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with y down, so a larger turn
-   carries the near side left, and a pointer to the right turns it the other way. Everything drawn on the floor reads the
-   one tilt and turn, so it moves as one piece. */
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+/* The shift tips the floor back by up to its tilt range as the shift rises up the page and toward the viewer as it
+   falls, and swings the floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with y
+   down, so a larger turn carries the near side left, and a shift to the right turns it the other way. Everything drawn
+   on the floor reads the one tilt and turn, so it moves as one piece. A zero shift leaves the floor at rest. */
+@media (prefers-reduced-motion: no-preference) {
   .orbit {
-    --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-pointer-y) * 3deg);
-    --orbit-pointer-turn: calc(var(--orbit-pointer-x) * -12deg);
+    --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-shift-y) * var(--orbit-tilt-range));
+    --orbit-shift-turn: calc(var(--orbit-shift-x) * -12deg);
     transition:
       --orbit-rest-tilt var(--reshape) ease-in-out,
+      --orbit-tilt-range var(--reshape) ease-in-out,
       --orbit-drop var(--reshape) ease-in-out,
-      --orbit-pointer-x 400ms ease-out,
-      --orbit-pointer-y 400ms ease-out;
+      --orbit-shift-x 400ms ease-out,
+      --orbit-shift-y 400ms ease-out;
   }
 }
 
 /* Each ring's radius, as --orbit-<ring>-radius in units, comes with the layout. */
 .stage {
   /* The fallback holds the dots and links at rest where the clock is not registered. */
-  --orbit-turn: calc(var(--orbit-clock, 0deg) + var(--orbit-pointer-turn));
+  --orbit-turn: calc(var(--orbit-clock, 0deg) + var(--orbit-shift-turn));
   --floor: calc(293 * var(--orbit-unit));
   position: absolute;
   bottom: var(--bleed);
@@ -294,10 +302,12 @@
   perspective: calc(var(--orbit-depth) * var(--orbit-unit));
 }
 
-/* A phone has height to spare under the form, so the floor stands nearly upright and in full view. */
+/* A phone has height to spare under the form, so the floor stands nearly upright and in full view. Near upright a few
+   degrees barely change its shape, so the shift swings it from upright to well tipped back. */
 @media (max-width: 560px) {
   .orbit {
-    --orbit-rest-tilt: 10deg;
+    --orbit-rest-tilt: 20deg;
+    --orbit-tilt-range: 20deg;
     --orbit-drop: 0;
   }
 }

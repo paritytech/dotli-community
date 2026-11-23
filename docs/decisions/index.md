@@ -37,6 +37,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## Code structure
 
+- [cap-how-often-readings-reach-state](cap-how-often-readings-reach-state.md): a page component caps how often a stream
+  of input readings, from one or more sources, reaches its state, latest reading winning, and the question is where the
+  cap lives when the rules ban hand-rolled timers and point at the task pool.
 - [author-metadata-the-rfc-does-not-name](author-metadata-the-rfc-does-not-name.md): a product page adds a piece of the
   author's metadata the product-manifest RFC does not name, and the question is whether it is read while the product
   resolves or when the author card opens, and where it is kept.
@@ -78,6 +81,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
+- [unit-whose-only-wait-is-its-own-timer](unit-whose-only-wait-is-its-own-timer.md): a small unit, such as a rate
+  limiter, has one phase that outlives a call, a timer it set, with no await or failure path, and the question is
+  whether it runs on `createStateMachine` and what shape its state takes.
 - [view-shows-a-status-the-layer-already-reports](view-shows-a-status-the-layer-already-reports.md): a view shows each
   item's status, and the state layer's existing verdict, which other readers share, reports a waiting state the view
   would rather not show, such as a brief one after the page returns from hidden or one for an item nothing on the page
