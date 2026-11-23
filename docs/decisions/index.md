@@ -117,9 +117,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
 - [dim-a-graphic-of-overlapping-parts](dim-a-graphic-of-overlapping-parts.md): a decorative graphic of overlapping
   parts, such as dots on lines, must look faint against the page, and the question is where the faintness goes.
-- [dropdown-placed-against-its-trigger](dropdown-placed-against-its-trigger.md): a shared primitive that opens as a
-  dropdown places itself in its own way, a new user's trigger sits where that breaks, and the question is how a host
-  should place it, or whether it should line up with the edge of the bar its trigger sits in.
+- [entry-animation-follows-a-measured-side](entry-animation-follows-a-measured-side.md): a shared surface's entry
+  slides toward a side known only after the shown surface is measured, so the first entry on a new side slides a few
+  pixels the other way.
 - [element-spans-a-shared-primitives-padding](element-spans-a-shared-primitives-padding.md): an app wants an element
   that runs edge to edge across a shared container primitive, past its inner padding.
 - [existing-component-already-does-the-job](existing-component-already-does-the-job.md): a primitive is changed to do
@@ -147,5 +147,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   after the card opens, and the question is what the section shows while it loads.
 - [status-mark-drawn-around-an-icon](status-mark-drawn-around-an-icon.md): a design carries an entity's state in a
   disc or ring around its icon, and the question is whether that breaks the rule that icons stand bare.
+- [surface-placed-against-its-trigger](surface-placed-against-its-trigger.md): a shared surface that opens from a
+  trigger, such as a dropdown or a tooltip card, places itself in its own way or must line up with the edge of the bar
+  its trigger sits in, and the question is how a host places it or what carries the bar's edge into the component.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.

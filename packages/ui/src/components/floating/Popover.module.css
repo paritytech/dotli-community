@@ -4,9 +4,11 @@
 /* :where() so a consumer's class wins whatever the load order. */
 :where(.surface) {
   max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
-  /* dvh tracks the visible area as mobile browser chrome shows and hides. */
-  max-height: calc(
-    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom)
+  /* dvh tracks the visible area as mobile browser chrome shows and hides. A surface at its trigger also keeps to the
+     room it was placed in. */
+  max-height: min(
+    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom),
+    var(--layer-room, 100dvh)
   );
   overflow-y: auto;
 }

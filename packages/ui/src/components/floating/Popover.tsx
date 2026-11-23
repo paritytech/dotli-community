@@ -3,7 +3,6 @@
 
 import { createContext, createEffect, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { anchorName } from './anchorName.js';
 import { createAnchored, type Anchored } from './createAnchored.js';
 import { createContentPreload } from './createContentPreload.js';
 import { createTriggerWiring } from './createTriggerWiring.js';
@@ -96,8 +95,8 @@ export function Popover(props: PopoverProps): JSX.Element {
 }
 
 /**
- * Makes the trigger the invoker of the anchored layer and the anchor it is placed against, while it holds one. A sheet
- * showing in the layer's place takes the invoker away.
+ * Makes the trigger the invoker of the anchored layer while it holds one. A sheet showing in the layer's place takes the
+ * invoker away.
  */
 function createInvoker(state: PopoverState, trigger: () => HTMLElement | undefined): void {
   createEffect(
@@ -110,12 +109,10 @@ function createInvoker(state: PopoverState, trigger: () => HTMLElement | undefin
         return;
       }
       const { element } = wiring;
-      element.style.setProperty('anchor-name', anchorName(state.id));
       if (wiring.invokes) {
         element.setAttribute('popovertarget', state.id);
       }
       return () => {
-        element.style.removeProperty('anchor-name');
         element.removeAttribute('popovertarget');
       };
     },

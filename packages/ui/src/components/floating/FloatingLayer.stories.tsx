@@ -7,7 +7,6 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { appears } from '@dotli/ui/testing';
 import { Button } from '../primitives/Button.js';
-import { anchorName } from './anchorName.js';
 import { FloatingLayer } from './FloatingLayer.js';
 import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layerContext.js';
 import { Popover } from './Popover.js';
@@ -65,13 +64,7 @@ function SelfDismissing() {
   const [open, setOpen] = createSignal(true);
   return (
     <div style={{ display: 'flex', gap: '72px', 'align-items': 'flex-start' }}>
-      <input
-        ref={setTrigger}
-        type="text"
-        aria-label="Name"
-        data-testid="input"
-        style={{ 'anchor-name': anchorName('story-self-dismiss') }}
-      />
+      <input ref={setTrigger} type="text" aria-label="Name" data-testid="input" />
       <p data-testid="outside">Outside</p>
       <FloatingLayer
         id="story-self-dismiss"

@@ -5,9 +5,9 @@
 .layer {
   flex-direction: column;
   width: max-content;
-  min-width: max(anchor-size(width), 200px);
+  min-width: max(var(--layer-anchor-width, 0px), 200px);
   max-width: var(--w-pop-md);
-  max-height: 312px;
+  max-height: min(312px, var(--layer-room, 100dvh));
   padding: var(--sp-1_5);
 }
 .layer[data-open] {
@@ -169,10 +169,10 @@
    and the text ellipsizes. */
 @media (max-width: 560px) {
   .layer {
-    width: max(anchor-size(width), 200px);
+    width: max(var(--layer-anchor-width, 0px), 200px);
     min-width: 0;
     max-width: none;
-    max-height: 342px;
+    max-height: min(342px, var(--layer-room, 100dvh));
   }
   .status,
   .option {

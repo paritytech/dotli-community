@@ -4,7 +4,6 @@
 import { createEffect, createSignal, Loading, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { RootBoundary } from '../../mount/rootBoundary.js';
-import { anchorName } from './anchorName.js';
 import { createTooltipVisibility } from './createTooltipVisibility.js';
 import { FloatingLayer, type Placement } from './FloatingLayer.js';
 import { Surface, type SurfaceWidth } from '../primitives/Surface.js';
@@ -41,7 +40,6 @@ export function Tooltip(props: TooltipProps): JSX.Element {
       /** The focus a press brings is no keyboard's. */
       let pressing = false;
       el.setAttribute('aria-describedby', props.id);
-      el.style.setProperty('anchor-name', anchorName(props.id));
       const onPointerEnter = (ev: PointerEvent): void => {
         if (ev.pointerType !== 'mouse') {
           return;
@@ -95,7 +93,6 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         el.removeEventListener('focus', onFocus);
         el.removeEventListener('blur', visibility.hide);
         el.removeEventListener('click', onClick);
-        el.style.removeProperty('anchor-name');
         // The next trigger gets them from the effects that run for it.
         el.removeAttribute('aria-describedby');
         el.removeAttribute('aria-expanded');

@@ -37,6 +37,10 @@ pixel or two only at the size one caller shows the component. Keep the component
 shift. Do not make the component compute its offsets from its own size, expose the offset for the caller to set, or let
 the caller override the position to close the gap. The owner chose this without stating a reason.
 
+A shared surface that opens from a trigger moves onto placement against its trigger, and its old look came from the
+app's own CSS lining it up with an enclosing bar's edge. It sits against the trigger's own edge, a few pixels from the
+old look, as [a surface is placed against its trigger](surface-placed-against-its-trigger.md) says.
+
 ## Cases
 
 - Asked to add a Beta badge to a header logo like the toolbar shows it, the slice pinned the badge to the symbol's
@@ -46,5 +50,8 @@ the caller override the position to close the gap. The owner chose this without 
   screen put it 2px further out vertically and under 1px horizontally. Offered a ratio rule in the component, a custom
   property the caller sets, or a caller override, the owner accepted the shift. (PR #493, branch `feat/landing-horizon`,
   design `docs/_plans/beta-logo-flag-design.md`)
+- Counter-case: a tooltip card that dropped from a bar's bottom edge through the app's CSS moved onto the shared
+  floating layer and now sits against its trigger's bottom edge, a few pixels higher.
+  (docs/\_plans/floating-placement-design.md, feat/floating-ui)
 
 Status: active

@@ -48,6 +48,6 @@ const PickList = (props: PickListProps) =>
   floating layer, anchor positioning only through the floating layer, or the old in-place placement where anchoring is
   missing, the owner chose anchor positioning only through the floating layer, always. (architecture change "Action
   group More: Listbox on wide screens", docs/\_plans/more-listbox-design.md). The same change's placement rule is
-  [a dropdown is placed against its trigger](dropdown-placed-against-its-trigger.md).
+  [a surface is placed against its trigger](surface-placed-against-its-trigger.md).
 
 Status: active

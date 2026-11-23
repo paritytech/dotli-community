@@ -21,8 +21,10 @@
   color: var(--chrome-text);
   font-family: var(--font-sans);
   z-index: 1500;
+  /* Slides in from its trigger's side. */
+  --layer-slide: calc(-1 * var(--sp-2));
   opacity: 0;
-  transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
+  transform: translateY(var(--layer-slide)) scale(0.97);
   transform-origin: top right;
   transition:
     opacity var(--dur) var(--ease-spring),
@@ -40,14 +42,23 @@
   top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
 }
+/* A surface at its trigger keeps to the room it was placed in and scrolls inside past it. A consumer's own cap wins. */
+:where(.triggerStart, .triggerEnd) {
+  max-height: var(--layer-room, 100dvh);
+  overflow-y: auto;
+}
 :where(.triggerStart) {
-  position-area: bottom span-right;
-  margin-top: var(--pop-gap);
   transform-origin: top left;
 }
-:where(.triggerEnd) {
-  position-area: bottom span-left;
-  margin-top: var(--pop-gap);
+/* Above its trigger, a surface grows from its bottom edge and slides in from below. */
+:where(.layer[data-side='top']) {
+  --layer-slide: var(--sp-2);
+}
+:where(.triggerStart[data-side='top']) {
+  transform-origin: bottom left;
+}
+:where(.triggerEnd[data-side='top']) {
+  transform-origin: bottom right;
 }
 /* The surface takes focus itself when it holds nothing focusable, with no ring. */
 .layer:focus-visible {
@@ -64,7 +75,7 @@
 @starting-style {
   .layer[data-open] {
     opacity: 0;
-    transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
+    transform: translateY(var(--layer-slide)) scale(0.97);
   }
 }
 @media (prefers-reduced-motion: reduce) {

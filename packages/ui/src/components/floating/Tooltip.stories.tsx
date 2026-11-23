@@ -52,6 +52,36 @@ function SwapHarness() {
   );
 }
 
+/** A trigger pinned near the bottom of the screen, with too little room below it for its tooltip. */
+function NearBottomHarness() {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  return (
+    <div style={{ position: 'fixed', left: '16px', bottom: '8px' }}>
+      <button ref={setTrigger} type="button" data-testid="tip-bottom-trigger">
+        Shield
+      </button>
+      <Tooltip id="bottom-tip" trigger={trigger()}>
+        <p style={{ margin: 0, padding: '12px' }}>Loaded through a light client.</p>
+      </Tooltip>
+    </div>
+  );
+}
+
+/** A trigger at the top of the screen whose tooltip is taller than the screen. */
+function TallHarness() {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  return (
+    <div>
+      <button ref={setTrigger} type="button" data-testid="tip-tall-trigger">
+        Shield
+      </button>
+      <Tooltip id="tall-tip" trigger={trigger()}>
+        <p style={{ margin: 0, padding: '12px', height: '200vh' }}>Loaded through a light client.</p>
+      </Tooltip>
+    </div>
+  );
+}
+
 const meta = {
   title: 'Floating/Tooltip',
   component: Harness,
@@ -177,6 +207,46 @@ export const MovedTriggerKeepsNoAria: Story = {
       await expect(second()).toHaveAttribute('aria-expanded', 'false');
       await expect(first()).not.toHaveAttribute('aria-describedby');
       await expect(first()).not.toHaveAttribute('aria-expanded');
+    });
+  },
+};
+
+/** As a mouse user, I rest on a trigger near the bottom of the screen and the tooltip opens above it. */
+export const OpensAboveNearBottom: Story = {
+  render: () => <NearBottomHarness />,
+  play: async ({ step }) => {
+    const trigger = body.getByTestId('tip-bottom-trigger');
+    await step('When the mouse rests on the trigger', async () => {
+      await (await trustedInput()).hover(trigger);
+    });
+    await step('Then the tooltip shows above the trigger', async () => {
+      await waitFor(async () => {
+        const tip = byId('bottom-tip');
+        await expect(tip).toHaveAttribute('data-open');
+        await expect(tip).toHaveAttribute('data-side', 'top');
+        await expect(tip.getBoundingClientRect().bottom).toBeLessThanOrEqual(trigger.getBoundingClientRect().top);
+      });
+    });
+  },
+};
+
+/** As a mouse user, I rest on a trigger whose tooltip is taller than the screen and it fits on screen, scrolling inside. */
+export const TallFitsOnScreen: Story = {
+  render: () => <TallHarness />,
+  play: async ({ step }) => {
+    const trigger = body.getByTestId('tip-tall-trigger');
+    await step('When the mouse rests on the trigger', async () => {
+      await (await trustedInput()).hover(trigger);
+    });
+    await step('Then the tooltip ends inside the visible area and scrolls inside', async () => {
+      const tip = byId('tall-tip');
+      const visibleHeight = window.visualViewport?.height ?? window.innerHeight;
+      await waitFor(() => expect(tip).toHaveAttribute('data-side'));
+      await Promise.all(tip.getAnimations().map(animation => animation.finished));
+      await waitFor(async () => {
+        await expect(tip.getBoundingClientRect().bottom).toBeLessThanOrEqual(visibleHeight);
+        await expect(tip.scrollHeight).toBeGreaterThan(tip.clientHeight);
+      });
     });
   },
 };
