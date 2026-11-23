@@ -33,7 +33,8 @@ export async function parseIpfsResponse(buffer: Uint8Array, { expectedRoot }: Pa
  * Omit it only for bytes already trusted, such as a CAR re-packed under a smoldot-verified CID.
  */
 async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Promise<ArchiveFiles> {
-  const reader = await CarReader.fromBytes(buffer);
+  // The CAR is already whole in memory, so the reader's 8 MiB default would only refuse a product's large block.
+  const reader = await CarReader.fromBytes(buffer, { maxAllowedSectionSize: buffer.length });
   const roots = await reader.getRoots();
   const rootCid = roots[0];
 
