@@ -42,6 +42,11 @@
   top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
 }
+/* A surface at its trigger keeps to the room it was placed in and scrolls inside past it. A consumer's own cap wins. */
+:where(.triggerStart, .triggerEnd) {
+  max-height: var(--layer-room, 100dvh);
+  overflow-y: auto;
+}
 :where(.triggerStart) {
   transform-origin: top left;
 }
