@@ -169,7 +169,8 @@ With `E2E_ORIGIN` set, `npm run test:e2e` from `apps/host` needs no build and st
   Release is published once both deploys succeed.
 - **Live check:** after every deploy except to `paseo.fyi`, Live E2E runs the host-playground suite against the deployed
   site. Live E2E daily runs it at 06:00 UTC on `paseo.li` and `testnet.li` from the latest release and on `paseoli.dev`
-  from `main`. Run it by hand from the Actions tab, from the ref the site deploys from.
+  from `main`. A failure opens a `live-e2e` issue for that site, or comments on the open one, and the next pass closes
+  it. Run it by hand from the Actions tab, from the ref the site deploys from.
 - **Verify:** check out the tag from the [Releases page](https://github.com/paritytech/dotli-community/releases), then
   run `npm ci && npm run build:prod`.
 
