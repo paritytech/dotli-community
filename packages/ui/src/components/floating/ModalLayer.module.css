@@ -32,6 +32,10 @@
 .layer[data-layout='sheet'] .scrim {
   bottom: var(--content-bottom);
 }
+/* The frame insets itself, so its slide out can clear the inset. */
+.layer[data-layout='side'] {
+  place-items: stretch end;
+}
 .layer[data-layout='topbar-end'][data-open] {
   display: block;
 }

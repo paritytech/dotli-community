@@ -1,0 +1,68 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Inset from the top, right and bottom edges. Closed, it slides past its right inset off the screen. */
+.panel {
+  --inset-end: calc(var(--sp-2) + var(--safe-right));
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--w-pop-lg);
+  margin: calc(var(--sp-2) + var(--safe-top)) var(--inset-end) calc(var(--sp-2) + var(--safe-bottom)) 0;
+  overflow: hidden;
+  border-radius: var(--r-pop);
+  background: var(--chrome-surface);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+  transform: translateX(calc(100% + var(--inset-end)));
+  transition: transform var(--dur-morph) var(--ease-out);
+}
+.panel[data-state='open'] {
+  transform: translateX(0);
+}
+@starting-style {
+  .panel[data-state='open'] {
+    transform: translateX(calc(100% + var(--inset-end)));
+  }
+}
+.panel:focus-visible {
+  outline: none;
+}
+.panel[data-dragging] {
+  transition: none;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--chrome-line);
+  touch-action: none;
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-pop-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    transition: none !important;
+  }
+}
