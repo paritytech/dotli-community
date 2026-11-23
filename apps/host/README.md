@@ -212,7 +212,8 @@ request in session storage, so a reload answers the same round.
 - **Refused wire version:** the protocol frame refusing the page's version shows the reload screen. The product frame
   then halts until the user reloads.
 - The product card's author is read and cached with the manifests.
-- Whether a product declares chat comes from its worker manifest and is cached per label.
+- The product's worker executable is its worker manifest with the CID of its `worker` subname, read once per label in a
+  page and cached per label. Whether the product declares chat derives from it.
 
 ### Network
 

@@ -578,7 +578,7 @@ function runStep<Value>(work: () => Value | Promise<Value>, toEvent: (value: Val
 function startLoadRun(label: string, params: Pick<Params, 'bridge' | 'names'>) {
   params.bridge.setPageProduct({ label });
   // In parallel with the CID.
-  const chat = readChatCapability(label, params.names.readWorkerManifest);
+  const chat = readChatCapability(label, params.names);
   urlPillState.showProduct(label, getActiveTldSuffix());
   // A page loads one product, so the bar folds for the page's life and the cleanup goes unused.
   const autoHide = startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm });
