@@ -23,7 +23,7 @@ import {
 import type { CachedCid } from '@dotli/storage';
 import { showError } from '@dotli/ui';
 import { readChatCapability } from '../features/productLoad/index.js';
-import { describeError, type ErrorDescription } from '../features/productLoad/index.js';
+import { describeError, isFromNewerRelease, type ErrorDescription } from '../features/productLoad/index.js';
 import { assertLaunchable } from '../features/productLoad/index.js';
 import { fromCachedManifest, toCachedManifest, type ProductManifests } from '../features/productLoad/index.js';
 import { getProductFacts } from '../features/productLoad/index.js';
@@ -566,11 +566,6 @@ export function createProductLoader(params: Params) {
   function showFailureScreen(label: string, error: unknown, description: ErrorDescription): void {
     params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
   }
-}
-
-/** True for a failure that a newer release of dot.li causes, which a reload of the page may cure. */
-function isFromNewerRelease(description: ErrorDescription): boolean {
-  return description.kind === 'protocol-version-mismatch';
 }
 
 /** Moves to `next`, settles the shield as the render begins, and waits for the product's core. */

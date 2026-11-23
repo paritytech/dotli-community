@@ -6,7 +6,7 @@ import { ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/pr
 import { CHAIN_HALTED_ERROR_DATA } from '@dotli/shared';
 
 import { HOST_ERRORS } from './errorCopy.js';
-import { describeError } from './describeError.js';
+import { describeError, isFromNewerRelease } from './describeError.js';
 import { ManifestRejectedError } from '../resolve/manifestRejectedError.js';
 
 describe('host error classification', () => {
@@ -52,6 +52,18 @@ describe('host error classification', () => {
       kind: 'unknown',
       recovery: 'switch-backend',
     });
+  });
+
+  it('As a user on an outdated page, I see only a protocol version mismatch counted as caused by a newer release', () => {
+    // Given
+    const mismatch = describeError(new ProtocolVersionMismatchError('The peer speaks wire version 2 and this end 1'));
+    const other = describeError(new Error('boom'));
+
+    // When
+    const verdicts = [isFromNewerRelease(mismatch), isFromNewerRelease(other)];
+
+    // Then
+    expect(verdicts).toEqual([true, false]);
   });
 
   it('As a user on an outdated page, I am told dot.li was updated and asked to reload', () => {
