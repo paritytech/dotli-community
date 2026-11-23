@@ -1,36 +1,42 @@
 # A cleanup rewrite that reads no better
 
-A developer runs a simplification pass or a review fix over code that already works. A rule from the style guide or the
-reduce-complexity skill matches the shape in front of them. It may be a helper used only once, or a few functions
-that each branch over the same union. It may be an optional parameter that only the spec passes, or a unit's states
-that mirror another unit's states because only that other unit moves it between them. It may be one event that carries
-a collaborator's whole state, which handlers then switch on, where one event per meaning could be split out at the
-subscription. It may be a guard that keeps a short-lived UI's timer from running while there is nothing for it to
-update, which a few lines fewer could drop at the price of idle work. The rewrite the rule describes is possible, and
-the question is whether a match is reason enough to make it.
+A developer runs a simplification pass or a review fix over code that already works, by hand or through the
+`reduce-complexity` skill. A rule from the style guide or the pass matches the shape in front of them, or a rater lists
+it as an item to fix. It may be a helper used only once, or a few functions that each branch over the same union. It may
+be an optional parameter that only the spec passes, or a unit's states that mirror another unit's states because only
+that other unit moves it between them. It may be one event that carries a collaborator's whole state, which handlers
+then switch on, where one event per meaning could be split out at the subscription. It may be a guard that keeps a
+short-lived UI's timer from running while there is nothing for it to update, which a few lines fewer could drop at the
+price of idle work. The rewrite the rule describes is possible, and the question is whether a match is reason enough to
+make it. When a pass has already made code read worse, a second question is how to correct the pass.
 
 ## How to resolve
 
-1. Picture the rewrite, or write it, and read it beside the code it replaces.
-2. Say in one line what a reader gains, such as a hop they no longer follow or one edit per member where there were
-   several.
-3. Look at what the rewrite adds to get there. A placeholder value with a check to stand in for a case the old code
+1. Treat the rule as a move, not a goal. A match only says the move is worth trying.
+2. Picture the rewrite, or write it, and read it beside the code it replaces as someone new to the module would.
+3. Say in one line what a reader gains, such as a hop they no longer follow or one edit per member where there were
+   several. Shorter, or fewer names, is not such a line.
+4. Look at what the rewrite adds to get there. A placeholder value with a check to stand in for a case the old code
    handled directly is a cost. So is a multi-line body moved into a place that used to read as a list of names. So is
    a dropped optional collaborator with a production default that only the spec passes, since it is the seam the spec
    drives the unit through, and the spec then has to reach around the unit. So is folding a unit's named states into
    one state under a vaguer name, so the unit no longer says which phase it is in. So is dropping a guard the change's
    design names, such as a timer that runs only while there is something to update, since the code then does work the
    old code skipped, even when that work is small and touches nothing on screen.
-4. Make the rewrite only when the gain is real and outweighs what it adds. When it reads the same or worse, leave the
-   code as it is.
-5. A narrow style fix in the same code, such as an `===` test on a union member turned into a `switch` over every
+5. Make the rewrite only when the gain is real and outweighs what it adds. When it reads the same or worse, leave the
+   code as it is, or revert it. Leaving the code as it is counts as a full result, not as failing to find work.
+6. A narrow style fix in the same code, such as an `===` test on a union member turned into a `switch` over every
    member, still applies when the larger rewrite is left out.
+7. Treat a rater's items as suggestions. The rater sees the code before and after, and a change that only reads
+   different counts against it. Weigh each item by the same reading, and decline one with a line on why.
+8. When a pass made code read worse, correct the pass by giving it judgment, such as the read-before-and-after check and
+   contrasting shapes that show a matched move reading worse. Do not add a new strict rule against the move.
 
-A rule matching the shape is not the gain. The owner called such a rewrite a random choice, and said the other one
-looked worse than before. Both were undone, and so was a dropped test seam, which the repo already allows. A merge of a
-unit's two phases into one left the owner unable to tell what the new state meant, and it was undone too. The owner
-wants a cleanup to show taste in general, and does not want a stricter rule in its place, since an agent over-applies a
-strict rule the same way.
+A rule matching the shape is not the gain. The owner called such a rewrite a random choice, and said another looked
+worse than before. Both were undone, and so was a dropped test seam, which the repo already allows. A merge of a unit's
+two phases into one left the owner unable to tell what the new state meant, and it was undone too. The owner wants the
+fixer to show taste in general, and does not want a stricter rule in its place, since an agent over-applies a strict
+rule the same way the rule that caused the damage was over-applied, so a new one would only move the problem.
 
 ## Example
 
@@ -44,7 +50,7 @@ saving: {
 ```
 
 Inlining the two steps only because each is used once turns the row into bodies a reader must work through to see which
-event does what. Leave it.
+event does what, with any shared tail copied into each. Leave it.
 
 Three small functions over one union, each an exhaustive `switch` that answers its own question, one of them throwing for
 a member that has no answer:
@@ -144,6 +150,10 @@ four times a second with nothing to update. Leave the guard.
 - A factory's two optional collaborators, where its dialogs queue and how it notifies, each with a production default
   that only its spec passes, were removed in a simplification round. The spec no longer typechecked, and they were
   restored. (PR #484)
+- After the three cases above, the owner found the round's results worse. The skill gained a check that reads each
+  change before and after, and its rater now compares the two and gives items the fixer may decline. A section of
+  contrasting shapes shows matched moves that read worse. No new strict rule was added.
+  (feat/browser-device-permissions, PR 484)
 - A review fix found a worker lifecycle's syncing and ready states mirroring the worker's own phases, since only the
   worker marked it ready. It merged them into one running state and moved the readiness to the worker. The lifecycle's
   ready query and mark-ready call went with them. The owner could not tell what

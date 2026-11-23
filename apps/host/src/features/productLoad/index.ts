@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export type { ErrorDescription } from './failure/describeError.js';
-export { describeError } from './failure/describeError.js';
+export { describeError, isFromNewerRelease } from './failure/describeError.js';
 export { RELOAD_BTN_LABEL } from './failure/errorCopy.js';
 export { loadFailureScreen } from './failure/loadFailureScreen.js';
 export type { LoadFailure } from './failure/presentLoadFailure.js';

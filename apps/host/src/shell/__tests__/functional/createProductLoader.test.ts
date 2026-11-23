@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The product loader on a page. The name source, the frame and the recent list sit in other frames or origins, and the
-// CID cache and the failure screen reload or write the page, so all five are fakes. The URL pill, the product state,
-// the journey, the resolution trace and the debug panel's events are the page's own. The trace keeps only its last
-// step, so the step sequence is not asserted.
+// CID cache and the failure screen write the page, so all five are fakes. The update reload is real over a memory store,
+// the page's timers and a counted reload. The URL pill, the product state, the journey, the resolution trace and the
+// debug panel's events are the page's own. The trace keeps only its last step, so the step sequence is not asserted.
 
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -15,7 +15,7 @@ import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
 import { createListenerSet, noop, waitForStatus } from '@dotli/shared';
-import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createManualTimers, createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
@@ -27,6 +27,7 @@ import { pageLoading } from '../../../features/productLoad/index.js';
 import type { NameSource } from '../../../features/productLoad/index.js';
 import { createLoadTelemetry } from '../../../features/productLoad/index.js';
 import { createProductLoader } from '../../createProductLoader.js';
+import { createUpdateReload } from '../../../kit/createUpdateReload.js';
 import type { PageCidCache } from '../../../features/productLoad/index.js';
 import type { ProductFrame } from '../../../features/productLoad/index.js';
 import { SandboxSilentError, type SandboxLoad, type SandboxLoadReport } from '../../../features/productLoad/index.js';
@@ -52,10 +53,45 @@ type Params = {
   coreBootError?: Error;
   /** Thrown as the loader subscribes to the sandbox's outcomes. */
   outcomesUnfollowable?: Error;
+  /** The page may reload for a newer release. It has already reloaded for this build without it. */
+  mayReload?: boolean;
 };
 
 const NO_MANIFESTS = { root: { kind: 'empty' as const }, app: { kind: 'empty' as const } };
 const NO_CACHED_MANIFESTS: CachedManifests = { root: null, app: null };
+
+/** A page reloading once for a newer release under a screen with no buttons, with no reload screen and one report. */
+const UPDATE_LOADING = {
+  reloads: 1,
+  screen: true,
+  buttons: false,
+  failureScreens: 0,
+  reported: 'protocol-version-mismatch',
+};
+
+/** A page that already reloaded for this build: the reload screen, no update loading and no reload, and one report. */
+const UPDATE_REFUSED = {
+  reloads: 0,
+  screen: false,
+  buttons: false,
+  failureScreens: 1,
+  reported: 'protocol-version-mismatch',
+};
+
+/** Where the protocol frame refuses the page before its app is on screen. */
+const REFUSED_BEFORE_SCREEN: { when: string; params: Params }[] = [
+  {
+    when: 'as its name resolves',
+    params: { resolveError: new ProtocolVersionMismatchError('the frame speaks a newer wire') },
+  },
+  {
+    when: 'as its app is handed off',
+    params: {
+      published: { doom: 'bafy-base' },
+      latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
+    },
+  },
+];
 
 describe('createProductLoader', () => {
   it('As a visitor, I open a name for the first time and get its app subname content rendered', async () => {
@@ -505,7 +541,7 @@ describe('createProductLoader', () => {
     ['for the first time', {}],
     ['from the CID cache', { cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } }],
   ])(
-    'As a visitor whose protocol frame refused this page, I open a name %s and see the reload screen, and the load ends there',
+    'As a visitor whose page already reloaded for this build, I open a name %s that the protocol frame refuses and see the reload screen, and the load ends there',
     async (_path, given) => {
       // Given
       const {
@@ -547,7 +583,7 @@ describe('createProductLoader', () => {
     },
   );
 
-  it('As a visitor whose protocol frame refused this page and whose failure screen throws, I open a name and the load rejects with that failure', async () => {
+  it('As a visitor whose page already reloaded for this build and whose failure screen throws, I open a name that the protocol frame refuses and the load rejects with that failure', async () => {
     // Given
     const screenFailure = new Error('the failure screen threw');
     const { loader } = setupLoader({
@@ -563,9 +599,9 @@ describe('createProductLoader', () => {
     await expect(loaded).rejects.toBe(screenFailure);
   });
 
-  it('As a visitor with the app open, I meet a protocol frame rebuilt from a newer release and the app goes down under the reload screen', async () => {
+  it('As a visitor with the app open whose page already reloaded for this build, I meet a protocol frame rebuilt from a newer release and the app goes down under the reload screen with no update loading', async () => {
     // Given
-    const { loader, ports, failures, refuseWire, reportContent, readResolution } = setupLoader({
+    const { loader, ports, failures, countReloads, refuseWire, reportContent, readResolution } = setupLoader({
       published: { doom: 'bafy-base' },
     });
     await loader.load('doom');
@@ -574,14 +610,16 @@ describe('createProductLoader', () => {
     refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
     await reportContent('loaded');
     await waitForStatus(productState.store, product => product.status === 'error');
+    flush();
 
     // Then
+    expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_REFUSED);
     expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
     expect(ports.product.halt).toHaveBeenCalledTimes(1);
-    expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
+    expect(readResolution()).toMatchObject({ outcome: 'error' });
   });
 
-  it('As a visitor with the app open whose frame throws as it halts, I meet a protocol frame from a newer release and still see the reload screen', async () => {
+  it('As a visitor with the app open whose frame throws as it halts and whose page already reloaded for this build, I meet a protocol frame from a newer release and still see the reload screen', async () => {
     // Given an app on screen whose frame throws as it halts
     const { loader, ports, failures, refuseWire } = setupLoader({ published: { doom: 'bafy-base' } });
     await loader.load('doom');
@@ -618,6 +656,55 @@ describe('createProductLoader', () => {
       expect.objectContaining({ outcome: 'error', reason: 'TypeError' }),
     ]);
   });
+
+  it.each(REFUSED_BEFORE_SCREEN)(
+    'As a visitor whose protocol frame refuses this page $when, I open a name and see the update loading while the page reloads, and the operator still gets the mismatch reported',
+    async ({ params }) => {
+      // Given a page that has not reloaded for this build yet
+      const { loader, failures, countReloads, readResolution, timers } = setupLoader({ ...params, mayReload: true });
+
+      // When
+      await loader.load('doom');
+      flush();
+      await timers.advance(1_000);
+
+      // Then
+      expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_LOADING);
+    },
+  );
+
+  it('As a visitor with the app open, I meet a protocol frame rebuilt from a newer release and see the update loading while the page reloads, and the operator still gets the mismatch reported', async () => {
+    // Given an app on screen on a page that has not reloaded for this build yet
+    const { loader, failures, countReloads, readResolution, refuseWire, timers } = setupLoader({
+      published: { doom: 'bafy-base' },
+      mayReload: true,
+    });
+    await loader.load('doom');
+
+    // When
+    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
+    await waitForStatus(productState.store, product => product.status === 'error');
+    flush();
+    await timers.advance(1_000);
+
+    // Then
+    expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_LOADING);
+  });
+
+  it.each(REFUSED_BEFORE_SCREEN)(
+    'As a visitor whose page already reloaded for this build and whose protocol frame refuses it $when, I open a name and see the reload screen with no update loading, and the operator still gets the mismatch reported',
+    async ({ params }) => {
+      // Given a page that already reloaded for this build
+      const { loader, failures, countReloads, readResolution } = setupLoader(params);
+
+      // When
+      await loader.load('doom');
+      flush();
+
+      // Then
+      expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_REFUSED);
+    },
+  );
 
   it('As a visitor whose app frame never starts, I see the load fail and a protocol frame refusing the page later reaches no listener', async () => {
     // Given
@@ -749,6 +836,7 @@ function setupLoader(params: Params = {}) {
   const revalidated: [string, string, boolean][] = [];
   const recents: string[] = [];
   let forgotten = 0;
+  let reloads = 0;
   const mismatchListeners = new Set<(error: ProtocolVersionMismatchError) => void>();
   const published = params.published ?? {};
   const releaseCore = vi.fn();
@@ -844,6 +932,15 @@ function setupLoader(params: Params = {}) {
         forgotten += 1;
       },
     },
+    updateReload: createUpdateReload({
+      // A page that already reloaded for this build holds its claim.
+      store: createMemoryStorage({ entries: params.mayReload === true ? {} : { 'dotli:update-reload': 'build-a' } }),
+      build: 'build-a',
+      timers,
+      reload() {
+        reloads += 1;
+      },
+    }),
     onProtocolVersionMismatch(listener) {
       if (params.latchedMismatch !== undefined) {
         listener(params.latchedMismatch);
@@ -880,6 +977,8 @@ function setupLoader(params: Params = {}) {
     readResolution: () => recording.spans.filter(span => span.name === 'dotli.resolution').at(-1)?.attributes,
     /** Returns each debug panel event as `layer:event`, in order. */
     listEvents: () => debug.map(event => `${event.layer}:${event.event}`),
+    /** Returns how often the page reloaded for a newer release. */
+    countReloads: () => reloads,
     /** Returns how often the failure screen forgot the previous attempt's failure. */
     countForgotten: () => forgotten,
     /** Returns how many followers still hear the sandbox's outcomes. */
@@ -906,6 +1005,21 @@ function setupLoader(params: Params = {}) {
     sandboxOutcomes.emit(report);
     return Promise.resolve();
   }
+}
+
+/** Reads what the visitor sees of a page reloading for a newer release, and what the operator gets, as `UPDATE_LOADING` names it. */
+function readUpdateLoading({
+  failures,
+  countReloads,
+  readResolution,
+}: Pick<ReturnType<typeof setupLoader>, 'failures' | 'countReloads' | 'readResolution'>) {
+  return {
+    reloads: countReloads(),
+    screen: document.querySelector('[data-testid="error-page"]') !== null,
+    buttons: document.querySelector('[data-testid="error-page-actions"]') !== null,
+    failureScreens: failures.length,
+    reported: readResolution()?.['error_kind'],
+  };
 }
 
 /**

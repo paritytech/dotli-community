@@ -5,24 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { createSafeStorage } from '@dotli/shared';
 import { createMemoryStorage } from '@dotli/shared/testing';
 import { createPersistentAtom } from './createPersistentAtom.js';
-
-function decodeNumber(raw: string): number | undefined {
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  return typeof value === 'number' ? value : undefined;
-}
-
-function encodeNumber(value: number): string {
-  return JSON.stringify(value);
-}
-
-function openBlocked(): Storage {
-  throw new DOMException('The operation is insecure.', 'SecurityError');
-}
+import { decodeNumber, encodeNumber } from './testing/numberCodec.js';
+import { openBlocked } from './testing/openBlocked.js';
 
 function createCountingStorage(backing: Storage) {
   const storage = createSafeStorage(() => backing);

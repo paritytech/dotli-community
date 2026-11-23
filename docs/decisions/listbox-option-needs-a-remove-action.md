@@ -13,8 +13,9 @@ how the shared primitive offers the action without breaking the listbox pattern.
 3. Render the remove control for mouse and touch as a plain element with its click handler, not a button. Mark it
    `aria-hidden` and give it no tabindex, so the option holds no interactive control. A button with a negative tabindex
    is still one: assistive technology can focus it, and the story a11y check rejects it as a nested interactive control.
-   Do not keep the button by turning that check off for its stories, and do not move the button out of the option into a
-   wrapper row beside it.
+   Do not keep the button by turning that check off for its stories, which is the "Not when" of
+   [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md), and do not move the button out of
+   the option into a wrapper row beside it.
 4. Let keyboard and screen reader users remove the active option with Shift+Delete, handled in the combobox's key
    handling and announced on the option through `aria-keyshortcuts`.
 

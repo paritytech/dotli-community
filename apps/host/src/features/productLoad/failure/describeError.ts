@@ -199,6 +199,11 @@ export function describeError(error: unknown, { backend = getBackend() }: Descri
   };
 }
 
+/** True for a failure that a newer release of dot.li causes, which a reload of the page may cure. */
+export function isFromNewerRelease(description: ErrorDescription): boolean {
+  return description.kind === 'protocol-version-mismatch';
+}
+
 function classifyError(failure: Failure): ClassifiedError {
   for (const classify of CLASSIFIERS) {
     const described = classify(failure);

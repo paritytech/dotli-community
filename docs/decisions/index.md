@@ -13,8 +13,6 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [agent-runs-a-skill-that-asks](agent-runs-a-skill-that-asks.md): an agent with no direct line to the owner runs a
   skill that asks the user.
-- [cleanup-move-matches-a-rule](cleanup-move-matches-a-rule.md): a simplification pass finds a shape that matches one
-  of its rules, or a rater lists it.
 - [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md): a simple design competes with
   elaborate ones that guard a size, a setup or a first-visit cost, while building rather than in a cleanup.
 - [owner-approves-in-advance](owner-approves-in-advance.md): the owner approved a change in advance, and its gates or a
@@ -42,30 +40,31 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [author-metadata-the-rfc-does-not-name](author-metadata-the-rfc-does-not-name.md): a product page adds a piece of the
   author's metadata the product-manifest RFC does not name, and the question is whether it is read while the product
   resolves or when the author card opens, and where it is kept.
-- [branch-left-unreachable-by-a-removal](branch-left-unreachable-by-a-removal.md): removing a table entry leaves one
-  variant of a mechanism, and the branches and tests it drives, with nothing that reaches them.
 - [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
-  finds a style or skill rule that matches the code's shape, such as one event that carries a collaborator's state, and
-  the rewrite it describes would read no better than the code it replaces, or would drop a guard that keeps idle work
-  from running.
+  finds a style or skill rule that matches the code's shape, or a rater lists it, and the rewrite it describes would
+  read no better than the code it replaces, or would drop a guard that keeps idle work from running. Also how to correct
+  a pass that made code read worse.
+- [code-reads-or-writes-web-storage](code-reads-or-writes-web-storage.md): code keeps a value in local or session
+  storage through direct `SafeStorage` calls, and the existing persist adapter lacks something the value needs, such as
+  telling whether a write stuck.
 - [component-reports-before-it-restores](component-reports-before-it-restores.md): a component that boots
   asynchronously reports an empty state before it restores what it stored, and a display, a cache or a watcher reading
   the layer above acts on that gap, including when the layer above's own store-changed nudge causes it.
 - [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md): support for one name of an external
-  protocol's set is dropped, several pieces of logic walk the catalog built on those names, and a choice may be left
-  unreachable.
-- [existing-call-needs-a-variant](existing-call-needs-a-variant.md): a shared primitive needs a second form of a call
-  that differs in one aspect.
+  protocol's set is dropped, several pieces of logic walk the catalog built on those names, and the protocol can still
+  send the name, so the question is how to keep it out of all of them and which answer the request gets.
+- [existing-unit-needs-a-variant-or-another-value](existing-unit-needs-a-variant-or-another-value.md): a shared unit,
+  such as a machine's call, a shared layer or a listener helper, must do its work in a way that differs in one aspect, or
+  report one more value from the same events.
 - [fact-about-each-network](fact-about-each-network.md): UI depends on a fact about the network the visitor picked,
   such as whether its tokens have value, and the network table holds no field for it.
-- [files-away-from-their-feature](files-away-from-their-feature.md): files that serve one feature sit in a top-level
-  folder filed by kind.
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
-  much structure.
+  much structure, or files that serve one feature sit in a top-level folder filed by kind.
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
-- [listener-helper-needs-another-value](listener-helper-needs-another-value.md): a helper that listens to one source of
-  events and reports one value per frame, such as one pointer axis, must also report another value from the same
-  events.
+- [new-outcome-in-an-existing-flow](new-outcome-in-an-existing-flow.md): a new reaction, such as an automatic reload,
+  joins a signal an existing flow already turns into an outcome, such as a failure screen, and the question is whether
+  it gets a module of its own or a state of its own, where its action runs, and where a choice that needs a call with a
+  side effect, such as a one-time claim, is made.
 - [page-wide-behaviour-on-an-island-page](page-wide-behaviour-on-an-island-page.md): an Astro page of static markup
   and islands needs a DOM behaviour that spans the whole page, and the question is whether the entry module, an island
   or a page `<script>` starts it.
@@ -77,34 +76,32 @@ The owner may change or remove any rule. A change here lands in the same commit 
   reads config from its parent through URL params any embedder can write, and one value is security-critical.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
   value an older version wrote that the UI no longer offers.
-- [table-column-left-with-one-reader](table-column-left-with-one-reader.md): removing a view leaves one column of a
-  feature's facts table with a single reader in a sibling feature, which reads one member's value.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
   up with the same name.
 - [view-shows-a-status-the-layer-already-reports](view-shows-a-status-the-layer-already-reports.md): a view shows each
   item's status, and the state layer's existing verdict, which other readers share, reports a waiting state the view
   would rather not show, such as a brief one after the page returns from hidden or one for an item nothing on the page
   holds.
+- [what-a-removal-leaves-unreached](what-a-removal-leaves-unreached.md): a removal leaves a variant no entry uses, a
+  table column with one reader of one member's value, or a choice the user can no longer select.
 
 ## Product requests
 
 - [generated-codec-misses-a-served-version](generated-codec-misses-a-served-version.md): the host reads protocol
   messages with a dependency's generated codecs, which cover only the newest envelope version, while the bundled core
   still serves older ones.
-- [permission-request-the-host-no-longer-offers](permission-request-the-host-no-longer-offers.md): a product requests a
-  permission the host removed from its UI because the capability cannot work where products run.
 
 ## Tests
 
-- [capacity-stories-near-the-test-timeout](capacity-stories-near-the-test-timeout.md): a story file drives a component
-  at full capacity, and the preview's a11y check over the large DOM pushes its stories near the browser test timeout.
-- [contrast-check-on-a-decorative-graphic](contrast-check-on-a-decorative-graphic.md): a story's axe contrast rule fails
-  on text inside a decorative, `aria-hidden` background graphic.
+- [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md): a story file's axe check costs
+  time or fails where it has nothing to find, such as stories that drive a component at capacity near the test timeout,
+  or the contrast rule on text inside a decorative, `aria-hidden` background graphic.
 
 ## UI
 
-- [component-shown-in-several-forms](component-shown-in-several-forms.md): a piece of UI, such as a logo, appears in
-  several forms that callers assemble from part components, and an optional decoration's place depends on the form.
+- [decoration-joins-a-presentational-component](decoration-joins-a-presentational-component.md): an optional
+  decoration, such as a badge, joins a presentational piece of UI, such as a logo, that has one root or several forms
+  callers assemble from parts, and the question is where it sits and where the caller's `class` and test id go.
 - [decorative-graphic-draws-real-entities](decorative-graphic-draws-real-entities.md): a decorative graphic shows live
   entities the app observes beside simulated filler, and the question is how real entities come into view, how they
   may be linked and how the filler relates to them.
@@ -130,17 +127,15 @@ The owner may change or remove any rule. A change here lands in the same commit 
   over a body and trailing controls taller than the title's line.
 - [identity-row-with-a-name-and-an-address](identity-row-with-a-name-and-an-address.md): a row shows an entity that
   always has a raw address and may have a human-readable name, and the question is whether it shows both or one.
+- [light-dismiss-popover-closes-when-it-should-not](light-dismiss-popover-closes-when-it-should-not.md): a popover on
+  the shared floating layer closes on a window blur that did not go into an embedded app, or on a press on an anchor
+  that cannot be its invoker, such as a text field.
 - [match-an-on-screen-reference](match-an-on-screen-reference.md): the owner asks for UI done like something already on
   screen, and the question is whether a close or moved version is enough before presenting, or whether a shared
   component's fixed placement may stay a pixel or two off at one caller's size.
 - [one-form-of-a-responsive-component-changes](one-form-of-a-responsive-component-changes.md): a shared component with a
   wide-screen form and a phone form needs a different primitive on one form only, and the question is where the switch
   between the forms lives, what ARIA its trigger carries and which keys it handles.
-- [optional-overlay-needs-a-wrapper](optional-overlay-needs-a-wrapper.md): a component with one root element gains an
-  optional overlay that needs a positioned wrapper, and the question is where the caller's `class` and test id go.
-- [press-on-the-anchor-closes-a-popover](press-on-the-anchor-closes-a-popover.md): a popover on the shared floating
-  layer is anchored to a control that cannot be its invoker, such as a text field, and the browser's light dismiss
-  closes it on a press on that control.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
 - [section-whose-data-loads-lazily](section-whose-data-loads-lazily.md): a card or popover section's data loads only
   after the card opens, and the question is what the section shows while it loads.
@@ -148,5 +143,3 @@ The owner may change or remove any rule. A change here lands in the same commit 
   disc or ring around its icon, and the question is whether that breaks the rule that icons stand bare.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.
-- [window-blur-closes-a-popover](window-blur-closes-a-popover.md): a shared layer closes a popover on every window blur,
-  and it also closes when the browser's own UI or another app takes focus.
