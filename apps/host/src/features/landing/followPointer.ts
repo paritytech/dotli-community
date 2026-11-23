@@ -5,31 +5,22 @@ type Params = {
   /** Takes where the pointer is in the viewport on each axis, from -1 at its left or top edge to 1 at its right or foot. */
   onShift: (shift: { x: number; y: number }) => void;
   view?: Pick<Window, 'innerWidth' | 'innerHeight' | 'addEventListener' | 'removeEventListener'>;
-  frames?: Pick<Window, 'requestAnimationFrame' | 'cancelAnimationFrame'>;
 };
 
 /**
- * Reports where the pointer is in the viewport as it moves, at most once a frame and with its latest place, until the
- * returned stop. A hidden page gets neither pointer moves nor frames, so it does no work.
+ * Reports where the pointer is in the viewport on each move, until the returned stop. A hidden page gets no pointer
+ * moves, so it does no work.
  */
-export function followPointer({ onShift, view = window, frames = window }: Params): () => void {
-  let clientX = 0;
-  let clientY = 0;
-  let frame: number | null = null;
+export function followPointer({ onShift, view = window }: Params): () => void {
   function handleMove(event: PointerEvent) {
-    clientX = event.clientX;
-    clientY = event.clientY;
-    frame ??= frames.requestAnimationFrame(() => {
-      frame = null;
-      onShift({ x: getPointerShift(clientX, view.innerWidth), y: getPointerShift(clientY, view.innerHeight) });
+    onShift({
+      x: getPointerShift(event.clientX, view.innerWidth),
+      y: getPointerShift(event.clientY, view.innerHeight),
     });
   }
   view.addEventListener('pointermove', handleMove, { passive: true });
   return () => {
     view.removeEventListener('pointermove', handleMove);
-    if (frame !== null) {
-      frames.cancelAnimationFrame(frame);
-    }
   };
 }
 

@@ -12,6 +12,7 @@ import { computed } from 'nanostores';
 import { networkMonitorState } from '../network/index.js';
 import { settingsState } from '../settings/index.js';
 import { anchorOrbitLayout } from './anchorOrbitLayout.js';
+import { createLatestLimiter } from './createLatestLimiter.js';
 import { followPointer } from './followPointer.js';
 import { getOrbitLayout, type OrbitLayout, type OrbitMode } from './getOrbitLayout.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
@@ -55,6 +56,16 @@ function BoundOrbit(): JSX.Element {
     anchorOrbitLayout(previous ?? null, getOrbitLayout(mode(), SEED)),
   );
   const [pointer, setPointer] = createSignal({ x: 0, y: 0 });
-  onSettled(() => followPointer({ onShift: shift => setPointer(shift) }));
+  onSettled(() => {
+    const limiter = createLatestLimiter({
+      perSecond: 15,
+      onValue: (shift: { x: number; y: number }) => setPointer(shift),
+    });
+    const stopFollowing = followPointer({ onShift: limiter.push });
+    return () => {
+      stopFollowing();
+      limiter.stop();
+    };
+  });
   return <Orbit layout={layout()} pointerX={pointer().x} pointerY={pointer().y} />;
 }

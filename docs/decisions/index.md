@@ -37,6 +37,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 ## Code structure
 
+- [cap-how-often-readings-reach-state](cap-how-often-readings-reach-state.md): a page component caps how often a stream
+  of input readings, from one or more sources, reaches its state, latest reading winning, and the question is where the
+  cap lives when the rules ban hand-rolled timers and point at the task pool.
 - [author-metadata-the-rfc-does-not-name](author-metadata-the-rfc-does-not-name.md): a product page adds a piece of the
   author's metadata the product-manifest RFC does not name, and the question is whether it is read while the product
   resolves or when the author card opens, and where it is kept.
