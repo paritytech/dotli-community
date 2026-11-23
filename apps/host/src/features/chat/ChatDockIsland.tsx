@@ -5,6 +5,7 @@
 
 import { untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { RootBoundary } from '@dotli/ui';
 import { chatStore, type ChatStore } from './createChatStore.js';
 import { ChatDock as Dock } from './ChatDock.js';
 import { useChatDock } from './useChatDock.js';
@@ -16,5 +17,14 @@ import { useChatDock } from './useChatDock.js';
 export function ChatDockIsland(props: { chat?: ChatStore }): JSX.Element {
   // Fixed for the island's life.
   const chat = untrack(() => props.chat) ?? chatStore;
-  return <Dock {...useChatDock(chat)} />;
+  return (
+    <RootBoundary root="island:ChatDock">
+      <BoundDock chat={chat} />
+    </RootBoundary>
+  );
+}
+
+// Inside the boundary, so a store read that throws is caught there too.
+function BoundDock(props: { chat: ChatStore }): JSX.Element {
+  return <Dock {...useChatDock(untrack(() => props.chat))} />;
 }

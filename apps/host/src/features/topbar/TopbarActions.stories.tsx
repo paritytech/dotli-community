@@ -17,7 +17,9 @@ import { moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js
 import { resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
 import { resetStorySettings, storySettings } from '../../testing/stories/settingsFixtures.js';
 import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
+import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import type { ActionGroupMorph } from '@dotli/ui';
+import { ChatItem } from '../chat/index.js';
 import { NetworkItem } from '../network/index.js';
 import { NETWORK_HEALTH } from '../network/index.js';
 import { PermissionsItem } from '../permissions/index.js';
@@ -37,10 +39,13 @@ function closed(id: string): Promise<void> {
 
 const phone = { viewport: { value: 'phone', isRotated: false } };
 
+/** The story's chat, fresh for each, with no room until a story adds one. */
+let chat: ChatStage = chatStage({ available: false });
+
 /** A bar that never morphs. */
 const STILL: ActionGroupMorph = { running: () => false, onEnd: () => () => undefined };
 
-/** The actions as the host's island renders them, with the story's network, permissions, settings and account. */
+/** The actions as the host's island renders them, with the story's network, chat, permissions, settings and account. */
 function Actions(): JSX.Element {
   return (
     <TopbarActions
@@ -48,6 +53,7 @@ function Actions(): JSX.Element {
       room={() => undefined}
       morph={STILL}
       network={<NetworkItem {...storyNetwork} />}
+      chat={<ChatItem {...chat.button} />}
       permissions={<PermissionsItem {...storyPermissions} />}
       settings={<SettingsItem {...storySettings} />}
       account={
@@ -75,6 +81,8 @@ const meta = {
     resetStorySettings();
     resetStoryAccount();
     disconnect();
+    chat = chatStage({ available: false });
+    return chat.dispose;
   },
   render: () => (
     <TopbarFrame>
@@ -115,6 +123,30 @@ export const NetworkAndSettingsRowsOpen: Story = {
     await step('Then both are closed', async () => {
       await closed('chains-popover');
       await expect(byId('more-popover')).not.toHaveAttribute('data-open');
+    });
+  },
+};
+
+/** As a phone user, the chat row joins More once the product has a room for me, and choosing it opens the chat. */
+export const PhoneChatRowJoinsMore: Story = {
+  render: narrow,
+  play: async ({ userEvent, step }) => {
+    await expectPhone(step);
+    await step('Given More open while the product has no room', async () => {
+      await openMore(userEvent);
+      await expect(moreRowNames()).not.toContain('chat');
+    });
+    await step('When the product adds its first room', () => {
+      chat.update({ available: true });
+    });
+    await step('Then More lists the chat row', async () => {
+      await waitFor(() => expect(moreRowNames()).toContain('chat'));
+    });
+    await step('When I choose it', async () => {
+      await userEvent.click(moreRow('chat'));
+    });
+    await step('Then the chat opens', async () => {
+      await waitFor(() => expect(chat.state.get().open).toBe(true));
     });
   },
 };

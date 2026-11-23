@@ -7,6 +7,7 @@ import { byId } from '@dotli/ui/testing';
 import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { ChatButton } from './ChatButton.js';
+import { CHAT_PANEL_ID } from './chatPanelId.js';
 
 /** The story's chat, fresh for each. */
 let stage: ChatStage = chatStage();
@@ -66,7 +67,7 @@ export const Open: Story = {
       <TopbarFrame>
         <ChatButton {...stage.button} />
       </TopbarFrame>
-      <aside id="chat-panel" aria-label="Product chat" />
+      <aside id={CHAT_PANEL_ID} aria-label="Product chat" />
     </>
   ),
   play: async ({ step }) => {

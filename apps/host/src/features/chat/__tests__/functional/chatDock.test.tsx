@@ -27,7 +27,7 @@ let chat: ChatStore;
 let stopState: () => void = () => undefined;
 let unmount: (() => void) | undefined;
 
-/** The dock as Astro hydrates it, on a loaded chat-capable product with a session. */
+/** The dock as Astro hydrates it, on a loaded chat-capable product with one room and a session. */
 function mountIsland(): void {
   const slot = document.createElement('div');
   document.body.append(slot);
@@ -35,11 +35,12 @@ function mountIsland(): void {
   flush();
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
   stopState = chatPanelState.start({ chat: () => Promise.resolve(chat) });
   productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
   authState.set({ tag: 'Connected', session: { connected: true } });
+  await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
 });
 
 afterEach(() => {
@@ -53,7 +54,6 @@ afterEach(() => {
 describe('ChatDock island', () => {
   it("As a user of a product with one room, the open panel shows that room from the page's chat as open", async () => {
     // Given
-    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
     mountIsland();
 
     // When

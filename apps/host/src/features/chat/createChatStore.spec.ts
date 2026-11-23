@@ -421,6 +421,20 @@ describe('chat store', () => {
     expect(captured).toEqual(['chat_rooms_read']);
     expect(sentry.counted('chat.read')).toEqual([{ outcome: 'error', reason: GONE.name }]);
   });
+
+  it('As a user, the store cannot tell whether my product has a room, and the failure is reported while the answer is no', async () => {
+    // Given a product with a room, whose room list reads fail
+    const { repo, chat, captured } = setup();
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    repo.reads.error.rooms = GONE;
+
+    // When
+    const has = await chat.hasContacts(PRODUCT);
+
+    // Then
+    expect(has).toBe(false);
+    expect(captured).toEqual(['chat_contacts_check']);
+  });
 });
 
 const TEXT = { tag: 'Text', value: { text: 'hi' } } as const;

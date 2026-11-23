@@ -9,6 +9,7 @@ export const TOPBAR_MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-pop
 
 export type TopbarActionsProps = {
   network: JSX.Element;
+  chat: JSX.Element;
   permissions: JSX.Element;
   settings: JSX.Element;
   account: JSX.Element;
@@ -19,14 +20,14 @@ export type TopbarActionsProps = {
 };
 
 /**
- * The topbar's action group, led by `network`, the network button, then `permissions` and `settings`, and ending with
- * `account`, the account button, which never collapses into More.
+ * The topbar's action group, led by `network`, the network button, then `chat`, `permissions` and `settings`, and
+ * ending with `account`, the account button, which never collapses into More.
  */
 export function TopbarActions(props: TopbarActionsProps): JSX.Element {
   return (
     <ActionGroup id="topbar-actions" more={TOPBAR_MORE} room={props.room} morph={props.morph} end={props.account}>
       {props.network}
-      {/* The chat button, off until it is redone, goes here. */}
+      {props.chat}
       {props.permissions}
       {props.settings}
     </ActionGroup>

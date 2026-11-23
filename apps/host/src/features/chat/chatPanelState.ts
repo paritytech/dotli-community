@@ -18,6 +18,8 @@ export type ChatPanelState = {
   /** The id the core parsed for the loaded product, which keys its chat. */
   runtimeProductId: ProductId | null;
   available: boolean;
+  /** Whether the product has a room or a bot. False until a read or a write shows one. */
+  hasContacts: boolean;
   loggedIn: boolean;
   open: boolean;
   /** null shows the room list, or the room when it is the only one. */
@@ -28,9 +30,11 @@ export type ChatPanelState = {
   focusComposer: boolean;
 };
 
+type ChatSource = Pick<ChatStore, 'subscribe' | 'hasContacts'>;
+
 type Params = {
-  /** Loads the chat store whose product messages count as unread, the page's by default. */
-  chat?: () => Promise<Pick<ChatStore, 'subscribe'>>;
+  /** Loads the chat store whose product messages count as unread and whose rooms and bots show the button. */
+  chat?: () => Promise<ChatSource>;
 };
 
 const report = createReporter({ flow: 'chat' });
@@ -39,6 +43,7 @@ const panel = atom<ChatPanelState>({
   label: null,
   runtimeProductId: null,
   available: false,
+  hasContacts: false,
   loggedIn: false,
   open: false,
   activeRoomId: null,
@@ -83,9 +88,10 @@ export const chatPanelState = {
   /** Returns whether a room asked to focus its composer, and clears that one-shot request. Never throws. */
   claimComposerFocus,
   /**
-   * Follows the session, the product on show and its chat messages until the returned stop. The messages are followed
-   * from once the chat store has loaded. A call while the follows run joins them and ignores its params, and they end
-   * with the last caller's stop. Never throws.
+   * Follows the session, the product on show and its chat until the returned stop. The chat is followed from once its
+   * store has loaded, which reads whether the product has a room or a bot, and again for each product loaded after. A
+   * call while the follows run joins them and ignores its params, and they end with the last caller's stop. Never
+   * throws.
    */
   start,
   /** Returns the panel's element, or undefined when none is handed over. Never throws. */
@@ -103,9 +109,12 @@ registerStoreStateReset(() => {
   panelElement = undefined;
 });
 
-/** Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. */
+/**
+ * Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. A product with no room
+ * or bot has nothing to show.
+ */
 function isButtonVisible(state: ChatPanelState = panel.get()): boolean {
-  return state.available && state.loggedIn;
+  return state.available && state.loggedIn && state.hasContacts;
 }
 
 function getTotalUnread(state: ChatPanelState = panel.get()): number {
@@ -187,13 +196,17 @@ function setElement(element: HTMLElement): () => void {
 function beginFollowing({ chat }: Required<Params>): () => void {
   followSession();
   followProduct();
-  // The store's chunk stays off the boot path, so unread counting starts once it loads.
+  // The store's chunk stays off the boot path, so following the chat starts once it loads.
   const following = new AbortController();
+  let loaded: ChatSource | null = null;
   chat().then(
     store => {
-      if (!following.signal.aborted) {
-        following.signal.addEventListener('abort', store.subscribe(countUnreadMessage));
+      if (following.signal.aborted) {
+        return;
       }
+      loaded = store;
+      following.signal.addEventListener('abort', store.subscribe(followChat));
+      checkContacts(store);
     },
     (error: unknown) => {
       reportLazyMiss({ report, step: 'chat_store_load', error });
@@ -201,7 +214,12 @@ function beginFollowing({ chat }: Required<Params>): () => void {
   );
   const unsubscribes = [
     authState.loggedInStore.listen(followSession),
-    productState.store.listen(followProduct),
+    productState.store.listen(() => {
+      followProduct();
+      if (loaded !== null) {
+        checkContacts(loaded);
+      }
+    }),
     () => {
       following.abort();
     },
@@ -221,7 +239,7 @@ function followSession(): void {
 function followProduct(): void {
   const product = productState.store.get();
   if (product.status === 'error') {
-    update({ label: null, runtimeProductId: null, available: false });
+    update({ label: null, runtimeProductId: null, available: false, hasContacts: false });
     return;
   }
   if (product.status !== 'loaded') {
@@ -235,6 +253,7 @@ function followProduct(): void {
       : {
           ...state,
           label,
+          hasContacts: false,
           activeRoomId: null,
           unreadByRoom: {},
           composerError: null,
@@ -242,9 +261,41 @@ function followProduct(): void {
   commit({ ...base, runtimeProductId: productId, available: product.chat === true });
 }
 
-function countUnreadMessage(change: ChatChange): void {
+/**
+ * Reads whether the product on show has a room or a bot, unless it is known to have one. Each load reads again while
+ * none is known, as another tab of the product may have added one meanwhile.
+ */
+function checkContacts(store: ChatSource): void {
+  const { runtimeProductId: productId, available, hasContacts } = panel.get();
+  if (productId === null || !available || hasContacts) {
+    return;
+  }
+  void store.hasContacts(productId).then(has => {
+    // A read for a product no longer on show tells nothing about the one that is.
+    if (has && panel.get().runtimeProductId === productId) {
+      update({ hasContacts: true });
+    }
+  });
+}
+
+function followChat(change: ChatChange): void {
+  switch (change.kind) {
+    case 'rooms':
+    case 'bots':
+      // The store announces a room or bot write once it is stored, so the product has one.
+      if (change.productId === panel.get().runtimeProductId) {
+        update({ hasContacts: true });
+      }
+      return;
+    case 'message':
+      countUnreadMessage(change);
+      return;
+  }
+}
+
+function countUnreadMessage(change: Extract<ChatChange, { kind: 'message' }>): void {
   const state = panel.get();
-  if (change.kind !== 'message' || change.author !== 'product' || change.productId !== state.runtimeProductId) {
+  if (change.author !== 'product' || change.productId !== state.runtimeProductId) {
     return;
   }
   if (state.open && state.activeRoomId === change.roomId) {

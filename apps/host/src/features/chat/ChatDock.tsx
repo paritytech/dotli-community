@@ -5,6 +5,7 @@ import { type Accessor, createEffect, createSignal, lazy, Loading, onSettled, Sh
 import type { JSX } from '@solidjs/web';
 import { Drawer, preloadWhenIdle, RootBoundary } from '@dotli/ui';
 import type { ChatConversation } from './chat.js';
+import { CHAT_PANEL_ID } from './chatPanelId.js';
 import type * as ChatPanelNamespace from './ChatPanel.js';
 import s from './ChatDock.module.css';
 
@@ -61,7 +62,7 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
       open={props.open()}
       onOpenChange={props.onOpenChange}
       title={props.conversation.productName() ?? 'Chat'}
-      id="chat-panel"
+      id={CHAT_PANEL_ID}
       testId="chat-panel"
     >
       <div
