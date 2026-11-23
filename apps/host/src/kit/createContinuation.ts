@@ -4,7 +4,7 @@
 // Why the app is reloading this tab, written before the reload and read by the next boot for telemetry. Also the
 // tab's one reload per build for an update.
 
-import { pageSessionStorage, type SafeStorage } from '@dotli/shared';
+import { pageSessionStorage, realTimers, type SafeStorage, type Timers } from '@dotli/shared';
 
 export type Continuation = 'reload_button' | 'switch_backend' | 'settings_change' | 'app_update';
 
@@ -15,9 +15,19 @@ type Params = {
   build?: string;
 };
 
+type ReloadForUpdateParams = {
+  /** The timers the wait runs on. The page's own by default. */
+  timers?: Pick<Timers, 'setTimeout'>;
+  /** Records the reason and reloads the page. The page's own reload by default. */
+  reload?: (reason: Continuation) => void;
+};
+
 const KEY = 'dotli:continuation';
 
 const UPDATE_RELOAD_KEY = 'dotli:update-reload';
+
+/** Long enough for the user to read the screen that says the page reloads for an update. */
+const UPDATE_RELOAD_DELAY_MS = 1_000;
 
 const CONTINUATIONS: readonly string[] = [
   'reload_button',
@@ -67,7 +77,7 @@ export function createContinuation({ store, build = import.meta.env.VITE_COMMIT_
     take,
     /**
      * Claims this build's one reload of the tab for an update. True when this build had not claimed it in this tab yet
-     * and the claim is stored, so the tab may reload. Never throws.
+     * and the claim is stored, so the tab may reload.
      */
     claimUpdateReload,
   };
@@ -80,6 +90,13 @@ export const continuation = createContinuation({ store: pageSessionStorage });
 export function markAndReload(reason: Continuation): void {
   continuation.mark(reason);
   window.location.reload();
+}
+
+/** Reloads the page for an update about a second from now, so the user first reads the screen that says so. */
+export function reloadForUpdate({ timers = realTimers, reload = markAndReload }: ReloadForUpdateParams = {}): void {
+  timers.setTimeout(() => {
+    reload('app_update');
+  }, UPDATE_RELOAD_DELAY_MS);
 }
 
 function isContinuation(value: string | null): value is Continuation {

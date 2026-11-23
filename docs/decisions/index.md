@@ -68,7 +68,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   events.
 - [machine-outcome-with-a-visible-wait](machine-outcome-with-a-visible-wait.md): a flow's state machine gains an
   outcome that performs an action the user waits on, such as a reload, and the question is whether it gets a state of
-  its own or is decided and performed inside an existing helper.
+  its own or is decided and performed inside an existing helper, and where a choice that needs a call with a side
+  effect, such as a one-time claim, is made.
 - [new-reaction-to-a-signal-a-flow-already-handles](new-reaction-to-a-signal-a-flow-already-handles.md): a new
   reaction, such as an automatic recovery, joins a lower layer's published signal that an existing flow already turns
   into an outcome, such as a final failure with a fallback screen, and the question is whether it gets a module of its

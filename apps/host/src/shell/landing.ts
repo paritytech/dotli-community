@@ -16,7 +16,7 @@ import { reportBootFailure } from './reportBootFailure.js';
 import { framePeerCounts } from '../features/network/index.js';
 import { startKeyboardPin } from '../features/landing/index.js';
 import { UPDATE_LOADING_COPY } from '../features/productLoad/index.js';
-import { continuation, markAndReload } from '../kit/createContinuation.js';
+import { continuation, reloadForUpdate } from '../kit/createContinuation.js';
 
 const report = createReporter({ flow: 'boot' });
 
@@ -26,7 +26,7 @@ function reloadOnVersionMismatch(): void {
     return;
   }
   showError(UPDATE_LOADING_COPY.TITLE, { detail: UPDATE_LOADING_COPY.DETAIL });
-  markAndReload('app_update');
+  reloadForUpdate();
 }
 
 async function main(): Promise<void> {

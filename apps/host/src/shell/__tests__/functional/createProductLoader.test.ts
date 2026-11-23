@@ -68,6 +68,30 @@ const UPDATE_LOADING = {
   reported: 'protocol-version-mismatch',
 };
 
+/** A page that already reloaded for this build: the reload screen, no update loading and no reload, and one report. */
+const UPDATE_REFUSED = {
+  reloads: 0,
+  screen: false,
+  buttons: false,
+  failureScreens: 1,
+  reported: 'protocol-version-mismatch',
+};
+
+/** Where the protocol frame refuses the page before its app is on screen. */
+const REFUSED_BEFORE_SCREEN: { when: string; params: Params }[] = [
+  {
+    when: 'as its name resolves',
+    params: { resolveError: new ProtocolVersionMismatchError('the frame speaks a newer wire') },
+  },
+  {
+    when: 'as its app is handed off',
+    params: {
+      published: { doom: 'bafy-base' },
+      latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
+    },
+  },
+];
+
 describe('createProductLoader', () => {
   it('As a visitor, I open a name for the first time and get its app subname content rendered', async () => {
     // Given
@@ -574,9 +598,9 @@ describe('createProductLoader', () => {
     await expect(loaded).rejects.toBe(screenFailure);
   });
 
-  it('As a visitor with the app open whose page already reloaded for this build, I meet a protocol frame rebuilt from a newer release and the app goes down under the reload screen', async () => {
+  it('As a visitor with the app open whose page already reloaded for this build, I meet a protocol frame rebuilt from a newer release and the app goes down under the reload screen with no update loading', async () => {
     // Given
-    const { loader, ports, failures, refuseWire, reportContent, readResolution } = setupLoader({
+    const { loader, ports, failures, countReloads, refuseWire, reportContent, readResolution } = setupLoader({
       published: { doom: 'bafy-base' },
     });
     await loader.load('doom');
@@ -585,11 +609,13 @@ describe('createProductLoader', () => {
     refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
     await reportContent('loaded');
     await waitForStatus(productState.store, product => product.status === 'error');
+    flush();
 
     // Then
+    expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_REFUSED);
     expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
     expect(ports.product.halt).toHaveBeenCalledTimes(1);
-    expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
+    expect(readResolution()).toMatchObject({ outcome: 'error' });
   });
 
   it('As a visitor with the app open whose frame throws as it halts and whose page already reloaded for this build, I meet a protocol frame from a newer release and still see the reload screen', async () => {
@@ -630,19 +656,7 @@ describe('createProductLoader', () => {
     ]);
   });
 
-  it.each<{ when: string; params: Params }>([
-    {
-      when: 'as its name resolves',
-      params: { resolveError: new ProtocolVersionMismatchError('the frame speaks a newer wire') },
-    },
-    {
-      when: 'as its app is handed off',
-      params: {
-        published: { doom: 'bafy-base' },
-        latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
-      },
-    },
-  ])(
+  it.each(REFUSED_BEFORE_SCREEN)(
     'As a visitor whose protocol frame refuses this page $when, I open a name and see the update loading while the page reloads, and the operator still gets the mismatch reported',
     async ({ params }) => {
       // Given a page that has not reloaded for this build yet
@@ -673,6 +687,21 @@ describe('createProductLoader', () => {
     // Then
     expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_LOADING);
   });
+
+  it.each(REFUSED_BEFORE_SCREEN)(
+    'As a visitor whose page already reloaded for this build and whose protocol frame refuses it $when, I open a name and see the reload screen with no update loading, and the operator still gets the mismatch reported',
+    async ({ params }) => {
+      // Given a page that already reloaded for this build
+      const { loader, failures, countReloads, readResolution } = setupLoader(params);
+
+      // When
+      await loader.load('doom');
+      flush();
+
+      // Then
+      expect(readUpdateLoading({ failures, countReloads, readResolution })).toEqual(UPDATE_REFUSED);
+    },
+  );
 
   it('As a visitor whose app frame never starts, I see the load fail and a protocol frame refusing the page later reaches no listener', async () => {
     // Given
