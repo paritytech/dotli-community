@@ -12,6 +12,7 @@ import { serveQuickJsWorker } from './serveQuickJsWorker.js';
 type Options = {
   isHostAllowed?: QuickJsWorkerParams['isHostAllowed'];
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
+  crypto?: Crypto;
 };
 
 describe('createQuickJsWorker', () => {
@@ -133,6 +134,28 @@ describe('createQuickJsWorker', () => {
     ]);
   });
 
+  it("As a page, I see a worker's VM draw its random values from the WebCrypto the worker serves with", async () => {
+    // Given
+    const sevens: Crypto = {
+      subtle: globalThis.crypto.subtle,
+      randomUUID: () => globalThis.crypto.randomUUID(),
+      getRandomValues: array => {
+        new Uint8Array(array.buffer, array.byteOffset, array.byteLength).fill(7);
+        return array;
+      },
+    };
+    const { worker, logs } = startWorker(
+      { 'main.js': `console.log(crypto.getRandomValues(new Uint8Array(3)).join());` },
+      { crypto: sevens },
+    );
+
+    // When
+    await worker.run;
+
+    // Then
+    expect(logs).toEqual([{ level: 'log', message: '7,7,7' }]);
+  });
+
   it("As a page, I see a worker's run end with the error its entrypoint throws", async () => {
     // Given
     const { worker } = startWorker({ 'main.js': `throw new TypeError('broken worker');` });
@@ -175,10 +198,14 @@ describe('createQuickJsWorker', () => {
  * A worker client over `sources`, whose worker serves on a message channel in this thread, as the worker entry does
  * on its own scope. Terminating it stops serving. It is disposed when the test finishes.
  */
-function startWorker(sources: Record<string, string>, { isHostAllowed, fetch }: Options = {}) {
+function startWorker(sources: Record<string, string>, { isHostAllowed, fetch, crypto }: Options = {}) {
   const encoder = new TextEncoder();
   const channel = new MessageChannel();
-  const served = serveQuickJsWorker({ scope: channel.port2, fetch: fetch ?? rejectFetch });
+  const served = serveQuickJsWorker({
+    scope: channel.port2,
+    fetch: fetch ?? rejectFetch,
+    crypto: crypto ?? globalThis.crypto,
+  });
   const logs: { level: ConsoleLevel; message: string }[] = [];
   const errors: Error[] = [];
   let terminations = 0;

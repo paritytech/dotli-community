@@ -29,10 +29,13 @@ type Params = {
   scope: MessageSource;
   /** Runs each request of the VM's `fetch` that the page allows. The worker's own `fetch` by default. */
   fetch?: WorkerFetch;
+  /** The WebCrypto behind the VM's `crypto`. The worker's own by default. */
+  crypto?: Crypto;
 };
 
 type ServePortsParams = Pick<WorkerPortsMessage, 'control' | 'wire'> & {
   fetch: WorkerFetch;
+  crypto: Crypto;
   /** Aborts when the worker stops serving. */
   signal: AbortSignal;
 };
@@ -46,7 +49,7 @@ const { vm: vmMethods, fetch: fetchMethods } = quickJsWorkerSchema.sections;
  * another shape throws in the worker, which the page hears as the worker's error event. Returns what ends the VM and
  * closes both ports, for a caller that stops serving without terminating the worker.
  */
-export function serveQuickJsWorker({ scope, fetch = globalThis.fetch }: Params) {
+export function serveQuickJsWorker({ scope, fetch = globalThis.fetch, crypto = globalThis.crypto }: Params) {
   const stop = new AbortController();
 
   scope.addEventListener('message', handleFirstMessage);
@@ -62,12 +65,12 @@ export function serveQuickJsWorker({ scope, fetch = globalThis.fetch }: Params) 
   function handleFirstMessage(event: MessageEvent): void {
     scope.removeEventListener('message', handleFirstMessage);
     const { control, wire } = parseWorkerPortsMessage(event.data);
-    servePorts({ control, wire, fetch, signal: stop.signal });
+    servePorts({ control, wire, fetch, crypto, signal: stop.signal });
   }
 }
 
 /** Serves the schema on `control` and, once the page starts it, the VM's byte wire on `wire`. */
-function servePorts({ control, wire, fetch, signal }: ServePortsParams): void {
+function servePorts({ control, wire, fetch, crypto, signal }: ServePortsParams): void {
   const transport = createTransport({
     schema: quickJsWorkerSchema,
     provider: createPortProvider({ port: control }),
