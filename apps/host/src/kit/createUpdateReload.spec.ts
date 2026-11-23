@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { createManualTimers, createMemoryStorage } from '@dotli/shared/testing';
-import type { SafeStorage } from '@dotli/shared';
 import type { Continuation } from './createContinuation.js';
 import { createUpdateReload } from './createUpdateReload.js';
 import { createBlockedStorage } from '../testing/createBlockedStorage.js';
@@ -60,7 +59,7 @@ describe('createUpdateReload', () => {
 });
 
 /** Builds the update reload of build `build-b` over `store`, with the screens it shows and the reloads it asks for counted. */
-function setupUpdateReload({ store }: { store: Pick<SafeStorage, 'getItem' | 'setItem'> }) {
+function setupUpdateReload({ store }: { store: Parameters<typeof createUpdateReload>[0]['store'] }) {
   const timers = createManualTimers();
   const reloads: Continuation[] = [];
   let shown = 0;

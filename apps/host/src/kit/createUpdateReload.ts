@@ -3,13 +3,14 @@
 
 // The tab's one reload per build for a newer release: the claim, the screen that says so, the wait and the reload.
 
-import { pageSessionStorage, realTimers, type SafeStorage, type Timers } from '@dotli/shared';
+import { pageSessionStorage, realTimers, type Timers } from '@dotli/shared';
+import { createStoredAtom, type PersistentAtomParams } from '@dotli/stores-persistent';
 import { showError } from '@dotli/ui';
 import { markAndReload, type Continuation } from './createContinuation.js';
 
 type Params = {
   /** Where the claim is kept. Its reads and writes never throw. */
-  store: Pick<SafeStorage, 'getItem' | 'setItem'>;
+  store: PersistentAtomParams<string>['storage'];
   /** The build that claims the reload. This page's build by default, one fixed id without a commit. */
   build?: string;
   /** The timers the wait runs on. The page's own by default. */
@@ -33,13 +34,22 @@ export function createUpdateReload({
   show = showUpdateLoading,
   reload = markAndReload,
 }: Params) {
+  const claim = createStoredAtom({
+    key: KEY,
+    storage: store,
+    // No build has claimed the reload.
+    initial: '',
+    decode: raw => raw,
+    encode: claimed => claimed,
+  });
+
   function start(): boolean {
-    if (store.getItem(KEY) === build) {
+    if (claim.get() === build) {
       return false;
     }
-    store.setItem(KEY, build);
-    // A storage that drops the write gives no claim, so a tab that cannot remember it never reloads in a loop.
-    if (store.getItem(KEY) !== build) {
+    claim.set(build);
+    // A storage that drops the write leaves the claim as it was, so a tab that cannot remember it never reloads in a loop.
+    if (claim.get() !== build) {
       return false;
     }
     show();
