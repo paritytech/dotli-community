@@ -1,18 +1,24 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The bubble over its time, on its author's side. */
 .row {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 .row[data-author='user'] {
-  justify-content: flex-end;
+  align-items: flex-end;
 }
 /* Bubbles of one run sit close, so a run ends with its own space. */
 .row[data-run-end] {
-  margin-bottom: var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+.row[data-run-end]:last-child {
+  margin-bottom: 0;
 }
 
 .bubble {
@@ -20,52 +26,102 @@
   max-width: 85%;
   margin: 0;
   padding: var(--sp-2) var(--sp-3);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   background: var(--fill);
   color: var(--text-strong);
   font-size: var(--fs-body);
-  line-height: 1.4;
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.row[data-author='user'] .bubble {
+.row[data-author='user'] > .bubble {
   background: var(--chat-bg-own);
 }
+/* The last bubble of a run points at its author. */
+.row[data-author='product'][data-run-end] > .bubble {
+  border-end-start-radius: var(--r-xs);
+}
+.row[data-author='user'][data-run-end] > .bubble {
+  border-end-end-radius: var(--r-xs);
+}
 
-.bubble[data-look='event'] {
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  font-style: italic;
+.bubble[data-look='actions'] {
+  width: 85%;
 }
 
 .bubble[data-look='custom'] {
   width: 85%;
+  padding: var(--sp-3);
+}
+
+.time {
+  box-sizing: border-box;
+  margin: var(--sp-1) var(--sp-1) 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+  cursor: default;
+}
+
+/* An event is a quiet pill between the runs, never a bubble. */
+.event {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: var(--sp-1_5);
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--fill-subtle);
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  overflow-wrap: anywhere;
+}
+.event > .time {
+  flex-shrink: 0;
+  margin: 0;
 }
 
 .meta {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
+  margin: var(--sp-1_5) 0 0;
   color: var(--text-muted);
   font-size: var(--fs-caption);
 }
 
-.time {
-  display: block;
-  box-sizing: border-box;
-  margin: var(--sp-1) 0 0;
-  padding: 0;
+.meta-icon {
+  flex: none;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.file-icon {
+  flex: none;
+  color: var(--neutral-solid);
+}
+
+.file-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.file-name {
+  color: var(--text-strong);
+  font-weight: var(--fw-medium);
+}
+
+.file-kind {
   color: var(--text-muted);
-  font-size: var(--fs-label);
-  font-style: normal;
-  cursor: default;
-}
-.row[data-author='user'] .time {
-  text-align: right;
-}
-/* An event reads as one line beside the conversation. */
-.bubble[data-look='event'] .time {
-  display: inline;
-  margin: 0 0 0 var(--sp-1_5);
+  font-size: var(--fs-caption);
 }
 
 .actions {
@@ -77,9 +133,22 @@
   padding: 0;
 }
 .actions:first-child {
-  margin-top: var(--sp-hair);
+  margin-top: 0;
 }
 .actions[data-layout='grid'] {
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 560px) {
+  .bubble {
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-title);
+  }
+  .bubble[data-look='custom'] {
+    padding: var(--sp-3);
+  }
+  .time {
+    font-size: var(--fs-caption);
+  }
 }

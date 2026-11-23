@@ -9,6 +9,7 @@ import type { JSX } from '@solidjs/web';
 import type { HexString, RenderContext, RendererNode } from '@parity/truapi';
 import { toHex } from '@dotli/shared';
 import { Spinner } from '@dotli/ui';
+import { CircleAlertIcon } from '@dotli/ui/icons';
 import { CustomNode } from './CustomNode.js';
 import type { ChatMessageActions } from './chat.js';
 import { visibilityWatcher, type WatchVisibility } from './visibility.js';
@@ -128,6 +129,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
       </Show>
       <Show when={actionFailed()}>
         <span class={s['error']} role="alert" data-testid="chat-custom-error">
+          <CircleAlertIcon class={s['errorIcon']} size={14} />
           The app could not be reached. Try again.
         </span>
       </Show>

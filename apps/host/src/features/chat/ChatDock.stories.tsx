@@ -188,8 +188,8 @@ export const OneTimePerRun: Story = {
 
       // Then
       await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('mine'), SLOW);
-      const bubbles = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-msg-bubble"]')];
-      await expect(bubbles.map(bubble => bubble.querySelector('[data-testid="chat-msg-time"]') !== null)).toEqual([
+      const messages = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-msg"]')];
+      await expect(messages.map(message => message.querySelector('[data-testid="chat-msg-time"]') !== null)).toEqual([
         false,
         true,
         true,
@@ -239,6 +239,7 @@ export const BotsAndRoomsByLastMessage: Story = {
       const botMessage = byId('chat-panel-messages').querySelector('[data-testid="chat-msg"]');
       await expect([...(botMessage?.children ?? [])].map(child => child.getAttribute('data-testid'))).toEqual([
         'chat-msg-bubble',
+        'chat-msg-time',
       ]);
 
       // When

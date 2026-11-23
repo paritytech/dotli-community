@@ -1,10 +1,11 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The product's tree, or its placeholder, over the notice of a tap that did not reach the app. */
 .root {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1_5);
+  gap: var(--sp-2);
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -18,7 +19,7 @@
   gap: var(--sp-2);
   min-height: var(--h-control-sm);
   color: var(--chat-fg-secondary);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-body);
 }
 .placeholder > .spinner {
   flex-shrink: 0;
@@ -28,6 +29,13 @@
 }
 
 .error {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
   color: var(--chat-fg-error);
   font-size: var(--fs-caption);
+}
+
+.error-icon {
+  flex: none;
 }

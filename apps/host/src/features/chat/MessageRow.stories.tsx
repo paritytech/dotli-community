@@ -1,8 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { RendererNode } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
+import type { ChatRenderSink } from './chat.js';
 import type { ChatMessageRecord } from './createChatStore.js';
 import { MessageRow } from './MessageRow.js';
 
@@ -20,12 +22,47 @@ function record(content: unknown): ChatMessageRecord {
   };
 }
 
+const CUSTOM = record({ tag: 'Custom', value: { messageType: 'confirm', payload: '0x01' } });
+
+const CONFIRM: RendererNode = {
+  tag: 'Column',
+  value: {
+    modifiers: [],
+    props: {},
+    children: [
+      {
+        tag: 'Text',
+        value: {
+          modifiers: [{ tag: 'Padding', value: { top: 0, end: 0, bottom: 8, start: 0 } }],
+          props: { style: 'BodyLargeRegular' },
+          children: [{ tag: 'String', value: { text: 'Confirm the order?' } }],
+        },
+      },
+      {
+        tag: 'Button',
+        value: { modifiers: [], props: { text: 'Confirm', variant: 'Primary', clickAction: 'confirm' }, children: [] },
+      },
+    ],
+  },
+};
+
 /** The chat intents a row calls. */
 function chat() {
   return {
     triggerAction: fn(() => Promise.resolve()),
     renderCustomMessage: fn(() => () => undefined),
     triggerRendererAction: fn(() => Promise.resolve()),
+  };
+}
+
+/** A chat whose product answers each render through `answer`. */
+function chatRendering(answer: (sink: ChatRenderSink) => void) {
+  return {
+    ...chat(),
+    renderCustomMessage: fn(({ sink }: { sink: ChatRenderSink }) => {
+      answer(sink);
+      return () => undefined;
+    }),
   };
 }
 
@@ -42,6 +79,11 @@ const meta = {
     endsRun: true,
     onActionError: fn(),
   },
+  render: args => (
+    <div style={{ display: 'flex', 'flex-direction': 'column', 'max-width': '380px' }}>
+      <MessageRow {...args} />
+    </div>
+  ),
 } satisfies Meta<typeof MessageRow>;
 
 export default meta;
@@ -81,10 +123,43 @@ export const ActionButtonsReachApp: Story = {
   },
 };
 
-/** As a reader, I see a custom message the product renders, before its time. */
+/** As a reader, I see a custom message loading in its card, before its time. */
 export const CustomMessageBeforeTimestamp: Story = {
   tags: ['!autodocs'],
+  args: { record: CUSTOM },
+};
+
+/** As a reader, I see a custom message the app could not render as a neutral line in its card. */
+export const CustomRenderFailed: Story = {
+  tags: ['!autodocs'],
   args: {
-    record: record({ tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }),
+    record: CUSTOM,
+    chat: chatRendering(sink => {
+      sink.onError?.(new Error('render failed'));
+    }),
+  },
+};
+
+/** As a user, I tap a custom message's button when the app cannot be reached and am told so inside the message. */
+export const CustomTapUnreachable: Story = {
+  tags: ['!autodocs'],
+  args: {
+    record: CUSTOM,
+    chat: {
+      ...chatRendering(sink => {
+        sink.onUpdate(CONFIRM);
+      }),
+      triggerRendererAction: fn(() => Promise.reject(new Error('unreachable'))),
+    },
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('When I tap Confirm and the app cannot be reached', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Confirm' }));
+    });
+    await step('Then the message says so inside its card, under the tree', async () => {
+      const card = canvas.getByTestId('chat-msg-bubble');
+      await waitFor(() => expect(within(card).getByRole('alert')).toHaveTextContent('The app could not be reached.'));
+      await expect(within(card).getByRole('button', { name: 'Confirm' })).toBeEnabled();
+    });
   },
 };

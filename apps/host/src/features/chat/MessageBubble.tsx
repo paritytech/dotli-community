@@ -6,6 +6,7 @@
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { ChatMessageContent, HexString } from '@parity/truapi';
+import { FileIcon, PaperclipIcon } from '@dotli/ui/icons';
 import { InlineActionButton } from './InlineActionButton.js';
 import type { ChatMessageRecord } from './createChatStore.js';
 import { relativeTime } from './relativeTime.js';
@@ -18,10 +19,12 @@ export type CustomBody = {
   payload: HexString;
 };
 
+type BubbleLook = 'message' | 'actions' | 'custom';
+
 export function MessageBubble(props: {
   record: ChatMessageRecord;
   now: number;
-  /** The bubble ends its run of messages, so it shows the time. */
+  /** The bubble ends its run of messages, so it takes its tail corner and shows the time. */
   endsRun: boolean;
   /** A tap on one of an actions message's buttons. */
   onAction: (actionId: string) => void;
@@ -32,39 +35,48 @@ export function MessageBubble(props: {
   const record = untrack(() => props.record);
   const content = record.content as ChatMessageContent;
 
-  const time = (
-    <Show when={props.endsRun}>
-      <time
-        class={s['time']}
-        data-testid="chat-msg-time"
-        data-timestamp={String(record.timestamp)}
-        title={new Date(record.timestamp).toLocaleString()}
-      >
-        {relativeTime(record.timestamp, props.now)}
-      </time>
-    </Show>
+  const time = (): JSX.Element => (
+    <time
+      class={s['time']}
+      data-testid="chat-msg-time"
+      data-timestamp={String(record.timestamp)}
+      title={new Date(record.timestamp).toLocaleString()}
+    >
+      {relativeTime(record.timestamp, props.now)}
+    </time>
   );
 
-  const wrap = (look: 'message' | 'event' | 'custom', body: JSX.Element): JSX.Element => (
-    <div class={s['bubble']} data-testid="chat-msg-bubble" data-look={look}>
-      {body}
-      {time}
+  const bubble = (look: BubbleLook, body: JSX.Element): JSX.Element => (
+    <>
+      <div class={s['bubble']} data-testid="chat-msg-bubble" data-look={look}>
+        {body}
+      </div>
+      <Show when={props.endsRun}>{time()}</Show>
+    </>
+  );
+
+  // An event stands apart from the runs around it, so it always carries its own time.
+  const event = (text: string): JSX.Element => (
+    <div class={s['event']} data-testid="chat-msg-bubble">
+      {text}
+      {time()}
     </div>
   );
 
   // Reactions and kinds this page does not know read as events beside the conversation.
-  const bubble = (): JSX.Element => {
+  const message = (): JSX.Element => {
     switch (content.tag) {
       case 'Text':
-        return wrap('message', content.value.text);
+        return bubble('message', content.value.text);
       case 'RichText': {
         const count = content.value.media.length;
-        return wrap(
+        return bubble(
           'message',
           <>
             {content.value.text ?? ''}
             <Show when={count > 0}>
               <span class={s['meta']} data-testid="chat-msg-meta">
+                <PaperclipIcon class={s['metaIcon']} size={14} />
                 {`${String(count)} attachment${count === 1 ? '' : 's'}`}
               </span>
             </Show>
@@ -72,22 +84,25 @@ export function MessageBubble(props: {
         );
       }
       case 'Reaction':
-        return wrap('event', `reacted ${content.value.emoji}`);
+        return event(`Reacted ${content.value.emoji}`);
       case 'ReactionRemoved':
-        return wrap('event', `removed reaction ${content.value.emoji}`);
+        return event(`Removed reaction ${content.value.emoji}`);
       case 'File':
-        return wrap(
+        return bubble(
           'message',
-          <>
-            {content.value.fileName}
-            <span class={s['meta']} data-testid="chat-msg-meta">
-              File
+          <span class={s['file']}>
+            <FileIcon class={s['fileIcon']} size={22} />
+            <span class={s['fileText']}>
+              <span class={s['fileName']}>{content.value.fileName}</span>
+              <span class={s['fileKind']} data-testid="chat-msg-meta">
+                File
+              </span>
             </span>
-          </>,
+          </span>,
         );
       case 'Actions':
-        return wrap(
-          'message',
+        return bubble(
+          'actions',
           <>
             <Show when={content.value.text !== undefined && content.value.text !== ''}>
               <span>{content.value.text}</span>
@@ -114,9 +129,12 @@ export function MessageBubble(props: {
           </>,
         );
       case 'Custom':
-        return wrap('custom', props.custom({ messageType: content.value.messageType, payload: content.value.payload }));
+        return bubble(
+          'custom',
+          props.custom({ messageType: content.value.messageType, payload: content.value.payload }),
+        );
       default:
-        return wrap('event', 'Unsupported message');
+        return event('Unsupported message');
     }
   };
 
@@ -127,7 +145,7 @@ export function MessageBubble(props: {
       data-author={record.author}
       data-run-end={props.endsRun ? '' : undefined}
     >
-      {bubble()}
+      {message()}
     </div>
   );
 }
