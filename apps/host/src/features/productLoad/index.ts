@@ -28,7 +28,7 @@ export { createPageCidCache } from './resolve/createPageCidCache.js';
 export type { ProductFacts } from './resolve/getProductFacts.js';
 export { getProductFacts } from './resolve/getProductFacts.js';
 export { productAuthorMetric } from './resolve/productAuthorMetric.js';
-export { readServedArchive } from './resolve/readServedArchive.js';
+export { readServedArchive, type ServedBlockCache } from './resolve/readServedArchive.js';
 export { readChatCapability, readWorkerExecutable } from './resolve/readWorkerExecutable.js';
 export type { CachedCopy, ServedCopy } from './resolve/revalidateCachedCopy.js';
 export { startSandboxContent } from './resolve/startSandboxContent.js';
