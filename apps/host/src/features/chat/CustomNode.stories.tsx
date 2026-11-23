@@ -1,11 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, untrack } from 'solid-js';
-import type { RendererNode } from '@parity/truapi';
+import { createSignal, For, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type {
+  Arrangement,
+  ColorToken,
+  ContentAlignment,
+  HorizontalAlignment,
+  Modifier,
+  RendererNode,
+  TypographyStyle,
+  VerticalAlignment,
+} from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { CustomNode, type CustomActionHandler } from './CustomNode.js';
+
+const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
 function encode(text: string): Uint8Array {
   return new TextEncoder().encode(text);
@@ -47,6 +59,93 @@ function spaced(children: RendererNode[]): RendererNode[] {
 
 function column(...children: RendererNode[]): RendererNode {
   return { tag: 'Column', value: { modifiers: [], props: {}, children: spaced(children) } };
+}
+
+function variantButton(label: string, variant: 'Primary' | 'Secondary' | 'Text' | undefined): RendererNode {
+  const props =
+    variant === undefined ? { text: label, clickAction: 'tap' } : { text: label, variant, clickAction: 'tap' };
+  return { tag: 'Button', value: { modifiers: [], props, children: [] } };
+}
+
+function styledText(value: string, style: { style?: TypographyStyle; color?: ColorToken }): RendererNode {
+  return {
+    tag: 'Text',
+    value: { modifiers: [], props: style, children: [{ tag: 'String', value: { text: value } }] },
+  };
+}
+
+function box(modifiers: Modifier[], children: RendererNode[] = []): RendererNode {
+  return { tag: 'Box', value: { modifiers, props: {}, children } };
+}
+
+/** A small filled square that shows where a layout puts its children. */
+function dot(width = 24, height = 24): RendererNode {
+  return box([
+    { tag: 'Width', value: width },
+    { tag: 'Height', value: height },
+    { tag: 'Background', value: { color: 'BgSurfaceNested', shape: { tag: 'Rounded', value: 6 } } },
+  ]);
+}
+
+/** The quiet panel a layout demo draws its children in. */
+function frame(height: number): Modifier[] {
+  return [
+    { tag: 'FillWidth', value: true },
+    { tag: 'Height', value: height },
+    { tag: 'Padding', value: { top: 8, end: 8 } },
+    { tag: 'Background', value: { color: 'BgSurfaceContainer', shape: { tag: 'Rounded', value: 12 } } },
+  ];
+}
+
+function alignedColumn(horizontal: HorizontalAlignment, vertical: Arrangement): RendererNode {
+  return {
+    tag: 'Column',
+    value: {
+      modifiers: frame(120),
+      props: { horizontalAlignment: horizontal, verticalArrangement: vertical },
+      children: [dot(), dot(40), dot()],
+    },
+  };
+}
+
+function alignedRow(horizontal: Arrangement, vertical: VerticalAlignment, children: RendererNode[]): RendererNode {
+  return {
+    tag: 'Row',
+    value: {
+      modifiers: frame(48),
+      props: { horizontalArrangement: horizontal, verticalAlignment: vertical },
+      children,
+    },
+  };
+}
+
+function alignedBox(contentAlignment: ContentAlignment): RendererNode {
+  return { tag: 'Box', value: { modifiers: frame(64), props: { contentAlignment }, children: [dot()] } };
+}
+
+/** Nodes side by side, each over a caption that names what it shows. */
+function Gallery(props: { items: { caption: string; node: RendererNode }[]; columns: number }): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        'grid-template-columns': `repeat(${String(props.columns)}, minmax(0, 1fr))`,
+        gap: 'var(--sp-3)',
+        'max-width': '640px',
+      }}
+    >
+      <For each={props.items}>
+        {item => (
+          <figure style={{ display: 'grid', gap: 'var(--sp-1_5)', margin: '0' }}>
+            <CustomNode node={item.node} onAction={fn()} />
+            <figcaption style={{ color: 'var(--text-muted)', 'font-size': 'var(--fs-label)' }}>
+              {item.caption}
+            </figcaption>
+          </figure>
+        )}
+      </For>
+    </div>
+  );
 }
 
 function form(heading: string, fieldNode: RendererNode): RendererNode {
@@ -162,17 +261,35 @@ export const AllNodeKinds: Story = {
   },
 };
 
-/** As a user, I see a product's primary button. */
-export const PrimaryButton: Story = {
+/** As a user, I see each variant of a product's button, primary when the product names none. */
+export const ButtonVariants: Story = {
+  render: () => (
+    <Gallery
+      columns={4}
+      items={[
+        { caption: 'Primary', node: variantButton('Confirm', 'Primary') },
+        { caption: 'Secondary', node: variantButton('Later', 'Secondary') },
+        { caption: 'Text', node: variantButton('Details', 'Text') },
+        { caption: 'No variant', node: variantButton('Confirm', undefined) },
+      ]}
+    />
+  ),
+};
+
+/** As a user, I see a product button that reports nothing as disabled, and tapping it fires nothing. */
+export const ButtonWithoutActionIsDisabled: Story = {
   args: {
-    node: {
-      tag: 'Button',
-      value: {
-        modifiers: [],
-        props: { text: 'Vote', variant: 'Primary', enabled: true, clickAction: 'vote:1' },
-        children: [],
-      },
-    },
+    node: { tag: 'Button', value: { modifiers: [], props: { text: 'Paid', variant: 'Primary' }, children: [] } },
+  },
+  play: async ({ args, canvas, userEvent, step }) => {
+    const paid = canvas.getByRole('button', { name: 'Paid' });
+    await step('When I tap a button the product gave no action', async () => {
+      await userEvent.click(paid);
+    });
+    await step('Then it is disabled and no action fires', async () => {
+      await expect(paid).toBeDisabled();
+      await expect(args.onAction).not.toHaveBeenCalled();
+    });
   },
 };
 
@@ -203,23 +320,50 @@ export const DisabledAndLoadingButtonsAreSilent: Story = {
   },
 };
 
-/** As a user, I see a product text field with its label and text. */
-export const LabelledField: Story = {
-  args: {
-    node: {
-      tag: 'TextField',
-      value: {
-        modifiers: [],
-        props: {
-          text: 'start',
-          placeholder: 'Your name',
-          label: 'Name',
-          enabled: true,
-          valueChangeAction: 'name-changed',
-        },
-      },
-    },
+const FIELDS: RendererNode = column(
+  {
+    tag: 'TextField',
+    value: { modifiers: [], props: { text: '', placeholder: 'Promo code', valueChangeAction: 'promo' } },
   },
+  field('Ring twice', 'Delivery note', 'note'),
+  { tag: 'TextField', value: { modifiers: [], props: { text: '12 Elm Street', label: 'Address', enabled: false } } },
+);
+
+/** As a user, I see product text fields with a placeholder, with a label and text, and disabled, and cannot type in a disabled one. */
+export const TextFields: Story = {
+  args: { node: FIELDS },
+  play: async ({ args, canvas, userEvent, step }) => {
+    const address = canvas.getByRole('textbox', { name: 'Address' });
+    await step('When I try to type in the disabled field', async () => {
+      await userEvent.type(address, 'x');
+    });
+    await step('Then it keeps the product’s text and reports nothing', async () => {
+      await expect(address).toHaveValue('12 Elm Street');
+      await expect(args.onAction).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user, I type in a product text field, which stays focused and reports my text to the product. */
+export const FocusedField: Story = {
+  args: { node: field('', 'Tip', 'tip') },
+  play: async ({ args, canvas, userEvent, step }) => {
+    const tip = canvas.getByRole('textbox', { name: 'Tip' });
+    await step('When I type in the field', async () => {
+      await userEvent.type(tip, '3.50');
+    });
+    await step('Then it has focus and the product hears my text', async () => {
+      await expect(tip).toHaveFocus();
+      await expect(args.onAction).toHaveBeenLastCalledWith('tip', encode('3.50'));
+    });
+  },
+};
+
+/** As a phone user, I see product text fields at the phone's size, with text large enough that iOS does not zoom. */
+export const PhoneFields: Story = {
+  tags: ['!autodocs'],
+  globals: PHONE,
+  args: { node: FIELDS },
 };
 
 /** As a user, I see markup in product text as plain text. */
@@ -363,5 +507,189 @@ export const LabelNamesInput: Story = {
       await expect(inputs[0]?.id).not.toBe('');
       await expect(inputs[0]?.id).not.toBe(inputs[1]?.id);
     });
+  },
+};
+
+const TYPOGRAPHY: TypographyStyle[] = [
+  'HeadlineLarge',
+  'TitleMediumRegular',
+  'BodyLargeRegular',
+  'BodyMediumRegular',
+  'BodySmallRegular',
+];
+
+/** As a user, I see product text in each typography style, and in the message's own type when it names none. */
+export const Typography: Story = {
+  render: () => (
+    <Gallery
+      columns={1}
+      items={[
+        ...TYPOGRAPHY.map(style => ({ caption: style, node: styledText('Order total $42.00', { style }) })),
+        { caption: 'No style', node: styledText('Order total $42.00', {}) },
+      ]}
+    />
+  ),
+};
+
+const TEXT_COLOURS: ColorToken[] = ['FgPrimary', 'FgSecondary', 'FgTertiary', 'FgSuccess', 'FgWarning', 'FgError'];
+const SURFACE_COLOURS: ColorToken[] = ['BgSurfaceMain', 'BgSurfaceContainer', 'BgSurfaceNested'];
+
+/** As a user, I see product text in each colour token, and each surface token as a background. */
+export const ColourTokens: Story = {
+  render: () => (
+    <Gallery
+      columns={3}
+      items={[
+        ...TEXT_COLOURS.map(color => ({ caption: color, node: styledText(color, { color }) })),
+        ...SURFACE_COLOURS.map(color => ({
+          caption: color,
+          node: box([
+            { tag: 'Height', value: 28 },
+            { tag: 'Border', value: { width: 1, color: 'FgTertiary', shape: { tag: 'Rounded', value: 8 } } },
+            { tag: 'Background', value: { color, shape: { tag: 'Rounded', value: 8 } } },
+          ]),
+        })),
+      ]}
+    />
+  ),
+};
+
+/** As a user, I see product backgrounds and borders in each shape. */
+export const BackgroundsAndBorders: Story = {
+  render: () => (
+    <Gallery
+      columns={3}
+      items={[
+        {
+          caption: 'Rounded(12) Container',
+          node: box([
+            { tag: 'Height', value: 72 },
+            { tag: 'Background', value: { color: 'BgSurfaceContainer', shape: { tag: 'Rounded', value: 12 } } },
+          ]),
+        },
+        {
+          caption: 'Circle Nested',
+          node: box([
+            { tag: 'Width', value: 72 },
+            { tag: 'Height', value: 72 },
+            { tag: 'Background', value: { color: 'BgSurfaceNested', shape: { tag: 'Circle' } } },
+          ]),
+        },
+        {
+          caption: 'Square Main',
+          node: box([
+            { tag: 'Height', value: 72 },
+            { tag: 'Background', value: { color: 'BgSurfaceMain', shape: { tag: 'Square' } } },
+          ]),
+        },
+        {
+          caption: 'Border 1 Success',
+          node: box([
+            { tag: 'Height', value: 72 },
+            { tag: 'Border', value: { width: 1, color: 'FgSuccess', shape: { tag: 'Rounded', value: 12 } } },
+          ]),
+        },
+        {
+          caption: 'Border 2 Warning',
+          node: box([
+            { tag: 'Height', value: 72 },
+            { tag: 'Border', value: { width: 2, color: 'FgWarning', shape: { tag: 'Rounded', value: 12 } } },
+          ]),
+        },
+        {
+          caption: 'Border 1 Error and background',
+          node: box([
+            { tag: 'Height', value: 72 },
+            { tag: 'Background', value: { color: 'BgSurfaceContainer', shape: { tag: 'Rounded', value: 12 } } },
+            { tag: 'Border', value: { width: 1, color: 'FgError', shape: { tag: 'Rounded', value: 12 } } },
+          ]),
+        },
+      ]}
+    />
+  ),
+};
+
+/** As a user, I see a product column place its children by its alignment and arrangement. */
+export const ColumnAlignments: Story = {
+  render: () => (
+    <Gallery
+      columns={3}
+      items={[
+        { caption: 'Start, Start', node: alignedColumn('Start', 'Start') },
+        { caption: 'Center, Center', node: alignedColumn('Center', 'Center') },
+        { caption: 'End, SpaceBetween', node: alignedColumn('End', 'SpaceBetween') },
+      ]}
+    />
+  ),
+};
+
+/** As a user, I see a product row place its children, and a spacer push them apart. */
+export const RowAndSpacer: Story = {
+  render: () => (
+    <Gallery
+      columns={1}
+      items={[
+        { caption: 'Start, Center', node: alignedRow('Start', 'Center', [dot(), dot(), dot()]) },
+        { caption: 'SpaceEvenly, Top', node: alignedRow('SpaceEvenly', 'Top', [dot(), dot(24, 32), dot()]) },
+        {
+          caption: 'Text, Spacer, Text',
+          node: alignedRow('Start', 'Center', [
+            styledText('Subtotal', {}),
+            { tag: 'Spacer', value: { modifiers: [] } },
+            styledText('$38.00', {}),
+          ]),
+        },
+      ]}
+    />
+  ),
+};
+
+const CONTENT_ALIGNMENTS: ContentAlignment[] = [
+  'TopStart',
+  'TopCenter',
+  'TopEnd',
+  'CenterStart',
+  'Center',
+  'CenterEnd',
+  'BottomStart',
+  'BottomCenter',
+  'BottomEnd',
+];
+
+/** As a user, I see a product box place its content at each of its alignments. */
+export const BoxContentAlignment: Story = {
+  render: () => (
+    <Gallery
+      columns={3}
+      items={CONTENT_ALIGNMENTS.map(alignment => ({ caption: alignment, node: alignedBox(alignment) }))}
+    />
+  ),
+};
+
+/** As a user, I see a materials node draw its children as they are, without its layers. */
+export const MaterialsDrawsChildren: Story = {
+  args: {
+    node: {
+      tag: 'Materials',
+      value: {
+        props: { layers: [] },
+        children: [
+          {
+            tag: 'Column',
+            value: {
+              modifiers: [
+                { tag: 'Padding', value: { top: 12, end: 12 } },
+                { tag: 'Background', value: { color: 'BgSurfaceContainer', shape: { tag: 'Rounded', value: 12 } } },
+              ],
+              props: {},
+              children: [
+                styledText('Gift card', { style: 'BodyLargeRegular' }),
+                styledText('$25.00', { style: 'BodyMediumRegular', color: 'FgSecondary' }),
+              ],
+            },
+          },
+        ],
+      },
+    },
   },
 };

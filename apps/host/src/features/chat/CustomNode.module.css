@@ -56,7 +56,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -65,31 +65,36 @@
 .field-label {
   color: var(--chat-fg-secondary);
   font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
 }
 
 .field-input {
   box-sizing: border-box;
-  min-height: var(--h-control-sm);
+  height: var(--h-control-sm);
   margin: 0;
-  padding: var(--sp-1_5) var(--sp-2);
-  border: 1px solid var(--chat-bg-surface-nested);
-  border-radius: 8px;
-  background: var(--chat-bg-surface-container);
+  padding: 0 var(--sp-3);
+  border: none;
+  border-radius: var(--r-xs);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
   color: var(--chat-fg-primary);
   font-family: inherit;
   font-size: var(--fs-body);
 }
+.field-input::placeholder {
+  color: var(--text-faint);
+}
 .field-input:focus-visible {
   outline: var(--chrome-focus-ring);
-  outline-offset: -1px;
+  outline-offset: -2px;
 }
 .field-input:disabled {
   opacity: 0.5;
 }
 @media (max-width: 560px) {
   .field-input {
-    min-height: var(--h-control);
+    height: var(--h-control);
     /* iOS Safari zooms into a focused field set under 16 px. */
-    font-size: var(--fs-title-lg);
+    font-size: var(--fs-title);
   }
 }

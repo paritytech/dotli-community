@@ -183,7 +183,8 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
           <InlineActionButton
             variant={buttonVariant(value().props.variant)}
             loading={value().props.loading === true}
-            disabled={value().props.enabled === false}
+            // A button with nothing to report draws as disabled, so it never looks pressable.
+            disabled={value().props.enabled === false || value().props.clickAction === undefined}
             style={modifierStyle(value().modifiers)}
             testId="chat-custom-btn"
             onClick={() => {
