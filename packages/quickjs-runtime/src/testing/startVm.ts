@@ -4,12 +4,11 @@
 import { createManualTimers } from '@dotli/shared/testing';
 import { onTestFinished } from 'vitest';
 
+import type { QuickJsVmParams } from '../createQuickJsVm.js';
 import { createQuickJsVm } from '../createQuickJsVm.js';
 import type { ConsoleLevel } from '../installConsole.js';
 
-type Params = {
-  entrypoint?: string;
-};
+type Params = Partial<Pick<QuickJsVmParams, 'entrypoint' | 'fetch' | 'maxFetchBodyBytes'>>;
 
 type Logged = {
   level: ConsoleLevel;
@@ -20,7 +19,7 @@ type Logged = {
  * A VM over `sources`, on Node's WebCrypto and manual timers, that records what it posts, logs and reports. It is
  * disposed when the test finishes.
  */
-export async function startVm(sources: Record<string, string>, { entrypoint = 'main.js' }: Params = {}) {
+export async function startVm(sources: Record<string, string>, { entrypoint = 'main.js', ...options }: Params = {}) {
   const encoder = new TextEncoder();
   const files = new Map(Object.entries(sources).map(([path, source]) => [path, encoder.encode(source)]));
   const errors: Error[] = [];
@@ -33,6 +32,7 @@ export async function startVm(sources: Record<string, string>, { entrypoint = 'm
     entrypoint,
     crypto: globalThis.crypto,
     timers,
+    ...options,
     onError: error => errors.push(error),
     onConsole(level, message) {
       logs.push({ level, message });

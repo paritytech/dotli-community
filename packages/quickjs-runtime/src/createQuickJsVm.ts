@@ -13,10 +13,15 @@ import { createModuleLoader } from './createModuleLoader.js';
 import type { VmBytes } from './createVmBytes.js';
 import { createVmBytes } from './createVmBytes.js';
 import { createVmCrypto } from './createVmCrypto.js';
+import type { HostFetch } from './createVmFetch.js';
+import { createVmFetch } from './createVmFetch.js';
 import { createVmTimers } from './createVmTimers.js';
 import { getVmErrorMessage } from './getVmErrorMessage.js';
+import { installAbort } from './installAbort.js';
+import { installBlob } from './installBlob.js';
 import type { ConsoleSink } from './installConsole.js';
 import { installConsole } from './installConsole.js';
+import { installEvents } from './installEvents.js';
 import { installTextCodecs } from './installTextCodecs.js';
 
 export type QuickJsVmParams = {
@@ -26,7 +31,8 @@ export type QuickJsVmParams = {
   entrypoint: string;
   /**
    * Hears what goes wrong in the VM outside a run: a listener or a timer callback that threw, a frame that is not
-   * bytes, a job that failed, microtasks dropped past the cap, or a VM that aborted while it was freed.
+   * bytes, a job that failed, microtasks dropped past the cap, a response that could not reach the VM, or a VM that
+   * aborted while it was freed.
    */
   onError: (error: Error) => void;
   /** Hears each `console` call of the VM's code. The runtime logs nothing itself. */
@@ -35,9 +41,16 @@ export type QuickJsVmParams = {
   crypto: Crypto;
   /** The host timers behind the VM's timers. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
+  /** The host's side of each request of the VM's `fetch`. Without it the VM has no `fetch`. */
+  fetch?: HostFetch;
+  /** The largest request body the VM's `fetch` sends. */
+  maxFetchBodyBytes?: number;
 };
 
 export type QuickJsVm = Awaited<ReturnType<typeof createQuickJsVm>>;
+
+// Bounds what one request copies out of the VM.
+const DEFAULT_MAX_FETCH_BODY_BYTES = 100 * 1024 * 1024;
 
 /**
  * Builds one QuickJS VM, with the host API port and the browser marks a worker script looks for, ready to run its
@@ -52,6 +65,8 @@ export async function createQuickJsVm({
   onConsole,
   crypto,
   timers = realTimers,
+  fetch,
+  maxFetchBodyBytes = DEFAULT_MAX_FETCH_BODY_BYTES,
 }: QuickJsVmParams) {
   // One WebAssembly module per VM, since freeing a VM can abort its module, which must take no other VM with it.
   // The variant's types describe its CommonJS build, whose default export wraps the variant. The loader unwraps either
@@ -62,7 +77,16 @@ export async function createQuickJsVm({
   vm.runtime.setModuleLoader(loader.load, loader.normalize);
   const bytes = createVmBytes({ vm });
   const port = createHostApiPort({ vm, bytes, onError });
-  const globals = injectGlobals({ vm, bytes, onError, onConsole, crypto, timers });
+  const globals = injectGlobals({
+    vm,
+    bytes,
+    onError,
+    onConsole,
+    crypto,
+    timers,
+    fetch: fetch ?? null,
+    maxFetchBodyBytes,
+  });
   let running: Promise<void> | null = null;
   let disposed = false;
 
@@ -80,7 +104,7 @@ export async function createQuickJsVm({
       running ??= runEntrypoint();
       return running;
     },
-    /** Ends the port and frees the VM. Safe to call again. */
+    /** Ends the port, aborts the VM's requests in flight and frees the VM. Safe to call again. */
     dispose() {
       if (disposed) {
         return;
@@ -140,13 +164,25 @@ export async function createQuickJsVm({
   }
 }
 
-type InjectGlobalsParams = Required<Pick<QuickJsVmParams, 'onError' | 'onConsole' | 'crypto' | 'timers'>> & {
+type InjectGlobalsParams = Required<
+  Pick<QuickJsVmParams, 'onError' | 'onConsole' | 'crypto' | 'timers' | 'maxFetchBodyBytes'>
+> & {
   vm: QuickJSAsyncContext;
   bytes: VmBytes;
+  fetch: HostFetch | null;
 };
 
 /** Sets the globals the VM's code reads beside the port, and returns what stops the ones that hold host work. */
-function injectGlobals({ vm, bytes, onError, onConsole, crypto, timers }: InjectGlobalsParams) {
+function injectGlobals({
+  vm,
+  bytes,
+  onError,
+  onConsole,
+  crypto,
+  timers,
+  fetch,
+  maxFetchBodyBytes,
+}: InjectGlobalsParams) {
   vm.setProp(vm.global, '__HOST_WEBVIEW_MARK__', vm.true);
   // Code that checks for a browser, such as `window === self`, finds one. Neither can be replaced or deleted, so VM
   // code cannot swap in a global of its own.
@@ -161,11 +197,20 @@ function injectGlobals({ vm, bytes, onError, onConsole, crypto, timers }: Inject
   installTextCodecs(vm, bytes);
   const vmTimers = createVmTimers({ vm, timers, onError });
   const vmCrypto = createVmCrypto({ vm, bytes, crypto, onError });
+  installEvents(vm);
+  installAbort(vm);
+  const readBlobBytes = installBlob(vm);
+  const vmFetch = fetch
+    ? createVmFetch({ vm, bytes, readBlobBytes, fetch, maxBodyBytes: maxFetchBodyBytes, onError })
+    : null;
+  // The VM's fetch holds its own reference, and nothing else may reach the reader.
+  readBlobBytes.dispose();
 
   return {
     dispose() {
       vmTimers.dispose();
       vmCrypto.dispose();
+      vmFetch?.dispose();
     },
   };
 }
