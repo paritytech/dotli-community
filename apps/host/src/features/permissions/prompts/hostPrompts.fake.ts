@@ -11,6 +11,7 @@ import { isGranted, isRetry, type BrowserBlockAnswer, type GrantAnswer, type Hos
 
 export type FakePrompt =
   | { kind: 'permission'; label: string; permission: EnforceablePermissionName }
+  | { kind: 'hostAccess'; label: string; host: string }
   | { kind: 'browserBlock'; label: string; permission: EnforceablePermissionName; retried: boolean }
   | { kind: 'review'; dialog: ModalView<string> };
 
@@ -35,6 +36,8 @@ export function createFakePrompts() {
           onApprove();
         }
       }),
+    askHostAccess: ({ label, host, signal }) =>
+      ask(present<GrantAnswer>({ kind: 'hostAccess', label, host }, 'dismissed'), signal, () => undefined),
     askBrowserBlock: ({ label, permission, signal, retried, onRetry }) =>
       ask(
         present<BrowserBlockAnswer>({ kind: 'browserBlock', label, permission, retried }, 'dismissed'),
@@ -75,6 +78,8 @@ export function createFakePrompts() {
      * permission prompt is on screen.
      */
     decide,
+    /** Answers the host access prompt on screen. Throws when no host access prompt is on screen. */
+    decideHostAccess,
     /**
      * Answers the browser block on screen, running its retry hook first on `retry`. Throws when no browser block is on
      * screen.
@@ -193,6 +198,10 @@ export function createFakePrompts() {
 
   function decide(decision: GrantAnswer): void {
     modals.settle(getShownOf('permission').id, decision);
+  }
+
+  function decideHostAccess(decision: GrantAnswer): void {
+    modals.settle(getShownOf('hostAccess').id, decision);
   }
 
   function answerBrowserBlock(answer: BrowserBlockAnswer): void {

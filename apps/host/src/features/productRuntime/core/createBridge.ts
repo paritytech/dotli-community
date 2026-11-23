@@ -131,6 +131,10 @@ export function createBridge({
     };
   }
 
+  function createModalScope(): BlockingModalScope {
+    return requireInitialised().modals.createScope();
+  }
+
   function setPageProduct(product: PageProduct): void {
     requireInitialised().core.setProduct(product);
   }
@@ -182,6 +186,11 @@ export function createBridge({
      * `initBridge`.
      */
     setPageProduct,
+    /**
+     * Opens a scope of prompts on the page's blocking-modal queue, to dispose once its asks end. Throws before
+     * `initBridge`.
+     */
+    createModalScope,
     /**
      * Builds the page's product frame, which a reloaded sandbox reaches over `channel`. After `initBridge`, and throws
      * before it. A repeated call keeps the first frame.

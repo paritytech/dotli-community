@@ -51,11 +51,11 @@ The source is grouped by what it is for:
 
 The features:
 
-| Group             | Features                                                            |
-| ----------------- | ------------------------------------------------------------------- |
-| Opening a product | landing, product load, product identity, topbar, page               |
-| Signing in        | account, sign-in window, site sign-in                               |
-| Around a product  | signing, permissions, network, settings, chat, notifications, debug |
+| Group             | Features                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| Opening a product | landing, product load, product identity, topbar, page                               |
+| Signing in        | account, sign-in window, site sign-in                                               |
+| Around a product  | signing, permissions, network, settings, chat, notifications, debug, product worker |
 
 - **Product runtime:** the TrUAPI side whole. It holds the core connection and the host callbacks. The runtime bridge
   sits there too.
@@ -212,7 +212,18 @@ request in session storage, so a reload answers the same round.
 - **Refused wire version:** the protocol frame refusing the page's version shows the reload screen. The product frame
   then halts until the user reloads.
 - The product card's author is read and cached with the manifests.
-- Whether a product declares chat comes from its worker manifest and is cached per label.
+- The product's worker executable is its worker manifest with the CID of its `worker` subname, read once per label in a
+  page and cached per label. Whether the product declares chat derives from it.
+
+### Product worker
+
+- A product page runs its product's worker in a QuickJS VM, in a Web Worker of its own, on a `Worker`-kind connection to
+  the page core.
+- The core's ledger alone starts and stops it. The page takes one reference on it at the product's first done, and the
+  core counts the rest.
+- A run that fails, or finds no worker, is not tried again until the demand turns wanted again.
+- When the core goes down, the run goes with it, and the reference and the demand are taken again on the replacement.
+- The worker's console output goes to the debug log, never to the always-on channels.
 
 ### Network
 
@@ -223,9 +234,9 @@ request in session storage, so a reload answers the same round.
 
 ### Loading and failures
 
-- The bridge, chat store, panel bodies, product card, debug panel, local wallet, host runtime, chain client and QR
-  encoder load on demand, each in its own chunk. The chat panel counts unread messages from once the chat store loads.
-  CI startup size budgets guard what each page loads first.
+- The bridge, chat store, panel bodies, product card, debug panel, local wallet, host runtime, chain client, QR encoder
+  and product worker load on demand, each in its own chunk. The chat panel counts unread messages from once the chat
+  store loads. CI startup size budgets guard what each page loads first.
 - A shared lazy module loads once. A failed load is forgotten, so the next caller retries without a page reload.
 - Islands that must stand in for themselves wrap their trees in an error boundary. An island whose code never ran offers
   a reload.

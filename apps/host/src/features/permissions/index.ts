@@ -5,6 +5,7 @@ export { PermissionsButtonIsland } from './panel/PermissionsButtonIsland.js';
 export { PermissionsItem } from './panel/PermissionsItem.js';
 export { SignIcon } from './panel/SignIcon.js';
 export { createBrowserBlockCheck } from './prompts/createBrowserBlockCheck.js';
+export { createHostFetchGate } from './prompts/createHostFetchGate.js';
 export type { BrowserPermissionStatus, BrowserPermissions } from './policy/createBrowserPermissions.js';
 export { browserPermissions, isBrowserBlocked } from './policy/createBrowserPermissions.js';
 export { hostPrompts } from './prompts/createHostPrompts.js';

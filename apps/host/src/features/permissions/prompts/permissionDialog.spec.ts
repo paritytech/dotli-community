@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { getGrantButtons, permissionRequestDialog } from './permissionDialog.js';
+import { getGrantButtons, hostAccessDialog, permissionRequestDialog } from './permissionDialog.js';
 
 describe('permission request dialog', () => {
   it('As a dotli user, a prompt names the app, and a dismissal is no denial', () => {
@@ -12,6 +12,17 @@ describe('permission request dialog', () => {
     // Then
     expect(view.fields.map(field => field.value)).toContain('myapp.dot');
     expect(view.dismissOnBackdrop).toBe(true);
+    expect(view.dismissResult).toBe('dismissed');
+  });
+});
+
+describe('host access dialog', () => {
+  it('As a dotli user, a fetch prompt names the app and the host, and a dismissal is no denial', () => {
+    // When
+    const view = hostAccessDialog({ app: 'myapp.dot', host: 'api.example.com' });
+
+    // Then
+    expect(view.fields.map(field => field.value)).toEqual(expect.arrayContaining(['myapp.dot', 'api.example.com']));
     expect(view.dismissResult).toBe('dismissed');
   });
 });

@@ -13,7 +13,6 @@ import type { Backend } from '@dotli/config';
 import { bindCaptureSink, m, type CaptureContext, type SpanValue } from '@dotli/metrics';
 import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
-import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
 import { createListenerSet, noop, waitForStatus } from '@dotli/shared';
 import { createManualTimers, createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
@@ -24,7 +23,7 @@ import { beginAttempt } from '../../../features/productLoad/index.js';
 import { rethrow } from '../../../testing/rethrow.js';
 import type { LoadFailure } from '../../../features/productLoad/index.js';
 import { pageLoading } from '../../../features/productLoad/index.js';
-import type { NameSource } from '../../../features/productLoad/index.js';
+import type { NameSource, WorkerExecutable } from '../../../features/productLoad/index.js';
 import { createLoadTelemetry } from '../../../features/productLoad/index.js';
 import { createProductLoader } from '../../createProductLoader.js';
 import { createUpdateReload } from '../../../kit/createUpdateReload.js';
@@ -40,8 +39,8 @@ type Params = {
   published?: Record<string, string>;
   cached?: { cid: string; manifests: CachedManifests };
   skipCidCache?: boolean;
-  /** What the worker manifest read answers. An empty manifest without it. */
-  workerManifest?: ManifestResult<ExecutableManifest>;
+  /** What the worker executable read answers. No worker without it. */
+  worker?: WorkerExecutable | null;
   resolveError?: Error;
   /** Thrown as the failure screen shows. */
   failToShow?: Error;
@@ -149,18 +148,17 @@ describe('createProductLoader', () => {
 
   it.each([
     [
-      'a worker manifest that includes chat',
+      'a worker that includes chat',
       'on',
-      createWorkerManifest({ kind: 'worker', entrypoint: 'index.js', includes: { chat: true } }),
+      { entrypoint: 'index.js', includes: { chat: true }, cid: 'bafy-worker' },
       true,
     ],
-    ['an app manifest', 'off', createWorkerManifest({ kind: 'app' }), false],
-    ['an empty manifest', 'off', { kind: 'empty' } as const, false],
+    ['no worker', 'off', null, false],
   ])(
     'As a visitor, I open a product with %s and get it rendered with chat %s',
-    async (_name, _chat, manifest, chatOn) => {
+    async (_name, _chat, worker, chatOn) => {
       // Given
-      const { loader, ports } = setupLoader({ published: { doom: 'bafy-base' }, workerManifest: manifest });
+      const { loader, ports } = setupLoader({ published: { doom: 'bafy-base' }, worker });
 
       // When
       await loader.load('doom');
@@ -848,7 +846,7 @@ function setupLoader(params: Params = {}) {
         : Promise.resolve(published[`app.${label}`] ?? published[label] ?? null);
     }),
     readManifests: vi.fn(() => Promise.resolve(NO_MANIFESTS)),
-    readWorkerManifest: vi.fn(() => Promise.resolve(params.workerManifest ?? { kind: 'empty' as const })),
+    readWorkerExecutable: vi.fn(() => Promise.resolve(params.worker ?? null)),
     readPrimaryName: vi.fn(() => Promise.resolve(null)),
   };
   const ports = {
@@ -1058,12 +1056,6 @@ function readFastPaths(spans: ReturnType<typeof recordSpans>) {
   return spans
     .filter(span => span.name === 'dotli.e2e.fast_path')
     .map(({ attributes, ended }) => ({ outcome: attributes['outcome'], ended }));
-}
-
-function createWorkerManifest(
-  value: { kind: 'app' } | { kind: 'worker'; entrypoint: string; includes: { chat?: boolean } },
-): ManifestResult<ExecutableManifest> {
-  return { kind: 'ok', value: { $v: 1, appVersion: [1, 0, 0], ...value }, raw: '' };
 }
 
 /** The product `doom` the frame is asked to render from `cid`, with any chat flag. */

@@ -4,12 +4,12 @@
 // The page as the debug panel reads it. Loaded only with the panel, so the diagnostics and the archive reader stay out
 // of the boot chunk.
 
-import { getBackend, hasLightClient } from '@dotli/config';
-import { readArchiveFiles } from '@dotli/content';
-import { blockCache } from '@dotli/storage';
 import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
+import { getCacheSettings } from '@dotli/config';
+import { blockCache } from '@dotli/storage';
 import { hostBitswapClient } from '../chains/index.js';
 import { productFrameLayout, type ProductFrameLayout } from '../page/index.js';
+import { readServedArchive } from '../productLoad/index.js';
 import { topbarState } from '../page/index.js';
 import { closeDebugMode } from '../debug/index.js';
 import { authControl } from '../account/index.js';
@@ -31,9 +31,7 @@ export function createDebugPanelHost({ layout }: Params): DebugPanelHost {
     walletMode: walletModeState.store,
     walletSwitch: { importPhrase: authControl.importPhrase, usePolkadotApp: authControl.logout },
     diagnostics: pageDiagnostics,
-    // The Archive tab reads what the sandbox was served: blocks on the light client, the gateway on rpc-gateway.
-    archive: cid =>
-      readArchiveFiles(cid, hasLightClient(getBackend()) ? { blockSource: relayBlock } : { gateway: true }),
+    archive: cid => readServedArchive(cid, hostBitswapClient, getCacheSettings().skipArchiveCache ? null : blockCache),
     contentInsets: { top: 'var(--content-top)', bottom: 'var(--content-bottom)' },
     topbarPresent: () => topbarState.get().present,
     reportDockInset(inset) {
@@ -45,8 +43,3 @@ export function createDebugPanelHost({ layout }: Params): DebugPanelHost {
 
 /** The page's, docked on the page's product frame layout. */
 export const debugPanelHost = createDebugPanelHost({ layout: productFrameLayout });
-
-/** As the sandbox relay serves blocks: from the block cache, else over bitswap. */
-async function relayBlock(cid: string): Promise<Uint8Array> {
-  return (await blockCache.get(cid)) ?? hostBitswapClient.get(cid);
-}
