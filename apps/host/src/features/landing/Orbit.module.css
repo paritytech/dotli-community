@@ -41,8 +41,9 @@
   initial-value: 0.2;
 }
 
-/* Where the pointer is in the viewport, from -1 at its left or top edge to 1 at its right or foot. Registered so the
-   floor glides to its new turn and tilt rather than jumping with every move. */
+/* The input's shift on each axis, from -1 at the viewport's left or top edge to 1 at its right or foot, as the
+   pointer's place or the phone's tilt gives it. Registered so the floor glides to its new turn and tilt rather than
+   jumping with every move. */
 @property --orbit-pointer-x {
   syntax: '<number>';
   inherits: false;
@@ -226,10 +227,10 @@
   --orbit-depth: 1920;
   /* Every line's width, rings and links alike. */
   --orbit-line: 1px;
-  /* The floor's tilt with the pointer at the viewport's middle, or with no mouse to follow. */
+  /* The floor's tilt with the shift at rest, or for a visitor who asks for less motion. */
   --orbit-rest-tilt: 80deg;
   --orbit-tilt: var(--orbit-rest-tilt);
-  /* How far the floor turns off its own clock with the pointer across the viewport, or with no mouse to follow. */
+  /* How far the floor turns off its own clock with the shift at rest, or for a visitor who asks for less motion. */
   --orbit-pointer-turn: 0deg;
   /* How far a dot or the centre stands off the floor toward the viewer, as a share of its size. The floor comes forward
      by half its size times the tilt's tangent across its lower half, so it stands that far off and half its size more,
@@ -264,11 +265,12 @@
   }
 }
 
-/* A mouse tips the floor a little back as it rises up the page and toward the viewer as it falls, and swings the
-   floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with y down, so a larger turn
-   carries the near side left, and a pointer to the right turns it the other way. Everything drawn on the floor reads the
-   one tilt and turn, so it moves as one piece. */
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+/* The pointer, or the phone's tilt, tips the floor a little back as the shift rises up the page and toward the viewer
+   as it falls, and swings the floor's near side after it across the page. A dot at angle a sits at cos(a), sin(a) with
+   y down, so a larger turn carries the near side left, and a shift to the right turns it the other way. Everything
+   drawn on the floor reads the one tilt and turn, so it moves as one piece. The shift stays at rest wherever no input
+   runs. */
+@media (prefers-reduced-motion: no-preference) {
   .orbit {
     --orbit-tilt: calc(var(--orbit-rest-tilt) - var(--orbit-pointer-y) * 3deg);
     --orbit-pointer-turn: calc(var(--orbit-pointer-x) * -12deg);

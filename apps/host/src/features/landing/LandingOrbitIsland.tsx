@@ -13,10 +13,10 @@ import { networkMonitorState } from '../network/index.js';
 import { settingsState } from '../settings/index.js';
 import { anchorOrbitLayout } from './anchorOrbitLayout.js';
 import { createLatestLimiter } from './createLatestLimiter.js';
-import { followPointer } from './followPointer.js';
 import { getOrbitLayout, type OrbitLayout, type OrbitMode } from './getOrbitLayout.js';
 import { LandingPartIsland } from './LandingPartIsland.js';
 import { Orbit } from './Orbit.js';
+import { pickOrbitFollower } from './pickOrbitFollower.js';
 
 /** What the orbit draws until boot sets the settings, the build render included. */
 const NO_PEERS: OrbitMode = { kind: 'lightClient', peers: 0 };
@@ -57,11 +57,15 @@ function BoundOrbit(): JSX.Element {
   );
   const [pointer, setPointer] = createSignal({ x: 0, y: 0 });
   onSettled(() => {
+    const follow = pickOrbitFollower();
+    if (follow === null) {
+      return;
+    }
     const limiter = createLatestLimiter({
       perSecond: 15,
       onValue: (shift: { x: number; y: number }) => setPointer(shift),
     });
-    const stopFollowing = followPointer({ onShift: limiter.push });
+    const stopFollowing = follow({ onShift: limiter.push });
     return () => {
       stopFollowing();
       limiter.stop();
