@@ -77,8 +77,9 @@
   }
   /* Staged, the bar sits in the band the page opens above its cards, so it drops its glass: nothing of it shows but its
      content on the dark page. Only top and the look change, so the morph and the Safari branch below carry over. */
+  /* Centred in the gap above the cards, which is the bar's height and an inset under it. */
   :global([data-staged]) .topbar {
-    top: var(--safe-top);
+    top: calc(var(--sp-1) + var(--safe-top));
   }
   :global([data-staged]) .topbar,
   :global([data-staged]) .topbar::before {
