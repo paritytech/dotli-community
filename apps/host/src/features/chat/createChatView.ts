@@ -32,7 +32,15 @@ export type ChatViewRepo = {
 export type ChatChange =
   | { kind: 'rooms'; productId: string }
   | { kind: 'bots'; productId: string }
-  | { kind: 'message'; productId: string; roomId: string; author: 'product' | 'user' };
+  | { kind: 'message'; productId: string; roomId: string; author: 'user' }
+  | {
+      kind: 'message';
+      productId: string;
+      roomId: string;
+      author: 'product';
+      /** Whether `roomId` is one of the product's rooms, rather than a conversation no list shows, such as a bot's. */
+      inRoom: boolean;
+    };
 
 /** What the open panel shows. */
 export type ChatFollow = {
@@ -182,10 +190,6 @@ export function createChatView({ repo }: Params) {
         changed(state, { change }, transition) {
           const { follow } = state;
           if (change.productId !== follow.productId) {
-            return;
-          }
-          // A bot is stored but never shown, so its registration changes nothing on screen.
-          if (change.kind === 'bots') {
             return;
           }
           if (change.kind !== 'message' || follow.roomId === null) {

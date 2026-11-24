@@ -44,6 +44,8 @@ export type ChatRepo = ChatViewRepo & {
   setRoomFooter(params: SetRoomFooterParams): Promise<boolean>;
   /** Answers TrUAPI `ChatBotRegistrationStatus`. A re-registration refreshes the name and icon. */
   registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'>;
+  /** Whether the product has a room with this id. */
+  hasRoom(productId: string, roomId: string): Promise<boolean>;
   /** Resolves the message's `seq` once it is stored. */
   appendMessage(message: Omit<ChatMessageRecord, 'seq'>): Promise<number>;
 };
@@ -175,9 +177,13 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       return status;
     },
 
-    /** Stores the product's message and resolves its new id. Rejects when the repo fails. */
+    /**
+     * Stores the product's message and resolves its new id. Its change says whether it landed in one of the product's
+     * rooms. Rejects when the repo fails.
+     */
     async postProductMessage({ productId, roomId, content }: PostProductMessageParams): Promise<string> {
       const messageId = createRandomId();
+      const inRoom = await repo.hasRoom(productId, roomId);
       await repo.appendMessage({
         productId,
         roomId,
@@ -186,7 +192,7 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
         content,
         timestamp: timers.now(),
       });
-      notify({ kind: 'message', productId, roomId, author: 'product' });
+      notify({ kind: 'message', productId, roomId, author: 'product', inRoom });
       return messageId;
     },
 
@@ -309,6 +315,7 @@ export const chatStore = createChatStore({
     createRoom: chat.createRoom,
     setRoomFooter: chat.setRoomFooter,
     registerBot: chat.registerBot,
+    hasRoom: hasStoredRoom,
     appendMessage: chat.appendMessage,
     listRooms: chat.listRooms,
     readLatestMessageTimestamps: chat.getLatestMessageTimestamps,
@@ -316,3 +323,7 @@ export const chatStore = createChatStore({
   },
   connections: chatConnections,
 });
+
+async function hasStoredRoom(productId: string, roomId: string): Promise<boolean> {
+  return (await chat.listRooms(productId)).some(room => room.roomId === roomId);
+}

@@ -104,7 +104,7 @@ export const chatPanelState = {
    * Follows the session, the product on show, the chat connections registered for it and its chat until the returned
    * stop. The chat is followed from once its store has loaded, which reads whether the product has a room, and again
    * for each product loaded and each connection registered after. A call while the follows run joins them and ignores
-   * its params, and they end with the last caller's stop. Never throws.
+   * its params, and they end with the last caller's stop.
    */
   start,
   /** Returns the panel's element, or undefined when none is handed over. Never throws. */
@@ -326,7 +326,6 @@ function followChat(change: ChatChange): void {
       }
       return;
     case 'bots':
-      // A bot is stored but never shown, so it does not make the product have contacts.
       return;
     case 'message':
       countUnreadMessage(change);
@@ -337,6 +336,10 @@ function followChat(change: ChatChange): void {
 function countUnreadMessage(change: Extract<ChatChange, { kind: 'message' }>): void {
   const state = panel.get();
   if (change.author !== 'product' || change.productId !== state.runtimeProductId) {
+    return;
+  }
+  // A conversation outside the rooms has no row the user could open to clear its count.
+  if (!change.inRoom) {
     return;
   }
   if (state.open && state.activeRoomId === change.roomId) {

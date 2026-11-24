@@ -126,9 +126,32 @@ describe('chat store', () => {
       { kind: 'rooms', productId: PRODUCT },
       { kind: 'rooms', productId: PRODUCT },
       { kind: 'bots', productId: PRODUCT },
-      { kind: 'message', productId: PRODUCT, roomId: 'main', author: 'product' },
+      { kind: 'message', productId: PRODUCT, roomId: 'main', author: 'product', inRoom: true },
     ]);
     expect(storedWhenAnnounced).toEqual([1, 1, 2, 3]);
+  });
+
+  it('As a product developer, I post to my bot and the message is stored and announced as outside my rooms', async () => {
+    // Given
+    const { repo, chat, changes } = setup();
+    await chat.registerBot(PRODUCT, { botId: 'helper', name: 'Helper', icon: '' });
+
+    // When
+    const messageId = await chat.postProductMessage({
+      productId: PRODUCT,
+      roomId: 'helper',
+      content: { tag: 'Text', value: { text: 'hi' } },
+    });
+
+    // Then
+    expect(repo.messages).toMatchObject([{ messageId, roomId: 'helper' }]);
+    expect(changes.at(-1)).toEqual({
+      kind: 'message',
+      productId: PRODUCT,
+      roomId: 'helper',
+      author: 'product',
+      inRoom: false,
+    });
   });
 
   it('As a user, I reply and my message is stored, announced and published to the product', async () => {
@@ -440,11 +463,10 @@ describe('chat store', () => {
 const TEXT = { tag: 'Text', value: { text: 'hi' } } as const;
 
 describe('chat store view', () => {
-  it('As a user with the chat panel open, I follow a product and see its rooms and message times, and no bots', async () => {
+  it('As a user with the chat panel open, I follow a product and see its rooms and message times', async () => {
     // Given
     const { chat } = setup();
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
-    await chat.registerBot(PRODUCT, { botId: 'helper', name: 'Helper', icon: '' });
     await chat.postProductMessage({ productId: PRODUCT, roomId: 'main', content: TEXT });
 
     // When

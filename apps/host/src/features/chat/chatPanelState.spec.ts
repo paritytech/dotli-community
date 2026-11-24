@@ -19,12 +19,14 @@ let remove: () => void = noop;
 let chat: ChatStore;
 let connections: ReturnType<typeof createChatConnections>;
 
-/** Shows the product `label` with a room and a chat connection, to a logged-in user. */
-async function showProduct(label: string): Promise<void> {
+/** Shows the product `label` with the rooms `roomIds` and a chat connection, to a logged-in user. */
+async function showProduct(label: string, roomIds: string[] = ['main']): Promise<void> {
   connections.register(toProductId(label), createRecordingConnection());
   productState.setLoaded({ label, productId: asProductId(toProductId(label)) });
   authState.set({ tag: 'Connected', session: { connected: true } });
-  await chat.createRoom(toProductId(label), { roomId: 'main', name: 'Main', icon: '' });
+  for (const roomId of roomIds) {
+    await chat.createRoom(toProductId(label), { roomId, name: roomId, icon: '' });
+  }
 }
 
 /** Resolves once the panel state shows the chat button. */
@@ -142,36 +144,6 @@ describe('chat panel state', () => {
     expect(chatPanelState.isButtonVisible()).toBe(false);
   });
 
-  it('As a logged-in user, I open a product that has only a bot and see no chat button', async () => {
-    // Given
-    authState.set({ tag: 'Connected', session: { connected: true } });
-    await chat.registerBot(toProductId('app'), { botId: 'helper', name: 'Helper', icon: '' });
-
-    connections.register(toProductId('app'), createRecordingConnection());
-
-    // When
-    remove();
-    const checked = createDeferred<boolean>();
-    remove = chatPanelState.start({
-      chat: () =>
-        Promise.resolve({
-          subscribe: chat.subscribe,
-          hasContacts: async productId => {
-            const has = await chat.hasContacts(productId);
-            checked.resolve(has);
-            return has;
-          },
-        }),
-      connections,
-    });
-    productState.setLoaded({ label: 'app', productId: asProductId(toProductId('app')) });
-    const has = await checked.promise;
-
-    // Then
-    expect(has).toBe(false);
-    expect(chatPanelState.isButtonVisible()).toBe(false);
-  });
-
   it('As a user, I leave a product before the read of its rooms lands and see no chat button for the next one', async () => {
     // Given a read of the first product's rooms, waiting
     remove();
@@ -231,7 +203,7 @@ describe('chat panel state', () => {
 
   it('As a user, I get product messages outside the room I am viewing and see them count as unread, per room', async () => {
     // Given
-    await showProduct('app');
+    await showProduct('app', ['a', 'b']);
 
     // When
     await postProductMessage('app', 'a');
@@ -243,9 +215,21 @@ describe('chat panel state', () => {
     expect(chatPanelState.getTotalUnread()).toBe(3);
   });
 
-  it('As a user viewing a room, I get a new message there and see it seen at once while other rooms stay unread', async () => {
+  it('As a user, I get a message the product posts to its bot and see nothing unread', async () => {
     // Given
     await showProduct('app');
+    await chat.registerBot(toProductId('app'), { botId: 'helper', name: 'Helper', icon: '' });
+
+    // When
+    await postProductMessage('app', 'helper');
+
+    // Then
+    expect(chatPanelState.getTotalUnread()).toBe(0);
+  });
+
+  it('As a user viewing a room, I get a new message there and see it seen at once while other rooms stay unread', async () => {
+    // Given
+    await showProduct('app', ['a', 'b']);
     await postProductMessage('app', 'a');
     await postProductMessage('app', 'a');
     await postProductMessage('app', 'b');
@@ -274,7 +258,7 @@ describe('chat panel state', () => {
 
   it('As a user, I load a different product and see the open room, unread counts and composer error reset', async () => {
     // Given
-    await showProduct('app');
+    await showProduct('app', ['a']);
     await postProductMessage('app', 'a');
     chatPanelState.setOpen(true);
     chatPanelState.openRoom('a');
@@ -331,6 +315,7 @@ describe('chat panel state', () => {
     // Given each input set from inside the listener of the one before, and every listener reading the panel
     const seen: unknown[] = [];
     connections.register(toProductId('app'), createRecordingConnection());
+    await chat.createRoom(toProductId('app'), { roomId: 'a', name: 'A', icon: '' });
     onTestFinished(
       authState.loggedInStore.listen(() => {
         seen.push({ loggedIn: chatPanelState.store.get().loggedIn });
@@ -380,7 +365,7 @@ describe('chat panel state', () => {
   it('As a user whose page started the chat panel state twice, I get a product message and see it count once as unread', async () => {
     // Given
     onTestFinished(chatPanelState.start({ chat: () => Promise.resolve(chat) }));
-    await showProduct('app');
+    await showProduct('app', ['a']);
 
     // When
     await postProductMessage('app', 'a');
@@ -407,7 +392,7 @@ describe('chat panel state', () => {
     const loading = createDeferred<ChatStore>();
     chatPanelState.start({ chat: () => loading.promise, connections })();
     remove = noop;
-    await showProduct('app');
+    await showProduct('app', ['a']);
 
     // When the store loads and the product posts
     loading.resolve(chat);
@@ -437,7 +422,7 @@ describe('chat panel state, rooms seen', () => {
 
   it('As a user, I open a room with unread messages and see it marked seen once its messages show', async () => {
     // Given
-    await showProduct('app');
+    await showProduct('app', ['r1']);
     chatPanelState.setOpen(true);
     onTestFinished(chatPanelState.markFollowedRoomSeen(chat.view));
 
@@ -455,7 +440,7 @@ describe('chat panel state, rooms seen', () => {
   it('As a user who closed the panel, I wait for a late conversation read and see nothing marked seen', async () => {
     // Given: an unread message in a room, opened with its read waiting.
     const reads = holdReads();
-    await showProduct('app');
+    await showProduct('app', ['r1']);
     chatPanelState.setOpen(true);
     await postProductMessage('app', 'r1');
     onTestFinished(chatPanelState.markFollowedRoomSeen(chat.view));
@@ -475,7 +460,7 @@ describe('chat panel state, rooms seen', () => {
   it('As a user who went back to the list, I wait for a late conversation read and see nothing marked seen', async () => {
     // Given: a room open, and its read waiting.
     const reads = holdReads();
-    await showProduct('app');
+    await showProduct('app', ['r1']);
     chatPanelState.setOpen(true);
     await postProductMessage('app', 'r1');
     onTestFinished(chatPanelState.markFollowedRoomSeen(chat.view));

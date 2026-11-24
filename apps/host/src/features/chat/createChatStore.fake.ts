@@ -114,6 +114,9 @@ export function createMemoryChatRepo(): ChatRepo & {
       repo.bots.push({ ...bot, createdAt: (clock += 1) });
       return Promise.resolve('New');
     },
+    hasRoom(productId: string, roomId: string): Promise<boolean> {
+      return Promise.resolve(repo.rooms.some(r => r.productId === productId && r.roomId === roomId));
+    },
     appendMessage(message: Omit<ChatMessageRecord, 'seq'>): Promise<number> {
       const seq = repo.messages.length + 1;
       repo.messages.push({ ...message, seq });

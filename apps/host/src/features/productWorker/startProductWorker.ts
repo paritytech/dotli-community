@@ -59,7 +59,7 @@ export type ProductWorkerParams = {
   startVm: (params: Omit<QuickJsWorkerParams, 'createWorker'>) => QuickJsWorker;
   /**
    * Serves the page's chat on a run's connection, with the files the run read, until the returned stop. Called only
-   * for an executable that declares chat. Never throws.
+   * for an executable that declares chat.
    */
   serveChat: (connection: CoreConnection, files: ModuleFiles) => () => void;
   /** The clock the wire's debug events are stamped with. The page's own by default. */
