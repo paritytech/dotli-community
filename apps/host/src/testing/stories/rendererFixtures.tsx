@@ -7,6 +7,7 @@
 import { createSignal, For, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Modifier, RendererNode } from '@parity/truapi';
+import { createJSXDecorator } from 'storybook-solidjs-vite';
 import { CustomNode } from '../../features/chat/renderer/CustomNode.js';
 import type { CustomActionHandler, CustomImageLoad, KindValue } from '../../features/chat/renderer/types.js';
 import { ChatSurface } from './chatFrames.js';
@@ -38,6 +39,13 @@ export function TreeFrame(props: { children: JSX.Element }): JSX.Element {
     </ChatSurface>
   );
 }
+
+/** A story's node on the chat panel's surface, in a custom message's type. */
+export const inTreeFrame = createJSXDecorator(Story => (
+  <TreeFrame>
+    <Story />
+  </TreeFrame>
+));
 
 /** Nodes side by side on the chat panel's surface, each over a caption that names what it shows. */
 export function Gallery(props: { items: { caption: string; node: JSX.Element }[]; columns: number }): JSX.Element {

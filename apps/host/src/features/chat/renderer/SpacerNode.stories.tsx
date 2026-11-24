@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { frame, TreeFrame } from '../../../testing/stories/rendererFixtures.js';
+import { frame, inTreeFrame } from '../../../testing/stories/rendererFixtures.js';
 import { RowNode } from './RowNode.js';
 import { SpacerNode } from './SpacerNode.js';
 import { TextNode } from './TextNode.js';
@@ -12,14 +12,14 @@ const meta = {
   component: SpacerNode,
   parameters: { chrome: true },
   args: { value: { modifiers: [] } },
+  decorators: [inTreeFrame],
+  // A spacer shows only by what it pushes apart in the row around it.
   render: args => (
-    <TreeFrame>
-      <RowNode value={{ modifiers: frame(40), props: { verticalAlignment: 'Center' } }}>
-        <TextNode value={{ modifiers: [], props: {} }}>Subtotal</TextNode>
-        <SpacerNode {...args} />
-        <TextNode value={{ modifiers: [], props: {} }}>$38.00</TextNode>
-      </RowNode>
-    </TreeFrame>
+    <RowNode value={{ modifiers: frame(40), props: { verticalAlignment: 'Center' } }}>
+      <TextNode value={{ modifiers: [], props: {} }}>Subtotal</TextNode>
+      <SpacerNode {...args} />
+      <TextNode value={{ modifiers: [], props: {} }}>$38.00</TextNode>
+    </RowNode>
   ),
 } satisfies Meta<typeof SpacerNode>;
 
