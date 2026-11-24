@@ -29,7 +29,7 @@
   }
   /* Global, since a module scopes ids as it does classes. */
   .page[data-staged]:has(:global(#topbar[data-hidden])) {
-    --content-top: calc(var(--sp-3) + var(--safe-top));
+    --content-top: calc(var(--sp-1) + var(--safe-top));
   }
 }
 

@@ -90,7 +90,7 @@
   }
   /* Centred in the thin strip the band shrinks to. */
   :global([data-staged]) .topbar[data-hidden] {
-    top: calc(var(--sp-1_5) + var(--safe-top));
+    top: calc(var(--sp-hair) + var(--safe-top));
   }
   /* Without interpolate-size, as in Safari, a width can't animate to fit-content. There the width always follows the
      content and the cap animates instead. The cap opens towards 95vw, past the content, so it opens linearly, or it
