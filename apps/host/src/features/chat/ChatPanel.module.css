@@ -188,6 +188,10 @@
   font-size: var(--fs-title);
   line-height: var(--lh-tight);
 }
+/* The pill takes the ring, so the page's own focus outline stays off the field too. */
+.input:focus-visible {
+  outline: none;
+}
 .input::placeholder {
   color: var(--chat-fg-placeholder);
 }
