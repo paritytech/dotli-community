@@ -1,199 +1,184 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/* eslint-disable no-restricted-properties -- Predates the story contract: its plays still assert copy. */
-
+import { createSignal, onCleanup, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
 import type { ChatMessageContent } from '@parity/truapi';
-import type { Meta, StoryObj } from 'storybook-solidjs-vite';
+import { createJSXDecorator, type Meta, type StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { appears, byId, byTestId } from '@dotli/ui/testing';
-import { ChatOnPage } from '../../testing/stories/chatFrames.js';
-import { type ChatStage, chatStage, seedEveryKind, seedShop } from '../../testing/stories/chatFixtures.js';
+import { Drawer } from '@dotli/ui';
+import { byId } from '@dotli/ui/testing';
+import {
+  type ChatSeed,
+  type ChatStage,
+  chatStage,
+  everyKindIn,
+  SHOP_CHAT,
+  type StoryMessage,
+} from '../../testing/stories/chatFixtures.js';
+import type { ChatRoom } from './chat.js';
 import { ChatPanel } from './ChatPanel.js';
 
-// The panel in the drawer it lives in, open as the page shows it.
-
-/** The story's chat with the drawer open, fresh for each. */
-let stage: ChatStage = chatStage({ open: true });
-
-function textOf(text: string): ChatMessageContent {
-  return { tag: 'Text', value: { text } };
-}
+/** The chat of the story on show, which its panel built from the args. */
+let stage: ChatStage = chatStage();
 
 const LONG = 'A message long enough to take a few lines in the panel.';
-const FORTY = Array.from({ length: 40 }, (_, i) => textOf(`${String(i + 1)}. ${LONG}`));
+
+/** One room the courier writes in, yesterday and today. */
+const COURIER: ChatSeed = {
+  rooms: [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }],
+  bots: [],
+  messages: [
+    say('courier', 'I am two streets away.', 24 * 60),
+    say('courier', 'Is the gate open?', 24 * 60),
+    { ...say('courier', 'Code is 4521', 0), author: 'user' },
+  ],
+  unreadByRoom: {},
+};
+
+/** One room of forty messages a second apart up to now, so its conversation scrolls. */
+const LONG_ROOM: ChatSeed = {
+  rooms: rooms(1),
+  bots: [],
+  messages: Array.from({ length: 40 }, (_, i) => say('r0', `${String(i + 1)}. ${LONG}`, (40 - i) / 60)),
+  unreadByRoom: {},
+};
 
 // The drawer renders into the body, outside the story's canvas.
 const body = within(document.body);
 
+// In the drawer the page opens the panel in, filled as the page's dock fills it, with a close button a play can press.
+const inDrawer = createJSXDecorator(Story => {
+  const [open, setOpen] = createSignal(true);
+  return (
+    <Drawer open={open()} onOpenChange={setOpen} title="Market" testId="chat-panel">
+      <div
+        style={{
+          display: 'flex',
+          'flex-direction': 'column',
+          'box-sizing': 'border-box',
+          height: '100%',
+          background: 'var(--chat-bg-surface-main)',
+          'color-scheme': 'dark',
+        }}
+      >
+        <Story />
+      </div>
+    </Drawer>
+  );
+});
+
 const meta = {
   title: 'Host/Chat/ChatPanel',
-  component: ChatPanel,
-  args: { conversation: stage.conversation },
+  component: StoryChatPanel,
+  args: SHOP_CHAT,
   parameters: { chrome: true },
   // The drawer covers the page it opens on, so it has no docs block.
   tags: ['!autodocs'],
-  beforeEach: () => {
-    stage = chatStage({ open: true });
-    return stage.dispose;
-  },
-  render: () => <ChatOnPage stage={stage} />,
-} satisfies Meta<typeof ChatPanel>;
+  decorators: [inDrawer],
+} satisfies Meta<typeof StoryChatPanel>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function at<T>(list: readonly T[], index: number): T {
-  const item = list[index];
-  if (item === undefined) {
-    throw new Error(`Nothing at ${String(index)}`);
-  }
-  return item;
-}
+/** As a user of a product with several rooms, I see their list, with each room's kind, time and unread. */
+export const Default: Story = {};
 
-/** The conversation, once the panel's code has loaded. */
-function conversation(): Promise<HTMLElement> {
-  return appears('#chat-panel-messages');
-}
-
-/** Scroll room left below the reader. */
-function belowView(list: HTMLElement): number {
-  return list.scrollHeight - list.scrollTop - list.clientHeight;
-}
-
-/** Scrolls the conversation as a reader would, and waits for the panel to hear it. */
-async function scrollTo(list: HTMLElement, top: number): Promise<void> {
-  const heard = new Promise(resolve => {
-    list.addEventListener('scroll', resolve, { once: true });
-  });
-  list.scrollTop = top;
-  await heard;
-}
-
-function rows(): HTMLElement[] {
-  return body.queryAllByTestId('chat-room-item');
-}
-
-/** The room's row, once the list shows it. */
-async function findRow(name: string): Promise<HTMLElement> {
-  let found: HTMLElement | undefined;
-  await waitFor(() => {
-    found = rows().find(row => within(row).getByTestId('chat-room-name').textContent === name);
-    return expect(found).toBeDefined();
-  });
-  if (found === undefined) {
-    throw new Error(`No row for ${name}`);
-  }
-  return found;
-}
-
-/** Opens a room by its row and waits for its conversation to show `count` messages at the newest one. */
-async function openRoom(name: string, count: number): Promise<HTMLElement> {
-  (await findRow(name)).click();
-  const list = await conversation();
-  await waitFor(() => expect(within(list).getAllByTestId('chat-msg')).toHaveLength(count));
-  await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
-  return list;
-}
-
-/** As a user of a product with one room, I see the drawer open on its conversation, with every kind of message. */
+/**
+ * As a user of a product with one room, I see the drawer open on its conversation, with every kind of message and one
+ * kind the page does not know.
+ */
 export const OneRoom: Story = {
-  beforeEach: () => {
-    stage.rooms = [{ roomId: 'market', name: 'Market', icon: '', createdAt: 0 }];
-    seedEveryKind(stage, 'market');
+  args: {
+    rooms: [{ roomId: 'market', name: 'Market', icon: '', createdAt: 0 }],
+    bots: [],
+    messages: everyKindIn('market'),
+    unreadByRoom: {},
   },
 };
 
-/** As a user of a product with several rooms, I see their list, with each room's kind, time and unread. */
-export const Rooms: Story = {
-  beforeEach: () => {
-    seedShop(stage);
-  },
+/** As a reader of a conversation over two days, I see each day named above its first message. */
+export const DaysDivided: Story = {
+  args: COURIER,
 };
 
 /** As a user, I see the chat loading before its rooms are read. */
-export const RoomsLoading: Story = {
-  beforeEach: () => {
-    stage.readsHeld = true;
-  },
+export const Loading: Story = {
+  args: { readsHeld: true },
+};
+
+/** As a user of a product that has started no chat, I am told the app has not started one yet. */
+export const NoRooms: Story = {
+  args: { rooms: [], bots: [], messages: [], unreadByRoom: {} },
 };
 
 /** As a logged-out user, I am told chat opens once I log in. */
 export const LoggedOut: Story = {
-  beforeEach: () => {
-    stage.update({ loggedIn: false });
-  },
+  args: { ...NoRooms.args, loggedIn: false },
 };
-
-/** As a user of a product that has started no chat, I am told the app has not started one yet. */
-export const NoRooms: Story = {};
 
 /** As a user, I am told when the room list cannot be read. */
 export const RoomsFailed: Story = {
-  beforeEach: () => {
-    stage.contactsFail = true;
-  },
+  args: { contactsFail: true },
 };
 
 /** As a user, I see a room with no messages say so. */
 export const NoMessages: Story = {
-  beforeEach: () => {
-    seedShop(stage);
-    stage.rooms = [...stage.rooms, { roomId: 'returns', name: 'Returns', icon: '', createdAt: 0 }];
-    stage.update({ activeRoomId: 'returns' });
+  args: {
+    rooms: [...(SHOP_CHAT.rooms ?? []), { roomId: 'returns', name: 'Returns', icon: '', createdAt: 0 }],
+    activeRoomId: 'returns',
   },
 };
 
 /** As a user whose message did not send, I am told so above the composer. */
 export const SendFailed: Story = {
-  beforeEach: () => {
-    seedShop(stage);
-    stage.update({ activeRoomId: 'courier', composerError: 'Message not sent. Try again.' });
+  args: { activeRoomId: 'courier', composerError: 'Message not sent. Try again.' },
+};
+
+/** As a user, I find a room the app keeps read only shows no message box. */
+export const ReadOnlyRoom: Story = {
+  args: { activeRoomId: 'promos' },
+  play: async ({ step }) => {
+    await step('Given the read-only room is open', async () => {
+      await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
+    });
+    await step('Then I find no message box', async () => {
+      await expect(body.queryByRole('textbox')).toBeNull();
+    });
   },
 };
 
-/**
- * As a user, I see a room opened from the list under a head that names it and the product, with a way back to the
- * list and what the other rooms hold unread.
- */
+/** As a user, I see a room opened from the list under a head that counts only the other rooms' unread. */
 export const RoomOpen: Story = {
-  beforeEach: () => {
-    seedShop(stage);
-    stage.update({ activeRoomId: 'orders' });
-  },
+  args: { activeRoomId: 'orders' },
   play: async ({ step }) => {
-    await step('Given the open room has unread messages of its own and one other room has one', async () => {
-      await waitFor(() => expect(byId('chat-panel-title')).toHaveTextContent('Market orders'));
+    // The count reaches assistive technology only through the image's name.
+    const otherUnread = (): HTMLElement | null => body.queryByRole('img', { name: /^\d+ / });
+    await step('Given the open room has two unread and one other room has one', async () => {
+      await waitFor(() => expect(otherUnread()).not.toBeNull());
     });
-    await step("Then the head names the product under the room and counts only the other room's unread", async () => {
-      await expect(byId('chat-panel-subtitle')).toHaveTextContent('Market · market.dot');
-      await expect(byId('chat-panel-other-unread')).toHaveTextContent('1');
-      await expect(byId('chat-panel-back')).toBeVisible();
+    await step("Then the head counts only the other room's one", async () => {
+      await expect(body.getByRole('img', { name: /^1 / })).toBeVisible();
     });
-    await step('When the other room is seen', () => {
+    await step('When the other room is seen, while the open one still has two', () => {
       stage.update({ unreadByRoom: { orders: 2 } });
     });
-    await step('Then the head shows no unread count', async () => {
-      await waitFor(() => expect(document.getElementById('chat-panel-other-unread')).toBeNull());
+    await step('Then the head counts nothing', async () => {
+      await waitFor(() => expect(otherUnread()).toBeNull());
     });
   },
 };
 
 /** As a user of a product with one room, I see Send wait for my text. */
 export const SendWaitsForText: Story = {
-  beforeEach: () => {
-    stage.rooms = [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }];
-    stage.say('courier', textOf('I am two streets away.'), { minutesAgo: 4 });
-    stage.say('courier', textOf('Is the gate open?'), { minutesAgo: 4 });
-    stage.say('courier', textOf('Code is 4521'), { minutesAgo: 0, author: 'user' });
-  },
+  args: COURIER,
   play: async ({ userEvent, step }) => {
     const send = await body.findByRole('button', { name: 'Send' });
     await step('Given the conversation with nothing typed, Send is off', async () => {
       await expect(send).toBeDisabled();
     });
     await step('When I type a message', async () => {
-      await userEvent.type(body.getByPlaceholderText('Message'), 'Thanks!');
+      await userEvent.type(body.getByRole('textbox'), 'Thanks!');
     });
     await step('Then Send is on', async () => {
       await expect(send).toBeEnabled();
@@ -201,92 +186,114 @@ export const SendWaitsForText: Story = {
   },
 };
 
-/** As a reader of a conversation over two days, I see each day named above its first message. */
-export const DaysDivided: Story = {
-  beforeEach: () => {
-    stage.rooms = [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }];
-    stage.say('courier', textOf('I am two streets away.'), { minutesAgo: 24 * 60 });
-    stage.say('courier', textOf('Is the gate open?'), { minutesAgo: 24 * 60 });
-    stage.say('courier', textOf('Code is 4521'), { minutesAgo: 0, author: 'user' });
-  },
-  play: async ({ step }) => {
-    const list = await conversation();
-    await step('Given the conversation shows', async () => {
-      await waitFor(() => expect(within(list).getAllByTestId('chat-msg')).toHaveLength(3));
+/** As a keyboard user, I open a room from the list and focus lands in its message box. */
+export const OpeningRoomFocusesComposer: Story = {
+  play: async ({ userEvent, step }) => {
+    await step('When I open the courier room from the list', async () => {
+      await userEvent.click(await body.findByRole('button', { name: /Courier/ }));
     });
-    await step('Then a divider opens each of its two days, the newest today', async () => {
-      const days = within(list).getAllByTestId('chat-day');
-      await expect(days).toHaveLength(2);
-      await expect(at(days, 1)).toHaveTextContent('Today');
-      await expect(at(days, 1).nextElementSibling).toHaveTextContent('Code is 4521');
+    await step('Then its message box has focus', async () => {
+      await waitFor(() => expect(body.getByRole('textbox')).toHaveFocus());
     });
   },
 };
 
-/** As a reader of a room whose app chose an empty footer, I see no message box and am told it is read only. */
-export const ReadOnlyRoomHasNoComposer: Story = {
-  beforeEach: () => {
-    stage.seed(2, [textOf('Read only')]);
-    stage.rooms = stage.rooms.map(room => (room.roomId === 'r0' ? { ...room, footer: 'Empty' } : room));
-  },
+/** As a user of a product with one room, I stay in its conversation when a second room appears, with a way back. */
+export const SecondRoomKeepsConversation: Story = {
+  args: COURIER,
   play: async ({ step }) => {
-    await step('Given a room whose app chose an empty footer', async () => {
-      await openRoom('Room 0', 1);
+    await step('Given the sole room shows with no way back to a list', async () => {
+      await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
+      await expect(body.queryByRole('button', { name: 'Back to rooms' })).toBeNull();
     });
-    await step('Then its conversation shows no message box and says it is read only', async () => {
-      await expect(body.getByPlaceholderText('Message')).not.toBeVisible();
-      await expect(byId('chat-panel-hint')).toHaveTextContent('This chat is read only.');
+    await step('When the app starts a second room', () => {
+      stage.createRoom('news', 'News');
+    });
+    await step('Then I stay in the conversation and can go back to the list', async () => {
+      await expect(await body.findByRole('button', { name: 'Back to rooms' })).toBeVisible();
+      await expect(body.getByRole('log', { name: 'Messages' })).toBeVisible();
     });
   },
 };
 
-/** As a reader, I am told when chat cannot be read and the notice goes once reads work again. */
-export const ReadFails: Story = {
-  beforeEach: () => {
-    stage.seed(3);
-    stage.contactsFail = true;
-  },
-  play: async ({ step }) => {
-    const hint = await appears('#chat-panel-hint');
-    await step('Given the room list cannot be read, the panel says so', async () => {
-      await waitFor(() => expect(hint).toBeVisible());
-      await expect(hint).toHaveTextContent('Chat could not be loaded');
+/** As a user whose reply was kept but could not reach the app, I see it stay in the conversation and am told so. */
+export const UndeliveredReplyStays: Story = {
+  args: { ...COURIER, sendError: new Error('the app is gone') },
+  play: async ({ userEvent, step }) => {
+    await step('When I send a reply the app cannot get', async () => {
+      await userEvent.type(await body.findByRole('textbox'), 'again{Enter}');
     });
-    await step('When reads work again and the app posts a message, the hint goes', async () => {
+    await step('Then it stays in the conversation and the panel tells me', async () => {
+      await waitFor(() => expect(messages()).toHaveLength(4));
+      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible());
+    });
+  },
+};
+
+/** As a user whose reply could not be kept, such as with no live connection or a failed store, I keep my text. */
+export const UnkeptReplyKeepsText: Story = {
+  args: { ...COURIER, refuseError: new Error('IndexedDB is gone') },
+  play: async ({ userEvent, step }) => {
+    const input = await body.findByRole('textbox');
+    await step('When I send a reply that cannot be kept', async () => {
+      await userEvent.type(input, 'hello{Enter}');
+    });
+    await step('Then my text is back in the message box and the conversation has no new message', async () => {
+      await waitFor(() => expect(input).toHaveValue('hello'));
+      await expect(messages()).toHaveLength(3);
+    });
+  },
+};
+
+/** As a user, I see the rooms once the list can be read again, and the notice that it could not goes. */
+export const RoomListRecovers: Story = {
+  args: { contactsFail: true },
+  play: async ({ step }) => {
+    await step('Given the room list cannot be read', async () => {
+      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible());
+    });
+    await step('When reads work again and the app posts a message', () => {
       stage.contactsFail = false;
-      stage.productSays('r1', 'hello');
-      await findRow('Room 1');
-      await expect(hint).not.toBeVisible();
+      stage.productSays('courier', 'back');
     });
-    await step('When a conversation cannot be read, the panel says so', async () => {
-      stage.messagesFail = true;
-      (await findRow('Room 0')).click();
-      await waitFor(() => expect(hint).toBeVisible());
-      await expect(hint).toHaveTextContent('Chat could not be loaded.');
+    await step('Then the rooms show and the notice goes', async () => {
+      await expect(await body.findByRole('list', { name: 'Chat rooms' })).toBeVisible();
+      await expect(byId('chat-panel-hint')).not.toBeVisible();
     });
-    await step('When it can be read again and a message arrives, the hint goes', async () => {
+  },
+};
+
+/** As a reader, I see the conversation once it can be read again, and the notice that it could not goes. */
+export const ConversationRecovers: Story = {
+  args: { ...COURIER, messagesFail: true },
+  play: async ({ step }) => {
+    await step('Given the conversation cannot be read', async () => {
+      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible());
+    });
+    await step('When reads work again and a message arrives', () => {
       stage.messagesFail = false;
-      stage.productSays('r0', 'back');
-      await waitFor(() => expect(hint).not.toBeVisible());
-      await expect(within(await conversation()).getAllByTestId('chat-msg')).toHaveLength(1);
+      stage.productSays('courier', 'back');
+    });
+    await step('Then its messages show and the notice goes', async () => {
+      await waitFor(() => expect(messages()).toHaveLength(4));
+      await expect(byId('chat-panel-hint')).not.toBeVisible();
     });
   },
 };
 
 /** As a keyboard user, I keep my focus on a room row when a new message moves it to the top. */
 export const MovedRowKeepsFocus: Story = {
-  beforeEach: () => {
-    stage.seed(5);
-  },
+  args: { rooms: rooms(5), bots: [], messages: [], unreadByRoom: {} },
   play: async ({ step }) => {
-    const oldest = await findRow('Room 0');
+    const rows = (): HTMLElement[] => within(body.getByRole('list', { name: 'Chat rooms' })).getAllByRole('button');
+    const oldest = await body.findByRole('button', { name: /Room 0/ });
     await step('Given focus is on the oldest room, last in the list', async () => {
-      await expect(at(rows(), 4)).toBe(oldest);
+      await waitFor(() => expect(rows().at(-1)).toBe(oldest));
       oldest.focus();
     });
     await step('When a message makes that room the most recent', async () => {
       stage.productSays('r0', 'news');
-      await waitFor(() => expect(at(rows(), 0)).toBe(oldest));
+      await waitFor(() => expect(rows()[0]).toBe(oldest));
     });
     await step('Then my focus is still on its row', async () => {
       await expect(oldest).toHaveFocus();
@@ -296,25 +303,29 @@ export const MovedRowKeepsFocus: Story = {
 
 /** As a reader at the newest message, I stay there when a custom message grows late. */
 export const LateCustomRenderStaysAtBottom: Story = {
-  beforeEach: () => {
-    stage.seed(3, [...FORTY.slice(1), { tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }]);
+  args: {
+    ...LONG_ROOM,
+    messages: [
+      ...(LONG_ROOM.messages ?? []).slice(1),
+      { roomId: 'r0', content: { tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }, minutesAgo: 0 },
+    ],
   },
   play: async ({ step }) => {
-    let list = await conversation();
+    const list = await atNewest();
     await step('Given I am at the newest message, a custom one waiting for its tree', async () => {
-      list = await openRoom('Room 0', 40);
       await waitFor(() => expect(stage.renders).toHaveLength(1));
     });
     await step('When its tree arrives and makes the conversation taller', async () => {
-      at(stage.renders, 0).sink.onUpdate({
-        tag: 'Box',
-        value: {
-          modifiers: [{ tag: 'Height', value: 300 }],
-          props: {},
-          children: [{ tag: 'String', value: { text: 'Poll' } }],
-        },
+      await resized(thread(list), () => {
+        stage.renders[0]?.sink.onUpdate({
+          tag: 'Box',
+          value: {
+            modifiers: [{ tag: 'Height', value: 300 }],
+            props: {},
+            children: [{ tag: 'String', value: { text: 'Poll' } }],
+          },
+        });
       });
-      await waitFor(() => expect(list).toHaveTextContent('Poll'));
     });
     await step('Then I stay at the newest message', async () => {
       await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
@@ -322,39 +333,13 @@ export const LateCustomRenderStaysAtBottom: Story = {
   },
 };
 
-/**
- * Resolves once a ResizeObserver made after the panel's sees `el` change size, so the panel's own observer has run.
- */
-function resized(el: HTMLElement, change: () => void): Promise<void> {
-  const before = el.getBoundingClientRect();
-  return new Promise(resolve => {
-    const observer = new ResizeObserver(([entry]) => {
-      const now = entry?.contentRect;
-      if (now !== undefined && (now.width !== before.width || now.height !== before.height)) {
-        observer.disconnect();
-        resolve();
-      }
-    });
-    observer.observe(el);
-    change();
-  });
-}
-
-/**
- * As a reader at the newest message, I stay there when the panel is resized, and stay off the bottom if I had scrolled
- * up.
- */
+/** As a reader at the newest message, I stay there when the panel gets shorter or narrower. */
 export const ResizingKeepsMeAtBottom: Story = {
-  beforeEach: () => {
-    stage.seed(3, FORTY);
-  },
+  args: LONG_ROOM,
   play: async ({ step }) => {
-    let list = await conversation();
+    const list = await atNewest();
     // The drawer's panel, which the window sizes on the page.
-    const drawer = byTestId('chat-panel');
-    await step('Given I am at the newest message', async () => {
-      list = await openRoom('Room 0', 40);
-    });
+    const drawer = body.getByTestId('chat-panel');
     await step('When the panel gets shorter, I stay at the newest message', async () => {
       await resized(list, () => {
         drawer.style.marginBottom = '200px';
@@ -362,16 +347,29 @@ export const ResizingKeepsMeAtBottom: Story = {
       await expect(belowView(list)).toBeLessThanOrEqual(1);
     });
     await step('When the panel gets narrower and the messages wrap taller, I stay at the newest message', async () => {
-      await resized(within(list).getByTestId('chat-panel-thread'), () => {
+      await resized(thread(list), () => {
         drawer.style.width = '240px';
       });
       await expect(belowView(list)).toBeLessThanOrEqual(1);
     });
-    await step('When I scroll up and the panel widens, I stay off the bottom', async () => {
+  },
+};
+
+/** As a reader who scrolled up, I stay where I am when the panel is resized. */
+export const ResizingLeavesMeScrolledUp: Story = {
+  args: LONG_ROOM,
+  play: async ({ step }) => {
+    const list = await atNewest();
+    const drawer = body.getByTestId('chat-panel');
+    await step('Given I scrolled up the conversation', async () => {
       await scrollTo(list, 100);
-      await resized(within(list).getByTestId('chat-panel-thread'), () => {
-        drawer.style.width = '360px';
+    });
+    await step('When the panel gets narrower and the messages wrap taller', async () => {
+      await resized(thread(list), () => {
+        drawer.style.width = '240px';
       });
+    });
+    await step('Then I stay off the newest message', async () => {
       await expect(belowView(list)).toBeGreaterThan(24);
     });
   },
@@ -379,16 +377,11 @@ export const ResizingKeepsMeAtBottom: Story = {
 
 /** As a reader, I close the panel and its watch on the conversation's size stops with it. */
 export const ClosingStopsTheSizeWatch: Story = {
-  beforeEach: () => {
-    stage.seed(3, FORTY);
-  },
-  play: async ({ canvasElement, step }) => {
-    let list = await conversation();
-    await step('Given I am at the newest message', async () => {
-      list = await openRoom('Room 0', 40);
-    });
-    await step('When the panel closes', async () => {
-      stage.update({ open: false });
+  args: LONG_ROOM,
+  play: async ({ canvasElement, userEvent, step }) => {
+    const list = await atNewest();
+    await step('When I close the panel', async () => {
+      await userEvent.click(body.getByRole('button', { name: /^Close/ }));
       await waitFor(() => expect(list.isConnected).toBe(false));
     });
     await step(
@@ -409,21 +402,93 @@ export const ClosingStopsTheSizeWatch: Story = {
 
 /** As a reader who scrolled up, I am brought to my own message when I send it. */
 export const SendingBringsMeToMine: Story = {
-  beforeEach: () => {
-    stage.seed(3, FORTY);
-  },
+  args: LONG_ROOM,
   play: async ({ userEvent, step }) => {
-    let list = await conversation();
+    const list = await atNewest();
     await step('Given a conversation I scrolled up in', async () => {
-      list = await openRoom('Room 0', 40);
       await scrollTo(list, 100);
     });
     await step('When I send a message', async () => {
-      await userEvent.type(body.getByPlaceholderText('Message'), 'hi{Enter}');
+      await userEvent.type(body.getByRole('textbox'), 'hi{Enter}');
     });
     await step('Then it shows and I am brought to it', async () => {
-      await waitFor(() => expect(within(list).getAllByTestId('chat-msg')).toHaveLength(41));
+      await waitFor(() => expect(messages()).toHaveLength(41));
       await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
     });
   },
 };
+
+/** The panel on a chat that holds what the args say as the panel mounts. The toolbar's remount applies new args. */
+function StoryChatPanel(props: ChatSeed): JSX.Element {
+  const chat = untrack(() => chatStage({ ...props }));
+  stage = chat;
+  onCleanup(chat.dispose);
+  return <ChatPanel conversation={chat.conversation} />;
+}
+
+function textOf(text: string): ChatMessageContent {
+  return { tag: 'Text', value: { text } };
+}
+
+function say(roomId: string, text: string, minutesAgo: number): StoryMessage {
+  return { roomId, content: textOf(text), minutesAgo };
+}
+
+/** Rooms r0 to r(count - 1), the newest last. */
+function rooms(count: number): ChatRoom[] {
+  return Array.from({ length: count }, (_, i) => ({
+    roomId: `r${String(i)}`,
+    name: `Room ${String(i)}`,
+    icon: '',
+    createdAt: i,
+  }));
+}
+
+function messages(): HTMLElement[] {
+  return within(body.getByRole('log', { name: 'Messages' })).getAllByTestId('chat-msg');
+}
+
+/** The conversation once it shows every message, with the reader at the newest. */
+async function atNewest(): Promise<HTMLElement> {
+  const list = await body.findByRole('log', { name: 'Messages' });
+  await waitFor(() => expect(messages()).toHaveLength(40));
+  await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
+  return list;
+}
+
+/** What wraps the bubbles, so its height is the conversation's. */
+function thread(list: HTMLElement): HTMLElement {
+  return within(list).getByTestId('chat-panel-thread');
+}
+
+/** Scroll room left below the reader. */
+function belowView(list: HTMLElement): number {
+  return list.scrollHeight - list.scrollTop - list.clientHeight;
+}
+
+/** Scrolls the conversation as a reader would, and waits for the panel to hear it. */
+async function scrollTo(list: HTMLElement, top: number): Promise<void> {
+  const heard = new Promise(resolve => {
+    list.addEventListener('scroll', resolve, { once: true });
+  });
+  list.scrollTop = top;
+  await heard;
+}
+
+/**
+ * Resolves once a ResizeObserver made after the panel's sees `el` change size, so the panel's own observer has run.
+ */
+function resized(el: HTMLElement, change: () => void): Promise<void> {
+  const before = el.getBoundingClientRect();
+  return new Promise(resolve => {
+    const observer = new ResizeObserver(([entry]) => {
+      const now = entry?.contentRect;
+      if (now !== undefined && (now.width !== before.width || now.height !== before.height)) {
+        observer.disconnect();
+        resolve();
+      }
+    });
+    observer.observe(el);
+    change();
+  });
+}

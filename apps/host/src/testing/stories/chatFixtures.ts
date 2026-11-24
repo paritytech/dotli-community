@@ -107,10 +107,6 @@ export type ChatStage = {
   createRoom(roomId: string, name: string, icon?: string): void;
   registerBot(botId: string, name: string, icon?: string): void;
   productSays(roomId: string, content: ChatMessageContent | string): void;
-  /** Adds a message in `roomId`, `minutesAgo` before now, from the product unless another author is given. */
-  say(roomId: string, content: unknown, options: { minutesAgo: number; author?: ChatMessageRecord['author'] }): void;
-  /** Seeds rooms r0 to r(count - 1), the newest last, and `messages` in r0, a second apart up to now. */
-  seed(count: number, messages?: readonly ChatMessageContent[]): void;
   conversation: ChatConversation;
   /** The panel's chat, and whether its frame holds it. */
   panel: StagePanel;
@@ -123,8 +119,35 @@ export type ChatStage = {
   dispose: () => void;
 };
 
-/** A fresh chat for one story. */
-export function chatStage(initial: Partial<StageState> = {}): ChatStage {
+/** A message a story's chat holds as it starts, `minutesAgo` before now, from the product unless another author is given. */
+export type StoryMessage = {
+  roomId: string;
+  content: unknown;
+  minutesAgo: number;
+  author?: ChatMessageRecord['author'];
+};
+
+/** What a story's chat holds as it starts: the page's chat state, the product's rooms, bots and messages, and its faults. */
+export type ChatSeed = Partial<StageState> &
+  Partial<
+    Pick<ChatStage, 'rooms' | 'bots' | 'contactsFail' | 'readsHeld' | 'messagesFail' | 'sendError' | 'refuseError'>
+  > & {
+    messages?: readonly StoryMessage[];
+  };
+
+/** A fresh chat for one story, holding what `seed` gives. */
+export function chatStage(seed: ChatSeed = {}): ChatStage {
+  const {
+    rooms = [],
+    bots = [],
+    messages = [],
+    contactsFail = false,
+    readsHeld = false,
+    messagesFail = false,
+    sendError = null,
+    refuseError = null,
+    ...initial
+  } = seed;
   const state = atom<StageState>({ ...INITIAL, ...initial });
   state.eq = isShallowEqual;
   const feed = atom<FeedState>({ contacts: null, contactsFailed: false, messages: null, messagesFailed: false });
@@ -277,15 +300,15 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
   const stage: ChatStage = {
     state,
     update,
-    rooms: [],
-    bots: [],
+    rooms: [...rooms],
+    bots: [...bots],
     messages: [],
-    contactsFail: false,
-    readsHeld: false,
-    messagesFail: false,
-    sendError: null,
-    refuseError: null,
-    customTrees: {},
+    contactsFail,
+    readsHeld,
+    messagesFail,
+    sendError,
+    refuseError,
+    customTrees: { 'delivery-time': DELIVERY_TIME_PICKER, payment: PAYMENT_REQUEST },
     published: [],
     actions: [],
     rendererActions: [],
@@ -301,37 +324,6 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     },
     productSays: (roomId, content) => {
       append(roomId, 'product', typeof content === 'string' ? { tag: 'Text', value: { text: content } } : content);
-    },
-    say: (roomId, content, { minutesAgo, author = 'product' }) => {
-      const seq = stage.messages.length + 1;
-      stage.messages.push({
-        seq,
-        productId: PRODUCT,
-        roomId,
-        messageId: `m${String(seq)}`,
-        author,
-        content,
-        timestamp: Date.now() - minutesAgo * MINUTE,
-      });
-    },
-    seed: (count, messages = []) => {
-      stage.rooms = Array.from({ length: count }, (_, i) => ({
-        roomId: `r${String(i)}`,
-        name: `Room ${String(i)}`,
-        icon: '',
-        createdAt: i,
-      }));
-      const now = Date.now();
-      stage.messages = messages.map((content, i) => ({
-        seq: i + 1,
-        productId: PRODUCT,
-        roomId: 'r0',
-        messageId: `m${String(i + 1)}`,
-        author: 'product',
-        content,
-        timestamp: now - (messages.length - i) * 1000,
-      }));
-      clock = now;
     },
     conversation,
     panel: {
@@ -364,67 +356,96 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     panelElement: () => panelElement,
     dispose: unlisten,
   };
+  const now = Date.now();
+  stage.messages = messages.map(({ roomId, content, minutesAgo, author = 'product' }, i) => ({
+    seq: i + 1,
+    productId: PRODUCT,
+    roomId,
+    messageId: `m${String(i + 1)}`,
+    author,
+    content,
+    timestamp: now - minutesAgo * MINUTE,
+  }));
   return stage;
 }
 
 /**
- * Fills `roomId` with a shop's conversation that holds every kind of message: runs from the product and the user, rich
- * text, a file, both action layouts, events and two custom messages the product renders.
+ * A shop's conversation in `roomId` that holds every kind of message: runs from the product and the user, rich text, a
+ * file, both action layouts, events, a kind the page does not know and two custom messages the product renders.
  */
-export function seedEveryKind(stage: ChatStage, roomId: string): void {
-  stage.customTrees = { ...stage.customTrees, 'delivery-time': DELIVERY_TIME_PICKER, payment: PAYMENT_REQUEST };
-  const say = (content: unknown, minutesAgo: number, author: ChatMessageRecord['author'] = 'product'): void => {
-    stage.say(roomId, content, { minutesAgo, author });
-  };
-  say({ tag: 'Text', value: { text: 'Your order #4821 is confirmed.' } }, 30);
-  say({ tag: 'Text', value: { text: 'The kitchen starts at 4:45 PM.' } }, 30);
-  say({ tag: 'Text', value: { text: 'When should we bring it?' } }, 30);
-  say({ tag: 'Custom', value: { messageType: 'delivery-time', payload: '0x01' } }, 28);
-  say({ tag: 'Text', value: { text: 'Standard is great' } }, 26, 'user');
-  say({ tag: 'Text', value: { text: 'Please ring twice, the bell is quiet.' } }, 26, 'user');
-  say({ tag: 'Reaction', value: { emoji: '👍' } }, 25);
-  say({ tag: 'RichText', value: { text: 'Here is the receipt and the route.', media: [{}, {}] } }, 20);
-  say({ tag: 'File', value: { fileName: 'receipt-4821.pdf' } }, 20);
-  say(
-    {
-      tag: 'Actions',
-      value: {
-        text: 'How was your last order?',
-        layout: 'Column',
-        actions: ['Great', 'Something was missing'].map(title => ({ actionId: title, title })),
+export function everyKindIn(roomId: string): StoryMessage[] {
+  const say = (
+    content: unknown,
+    minutesAgo: number,
+    author: ChatMessageRecord['author'] = 'product',
+  ): StoryMessage => ({
+    roomId,
+    content,
+    minutesAgo,
+    author,
+  });
+  return [
+    say({ tag: 'Text', value: { text: 'Your order #4821 is confirmed.' } }, 30),
+    say({ tag: 'Text', value: { text: 'The kitchen starts at 4:45 PM.' } }, 30),
+    say({ tag: 'Text', value: { text: 'When should we bring it?' } }, 30),
+    say({ tag: 'Custom', value: { messageType: 'delivery-time', payload: '0x01' } }, 28),
+    say({ tag: 'Text', value: { text: 'Standard is great' } }, 26, 'user'),
+    say({ tag: 'Text', value: { text: 'Please ring twice, the bell is quiet.' } }, 26, 'user'),
+    say({ tag: 'Reaction', value: { emoji: '👍' } }, 25),
+    say({ tag: 'RichText', value: { text: 'Here is the receipt and the route.', media: [{}, {}] } }, 20),
+    say({ tag: 'File', value: { fileName: 'receipt-4821.pdf' } }, 20),
+    say(
+      {
+        tag: 'Actions',
+        value: {
+          text: 'How was your last order?',
+          layout: 'Column',
+          actions: ['Great', 'Something was missing'].map(title => ({ actionId: title, title })),
+        },
       },
-    },
-    12,
-  );
-  say({ tag: 'ReactionRemoved', value: { emoji: '👍' } }, 10);
-  say({ tag: 'Hologram', value: {} }, 8);
-  say({ tag: 'Custom', value: { messageType: 'payment', payload: '0x02' } }, 4);
-  say(
-    {
-      tag: 'Actions',
-      value: {
-        text: 'Anything else for this order?',
-        layout: 'Grid',
-        actions: ['Add a drink', 'No, thanks'].map(title => ({ actionId: title, title })),
+      12,
+    ),
+    say({ tag: 'ReactionRemoved', value: { emoji: '👍' } }, 10),
+    say({ tag: 'Hologram', value: {} }, 8),
+    say({ tag: 'Custom', value: { messageType: 'payment', payload: '0x02' } }, 4),
+    say(
+      {
+        tag: 'Actions',
+        value: {
+          text: 'Anything else for this order?',
+          layout: 'Grid',
+          actions: ['Add a drink', 'No, thanks'].map(title => ({ actionId: title, title })),
+        },
       },
-    },
-    2,
-  );
+      2,
+    ),
+  ];
 }
 
-/** Rooms of a shop: two with unread messages, a bot, and one the user can only read. Orders holds every kind. */
-export function seedShop(stage: ChatStage): void {
-  stage.rooms = [
+/** A shop's chat: two rooms with unread messages, a bot, and one room the user can only read. Orders holds every kind. */
+export const SHOP_CHAT: ChatSeed = {
+  rooms: [
     { roomId: 'orders', name: 'Market orders', icon: '', createdAt: 0 },
     { roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 },
     { roomId: 'promos', name: 'Promotions', icon: '', createdAt: 0, footer: 'Empty' },
-  ];
-  stage.bots = [{ botId: 'support', name: 'Support', icon: '', createdAt: 0 }];
-  stage.say('promos', { tag: 'Text', value: { text: 'Free delivery all weekend.' } }, { minutesAgo: 3 * 24 * 60 });
-  stage.say('courier', { tag: 'Text', value: { text: 'I am two streets away.' } }, { minutesAgo: 24 * 60 + 5 });
-  stage.say('courier', { tag: 'Text', value: { text: 'Is the gate open?' } }, { minutesAgo: 24 * 60 + 4 });
-  stage.say('courier', { tag: 'Text', value: { text: 'Code is 4521' } }, { minutesAgo: 24 * 60, author: 'user' });
-  stage.say('support', { tag: 'Text', value: { text: 'How can we help?' } }, { minutesAgo: 60 });
-  seedEveryKind(stage, 'orders');
-  stage.update({ unreadByRoom: { orders: 2, support: 1 } });
-}
+  ],
+  bots: [{ botId: 'support', name: 'Support', icon: '', createdAt: 0 }],
+  messages: [
+    {
+      roomId: 'promos',
+      content: { tag: 'Text', value: { text: 'Free delivery all weekend.' } },
+      minutesAgo: 3 * 24 * 60,
+    },
+    { roomId: 'courier', content: { tag: 'Text', value: { text: 'I am two streets away.' } }, minutesAgo: 24 * 60 + 5 },
+    { roomId: 'courier', content: { tag: 'Text', value: { text: 'Is the gate open?' } }, minutesAgo: 24 * 60 + 4 },
+    {
+      roomId: 'courier',
+      content: { tag: 'Text', value: { text: 'Code is 4521' } },
+      minutesAgo: 24 * 60,
+      author: 'user',
+    },
+    { roomId: 'support', content: { tag: 'Text', value: { text: 'How can we help?' } }, minutesAgo: 60 },
+    ...everyKindIn('orders'),
+  ],
+  unreadByRoom: { orders: 2, support: 1 },
+};
