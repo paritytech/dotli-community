@@ -7,15 +7,10 @@
 import { loadVerify } from '@dotli/content';
 import { createQuickJsWorker, type ModuleFiles } from '@dotli/quickjs-runtime';
 import QuickJsWorker from '@dotli/quickjs-runtime/worker?worker';
-import { fetchContentBlock } from '../chains/index.js';
+import { fetchContentBlock, hostArchiveReader } from '../chains/index.js';
 import { registerProductChat } from '../chat/index.js';
 import { createHostFetchGate } from '../permissions/index.js';
-import {
-  readServedArchive,
-  readWorkerExecutable,
-  type NameSource,
-  type ServedBlockCache,
-} from '../productLoad/index.js';
+import { readWorkerExecutable, type NameSource } from '../productLoad/index.js';
 import type { HostBridge } from '../productRuntime/index.js';
 import { createChatImageRead } from './createChatImageRead.js';
 import { startProductWorker } from './startProductWorker.js';
@@ -25,22 +20,20 @@ export type PageProductWorkerParams = {
   label: string;
   /** The name source the load reads with, so the worker's executable read is the load's. */
   names: Pick<NameSource, 'readWorkerExecutable'>;
-  /** The loaded bridge, initialised: its page core, its prompt queue and its bitswap client. */
-  bridge: Pick<HostBridge, 'acquirePageCore' | 'createModalScope' | 'hostBitswapClient'>;
-  /** The block cache the worker's archive reads from, null to read every block over bitswap. */
-  blockCache: ServedBlockCache | null;
+  /** The loaded bridge, initialised: its page core and its prompt queue. */
+  bridge: Pick<HostBridge, 'acquirePageCore' | 'createModalScope'>;
 };
 
 /**
  * Starts the worker of the page's product on the page core's ledger, with the page's reference on it. Returns the stop.
  */
-export function startPageProductWorker({ label, names, bridge, blockCache }: PageProductWorkerParams): () => void {
+export function startPageProductWorker({ label, names, bridge }: PageProductWorkerParams): () => void {
   return startProductWorker({
     label,
     core: { acquire: bridge.acquirePageCore },
     readExecutable: name => readWorkerExecutable(name, names),
     readFiles: async cid => {
-      const files = await readServedArchive(cid, bridge.hostBitswapClient, blockCache);
+      const files = await hostArchiveReader.read(cid);
       return new Map(Object.entries(files)) satisfies ModuleFiles;
     },
     openGate: () => {

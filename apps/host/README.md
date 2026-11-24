@@ -59,7 +59,8 @@ The features:
 
 - **Product runtime:** the TrUAPI side whole. It holds the core connection and the host callbacks. The runtime bridge
   sits there too.
-- **Chains:** the page's chain pool and the reads every flow shares, below product runtime.
+- **Chains:** the page's chain pool and the reads every flow shares, below product runtime. It holds the page's one
+  archive reader, which the product worker and the debug panel read through.
 - **Debug panel:** the panel's view of the page, above product runtime, loaded only in debug mode.
 
 No feature imports another in a cycle, so each sits above the features it reads.
@@ -229,6 +230,16 @@ request in session storage, so a reload answers the same round.
 - The topbar shows the chat button once the product's worker registers chat and the product has a room, to a logged-in
   user.
 - The worker's console output goes to the debug log, never to the always-on channels.
+
+### Archives
+
+- Every archive the host reads itself goes through the page's archive reader. A product load's blocks go through the
+  sandbox's block relay instead.
+- On a light client the reader takes each block from the block cache, else over bitswap, and hashes every one, since
+  these blocks bypass the relay's checks. On the gateway backend it reads through the gateway.
+- Overlapping reads of one archive share one read. Its files are kept for the page's life. A failed read keeps nothing,
+  so the next read tries again.
+- Skipping the archive cache in the settings bypasses the block cache, not the files the page keeps.
 
 ### Network
 
