@@ -5,6 +5,7 @@ import { createEffect, onCleanup, untrack, useContext } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { lockScroll } from '../createScrollLock.js';
 import { containTab, isFocusLostOrInside } from '../focus.js';
+import { getClickInput, type CloseInput } from './closeReason.js';
 import { ModalFocusFallback } from './layerContext.js';
 import { hideLayer, isModalLayout, setLayerLayout, showLayer, topLayer, type LayerLayout } from './modalStack.js';
 import { sheetHandOff } from './createSheetHandOff.js';
@@ -12,8 +13,8 @@ import s from './ModalLayer.module.css';
 
 export type ModalLayerProps = {
   open: boolean;
-  /** On Escape or a press on the scrim. Beside the page, on Escape while focus is inside it. */
-  onDismiss: () => void;
+  /** On Escape or a press on the scrim, with what made it. Beside the page, on Escape while focus is inside it. */
+  onDismiss: (input: CloseInput) => void;
   id?: string | undefined;
   testId: string;
   /** Accessible name when no element labels the surface. */
@@ -22,6 +23,8 @@ export type ModalLayerProps = {
   initialFocus?: (() => HTMLElement | undefined) | undefined;
   /** Used when it returns a connected element, else focus returns where it was at opening. */
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
+  /** Read as the layer hides. True lets focus inside it go to the document, rather than restoring it. */
+  releaseFocus?: (() => boolean) | undefined;
   scrim?: 'dark' | 'light' | undefined;
   layout: LayerLayout;
   /** A sheet taking another's place, so no fade or slide. */
@@ -58,7 +61,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
       : event.target instanceof Node && frame.contains(event.target);
     if (owned) {
       event.preventDefault();
-      props.onDismiss();
+      props.onDismiss('keyboard');
     }
   }
 
@@ -77,7 +80,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
       return;
     }
     const pressed = frame;
-    sheetHandOff.press({ dismiss: props.onDismiss, isTop: () => topLayer() === pressed });
+    sheetHandOff.press({ dismiss: () => props.onDismiss('pointer'), isTop: () => topLayer() === pressed });
   }
 
   // The page beside a layer that is not modal scrolls.
@@ -102,6 +105,10 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     unlockScroll = undefined;
     // A layer opened over this one holds the focus now, and so may the page beside a layer that is not modal.
     if ((topLayer() !== undefined || !modal) && !isFocusLostOrInside(frame)) {
+      return;
+    }
+    if (untrack(() => props.releaseFocus?.()) === true) {
+      releaseFocus(frame);
       return;
     }
     const trigger = untrack(() => props.restoreFocus?.());
@@ -194,7 +201,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
           // The scrim covers the frame, so only a programmatic click (tests, assistive tech) lands here. A layer that
           // is not modal has no scrim to press.
           if (event.target === event.currentTarget && isModalLayout(props.layout)) {
-            props.onDismiss();
+            props.onDismiss(getClickInput(event));
           }
         }}
       >
@@ -202,8 +209,8 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
           class={s['scrim']}
           data-testid={`${props.testId}-scrim`}
           aria-hidden="true"
-          onClick={() => {
-            props.onDismiss();
+          onClick={event => {
+            props.onDismiss(getClickInput(event));
           }}
         />
         {props.children}
@@ -228,6 +235,14 @@ function restoreTargetNow(): HTMLElement | null {
     return restoreTargets.get(outer) ?? null;
   }
   return active instanceof HTMLElement ? active : null;
+}
+
+/** Focus inside `frame` goes to the document, where the next Tab starts from the page's top. */
+function releaseFocus(frame: HTMLElement | undefined): void {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && frame?.contains(active) === true) {
+    active.blur();
+  }
 }
 
 /** A `target` that left the page hands focus to `fallback`, so it does not drop to the body. */

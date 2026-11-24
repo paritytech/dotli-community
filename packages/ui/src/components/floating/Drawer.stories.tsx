@@ -136,6 +136,67 @@ export const EscapeClosesAndRestoresFocus: Story = {
   },
 };
 
+/** As a pointer user of a drawer that lets focus go on a pointer close, I press its close button and no control takes focus. */
+export const PointerCloseReleasesFocus: Story = {
+  globals: DESKTOP,
+  args: { open: false, pointerCloseFocus: 'document' },
+  play: async ({ canvas, userEvent, step }) => {
+    const opener = canvas.getByRole('button', { name: 'Open chat' });
+    await step('Given the drawer opened from its button', async () => {
+      await userEvent.click(opener);
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).toHaveAttribute('data-open'));
+    });
+    await step('When I press its close button', async () => {
+      await userEvent.click(body.getByRole('button', { name: 'Close Market' }));
+    });
+    await step('Then focus is on the document, not the button', async () => {
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).not.toHaveAttribute('data-open'));
+      await expect(document.body).toHaveFocus();
+    });
+  },
+};
+
+/** As a keyboard user of a drawer that lets focus go on a pointer close, I press Enter on its close button and focus returns to the button that opened it. */
+export const KeyboardCloseReturnsFocus: Story = {
+  globals: DESKTOP,
+  args: { ...PointerCloseReleasesFocus.args },
+  play: async ({ canvas, userEvent, step }) => {
+    const opener = canvas.getByRole('button', { name: 'Open chat' });
+    await step('Given the drawer opened from its button, with focus on its close button', async () => {
+      await userEvent.click(opener);
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).toHaveAttribute('data-open'));
+      body.getByRole('button', { name: 'Close Market' }).focus();
+    });
+    await step('When I press Enter', async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Then focus is back on the button', async () => {
+      await waitFor(() => expect(opener).toHaveFocus());
+    });
+  },
+};
+
+/** As a phone user of a drawer that lets focus go on a pointer close, I press the sheet's close button and the page answers with no control focused. */
+export const PhonePointerCloseReleasesFocus: Story = {
+  globals: PHONE,
+  args: { ...PointerCloseReleasesFocus.args },
+  play: async ({ canvas, userEvent, step }) => {
+    const opener = canvas.getByRole('button', { name: 'Open chat' });
+    await step('Given the sheet opened from its button', async () => {
+      await userEvent.click(opener);
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).toHaveAttribute('data-open'));
+    });
+    await step('When I press its close button', async () => {
+      await userEvent.click(body.getByRole('button', { name: 'Close Market' }));
+    });
+    await step('Then focus is on the document and the page is no longer inert', async () => {
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).not.toHaveAttribute('data-open'));
+      await expect(document.body).toHaveFocus();
+      await expect(opener.closest('[inert]')).toBeNull();
+    });
+  },
+};
+
 /** As a dotli user, I press the close button in the side panel's head and it closes. */
 export const CloseButtonCloses: Story = {
   globals: DESKTOP,

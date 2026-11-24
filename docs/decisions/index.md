@@ -145,6 +145,10 @@ The owner may change or remove any rule. A change here lands in the same commit 
   size, and the question is whether it takes a `size` prop or a caller's `class`.
 - [design-gives-px-line-heights](design-gives-px-line-heights.md): a design's type scale pairs each size with a fixed px
   line height, and the tokens hold a few line-height ratios that places pair with sizes.
+- [closing-a-panel-focuses-an-auto-hiding-bar](closing-a-panel-focuses-an-auto-hiding-bar.md): a panel returns focus to
+  its button on close, the button sits in a bar that shows itself when focus enters it, and a pointer close unfolds the
+  folded bar, so the question is whether the bar or the panel's focus return changes, and whether the panel or its
+  opener owns the return.
 - [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
 - [dim-a-graphic-of-overlapping-parts](dim-a-graphic-of-overlapping-parts.md): a decorative graphic of overlapping
@@ -164,6 +168,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [list-row-opens-a-detail-beneath-it](list-row-opens-a-detail-beneath-it.md): a list row with a rich header opens a
   detail under it on press, and the shared disclosure primitive's header takes only a string.
+- [focus-ring-only-for-keyboard-focus](focus-ring-only-for-keyboard-focus.md): a focus ring should show only for keyboard
+  focus, the browser matches `:focus-visible` on a clicked text field, and the question is whether to build an
+  input-modality tracker instead.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
 - [identity-row-with-a-name-and-an-address](identity-row-with-a-name-and-an-address.md): a row shows an entity that

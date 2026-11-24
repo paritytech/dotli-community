@@ -25,7 +25,7 @@ export function ChatButtonIsland(): JSX.Element {
       onToggle={() => {
         chatPanelState.setOpen(!chatPanelState.store.get().open);
       }}
-      panel={chatPanelState.getElement}
+      handOver={chatPanelState.setTrigger}
     />
   );
 }

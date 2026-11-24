@@ -4,6 +4,7 @@
 import { children, createEffect, createSignal, createUniqueId, isHydrating, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
+import type { CloseInput } from './closeReason.js';
 import { createPresence } from './createPresence.js';
 import { InSheet } from './inSheet.js';
 import { ModalLayer } from './ModalLayer.js';
@@ -21,6 +22,15 @@ export type DrawerProps = {
   id?: string | undefined;
   /** On the panel or sheet, with `-backdrop`, `-scrim`, `-side-*` and `-sheet-*` variants. */
   testId: string;
+  /** Overrides what held focus at opening as the initiator, for a trigger the browser may not focus on click. */
+  restoreFocus?: (() => HTMLElement | undefined) | undefined;
+  /**
+   * Where focus inside it goes after a pointer close: a click or tap on its close button, a swipe or a press on the
+   * scrim. `initiator`, the default, returns it to the initiator, and `document` lets it go to the document. A keyboard
+   * close, Escape or Enter or Space on the close button, always returns it to the initiator, so a keyboard user keeps
+   * their place. A close the open prop makes alone restores focus as a keyboard close does.
+   */
+  pointerCloseFocus?: 'initiator' | 'document' | undefined;
   children: JSX.Element;
 };
 
@@ -68,7 +78,18 @@ export function Drawer(props: DrawerProps): JSX.Element {
       {(_opening: number) => <InSheet value={() => (phone() ? {} : undefined)}>{props.children}</InSheet>}
     </Show>
   ));
-  const dismiss = (): void => {
+  // What made the last close, read as the layer hides. A close the open prop makes alone leaves none.
+  let closedBy: CloseInput | null = null;
+  createEffect(
+    () => props.open,
+    open => {
+      if (open) {
+        closedBy = null;
+      }
+    },
+  );
+  const dismiss = (input: CloseInput): void => {
+    closedBy = input;
     props.onOpenChange(false);
   };
   // Built once, so markup in the title moves between the forms as the content does.
@@ -82,6 +103,8 @@ export function Drawer(props: DrawerProps): JSX.Element {
       id={props.id}
       testId={props.testId}
       labelledBy={titleId}
+      restoreFocus={() => props.restoreFocus?.()}
+      releaseFocus={() => closedBy === 'pointer' && props.pointerCloseFocus === 'document'}
       layout={phone() ? 'sheet' : 'side'}
       ref={element => {
         frame = element;

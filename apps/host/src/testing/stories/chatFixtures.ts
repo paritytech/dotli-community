@@ -68,7 +68,7 @@ export type StageDock = {
   onOpenChange: (open: boolean) => void;
   conversation: ChatConversation;
   shown: Accessor<ShownContact | null>;
-  handOver: (panel: HTMLElement) => () => void;
+  restoreFocus: () => HTMLElement | undefined;
 };
 
 /** The panel's chat, and whether a frame standing in for the drawer holds the panel. */
@@ -111,8 +111,6 @@ export type ChatStage = {
   /** The dock's props, as the host's chat state gives them. */
   dock: StageDock;
   button: ChatButtonProps;
-  /** The panel element the dock handed over. */
-  panelElement: () => HTMLElement | undefined;
   /** Stops the views following the stage's state, for the story's cleanup. */
   dispose: () => void;
 };
@@ -158,7 +156,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
   let shownRoom: string | null = null;
   let following = false;
   let disposed = 0;
-  let panelElement: HTMLElement | undefined;
+  let trigger: (() => HTMLElement | undefined) | undefined;
 
   const update = (patch: Partial<StageState>): void => {
     state.set({ ...state.get(), ...patch });
@@ -332,12 +330,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
         const entries = read === null ? null : contactEntries(read.rooms, read.lastMessageTimes);
         return getShownContact(entries, current().activeRoomId);
       },
-      handOver: el => {
-        panelElement = el;
-        return () => {
-          panelElement = undefined;
-        };
-      },
+      restoreFocus: () => trigger?.(),
     },
     button: {
       visible: () => current().available,
@@ -346,9 +339,13 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
       onToggle: () => {
         update({ open: !state.get().open });
       },
-      panel: () => panelElement,
+      handOver: find => {
+        trigger = find;
+        return () => {
+          trigger = undefined;
+        };
+      },
     },
-    panelElement: () => panelElement,
     dispose: () => {
       unlisten();
       unlistenFeed();

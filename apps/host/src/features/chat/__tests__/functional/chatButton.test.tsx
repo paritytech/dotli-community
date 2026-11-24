@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The ChatButton island beside the ChatDock island, against the page's real chat state: the button shows once the
-// product has a room, and opens the drawer it names. A missing binding would fail silently, so these pin the wiring.
+// product has a room, opens the drawer it names and takes focus back from it. A missing binding would fail silently,
+// so these pin the wiring.
 // The button's own looks are tested by its story plays.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -82,5 +83,20 @@ describe('ChatButton island', () => {
     const controlled = byId('chat-button').getAttribute('aria-controls') ?? '';
     await waitForDom(() => document.getElementById(controlled)?.hasAttribute('data-open') ?? false);
     expect(byId('chat-button').getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('As a keyboard user, I press Escape in the open drawer and focus returns to the chat button', async () => {
+    // Given
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    await waitForDom(() => !byId('chat-button').hasAttribute('hidden'));
+    chatPanelState.setOpen(true);
+    await waitForDom(() => byId('chat-panel').contains(document.activeElement));
+
+    // When
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    // Then
+    await waitForDom(() => !byId('chat-panel').hasAttribute('data-open'));
+    expect(document.activeElement).toBe(byId('chat-button'));
   });
 });

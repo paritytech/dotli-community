@@ -90,6 +90,6 @@ export function useChatDock(
       const entries = read === null ? null : contactEntries(read.rooms, read.lastMessageTimes);
       return getShownContact(entries, conversation.activeRoomId());
     }),
-    handOver: chatPanelState.setElement,
+    restoreFocus: chatPanelState.getTrigger,
   };
 }

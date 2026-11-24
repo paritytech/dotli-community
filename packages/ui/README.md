@@ -110,10 +110,12 @@ falls back to the system face while it loads or where it lacks a script. Monospa
   It insets from the page's content edges and follows them as they move. A modal opened while it is open paints over it
   and makes it inert. The drawer picks the form by the viewport and follows it while open, and its content moves between
   the forms with its state and focus. Escape with focus inside it, its close button and a swipe toward its edge each
-  close it, and so does a press on the phone sheet's scrim. A press beside the panel does not. Its title is text or
-  markup a heading may hold, and names the drawer. A text title also ends its close button's name. Its content mounts at
-  each opening and stays until the exit transition ends, or goes at once when no transition runs, such as under reduced
-  motion.
+  close it, and so does a press on the phone sheet's scrim. A press beside the panel does not. A close by the keyboard,
+  Escape or Enter or Space on the close button, returns focus to the initiator, the control that held it at opening or
+  the one the drawer is handed. A close by a pointer does too, unless the drawer is told to let focus go to the document
+  instead, so a pointer user's close moves focus into no control. Its title is text or markup a heading may hold, and
+  names the drawer. A text title also ends its close button's name. Its content mounts at each opening and stays until
+  the exit transition ends, or goes at once when no transition runs, such as under reduced motion.
 - **Listbox:** opens at its anchor in a floating layer, at least as wide as the anchor, and never takes focus, so the
   control that opened it keeps its keys. A press outside the anchor and the list, Escape and focus leaving them close it
   through `onClose`, and its caller sets `open` from that. A press on the anchor leaves it open. The caller also owns
