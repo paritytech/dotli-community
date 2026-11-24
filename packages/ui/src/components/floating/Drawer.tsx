@@ -4,6 +4,7 @@
 import { children, createEffect, createSignal, isHydrating, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
+import { createPresence } from './createPresence.js';
 import { InSheet } from './inSheet.js';
 import { ModalLayer } from './ModalLayer.js';
 import { SheetFrame } from './SheetFrame.js';
@@ -24,7 +25,8 @@ export type DrawerProps = {
 
 /**
  * A modal panel on the right edge on wide screens and a bottom sheet on a phone, following the viewport while open.
- * The children resolve once and move between the forms, so a field's value and focus survive the switch.
+ * Its children render from an opening until the layer's exit transition ends, and move between the forms, so a
+ * field's value and focus survive the switch.
  */
 export function Drawer(props: DrawerProps): JSX.Element {
   let frame: HTMLDivElement | undefined;
@@ -53,8 +55,17 @@ export function Drawer(props: DrawerProps): JSX.Element {
     }
   });
 
-  // Created under InSheet once, so Surface follows the form rather than keep the one it was made in.
-  const content = children(() => <InSheet value={() => (phone() ? {} : undefined)}>{props.children}</InSheet>);
+  // The layer shows through its exit, so the content stays until that ends.
+  const presence = createPresence({
+    open: () => props.open,
+    exit: { kind: 'transition', target: () => frame ?? null },
+  });
+  // Created under InSheet once per opening, so Surface follows the form rather than keep the one it was made in.
+  const content = children(() => (
+    <Show when={presence()} keyed>
+      {(_opening: number) => <InSheet value={() => (phone() ? {} : undefined)}>{props.children}</InSheet>}
+    </Show>
+  ));
   const dismiss = (): void => {
     props.onOpenChange(false);
   };

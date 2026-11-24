@@ -98,7 +98,7 @@ export type ChatConversation = {
   activeRoomId: Accessor<string | null>;
   unreadByRoom: Accessor<Readonly<Record<string, number>>>;
   composerError: Accessor<string | null>;
-  /** Called as the panel body opens, under its owner, so its reads stop as the panel closes. */
+  /** Called as the panel body mounts, under its owner, so its reads stop as it unmounts. */
   openFeed: () => ChatFeed;
   openRoom: (roomId: string, params?: OpenRoomParams) => void;
   backToRooms: () => void;

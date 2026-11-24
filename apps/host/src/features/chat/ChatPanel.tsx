@@ -4,7 +4,6 @@
 // The chat panel's contents, below the drawer's head that names the product and closes the panel.
 
 import {
-  type Accessor,
   createEffect,
   createMemo,
   createSignal,
@@ -52,7 +51,12 @@ const HINT_PLACES = {
 // Within this many px of the end, the reader counts as at the newest message.
 const STICK_THRESHOLD_PX = 24;
 
-function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
+export type ChatPanelProps = {
+  conversation: ChatConversation;
+};
+
+/** The panel's contents. Its reads run from its mount to its unmount. */
+export function ChatPanel(props: ChatPanelProps): JSX.Element {
   // The binding is fixed for the panel's life.
   const chat = untrack(() => props.conversation);
   const feed = chat.openFeed();
@@ -440,18 +444,5 @@ function PanelBody(props: { conversation: ChatConversation }): JSX.Element {
         </div>
       </form>
     </div>
-  );
-}
-
-export type ChatPanelProps = {
-  open: Accessor<boolean>;
-  conversation: ChatConversation;
-};
-
-export function ChatPanel(props: ChatPanelProps): JSX.Element {
-  return (
-    <Show when={props.open()}>
-      <PanelBody conversation={props.conversation} />
-    </Show>
   );
 }

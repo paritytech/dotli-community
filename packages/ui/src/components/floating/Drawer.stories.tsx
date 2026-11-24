@@ -122,6 +122,31 @@ export const CloseButtonCloses: Story = {
   },
 };
 
+/** As a dotli user, I close the drawer and its content stays in the panel while it slides out, then goes. */
+export const ContentStaysThroughExit: Story = {
+  args: { initiallyOpen: true },
+  play: async ({ userEvent, mount, step }) => {
+    const dialog = () => body.getByRole('dialog', { name: 'Market' });
+    let exitEnded: Promise<void> = Promise.resolve();
+    await step('Given an open drawer', async () => {
+      await mount();
+      await waitFor(() => expect(body.getByTestId('story-drawer-side-close')).toBeVisible());
+    });
+    await step('When I press its close button', async () => {
+      exitEnded = transitionSettled(dialog());
+      await userEvent.click(body.getByTestId('story-drawer-side-close'));
+    });
+    await step('Then the closing panel still holds the content', async () => {
+      await expect(dialog()).not.toHaveAttribute('data-open');
+      await expect(body.getByTestId('story-drawer')).toContainElement(body.getByTestId('story-message'));
+    });
+    await step('Then the content is gone once the exit transition ends', async () => {
+      await exitEnded;
+      await waitFor(() => expect(body.queryByTestId('story-message')).not.toBeInTheDocument());
+    });
+  },
+};
+
 /** As a touch user, I swipe the drawer's head to the right and the drawer closes. */
 export const SwipeRightCloses: Story = {
   args: { initiallyOpen: true },
@@ -205,6 +230,21 @@ export const SwitchesFormKeepingContent: Story = {
     }
   },
 };
+
+/** Resolves when a transition of `element` itself, not one inside it, ends or is cancelled. */
+function transitionSettled(element: HTMLElement): Promise<void> {
+  const controller = new AbortController();
+  return new Promise(resolve => {
+    const handleSettle = (event: Event): void => {
+      if (event.target === element) {
+        controller.abort();
+        resolve();
+      }
+    };
+    element.addEventListener('transitionend', handleSettle, { signal: controller.signal });
+    element.addEventListener('transitioncancel', handleSettle, { signal: controller.signal });
+  });
+}
 
 /** A pointer event at a point, from the drag's pointer. */
 function dispatchPointer(target: HTMLElement, type: string, { x, y }: { x: number; y: number }): void {

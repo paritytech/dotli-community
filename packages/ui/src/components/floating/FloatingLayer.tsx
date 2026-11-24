@@ -77,7 +77,7 @@ export type FloatingLayerProps = {
  */
 export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   let surface: HTMLDivElement | undefined;
-  const presence = createPresence({ open: () => props.open, exitMs: EXIT_MS });
+  const presence = createPresence({ open: () => props.open, exit: { kind: 'timer', ms: EXIT_MS } });
   /** Set by the listener that saw the next close's cause. */
   let reason: LayerCloseReason = 'programmatic';
   const placement = (): Placement => props.placement ?? 'topbar-end';

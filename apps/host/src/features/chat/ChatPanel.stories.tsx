@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { ChatMessageContent } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
@@ -44,11 +45,13 @@ function PanelFrame(props: { children: JSX.Element }): JSX.Element {
   );
 }
 
-/** The panel over the story's chat, in its frame. */
+/** The panel over the story's chat, in its frame, which holds it while open as the drawer does. */
 function PanelOnPage(): JSX.Element {
   return (
     <PanelFrame>
-      <ChatPanel {...stage.panel} />
+      <Show when={stage.panel.open()}>
+        <ChatPanel conversation={stage.panel.conversation} />
+      </Show>
     </PanelFrame>
   );
 }

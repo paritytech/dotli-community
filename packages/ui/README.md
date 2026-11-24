@@ -108,6 +108,8 @@ falls back to the system face while it loads or where it lacks a script. Monospa
 - **Responsive drawer:** `Drawer` is a modal panel inset from the right edge on a wide screen, and the standard bottom
   sheet on a phone. It picks the form by the viewport and follows it while open, and its content moves between the forms
   with its state and focus. Escape, a press on the scrim, its close button and a swipe toward its edge each close it.
+  Its content mounts at each opening and stays until the exit transition ends, or goes at once when no transition runs,
+  such as under reduced motion.
 - **Listbox:** opens at its anchor in a floating layer, at least as wide as the anchor, and never takes focus, so the
   control that opened it keeps its keys. A press outside the anchor and the list, Escape and focus leaving them close it
   through `onClose`, and its caller sets `open` from that. A press on the anchor leaves it open. The caller also owns

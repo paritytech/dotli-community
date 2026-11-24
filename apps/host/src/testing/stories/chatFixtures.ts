@@ -69,7 +69,7 @@ export type StageDock = {
   handOver: (panel: HTMLElement) => () => void;
 };
 
-/** The part of the dock's props the dock hands its panel. */
+/** The panel's chat, and whether a frame standing in for the drawer holds the panel. */
 export type StagePanel = Pick<StageDock, 'open' | 'conversation'>;
 
 /** A user reply as it reached the product. */
@@ -110,7 +110,7 @@ export type ChatStage = {
   /** Seeds rooms r0 to r(count - 1), the newest last, and `messages` in r0, a second apart up to now. */
   seed(count: number, messages?: readonly ChatMessageContent[]): void;
   conversation: ChatConversation;
-  /** The panel's props, as the host's dock gives them. */
+  /** The panel's chat, and whether its frame holds it. */
   panel: StagePanel;
   /** The dock's props, as the host's chat state gives them. */
   dock: StageDock;
