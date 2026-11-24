@@ -145,27 +145,6 @@ export const ReadOnlyRoom: Story = {
   },
 };
 
-/** As a user, I see a room opened from the list under a head that counts only the other rooms' unread. */
-export const RoomOpen: Story = {
-  args: { activeRoomId: 'orders' },
-  play: async ({ step }) => {
-    // The count reaches assistive technology only through the image's name.
-    const otherUnread = (): HTMLElement | null => body.queryByRole('img', { name: /^\d+ / });
-    await step('Given the open room has two unread and one other room has one', async () => {
-      await waitFor(() => expect(otherUnread()).not.toBeNull());
-    });
-    await step("Then the head counts only the other room's one", async () => {
-      await expect(body.getByRole('img', { name: /^1 / })).toBeVisible();
-    });
-    await step('When the other room is seen, while the open one still has two', () => {
-      stage.update({ unreadByRoom: { orders: 2 } });
-    });
-    await step('Then the head counts nothing', async () => {
-      await waitFor(() => expect(otherUnread()).toBeNull());
-    });
-  },
-};
-
 /** As a user of a product with one room, I see Send wait for my text. */
 export const SendWaitsForText: Story = {
   args: COURIER,
@@ -191,24 +170,6 @@ export const OpeningRoomFocusesComposer: Story = {
     });
     await step('Then its message box has focus', async () => {
       await waitFor(() => expect(body.getByRole('textbox')).toHaveFocus());
-    });
-  },
-};
-
-/** As a user of a product with one room, I stay in its conversation when a second room appears, with a way back. */
-export const SecondRoomKeepsConversation: Story = {
-  args: COURIER,
-  play: async ({ step }) => {
-    await step('Given the sole room shows with no way back to a list', async () => {
-      await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
-      await expect(body.queryByRole('button', { name: 'Back to rooms' })).toBeNull();
-    });
-    await step('When the app starts a second room', () => {
-      stage.createRoom('news', 'News');
-    });
-    await step('Then I stay in the conversation and can go back to the list', async () => {
-      await expect(await body.findByRole('button', { name: 'Back to rooms' })).toBeVisible();
-      await expect(body.getByRole('log', { name: 'Messages' })).toBeVisible();
     });
   },
 };

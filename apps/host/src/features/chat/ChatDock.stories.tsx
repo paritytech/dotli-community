@@ -84,6 +84,45 @@ export const EscapeClosesAndRefocusesButton: Story = {
   },
 };
 
+/** As a user in a room I opened from the list, I press Back in the drawer's head and the rooms show again. */
+export const BackReturnsToRooms: Story = {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Given a room opened from the list', async () => {
+      await userEvent.click(chatButton(canvas));
+      await userEvent.click(await body.findByRole('button', { name: /Courier/ }));
+      await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
+    });
+    await step('When I press Back to rooms in the head', async () => {
+      await userEvent.click(await body.findByRole('button', { name: 'Back to rooms' }));
+    });
+    await step('Then the open drawer shows the rooms', async () => {
+      await expect(await body.findByRole('list', { name: 'Chat rooms' })).toBeVisible();
+    });
+  },
+};
+
+/** As a user of a product with one room, I stay in its conversation when a second room appears, with a way back. */
+export const SecondRoomKeepsConversation: Story = {
+  beforeEach: () => {
+    stage = chatStage({ rooms: [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }] });
+    return stage.dispose;
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Given the sole room shows with no way back to a list', async () => {
+      await userEvent.click(chatButton(canvas));
+      await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
+      await expect(body.queryByRole('button', { name: 'Back to rooms' })).toBeNull();
+    });
+    await step('When the app starts a second room', () => {
+      stage.createRoom('news', 'News');
+    });
+    await step('Then I stay in the conversation and can go back to the list', async () => {
+      await expect(await body.findByRole('button', { name: 'Back to rooms' })).toBeVisible();
+      await expect(body.getByRole('log', { name: 'Messages' })).toBeVisible();
+    });
+  },
+};
+
 /** As a user, I find the chat closed by a render error open again on its rooms. */
 export const RenderErrorClosesThenRecovers: Story = {
   beforeEach: () => bindCaptureSink({ exception: fn(), expected: fn() }),

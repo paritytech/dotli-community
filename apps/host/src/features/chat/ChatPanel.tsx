@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The chat panel's contents, below the drawer's head that names the product and closes the panel.
+// The chat panel's contents. The drawer's head above them names the shown room and closes the panel.
 
 import {
   createEffect,
@@ -16,16 +16,14 @@ import {
   untrack,
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { IconButton, Spinner } from '@dotli/ui';
-import { ArrowUpIcon, ChatIcon, ChevronLeftIcon, CircleAlertIcon, LockIcon } from '@dotli/ui/icons';
-import { ContactIcon } from './ContactIcon.js';
+import { Spinner } from '@dotli/ui';
+import { ArrowUpIcon, ChatIcon, CircleAlertIcon, LockIcon } from '@dotli/ui/icons';
 import { ContactRow } from './ContactRow.js';
 import { MessageRow } from './MessageRow.js';
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
-import { contactEntries, type ContactEntry } from './contacts.js';
+import { contactEntries, type ContactEntry, getShownContact } from './contacts.js';
 import { getDayLabel, isDayStart } from './messageDays.js';
-import { chatUnreadLabel } from './unread.js';
 import s from './ChatPanel.module.css';
 
 // Day labels and the rooms' times roll over at midnight while the panel sits open.
@@ -95,40 +93,16 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
     return shown === null ? null : contactEntries(shown.rooms, shown.lastMessageTimes);
   });
 
-  // With one room there is no list to pick from, so that room shows.
-  const soleContact = createMemo(() => {
-    const list = contacts();
-    return list?.length === 1 ? list[0] : undefined;
-  });
-
   // An open room that is not in the list yet shows the list, so its messages are not read either.
-  const shownContact = createMemo(() => {
-    const id = chat.activeRoomId();
-    return id === null ? soleContact() : contacts()?.find(c => c.id === id);
-  });
-
-  // The drawer's head names the product, so the sole room takes no head of its own.
-  const headContact = createMemo(() => (soleContact() === undefined ? shownContact() : undefined));
-
-  // What waits in the rooms going back shows. The shown room is left out, as its messages are on screen.
-  const unreadElsewhere = createMemo(() => {
-    const shownId = headContact()?.id;
-    let total = 0;
-    for (const [roomId, count] of Object.entries(chat.unreadByRoom())) {
-      if (roomId !== shownId) {
-        total += count;
-      }
-    }
-    return total;
-  });
+  const shown = createMemo(() => getShownContact(contacts(), chat.activeRoomId()));
 
   // eslint-disable-next-line solid/reactivity -- the feed tracks the shown room in an effect of its own.
-  feed.follow(() => shownContact()?.id ?? null);
+  feed.follow(() => shown()?.contact.id ?? null);
 
   // Showing the sole room opens it, so it stays open once a second room appears, and the page treats it as open.
   // The user did not pick it, so its composer leaves the keyboard down.
   createEffect(
-    () => (chat.activeRoomId() === null ? (soleContact()?.id ?? null) : null),
+    () => (chat.activeRoomId() === null ? (shown()?.contact.id ?? null) : null),
     roomId => {
       if (roomId !== null) {
         chat.openRoom(roomId, { focusComposer: false });
@@ -167,7 +141,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
     if (list.length === 0) {
       return 'empty';
     }
-    return shownContact() === undefined ? 'list' : 'conversation';
+    return shown() === null ? 'list' : 'conversation';
   });
 
   // Whether the reader is at the newest message. Growth never clears it, so a reader at the bottom stays there.
@@ -191,7 +165,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
   };
 
   createEffect(
-    () => shownContact()?.id,
+    () => shown()?.contact.id,
     () => {
       stuck = true;
       focusComposerIfAsked();
@@ -218,7 +192,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
   });
 
   // The product chose what its room shows below the messages.
-  const composing = (): boolean => view() === 'conversation' && shownContact()?.footer !== 'Empty';
+  const composing = (): boolean => view() === 'conversation' && shown()?.contact.footer !== 'Empty';
 
   const conversationHint = (): Hint | null => {
     const composerError = chat.composerError();
@@ -270,7 +244,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
 
   const submit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
-    const roomId = shownContact()?.id;
+    const roomId = shown()?.contact.id;
     const input = inputEl;
     if (roomId === undefined || input === undefined) {
       return;
@@ -300,46 +274,6 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
 
   return (
     <div class={s['panel']}>
-      <Show when={headContact()}>
-        {contact => (
-          <div class={s['header']}>
-            <IconButton
-              id="chat-panel-back"
-              title="Back to rooms"
-              aria-label="Back to rooms"
-              onClick={() => {
-                chat.backToRooms();
-              }}
-            >
-              <ChevronLeftIcon />
-            </IconButton>
-            <ContactIcon name={contact().name} icon={contact().icon} />
-            <span class={s['titles']}>
-              <span class={s['title']} id="chat-panel-title">
-                {contact().name}
-              </span>
-              <Show when={chat.productName()}>
-                {name => (
-                  <span class={s['subtitle']} id="chat-panel-subtitle">
-                    {chat.productDomain() === null ? name() : `${name()} · ${chat.productDomain() ?? ''}`}
-                  </span>
-                )}
-              </Show>
-            </span>
-            <Show when={unreadElsewhere() > 0}>
-              <span
-                class={s['otherUnread']}
-                id="chat-panel-other-unread"
-                role="img"
-                title="Unread in other rooms"
-                aria-label={`${String(unreadElsewhere())} unread in other rooms`}
-              >
-                {chatUnreadLabel(unreadElsewhere())}
-              </span>
-            </Show>
-          </div>
-        )}
-      </Show>
       {/* role="list" again because Safari drops it from a list without bullets. */}
       <ul class={s['rooms']} id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden={view() !== 'list'}>
         <Show when={view() === 'list'}>

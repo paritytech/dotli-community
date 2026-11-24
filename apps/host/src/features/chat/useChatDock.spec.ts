@@ -111,6 +111,32 @@ describe('useChatDock', () => {
     dispose();
   });
 
+  it("As the dock, I name the open panel's sole room, and no room once the panel closes", async () => {
+    // Given
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    const { dock, dispose } = mountDock();
+
+    // When the panel body opens on the product's rooms
+    const body = createRoot(d => {
+      dock.conversation.openFeed().follow(() => null);
+      return d;
+    });
+    flush();
+    await chat.settle();
+    flush();
+
+    // Then
+    expect(dock.shown()).toMatchObject({ contact: { id: 'main' }, sole: true });
+
+    // When the panel body closes
+    body();
+    flush();
+
+    // Then
+    expect(dock.shown()).toBeNull();
+    dispose();
+  });
+
   it('As the open panel, the feed follows the shown room of the loaded product, and stops as the panel closes', async () => {
     // Given
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });

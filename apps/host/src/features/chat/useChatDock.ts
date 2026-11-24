@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, onCleanup } from 'solid-js';
+import { createEffect, createMemo, onCleanup } from 'solid-js';
 import type { ChatStore } from './createChatStore.js';
 import { productState } from '../page/index.js';
 import { getActiveTldSuffix } from '@dotli/config';
@@ -9,6 +9,7 @@ import { useStore } from '@dotli/stores-solid';
 import type { ChatConversation, ChatFeed } from './chat.js';
 import type { ChatDockProps } from './ChatDock.js';
 import { chatPanelState } from './chatPanelState.js';
+import { contactEntries, getShownContact } from './contacts.js';
 
 /** The open panel's view of `chat`, read only while the panel body lives. */
 function openFeed(chat: ChatStore): ChatFeed {
@@ -76,11 +77,19 @@ function useChatConversation(chat: ChatStore): ChatConversation {
 
 /** The chat drawer's props, for an island's own lifetime. */
 export function useChatDock(chat: ChatStore): ChatDockProps {
+  const conversation = useChatConversation(chat);
+  // The view the open panel follows, so its rooms are null while the drawer is closed.
+  const contacts = useStore(chat.view, state => state.contacts, { initial: chat.view.get() });
   return {
     open: useStore(chatPanelState.store, state => state.open),
     available: useStore(chatPanelState.store, chatPanelState.isButtonVisible),
     onOpenChange: chatPanelState.setOpen,
-    conversation: useChatConversation(chat),
+    conversation,
+    shown: createMemo(() => {
+      const read = contacts();
+      const entries = read === null ? null : contactEntries(read.rooms, read.lastMessageTimes);
+      return getShownContact(entries, conversation.activeRoomId());
+    }),
     handOver: chatPanelState.setElement,
   };
 }

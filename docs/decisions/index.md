@@ -137,6 +137,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [decorative-graphic-draws-real-entities](decorative-graphic-draws-real-entities.md): a decorative graphic shows live
   entities the app observes beside simulated filler, and the question is how real entities come into view, how they
   may be linked and how the filler relates to them.
+- [component-drawn-smaller-in-one-place](component-drawn-smaller-in-one-place.md): a feature's component with one fixed
+  size, such as an avatar with a fallback letter, is needed smaller in one view while its other users keep the standard
+  size, and the question is whether it takes a `size` prop or a caller's `class`.
 - [design-gives-px-line-heights](design-gives-px-line-heights.md): a design's type scale pairs each size with a fixed px
   line height, and the tokens hold a few line-height ratios that places pair with sizes.
 - [compound-primitive-needs-labelled-sections](compound-primitive-needs-labelled-sections.md): a shared compound
