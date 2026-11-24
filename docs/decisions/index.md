@@ -108,6 +108,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md): a story file's axe check costs
   time or fails where it has nothing to find, such as stories that drive a component at capacity near the test timeout,
   or the contrast rule on text inside a decorative, `aria-hidden` background graphic.
+- [stories-for-a-features-views](stories-for-a-features-views.md): a developer adds Storybook stories for a feature's
+  views and states, some of which look different on a phone and a desktop or are built from smaller components, such as
+  the node kinds a renderer draws through one switch, and the question is whether each kind becomes its own module.
 
 ## UI
 
