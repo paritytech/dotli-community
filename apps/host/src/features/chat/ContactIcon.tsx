@@ -6,7 +6,12 @@ import type { JSX } from '@solidjs/web';
 import s from './ContactIcon.module.css';
 
 /** The icon is product-supplied, so it only ever becomes an `img.src`, never markup. */
-export function ContactIcon(props: { name: string; icon: string }): JSX.Element {
+export function ContactIcon(props: {
+  name: string;
+  icon: string;
+  /** The smaller size a conversation's head takes, beside its name. */
+  size?: 'sm';
+}): JSX.Element {
   // Remembers which icon failed, so a new icon from the product gets its own chance.
   const [failedIcon, setFailedIcon] = createSignal<string | null>(null);
   const initial = (): string => (props.name.trim().charAt(0) || '#').toUpperCase();
@@ -14,7 +19,7 @@ export function ContactIcon(props: { name: string; icon: string }): JSX.Element 
     <Show
       when={props.icon !== '' && failedIcon() !== props.icon}
       fallback={
-        <span class={s['icon']} data-testid="chat-room-icon" data-fallback="" aria-hidden="true">
+        <span class={s['icon']} data-testid="chat-room-icon" data-size={props.size} data-fallback="" aria-hidden="true">
           {initial()}
         </span>
       }
@@ -22,6 +27,7 @@ export function ContactIcon(props: { name: string; icon: string }): JSX.Element 
       <img
         class={s['icon']}
         data-testid="chat-room-icon"
+        data-size={props.size}
         alt=""
         src={props.icon}
         onError={() => setFailedIcon(props.icon)}

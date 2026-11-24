@@ -13,6 +13,10 @@
   outline-offset: -1px;
   object-fit: cover;
 }
+.icon[data-size='sm'] {
+  width: 32px;
+  height: 32px;
+}
 
 .icon[data-fallback] {
   display: flex;
@@ -23,10 +27,17 @@
   font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
 }
+.icon[data-size='sm'][data-fallback] {
+  font-size: var(--fs-body);
+}
 
 @media (max-width: 560px) {
   .icon {
     width: 44px;
     height: 44px;
+  }
+  .icon[data-size='sm'] {
+    width: 36px;
+    height: 36px;
   }
 }
