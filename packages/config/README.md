@@ -87,4 +87,5 @@ The network table for Node tooling. Reads no page state.
 - **Fixed entry:** a worker never receives the runtime config, so it imports `./fixed`, never the bare entry.
 - **Stacks:** each network's link and signed descriptor are build copies that the `trinity-stack` CLI keeps and
   verifies. `npm run stacks:update` fetches newer copies, and a chain wipe needs one, since the core dials only the
-  genesis hashes the descriptor names. A page loads one network's copy as served, since the core checks its signature.
+  genesis hashes the descriptor names. The network table must name the same hashes, since the chain pool serves only
+  those. A page loads one network's copy as served, since the core checks its signature.
