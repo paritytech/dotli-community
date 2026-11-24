@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The chat panel's contents. The drawer's head above them names the shown room and closes the panel.
+// The chat panel's contents: the room list or the shown room's messages and composer, and a hint about either.
 
 import {
   createEffect,

@@ -9,7 +9,7 @@ import s from './ContactIcon.module.css';
 export function ContactIcon(props: {
   name: string;
   icon: string;
-  /** The smaller size a conversation's head takes, beside its name. */
+  /** A smaller icon than the default. */
   size?: 'sm';
 }): JSX.Element {
   // Remembers which icon failed, so a new icon from the product gets its own chance.

@@ -33,8 +33,6 @@ export type StageState = {
   /** Whether the chat button shows. */
   available: boolean;
   loggedIn: boolean;
-  productName: string | null;
-  productDomain: string | null;
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
   /** The page's total across rooms, which the button shows while the panel is closed. */
@@ -47,8 +45,6 @@ const INITIAL: StageState = {
   open: false,
   available: true,
   loggedIn: true,
-  productName: 'Market',
-  productDomain: 'market.dot',
   activeRoomId: null,
   unreadByRoom: {},
   unread: 0,
@@ -238,8 +234,6 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
 
   const conversation: ChatConversation = {
     loggedIn: () => current().loggedIn,
-    productName: () => current().productName,
-    productDomain: () => current().productDomain,
     activeRoomId: () => current().activeRoomId,
     unreadByRoom: () => current().unreadByRoom,
     composerError: () => current().composerError,

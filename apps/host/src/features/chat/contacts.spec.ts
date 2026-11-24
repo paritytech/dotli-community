@@ -46,35 +46,42 @@ describe('contacts', () => {
       lastMessageAt: null,
       footer: 'TextInput',
     });
-    const one = [entry('a')];
-    const two = [entry('a'), entry('b')];
 
     it.each([
       ['no list', null, null],
-      ['no active room and two rooms', two, null],
-      ['an active room the list does not hold', two, 'missing'],
-    ])('As a user, with %s, no room shows', (_name, list, activeRoomId) => {
+      ['two rooms and none active', ['a', 'b'], null],
+      ['an active room the list does not hold', ['a', 'b'], 'missing'],
+    ])('As the chat, I show no room with %s', (_name, roomIds, activeRoomId) => {
+      // Given the row's rooms
+      const list = roomIds === null ? null : roomIds.map(id => entry(id));
+
       // When
       const shown = getShownContact(list, activeRoomId);
 
       // Then
-      expect(shown?.contact.id).toBeUndefined();
+      expect(shown).toBeNull();
     });
 
-    it('As a user, the only room shows when no room is active, with no list behind it', () => {
+    it('As the chat, I show the only room when none is active, with no list behind it', () => {
+      // Given one room and none active
+      const list = [entry('a')];
+
       // When
-      const shown = getShownContact(one, null);
+      const shown = getShownContact(list, null);
 
       // Then
-      expect(shown).toEqual({ contact: one[0], sole: true });
+      expect(shown).toEqual({ contact: list[0], sole: true });
     });
 
-    it('As a user, an active room shows with a list behind it when there are several rooms', () => {
+    it('As the chat, I show the active room of several, with the list behind it', () => {
+      // Given two rooms, the second active
+      const list = [entry('a'), entry('b')];
+
       // When
-      const shown = getShownContact(two, 'b');
+      const shown = getShownContact(list, 'b');
 
       // Then
-      expect(shown).toEqual({ contact: two[1], sole: false });
+      expect(shown).toEqual({ contact: list[1], sole: false });
     });
   });
 });

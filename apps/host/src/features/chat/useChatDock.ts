@@ -4,7 +4,6 @@
 import { createEffect, createMemo, onCleanup } from 'solid-js';
 import type { ChatStore } from './createChatStore.js';
 import { productState } from '../page/index.js';
-import { getActiveTldSuffix } from '@dotli/config';
 import { useStore } from '@dotli/stores-solid';
 import type { ChatConversation, ChatFeed } from './chat.js';
 import type { ChatDockProps } from './ChatDock.js';
@@ -42,25 +41,15 @@ function openFeed(chat: ChatStore): ChatFeed {
 
 /** What the chat panel shows of the page's chat state, for an island's own lifetime. */
 function useChatConversation(chat: ChatStore): ChatConversation {
-  // Slices, so the composer-focus flag never re-runs the rows.
-  const label = useStore(chatPanelState.store, state => state.label);
-  const displayName = useStore(productState.store, state =>
-    state.status === 'loaded' ? state.facts.displayName : undefined,
-  );
-
   function send(roomId: string, text: string): Promise<void> {
     const productId = chatPanelState.store.get().runtimeProductId;
     // The panel only opens for a loaded product, so there is always one while it can send.
     return productId === null ? Promise.resolve() : chat.postUserMessage({ productId, roomId, text });
   }
 
+  // Slices, so the composer-focus flag never re-runs the rows.
   return {
     loggedIn: useStore(chatPanelState.store, state => state.loggedIn),
-    productName: () => displayName() ?? label(),
-    productDomain: () => {
-      const name = label();
-      return name === null ? null : name + getActiveTldSuffix();
-    },
     activeRoomId: useStore(chatPanelState.store, state => state.activeRoomId),
     unreadByRoom: useStore(chatPanelState.store, state => state.unreadByRoom),
     composerError: useStore(chatPanelState.store, state => state.composerError),
