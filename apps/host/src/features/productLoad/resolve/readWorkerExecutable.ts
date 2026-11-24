@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The product's worker executable, and whether the product declares chat, which derives from it. The product frame
-// picks the connection's execution kind from chat, so the last answer is kept per network and label to keep warm loads
+// The product's worker executable. The last answer is kept per network and label, so a warm load starts its worker
 // off a dotNS read. The same label can name another product on another network.
 
 import { getNetwork, type Network } from '@dotli/config';
@@ -13,7 +12,7 @@ import type { NameSource, WorkerExecutable } from './createNameSource.js';
 const report = createReporter({ flow: 'resolve' });
 
 /**
- * Count. The worker executable read failed, so the load goes on with the kept answer, or with no worker and no chat.
+ * Count. The worker executable read failed, so the load goes on with the kept answer, or with no worker.
  * Tagged `outcome` (error) and `reason` (the error's name). Named before the read served the worker, and dashboards
  * read the name.
  */
@@ -34,13 +33,8 @@ type ReadWorkerExecutableParams = {
 
 type CreateStorageExecutableCacheParams = {
   /** Where the answers are kept. */
-  storage: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
+  storage: Pick<SafeStorage, 'getItem' | 'setItem'>;
 };
-
-// Where a chat answer was kept, by label alone, before the executable was. It answers chat until the label's first
-// fresh read on any network replaces it, so a returning visitor keeps a warm load across the change. A wrong answer
-// there runs no code.
-const LEGACY_CHAT_PREFIX = 'dotli:chat-capable:';
 
 /**
  * Resolves `label`'s worker executable on `network`: the answer kept for that network when there is one, so it never
@@ -73,40 +67,14 @@ export function readWorkerExecutable(
   return kept === null ? fresh : Promise.resolve(kept.executable);
 }
 
-/**
- * Whether `label` declares chat in `worker`, the read `readWorkerExecutable` started for it. Answers at once from the
- * kept answer, or the chat answer kept before workers were, so it never waits on the read when either is there.
- */
-export function readChatCapability(
-  label: string,
-  worker: Promise<WorkerExecutable | null>,
-  {
-    cache = createStorageExecutableCache({ storage: pageLocalStorage }),
-    network = getNetwork(),
-  }: ReadWorkerExecutableParams = {},
-): Promise<boolean> {
-  const kept = cache.getChat(label, network);
-  return kept === null ? worker.then(executable => executable?.includes.chat === true) : Promise.resolve(kept);
-}
-
 /** Builds a cache in `storage`. */
 export function createStorageExecutableCache({ storage }: CreateStorageExecutableCacheParams) {
   return {
     /** Returns the answer kept for `label` on `network`, or null when none is kept or it is unreadable. */
     get,
-    /** Returns the chat answer kept for `label` on `network`, or null when none is kept. */
-    getChat(label: string, network: Network): boolean | null {
-      const kept = get(label, network);
-      if (kept !== null) {
-        return kept.executable?.includes.chat === true;
-      }
-      const legacy = storage.getItem(`${LEGACY_CHAT_PREFIX}${label}`);
-      return legacy === null ? null : legacy === '1';
-    },
     /** Keeps `executable` as the answer for `label` on `network`. */
     set(label: string, network: Network, executable: WorkerExecutable | null): void {
       storage.setItem(getKey(label, network), JSON.stringify(executable));
-      storage.removeItem(`${LEGACY_CHAT_PREFIX}${label}`);
     },
   };
 

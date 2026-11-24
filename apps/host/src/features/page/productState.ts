@@ -10,8 +10,6 @@ import type { ProductFacts } from '../productLoad/index.js';
 export type ProductDetails = {
   /** Only for a dotNS product, not a local or preview URL. */
   cid?: string;
-  /** Whether it declares chat. */
-  chat?: boolean;
   /** What its manifests publish. None by default. */
   facts?: ProductFacts;
 };

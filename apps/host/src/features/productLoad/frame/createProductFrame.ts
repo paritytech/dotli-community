@@ -35,7 +35,6 @@ import type { ProductFacts } from '../resolve/getProductFacts.js';
 import { openLanding } from '../../../kit/getLandingUrl.js';
 import { markAndReload } from '../../../kit/createContinuation.js';
 
-const chatReport = createReporter({ flow: 'chat' });
 const walletReport = createReporter({ flow: 'wallet' });
 const uiReport = createReporter({ flow: 'ui' });
 
@@ -53,9 +52,9 @@ const productFrameTransitionMetric = defineCount<'error'>('product_frame.transit
 const BRIDGE_SETUP = 'bridge.setup';
 
 /**
- * A product the host loads from a URL it was given, or from its content id on the app subdomain. `chat` says whether it
- * declares chat, which the page records once the product is on screen. Its connection is an App's either way, since
- * only its worker serves chat. `base` is the page path ahead of the product's own, which its frame does not get.
+ * A product the host loads from a URL it was given, or from its content id on the app subdomain. Its connection is an
+ * App's, since only its worker serves chat. `base` is the page path ahead of the product's own, which its frame does
+ * not get.
  */
 export type FrameProduct =
   | {
@@ -63,14 +62,12 @@ export type FrameProduct =
       label: string;
       url: string;
       productId?: string | undefined;
-      chat: Promise<boolean>;
     }
   | {
       mode: 'subdomain';
       label: string;
       cid: string;
       base?: string | undefined;
-      chat: Promise<boolean>;
       facts: ProductFacts;
     };
 
@@ -156,8 +153,6 @@ type Link = {
   coreProvider: CoreProvider;
   /** The id the core parsed for the product, which its connection runs under. */
   productId: ProductId;
-  /** Whether the product declares chat, as its run read it. */
-  chat: boolean;
 };
 
 /** Whether the core under an attempt reported itself down, refused or stale. */
@@ -166,8 +161,7 @@ type CoreSide = 'live' | 'down';
 /** A render's steps. The frame itself takes the product on screen from `building` and ends the run. */
 type Step =
   | { kind: 'leasing'; attempt: Attempt }
-  | { kind: 'readingChat'; attempt: Attempt; lease: CoreLease; core: CoreSide }
-  | { kind: 'connecting'; attempt: Attempt; chat: boolean; core: CoreSide }
+  | { kind: 'connecting'; attempt: Attempt; core: CoreSide }
   | { kind: 'readingAllow'; attempt: Attempt; link: Link; core: CoreSide }
   | { kind: 'building'; attempt: Attempt; link: Link; core: CoreSide }
   | { kind: 'loadingPanel'; attempt: Attempt };
@@ -232,7 +226,6 @@ type RunOutcome =
 /** The events of a render's steps, which its nested value handles. */
 type StepEvent =
   | { kind: 'leased'; attempt: Attempt; lease: CoreLease }
-  | { kind: 'chatRead'; attempt: Attempt; chatCapable: boolean }
   | { kind: 'opened'; attempt: Attempt; connection: CoreConnection; coreProvider: CoreProvider }
   | { kind: 'allowRead'; attempt: Attempt; allow: string }
   | { kind: 'coreDown'; attempt: Attempt };
@@ -262,7 +255,6 @@ type FrameEffect =
   | { kind: 'unsubscribed' }
   | { kind: 'runSettled'; origin: RunOrigin; outcome: RunOutcome }
   | ({ kind: 'traced' } & RenderTrace)
-  | { kind: 'chatResolved'; capable: boolean }
   | { kind: 'walletConnected' }
   | { kind: 'gaveUp'; deaths: number };
 
@@ -299,7 +291,7 @@ export function createProductFrame({
 }: ProductFrameParams) {
   // A core that goes down before the product's connection is open closes that connection with it, so the attempt
   // leases the replacement instead, once.
-  const retryOnCoreDown: HandlerOf<RunMachine, 'readingChat' | 'connecting', 'coreDown'> = (run, event, transition) => {
+  const retryOnCoreDown: HandlerOf<RunMachine, 'connecting', 'coreDown'> = (run, event, transition) => {
     if (run.attempt.n === 2) {
       markCoreDown(run, event, transition);
       return;
@@ -318,26 +310,12 @@ export function createProductFrame({
       leasing: {
         leased(run, { lease }, { emitState, update }) {
           const { attempt, product } = run;
-          emitState({ ...getRunParts(run), kind: 'readingChat', attempt, lease, core: 'live' });
+          emitState({ ...getRunParts(run), kind: 'connecting', attempt, core: 'live' });
           attempt.core.hold(
             lease.subscribeDown(() => {
               update({ kind: 'coreDown', attempt });
             }),
           );
-          update(
-            runStepWork(
-              attempt,
-              () => product.chat,
-              chatCapable => ({ kind: 'chatRead', attempt, chatCapable }),
-            ),
-          );
-        },
-      },
-      readingChat: {
-        chatRead(run, { chatCapable }, { emitState, emitSideEffect, update }) {
-          const { attempt, product, lease, core: coreSide } = run;
-          emitState({ ...getRunParts(run), kind: 'connecting', attempt, chat: chatCapable, core: coreSide });
-          emitSideEffect({ kind: 'chatResolved', capable: chatCapable });
           update(
             runStepWork(
               attempt,
@@ -354,12 +332,11 @@ export function createProductFrame({
             ),
           );
         },
-        coreDown: retryOnCoreDown,
       },
       connecting: {
         opened(run, { connection, coreProvider }, { emitState, emitSideEffect, update }) {
-          const { attempt, product, chat, core: coreSide } = run;
-          const link: Link = { coreProvider, productId: connection.productId, chat };
+          const { attempt, product, core: coreSide } = run;
+          const link: Link = { coreProvider, productId: connection.productId };
           emitState({ ...getRunParts(run), kind: 'readingAllow', attempt, link, core: coreSide });
           emitSideEffect({ kind: 'walletConnected' });
           update(
@@ -543,7 +520,6 @@ export function createProductFrame({
           runStep(state, event, transition);
         },
         leased: runStep,
-        chatRead: runStep,
         opened: runStep,
         allowRead: runStep,
         // The frame takes the product on screen, then ends the run at once or once the checker panel is mounted.
@@ -678,9 +654,6 @@ export function createProductFrame({
           return;
         case 'traced':
           traceProductRender(effect, timers);
-          return;
-        case 'chatResolved':
-          chatReport.log.event('chat capability resolved', { capable: effect.capable });
           return;
         case 'walletConnected':
           walletReport.log.event('product connected to wallet core');
@@ -1073,7 +1046,7 @@ function getRunParts({ product, origin, url, contract, flows, setupStartedAt }: 
 }
 
 /** Marks the core under the run down, so the product goes on to the replacement once it is on screen. */
-const markCoreDown: HandlerOf<RunMachine, 'readingChat' | 'connecting' | 'readingAllow' | 'building', 'coreDown'> = (
+const markCoreDown: HandlerOf<RunMachine, 'connecting' | 'readingAllow' | 'building', 'coreDown'> = (
   run,
   _event,
   { emitState },

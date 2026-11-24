@@ -26,7 +26,7 @@ beforeEach(() => {
   connections = createChatConnections();
   chat = createChatStore({ repo: createMemoryChatRepo(), connections });
   stopState = chatPanelState.start({ chat: () => Promise.resolve(chat) });
-  productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
+  productState.setLoaded({ label: LABEL, productId: PRODUCT });
   authState.set({ tag: 'Connected', session: { connected: true } });
 });
 
@@ -102,7 +102,7 @@ describe('useChatDock', () => {
     productState.setLoaded({
       label: LABEL,
       productId: PRODUCT,
-      details: { chat: true, facts: { displayName: 'Chatty' } },
+      details: { facts: { displayName: 'Chatty' } },
     });
     flush();
 

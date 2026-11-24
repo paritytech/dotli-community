@@ -213,9 +213,8 @@ request in session storage, so a reload answers the same round.
   then halts until the user reloads.
 - The product card's author is read and cached with the manifests.
 - The product's worker executable is its worker manifest with the CID of its `worker` subname, read once per label in a
-  page and cached per label. Whether the product declares chat derives from it. The topbar shows the chat button only
-  for a product that declares chat and has a room, to a logged-in user.
-- The product frame connects every product as an App, whatever it declares. Only the product worker serves chat.
+  page and cached per label. The load starts the read beside the CID, so the worker finds it done.
+- The product frame connects every product as an App as soon as the core is leased. Only the product worker serves chat.
 
 ### Product worker
 
@@ -227,6 +226,8 @@ request in session storage, so a reload answers the same round.
 - When the core goes down, the run goes with it, and the reference and the demand are taken again on the replacement.
 - A run whose worker declares chat serves the page's chat on its own connection until the run ends. Chat images come
   from the archive the run read, or as single Bulletin blocks checked against their CID.
+- The topbar shows the chat button once the product's worker registers chat and the product has a room, to a logged-in
+  user.
 - The worker's console output goes to the debug log, never to the always-on channels.
 
 ### Network

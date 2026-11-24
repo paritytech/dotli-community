@@ -27,13 +27,11 @@ export async function openTarget(target: LocalTarget, shell: Shell): Promise<voi
   shell.startup.bridge.setPageProduct({ label: target.host, productId: target.productId });
   pageNotifications().init();
   try {
-    // Local products carry no worker manifest, so they declare no chat.
     await shell.productFrame.render({
       mode: 'iframe',
       label: target.host,
       url: target.url,
       productId: target.productId,
-      chat: Promise.resolve(false),
     });
   } catch (error) {
     shell.productFrame.halt();

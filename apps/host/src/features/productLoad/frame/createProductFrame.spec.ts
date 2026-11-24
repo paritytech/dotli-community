@@ -108,8 +108,6 @@ type CreateTopbarLoginParams = {
 type BuildSubdomainProductParams = {
   /** The product's content id, `cid` by default. */
   cid?: string;
-  /** Whether the product declares chat, no by default. */
-  chat?: boolean;
 };
 
 /** The host page, at the root of a dev host. */
@@ -362,15 +360,11 @@ function buildIframeProduct(label: string): FrameProduct {
     mode: 'iframe',
     label,
     url: `https://${label}.example/app`,
-    chat: Promise.resolve(false),
   };
 }
 
-function buildSubdomainProduct(
-  label: string,
-  { cid = 'cid', chat = false }: BuildSubdomainProductParams = {},
-): FrameProduct {
-  return { mode: 'subdomain', label, cid, chat: Promise.resolve(chat), facts: {} };
+function buildSubdomainProduct(label: string, { cid = 'cid' }: BuildSubdomainProductParams = {}): FrameProduct {
+  return { mode: 'subdomain', label, cid, facts: {} };
 }
 
 /** Whether the iframe of every host is the one attached at the same place, compared by identity. */
@@ -538,7 +532,6 @@ describe('product frame renders', () => {
         label: 'doom',
         cid: 'cid',
         base: '/Doom.dot',
-        chat: Promise.resolve(false),
         facts: {},
       },
       0,
@@ -587,7 +580,6 @@ describe('product frame renders', () => {
         label: 'pr16.back-me-up',
         cid: 'cid',
         base: '/pr16.back-me-up',
-        chat: Promise.resolve(false),
         facts: {},
       },
       0,
@@ -616,14 +608,14 @@ describe('product frame renders', () => {
     expect(url.search).toBe(search);
   });
 
-  it('As a dApp user, I open an app that declares chat and it connects as an App, with no chat served on its connection', async () => {
+  it('As a dApp user, I open an app and it connects as an App, with no chat served on its connection', async () => {
     // Given
     const registered: string[] = [];
     onTestFinished(chatConnections.onRegister(productId => registered.push(productId)));
     const fakes = createHarness();
 
     // When
-    await fakes.settle(buildSubdomainProduct('chatty', { chat: true }), 0);
+    await fakes.settle(buildSubdomainProduct('chatty'), 0);
 
     // Then
     expect(nth(fakes.runtimes, 0).createProvider).toHaveBeenLastCalledWith(
@@ -657,7 +649,7 @@ describe('product frame renders', () => {
     };
 
     // When
-    await fakes.settle({ mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), facts }, 0);
+    await fakes.settle({ mode: 'subdomain', label: 'doom', cid: 'cid', facts }, 0);
 
     // Then
     expect(fakes.frameView.titles).toEqual([{ mode: 'subdomain', label: 'doom', displayName: 'DOOM' }]);
@@ -747,7 +739,6 @@ describe('product frame status', () => {
         label: 'doom',
         cid: 'cid',
         base: '/Doom.dot',
-        chat: Promise.resolve(false),
         facts: {},
       }),
     );

@@ -10,27 +10,21 @@ import type { productState } from '../../page/index.js';
 type Connection = {
   /** The id the core parsed, so chat data is keyed as the core keys it. */
   productId: ProductId;
-  /** Whether its connection serves chat. */
-  chat: boolean;
 };
 
 /** What the page records of `product` once it is on screen over its connection. */
 export function toLoadedProduct(
   product: FrameProduct,
-  { productId, chat }: Connection,
+  { productId }: Connection,
 ): Parameters<typeof productState.setLoaded>[0] {
   switch (product.mode) {
     case 'iframe':
-      return {
-        label: product.label,
-        productId,
-        details: { chat },
-      };
+      return { label: product.label, productId };
     case 'subdomain':
       return {
         label: product.label,
         productId,
-        details: { cid: product.cid, chat, facts: product.facts },
+        details: { cid: product.cid, facts: product.facts },
       };
   }
 }

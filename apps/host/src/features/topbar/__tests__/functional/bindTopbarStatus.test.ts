@@ -26,7 +26,7 @@ describe('bindTopbarStatus', () => {
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
     const stopChat = chatPanelState.start({ chat: () => Promise.resolve(chat) });
     const product = asProductId(toProductId('chatty'));
-    productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
+    productState.setLoaded({ label: 'chatty', productId: product });
     authState.set({ tag: 'Connected', session: { connected: true } });
     const unbind = bindTopbarStatus(bar, atom<NetworkHealth>('ok'));
     onTestFinished(() => {
