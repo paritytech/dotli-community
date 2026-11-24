@@ -41,8 +41,7 @@
   /* The host's own chat, which products never paint with. */
   --chat-bg-panel: #0b0c0f;
   --chat-bg-control: #404249;
-  /* Low contrast on --chat-bg-control, as the design draws it. */
-  --chat-fg-placeholder: #585b62;
+  --chat-fg-placeholder: #a9abb3; /* Lc 45 or more on --chat-bg-control */
   --chat-line: #404249;
   /* One pair for every contact that has no icon of its own. */
   --chat-bg-avatar: #7c3aed;
