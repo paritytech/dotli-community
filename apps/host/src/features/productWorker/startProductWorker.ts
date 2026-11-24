@@ -5,12 +5,14 @@
 // ledger, and the core counts the rest. Each turn of the demand to wanted and each core loss queues one pass that
 // brings the run in line with the demand, one pass at a time, so overlapping changes do the work once. A run that
 // fails, or finds no worker, is not tried again until the demand turns wanted again, so a broken worker cannot loop.
+// Chat reaches only the product whose connection it is published on, so a run that declares chat serves it on its own
+// connection, for as long as the run lives.
 
 import { createMessagePortProvider, type WireProvider } from '@parity/truapi';
 import type { WorkerDemandChange } from '@parity/truapi-host';
 import { createReporter, defineCount } from '@dotli/metrics';
 import type { ModuleFiles, QuickJsWorker, QuickJsWorkerParams } from '@dotli/quickjs-runtime';
-import { createAsyncTaskPool, createRandomId, realTimers, type AsyncTaskPool, type Timers } from '@dotli/shared';
+import { createAsyncTaskPool, createRandomId, noop, realTimers, type AsyncTaskPool, type Timers } from '@dotli/shared';
 import { pipeProviders, type WorkerExecutable } from '../productLoad/index.js';
 import type { CoreConnection, CoreLease, CoreProvider } from '../productRuntime/index.js';
 
@@ -55,6 +57,11 @@ export type ProductWorkerParams = {
   openGate: () => WorkerFetchGate;
   /** Starts one VM in a Web Worker. Throws when the worker cannot be started. */
   startVm: (params: Omit<QuickJsWorkerParams, 'createWorker'>) => QuickJsWorker;
+  /**
+   * Serves the page's chat on a run's connection, with the files the run read, until the returned stop. Called only
+   * for an executable that declares chat. Never throws.
+   */
+  serveChat: (connection: CoreConnection, files: ModuleFiles) => () => void;
   /** The clock the wire's debug events are stamped with. The page's own by default. */
   timers?: Pick<Timers, 'now'>;
   /** Runs the passes over the demand, one at a time. A pool of its own by default. */
@@ -68,6 +75,7 @@ type RunParts = {
   vm: QuickJsWorker;
   product: WireProvider;
   unpipe: () => void;
+  stopChat: () => void;
 };
 
 /**
@@ -90,6 +98,7 @@ export function startProductWorker({
   readFiles,
   openGate,
   startVm,
+  serveChat,
   timers = realTimers,
   // One pass at a time, so a pass never sees the lease or the run another pass is taking.
   passes = createAsyncTaskPool({ poolSize: 1 }),
@@ -244,7 +253,8 @@ export function startProductWorker({
       productId: lease.productId,
       timers,
     });
-    const parts: RunParts = { coreProvider, gate, vm, product, unpipe };
+    const stopChat = executable.includes.chat === true ? serveChat(connection, files) : noop;
+    const parts: RunParts = { coreProvider, gate, vm, product, unpipe, stopChat };
     run = { kind: 'running', parts };
     report.log.event('Worker started', { label, entrypoint: executable.entrypoint });
     // The VM serves on once its entrypoint finished, so no pass waits on the run.
@@ -290,8 +300,10 @@ export function startProductWorker({
     if (ended.kind !== 'running') {
       return;
     }
-    const { coreProvider, gate, vm, product, unpipe } = ended.parts;
-    // Unpiped first, since the pipe disposes one side as the other closes.
+    const { coreProvider, gate, vm, product, unpipe, stopChat } = ended.parts;
+    // Chat stops first, so the panel never hands an action to a connection that is closing.
+    stopChat();
+    // Unpiped before either side goes, since the pipe disposes one side as the other closes.
     unpipe();
     product.dispose();
     vm.dispose();

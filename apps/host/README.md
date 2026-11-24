@@ -224,6 +224,8 @@ request in session storage, so a reload answers the same round.
   core counts the rest.
 - A run that fails, or finds no worker, is not tried again until the demand turns wanted again.
 - When the core goes down, the run goes with it, and the reference and the demand are taken again on the replacement.
+- A run whose worker declares chat serves the page's chat on its own connection until the run ends. Chat images come
+  from the archive the run read, or as single Bulletin blocks checked against their CID.
 - The worker's console output goes to the debug log, never to the always-on channels.
 
 ### Network

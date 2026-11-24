@@ -1,11 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The page product's worker over the page's own core, prompts, grants and content. Loaded once the product is first
+// The page product's worker over the page's own core, prompts, grants, content and chat. Loaded once the product is first
 // done, so the VM's client, the fetch gate and the archive reader stay out of the boot and bridge chunks.
 
+import { loadVerify } from '@dotli/content';
 import { createQuickJsWorker, type ModuleFiles } from '@dotli/quickjs-runtime';
 import QuickJsWorker from '@dotli/quickjs-runtime/worker?worker';
+import { fetchContentBlock } from '../chains/index.js';
+import { registerProductChat } from '../chat/index.js';
 import { createHostFetchGate } from '../permissions/index.js';
 import {
   readServedArchive,
@@ -14,6 +17,7 @@ import {
   type ServedBlockCache,
 } from '../productLoad/index.js';
 import type { HostBridge } from '../productRuntime/index.js';
+import { createChatImageRead } from './createChatImageRead.js';
 import { startProductWorker } from './startProductWorker.js';
 
 export type PageProductWorkerParams = {
@@ -54,5 +58,7 @@ export function startPageProductWorker({ label, names, bridge, blockCache }: Pag
         ...params,
         createWorker: () => new QuickJsWorker(),
       }),
+    serveChat: (connection, files) =>
+      registerProductChat(connection, createChatImageRead(files, { fetchBlock: fetchContentBlock, loadVerify })),
   });
 }
