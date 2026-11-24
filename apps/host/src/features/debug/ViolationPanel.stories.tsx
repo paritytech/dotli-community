@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/* eslint-disable no-restricted-properties -- Predates the story contract: its plays still assert copy. */
-
 import { onCleanup } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
@@ -12,9 +10,17 @@ import { productFrameLayout } from '../page/index.js';
 import { mountViolationPanel } from './mount.js';
 import violatingProduct from '../../testing/stories/violatingProduct.js?inline-script';
 
+// The panel lists what the product's frame posts, so each state is reached by the product tripping guarded APIs.
+
 const PRODUCT = `<!doctype html><title>Product</title><script>${violatingProduct}</script>`;
 
+/** Enough violations that the log has reached its tallest, so a new one leaves the panel's height alone. */
+const FILLED = 20;
+
 type ProductWindow = Window & { violate?: (api: string, details?: Record<string, unknown>) => void };
+
+// The mount puts the panel at the end of the body, outside the story's root.
+const body = within(document.body);
 
 /**
  * The product frame under the page's frame layout, the panel mounted over it as a checker build does, and a way to
@@ -44,9 +50,10 @@ const meta = {
   component: Checker,
   parameters: {
     chrome: true,
-    // The mount puts the panel at the end of the body, outside the story's root, so axe and the plays look there.
+    // Axe and the plays look where the mount puts the panel.
     a11y: { context: 'body' },
   },
+  tags: ['!autodocs'],
   beforeEach: () => () => {
     resetAllStoresForTests();
   },
@@ -54,6 +61,183 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+/** As a dotli developer, I see the checker panel only once the product trips a guarded API, then its log of them. */
+export const HiddenUntilFirstViolation: Story = {
+  play: async ({ canvasElement, step }) => {
+    const violate = await product(canvasElement);
+    await step('Given no violation yet, the panel is hidden', async () => {
+      await expect(panel()).not.toBeVisible();
+    });
+    await step('When the product trips two guarded APIs', () => {
+      violate('localStorage.getItem', { key: 'x', n: 1 });
+      violate('fetch', {});
+    });
+    await step('Then the panel shows both in its log', async () => {
+      await waitFor(() => expect(entries()).toHaveLength(2));
+      await expect(log()).toBeVisible();
+    });
+  },
+};
+
+/** As a dotli developer, I see a violation that carries markup as text in the log. */
+export const MarkupAsText: Story = {
+  play: async ({ canvasElement, step }) => {
+    const violate = await product(canvasElement);
+    await step('When a violation carries markup', () => {
+      violate('<img src=x onerror=alert(1)>', { a: '<b>bold</b>' });
+    });
+    await step('Then its entry holds no element the markup names', async () => {
+      const entry = await body.findByTestId('sc-entry');
+      await expect(within(entry).queryByRole('img')).toBeNull();
+      await expect(entry.querySelector('b')).toBeNull();
+    });
+  },
+};
+
+/** As a dotli developer, I see the app frame end where the panel starts once the first violation shows it. */
+export const FrameEndsAbovePanel: Story = {
+  play: async ({ canvasElement, step }) => {
+    const violate = await product(canvasElement);
+    await step('When the first violation shows the panel', () => {
+      violate('x', {});
+    });
+    await step('Then the app frame ends where the panel starts', async () => {
+      await waitFor(() => frameClearsPanel(canvasElement));
+    });
+  },
+};
+
+/** As a dotli developer, I collapse the panel, which is announced as collapsed, and the app frame grows to its header. */
+export const CollapsingGrowsFrame: Story = {
+  play: async ({ canvasElement, userEvent, step }) => {
+    const toggle = await shown(canvasElement);
+    await step('When I collapse the panel', async () => {
+      await userEvent.click(toggle);
+    });
+    await step('Then its toggle is announced as collapsed and the app frame ends at its header', async () => {
+      await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'));
+      await waitFor(() => frameClearsPanel(canvasElement));
+    });
+  },
+};
+
+/** As a dotli developer, I drag the handle of the collapsed panel and nothing resizes, so it expands to its own height. */
+export const DragWhileCollapsedIsIgnored: Story = {
+  play: async ({ canvasElement, userEvent, step }) => {
+    const toggle = await shown(canvasElement);
+    const openHeight = panel().getBoundingClientRect().height;
+    await step('Given the panel collapsed', async () => {
+      await userEvent.click(toggle);
+      await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'));
+    });
+    await step('When I drag its handle up and expand it', async () => {
+      const handle = body.getByTestId('sc-resize-handle');
+      pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: 100 });
+      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: 100 });
+      pointer({ target: handle, type: 'pointerup', pointerId: 1 });
+      await userEvent.click(toggle);
+    });
+    await step('Then it opens at its own height and the app frame follows', async () => {
+      await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+      await expect(panel().getBoundingClientRect().height).toBe(openHeight);
+      await waitFor(() => frameClearsPanel(canvasElement));
+    });
+  },
+};
+
+/** As a dotli developer, I drag the panel handle and the panel follows the pointer. */
+export const DragHandleResizes: Story = {
+  play: async ({ canvasElement, step }) => {
+    await shown(canvasElement);
+    const viewport = window.innerHeight;
+    // Resizing is the panel's height, which no data-* state expresses.
+    const height = (): number => panel().getBoundingClientRect().height;
+    await step('When I drag the handle up, the panel follows the pointer', async () => {
+      const handle = body.getByTestId('sc-resize-handle');
+      pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: viewport - 168 });
+      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 200 });
+      await waitFor(() => expect(height()).toBe(200));
+    });
+  },
+};
+
+/** As a dotli developer, I close the checker and the app frame takes its full height back. */
+export const ClosingRestoresFrame: Story = {
+  play: async ({ canvasElement, canvas, userEvent, step }) => {
+    const violate = await product(canvasElement);
+    const fullBottom = frame(canvasElement).getBoundingClientRect().bottom;
+    await step('Given the panel shows and the app frame ends above it', async () => {
+      violate('x', {});
+      await waitFor(() => frameClearsPanel(canvasElement));
+    });
+    await step('When the checker closes and the product trips another API', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Close the checker' }));
+      violate('y', {});
+    });
+    await step('Then the panel is gone and the app frame takes its full height back', async () => {
+      await waitFor(() => expect(document.querySelector('#sandbox-checker-panel')).toBeNull());
+      await expect(frame(canvasElement).getBoundingClientRect().bottom).toBe(fullBottom);
+    });
+  },
+};
+
+/** As a dotli developer, I see the badge count every violation, past the ones the log keeps. */
+export const BadgeCountsAll: Story = {
+  play: async ({ canvasElement, step }) => {
+    const violate = await product(canvasElement);
+    await step('When a looping product trips 600 violations', () => {
+      for (let i = 0; i < 600; i++) {
+        violate(`api${String(i)}`);
+      }
+    });
+    await step('Then the badge counts them all', async () => {
+      // eslint-disable-next-line no-restricted-properties -- The badge's number is its state, not copy.
+      await waitFor(() => expect(body.getByTestId('sc-badge')).toHaveTextContent('600'));
+    });
+  },
+};
+
+/** As a dotli developer, I see a full log scroll to each newest violation. */
+export const LogFollowsNewest: Story = {
+  play: async ({ canvasElement, step }) => {
+    const violate = await filled(canvasElement);
+    await step('Given the full log scrolls', async () => {
+      await expect(log().scrollHeight).toBeGreaterThan(log().clientHeight);
+    });
+    await step('When one more arrives', async () => {
+      violate('newest');
+      await waitFor(() => expect(entries()).toHaveLength(FILLED + 1));
+    });
+    await step('Then the log is scrolled to it', async () => {
+      await expect(log().scrollTop + log().clientHeight).toBeGreaterThanOrEqual(log().scrollHeight - 1);
+    });
+  },
+};
+
+/** As a dotli developer, I find violations landing in a full log leave the app frame alone. */
+export const FullLogLeavesFrame: Story = {
+  play: async ({ canvasElement, step }) => {
+    const violate = await filled(canvasElement);
+    const frameWrites: MutationRecord[] = [];
+    await step('Given the frame is fitted and watched', async () => {
+      await waitFor(() => frameClearsPanel(canvasElement));
+      new MutationObserver(records => frameWrites.push(...records)).observe(frame(canvasElement), {
+        attributes: true,
+        attributeFilter: ['style'],
+      });
+    });
+    await step('When ten more arrive one by one', async () => {
+      for (let i = FILLED + 1; i <= FILLED + 10; i++) {
+        violate(`api${String(i)}`);
+        await waitFor(() => expect(entries()).toHaveLength(i));
+      }
+    });
+    await step('Then the app frame was not written', async () => {
+      await expect(frameWrites).toHaveLength(0);
+    });
+  },
+};
 
 function frame(canvasElement: HTMLElement): HTMLIFrameElement {
   return within(canvasElement).getByTestId<HTMLIFrameElement>('product-frame');
@@ -70,25 +254,44 @@ async function product(canvasElement: HTMLElement): Promise<Required<ProductWind
   return violate;
 }
 
-function panel(canvasElement: HTMLElement): HTMLElement {
-  return query(canvasElement.ownerDocument, '#sandbox-checker-panel');
+/** The panel once one violation shows it, and its toggle, which is reachable by role from then on. */
+async function shown(canvasElement: HTMLElement): Promise<HTMLElement> {
+  const violate = await product(canvasElement);
+  violate('x', {});
+  await waitFor(() => expect(panel()).toBeVisible());
+  await waitFor(() => frameClearsPanel(canvasElement));
+  return body.getByRole('button', { name: 'Violation log' });
+}
+
+/** The product, once the panel shows a full log. */
+async function filled(canvasElement: HTMLElement): Promise<Required<ProductWindow>['violate']> {
+  const violate = await product(canvasElement);
+  for (let i = 1; i <= FILLED; i++) {
+    violate(`api${String(i)}`);
+  }
+  await waitFor(() => expect(entries()).toHaveLength(FILLED));
+  return violate;
+}
+
+function panel(): HTMLElement {
+  return query(document, '#sandbox-checker-panel');
+}
+
+function log(): HTMLElement {
+  return body.getByRole('region', { name: 'API violations', hidden: true });
+}
+
+function entries(): HTMLElement[] {
+  return body.queryAllByTestId('sc-entry');
 }
 
 // The frame's reservation for the panel is box geometry with no data-* state, and it is what these stories name.
 /** Whether the product frame ends where the panel starts, so the panel covers none of the product. */
 async function frameClearsPanel(canvasElement: HTMLElement): Promise<void> {
   const frameBottom = frame(canvasElement).getBoundingClientRect().bottom;
-  const panelTop = panel(canvasElement).getBoundingClientRect().top;
+  const panelTop = panel().getBoundingClientRect().top;
   // The panel's top border may sit on the frame's last pixel row.
   await expect(Math.abs(frameBottom - panelTop)).toBeLessThanOrEqual(1);
-}
-
-function at<T>(list: readonly T[], index: number): T {
-  const item = list[index];
-  if (item === undefined) {
-    throw new Error(`Nothing at ${String(index)}`);
-  }
-  return item;
 }
 
 function pointer({
@@ -104,192 +307,3 @@ function pointer({
 }): void {
   target.dispatchEvent(new PointerEvent(type, { pointerId, clientY, bubbles: true }));
 }
-
-/**
- * As a dotli developer, I see the checker panel only once the product trips a guarded API, then each violation with
- * its API, details and time.
- */
-export const HiddenUntilFirstViolation: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement.ownerDocument.body);
-    const violate = await product(canvasElement);
-    await step('Given no violation yet, the panel is hidden and counts none', async () => {
-      await expect(panel(canvasElement)).not.toBeVisible();
-      await expect(canvas.getByTestId('sc-badge')).toHaveTextContent('0');
-      await expect(canvas.getByTestId('sc-label')).toHaveTextContent('API Violations');
-    });
-    await step('When the product trips two guarded APIs', () => {
-      violate('localStorage.getItem', { key: 'x', n: 1 });
-      violate('fetch', {});
-    });
-    await step('Then the panel shows both, with their API, details and time', async () => {
-      await waitFor(() => expect(canvas.getByTestId('sc-badge')).toHaveTextContent('2'));
-      await expect(panel(canvasElement)).toBeVisible();
-      const entries = canvas.getAllByTestId('sc-entry');
-      await expect(entries).toHaveLength(2);
-      const firstEntry = within(at(entries, 0));
-      await expect(firstEntry.getByTestId('sc-api')).toHaveTextContent('localStorage.getItem');
-      await expect(firstEntry.getByTestId('sc-details')).toHaveTextContent('key=x n=1');
-      await expect(firstEntry.getByTestId('sc-time')).toHaveTextContent(
-        new Date(0).toLocaleTimeString(undefined, { hourCycle: 'h23' }),
-      );
-      await expect(within(at(entries, 1)).queryByTestId('sc-details')).toBeNull();
-    });
-  },
-};
-
-/** As a dotli developer, I see a violation that carries markup as text in the log. */
-export const MarkupAsText: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement.ownerDocument.body);
-    const violate = await product(canvasElement);
-    await step('When a violation carries markup', () => {
-      violate('<img src=x onerror=alert(1)>', { a: '<b>bold</b>' });
-    });
-    await step('Then it shows as text', async () => {
-      const entry = await canvas.findByTestId('sc-entry');
-      await expect(entry.querySelector('img')).toBeNull();
-      await expect(entry.querySelector('b')).toBeNull();
-      await expect(within(entry).getByTestId('sc-api')).toHaveTextContent('<img src=x onerror=alert(1)>');
-      await expect(within(entry).getByTestId('sc-details')).toHaveTextContent('a=<b>bold</b>');
-    });
-  },
-};
-
-/** As a dotli developer, I collapse and expand the panel and the app frame always ends where the panel starts. */
-export const ShowCollapseExpandResizesFrame: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, userEvent, step }) => {
-    const canvas = within(canvasElement.ownerDocument.body);
-    const violate = await product(canvasElement);
-    let openHeight = 0;
-    await step('When the first violation shows the panel, the app frame ends above it', async () => {
-      violate('x', {});
-      await waitFor(() => expect(panel(canvasElement)).toBeVisible());
-      // Hidden until the first violation, so the toggle is only reachable by role from here.
-      const toggle = canvas.getByRole('button', { name: 'Violation log' });
-      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-      await expect(toggle).toHaveAttribute('aria-controls', 'sandbox-checker-log');
-      await waitFor(() => frameClearsPanel(canvasElement));
-      openHeight = panel(canvasElement).getBoundingClientRect().height;
-    });
-    const toggle = canvas.getByRole('button', { name: 'Violation log' });
-    await step('When I collapse the panel, the app frame grows down to its header', async () => {
-      await userEvent.click(toggle);
-      await waitFor(() => expect(panel(canvasElement)).toHaveAttribute('data-collapsed'));
-      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      await waitFor(() => frameClearsPanel(canvasElement));
-    });
-    await step('When I drag the handle of the collapsed panel, nothing resizes', () => {
-      const handle = canvas.getByTestId('sc-resize-handle');
-      pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: 100 });
-      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: 100 });
-      pointer({ target: handle, type: 'pointerup', pointerId: 1 });
-    });
-    await step('When I expand it, it opens at its own height and the frame follows', async () => {
-      await userEvent.click(toggle);
-      await waitFor(() => expect(panel(canvasElement)).not.toHaveAttribute('data-collapsed'));
-      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-      await expect(panel(canvasElement).getBoundingClientRect().height).toBe(openHeight);
-      await waitFor(() => frameClearsPanel(canvasElement));
-    });
-  },
-};
-
-/** As a dotli developer, I close the checker and the app frame takes its full height back. */
-export const ClosingRestoresFrame: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, userEvent, step }) => {
-    const canvas = within(canvasElement.ownerDocument.body);
-    const violate = await product(canvasElement);
-    const fullBottom = frame(canvasElement).getBoundingClientRect().bottom;
-    await step('Given the panel shows and the app frame ends above it', async () => {
-      violate('x', {});
-      await waitFor(() => frameClearsPanel(canvasElement));
-      await expect(frame(canvasElement).getBoundingClientRect().bottom).toBeLessThan(fullBottom);
-    });
-    await step('When the checker closes and the product trips another API', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Close the checker' }));
-      violate('y', {});
-    });
-    await step('Then the panel is gone and the app frame takes its full height back', async () => {
-      await waitFor(() => expect(canvasElement.ownerDocument.querySelector('#sandbox-checker-panel')).toBeNull());
-      await expect(frame(canvasElement).getBoundingClientRect().bottom).toBe(fullBottom);
-    });
-  },
-};
-
-/** As a dotli developer, I drag the panel handle and the panel follows the pointer. */
-export const DragHandleResizes: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement.ownerDocument.body);
-    const violate = await product(canvasElement);
-    const viewport = window.innerHeight;
-    // Resizing is the panel's height, which no data-* state expresses.
-    const height = (): number => panel(canvasElement).getBoundingClientRect().height;
-    violate('x', {});
-    await waitFor(() => expect(panel(canvasElement)).toBeVisible());
-    const handle = canvas.getByTestId('sc-resize-handle');
-    await step('When I drag the handle up, the panel follows the pointer', async () => {
-      pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: viewport - 168 });
-      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 200 });
-      await waitFor(() => expect(height()).toBe(200));
-    });
-  },
-};
-
-/** As a dotli developer, I see the badge count every violation, past the ones the log keeps. */
-export const BadgeCountsAll: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement.ownerDocument.body);
-    const violate = await product(canvasElement);
-    await step('When a looping product trips 600 violations', () => {
-      for (let i = 0; i < 600; i++) {
-        violate(`api${String(i)}`);
-      }
-    });
-    await step('Then the badge counts them all', async () => {
-      await waitFor(() => expect(canvas.getByTestId('sc-badge')).toHaveTextContent('600'));
-    });
-  },
-};
-
-/**
- * As a dotli developer, I see the log scroll to the newest violation in a full log while the app frame is left alone.
- */
-export const OneLayoutPerViolation: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement.ownerDocument.body);
-    const violate = await product(canvasElement);
-    const frameWrites: MutationRecord[] = [];
-    // Enough that the log has reached its tallest, so a new entry leaves the panel's height alone.
-    const FILLED = 20;
-    await step('Given the panel shows a full log and the frame is fitted', async () => {
-      for (let i = 0; i < FILLED; i++) {
-        violate(`api${String(i)}`);
-      }
-      await waitFor(() => expect(canvas.getByTestId('sc-badge')).toHaveTextContent(String(FILLED)));
-      await waitFor(() => frameClearsPanel(canvasElement));
-      new MutationObserver(records => frameWrites.push(...records)).observe(frame(canvasElement), {
-        attributes: true,
-        attributeFilter: ['style'],
-      });
-    });
-    await step('When ten more arrive one by one', async () => {
-      for (let i = FILLED + 1; i <= FILLED + 10; i++) {
-        violate(`api${String(i)}`);
-        await waitFor(() => expect(canvas.getByTestId('sc-badge')).toHaveTextContent(String(i)));
-      }
-    });
-    await step('Then the log is scrolled to the newest and the app frame is left alone', async () => {
-      const logEl = canvas.getByTestId('sc-log');
-      await expect(logEl.scrollTop + logEl.clientHeight).toBeGreaterThanOrEqual(logEl.scrollHeight - 1);
-      await expect(frameWrites).toHaveLength(0);
-    });
-  },
-};
