@@ -13,30 +13,20 @@
   outline-offset: -1px;
   object-fit: cover;
 }
-.icon.small {
-  width: 32px;
-  height: 32px;
-}
 
 .icon[data-fallback] {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--chrome-text);
+  background: var(--chat-bg-avatar);
+  color: var(--chat-fg-avatar);
   font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
-}
-.icon.small[data-fallback] {
-  font-size: var(--fs-body);
 }
 
 @media (max-width: 560px) {
   .icon {
     width: 44px;
     height: 44px;
-  }
-  .icon.small {
-    width: 36px;
-    height: 36px;
   }
 }

@@ -43,6 +43,10 @@
   --chat-bg-control: #404249;
   /* Low contrast on --chat-bg-control, as the design draws it. */
   --chat-fg-placeholder: #585b62;
+  --chat-line: #404249;
+  /* One pair for every contact that has no icon of its own. */
+  --chat-bg-avatar: #7c3aed;
+  --chat-fg-avatar: #ede9fe;
   /* The user's own messages, light on the dark panel. */
   --chat-bg-own: #ffffff;
   --chat-fg-own: #0b0c0f;

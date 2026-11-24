@@ -24,8 +24,7 @@
   gap: var(--sp-2);
   box-sizing: border-box;
   margin: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--chrome-line);
+  padding: var(--sp-2) var(--sp-4);
 }
 
 .titles {
@@ -37,9 +36,10 @@
 
 .title {
   overflow: hidden;
-  color: var(--text-strong);
-  font-size: var(--fs-pop-title);
+  color: var(--chat-fg-primary);
+  font-size: var(--fs-title-lg);
   font-weight: var(--fw-semibold);
+  line-height: 24px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -111,14 +111,22 @@
   padding: 0;
 }
 
+/* The caption sits between two hairlines that fill the rest of the row. */
 .day {
-  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
   margin: var(--sp-2) 0;
-  padding: var(--sp-hair) var(--sp-2);
-  border-radius: var(--r-full);
-  background: var(--fill-subtle);
-  color: var(--text-secondary);
-  font-size: var(--fs-label);
+  color: var(--chat-fg-tertiary);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  line-height: 16px;
+}
+.day::before,
+.day::after {
+  flex: 1;
+  border-top: 1px solid var(--chat-line);
+  content: '';
 }
 
 .hint {

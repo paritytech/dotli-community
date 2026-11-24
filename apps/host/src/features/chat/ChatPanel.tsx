@@ -313,7 +313,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
             >
               <ChevronLeftIcon />
             </IconButton>
-            <ContactIcon name={contact().name} icon={contact().icon} size="sm" />
+            <ContactIcon name={contact().name} icon={contact().icon} />
             <span class={s['titles']}>
               <span class={s['title']} id="chat-panel-title">
                 {contact().name}

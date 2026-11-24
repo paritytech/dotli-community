@@ -34,11 +34,6 @@ export const NoIcon: Story = {
   args: { icon: '' },
 };
 
-/** As a user, I see the smaller icon a conversation's head shows beside the room's name. */
-export const Small: Story = {
-  args: { size: 'sm' },
-};
-
 /** As a user, I see the initial of a contact whose icon fails to load. */
 export const BrokenIcon: Story = {
   args: { icon: BROKEN },
