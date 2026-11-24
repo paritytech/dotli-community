@@ -27,7 +27,7 @@ import { SettingsItem } from '../settings/index.js';
 import { AccountItem } from '../account/index.js';
 import { TopbarActions } from './TopbarActions.js';
 
-/** A phone bar with room for the account and More only, so every other item is a More row. */
+/** Room in the bar for the account and More only, so every other item is a More row. */
 const MORE_ONLY = 80;
 
 function opened(id: string): Promise<void> {
@@ -45,12 +45,14 @@ let chat: ChatStage = chatStage({ available: false });
 /** A bar that never morphs. */
 const STILL: ActionGroupMorph = { running: () => false, onEnd: () => () => undefined };
 
-/** The actions as the host's island renders them, with the story's network, chat, permissions, settings and account. */
-function Actions(): JSX.Element {
+/**
+ * The actions as the host's island renders them, with the story's network, chat, permissions, settings and account.
+ * Without a `room`, the group measures its own width, as the phone bar's room is.
+ */
+function Actions(props: { room?: number }): JSX.Element {
   return (
     <TopbarActions
-      // The group measures its own width, as the phone bar's room is.
-      room={() => undefined}
+      room={() => props.room}
       morph={STILL}
       network={<NetworkItem {...storyNetwork} />}
       chat={<ChatItem {...chat.button} />}
@@ -96,14 +98,17 @@ type Story = StoryObj<typeof meta>;
 
 function narrow() {
   return (
-    <TopbarFrame maxWidth={MORE_ONLY}>
-      <Actions />
+    <TopbarFrame>
+      <Actions room={MORE_ONLY} />
     </TopbarFrame>
   );
 }
 
-/** As a mobile user, the More menu's Network row opens the network panel in More's place. */
-export const NetworkAndSettingsRowsOpen: Story = {
+/** As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it. */
+export const PhoneActionsReplaceAddress: Story = {};
+
+/** As a phone user, the More menu's Network row opens the network panel in More's place. */
+export const PhoneNetworkRowOpensPanel: Story = {
   render: narrow,
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
@@ -150,9 +155,6 @@ export const PhoneChatRowJoinsMore: Story = {
     });
   },
 };
-
-/** As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it. */
-export const PhoneActionsReplaceAddress: Story = {};
 
 /** As a phone user, the Network row leads the More menu with its verdict, and a stalled chain raises More's badge and name. */
 export const PhoneNetworkRowLeads: Story = {

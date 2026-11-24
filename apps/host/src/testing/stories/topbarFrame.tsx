@@ -7,33 +7,22 @@ import type { StoryContext } from 'storybook/internal/types';
 import { expect, waitFor } from 'storybook/test';
 import { isPhoneViewport } from '@dotli/ui';
 import { byId } from '@dotli/ui/testing';
+import s from './topbarFrame.module.css';
 
 /**
  * The host bar as surfaces read it. Its box matches the `--topbar-bottom` and `--topbar-inline-end` fallbacks, so they
- * resolve as on the host page. Like the host's bar it stays live over the phone sheets resting on it. `center` puts the
- * children in the URL pill's place, and `maxWidth` bounds the bar an action group in it measures.
+ * resolve as on the host page, and on a phone it sits at the foot as the host's bar does. Like the host's bar it stays
+ * live over the phone sheets resting on it. `center` puts the children in the URL pill's place.
  */
-export function TopbarFrame(props: { children?: JSX.Element; center?: boolean; maxWidth?: number }): JSX.Element {
+export function TopbarFrame(props: { children?: JSX.Element; center?: boolean }): JSX.Element {
   return (
     <header
       id="topbar"
+      class={s['bar']}
       data-chrome=""
       data-over-sheets=""
+      data-center={props.center === true ? '' : undefined}
       data-testid="story-topbar"
-      style={{
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        right: '0',
-        height: 'var(--topbar-height)',
-        display: 'flex',
-        'align-items': 'center',
-        'justify-content': props.center === true ? 'center' : 'flex-end',
-        gap: '8px',
-        padding: '0 12px',
-        '--topbar-max-width': props.maxWidth === undefined ? undefined : `${String(props.maxWidth)}px`,
-        'max-width': props.maxWidth === undefined ? undefined : 'var(--topbar-max-width)',
-      }}
     >
       {props.children}
     </header>

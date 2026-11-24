@@ -1,0 +1,29 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The host bar's box: across the top on wide screens, and across the foot on phones, where the sheets rest on it. */
+.bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  box-sizing: border-box;
+  height: var(--topbar-height);
+  padding: 0 var(--sp-3);
+}
+.bar[data-center] {
+  justify-content: center;
+}
+
+@media (max-width: 560px) {
+  .bar {
+    top: auto;
+    bottom: 0;
+    background: var(--chrome-glass);
+    box-shadow: inset 0 1px 0 var(--chrome-line);
+  }
+}
