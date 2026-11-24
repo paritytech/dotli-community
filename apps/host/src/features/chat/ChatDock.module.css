@@ -14,8 +14,6 @@
   color-scheme: dark;
 }
 /* A sheet grows with its content, so the panel takes a height of its own to keep the conversation scrolling inside. */
-@media (max-width: 560px) {
-  .panel {
-    height: 65dvh;
-  }
+:global([data-layout='sheet']) .panel {
+  height: 65dvh;
 }
