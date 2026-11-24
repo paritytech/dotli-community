@@ -152,6 +152,29 @@ export const OneRoom: Story = {
   },
 };
 
+/** As a reader of a conversation over two days, I see each day named above its first message. */
+export const DaysDivided: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    stage.rooms = [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }];
+    stage.say('courier', textOf('I am two streets away.'), { minutesAgo: 24 * 60 });
+    stage.say('courier', textOf('Is the gate open?'), { minutesAgo: 24 * 60 });
+    stage.say('courier', textOf('Code is 4521'), { minutesAgo: 0, author: 'user' });
+  },
+  play: async ({ canvasElement, step }) => {
+    const list = conversation(canvasElement);
+    await step('Given the conversation shows', async () => {
+      await waitFor(() => expect(within(list).getAllByTestId('chat-msg')).toHaveLength(3));
+    });
+    await step('Then a divider opens each of its two days, the newest today', async () => {
+      const days = within(list).getAllByTestId('chat-day');
+      await expect(days).toHaveLength(2);
+      await expect(at(days, 1)).toHaveTextContent('Today');
+      await expect(at(days, 1).nextElementSibling).toHaveTextContent('Code is 4521');
+    });
+  },
+};
+
 /** As a phone user, I see an open room at the phone's size. */
 export const PhoneRoomOpen: Story = {
   tags: ['!autodocs'],

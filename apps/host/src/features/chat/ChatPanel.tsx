@@ -24,6 +24,7 @@ import { MessageRow } from './MessageRow.js';
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
+import { getDayLabel, startsDay } from './messageDays.js';
 import { endsRun } from './messageRuns.js';
 import { chatUnreadLabel } from './unread.js';
 import s from './ChatPanel.module.css';
@@ -398,15 +399,22 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
           <Show when={view() === 'conversation'}>
             <For each={feed.messages() ?? []} keyed={r => r.seq}>
               {(record, index) => (
-                <MessageRow
-                  chat={chat.actions}
-                  record={record()}
-                  now={now()}
-                  endsRun={endsRun(record(), feed.messages()?.[index() + 1])}
-                  onActionError={() => {
-                    chat.setComposerError('The app could not be reached.');
-                  }}
-                />
+                <>
+                  <Show when={startsDay(record(), feed.messages()?.[index() - 1])}>
+                    <p class={s['day']} data-testid="chat-day">
+                      {getDayLabel(record().timestamp, now())}
+                    </p>
+                  </Show>
+                  <MessageRow
+                    chat={chat.actions}
+                    record={record()}
+                    now={now()}
+                    endsRun={endsRun(record(), feed.messages()?.[index() + 1])}
+                    onActionError={() => {
+                      chat.setComposerError('The app could not be reached.');
+                    }}
+                  />
+                </>
               )}
             </For>
           </Show>

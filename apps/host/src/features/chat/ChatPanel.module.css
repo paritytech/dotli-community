@@ -111,6 +111,16 @@
   padding: 0;
 }
 
+.day {
+  align-self: center;
+  margin: var(--sp-2) 0;
+  padding: var(--sp-hair) var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--fill-subtle);
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+}
+
 .hint {
   grid-area: hint;
   box-sizing: border-box;
