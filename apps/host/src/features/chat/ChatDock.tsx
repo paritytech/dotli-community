@@ -19,7 +19,7 @@ export type ChatDockProps = {
   open: Accessor<boolean>;
   /** Whether the chat button shows, which loads the panel's code while the page is idle. */
   available: Accessor<boolean>;
-  /** Escape, a press outside, the close button, a swipe or a broken panel closes it. */
+  /** Escape inside it, the close button, a swipe, a press on the phone sheet's scrim or a broken panel closes it. */
   onOpenChange: (open: boolean) => void;
   conversation: ChatConversation;
   /** The room the open panel shows, named in the drawer's head. Null, as while the drawer is closed, shows "Chat". */

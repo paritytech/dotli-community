@@ -13,7 +13,7 @@ import s from './Drawer.module.css';
 
 export type DrawerProps = {
   open: boolean;
-  /** Escape, a press on the scrim, the close button or a swipe toward the edge. */
+  /** Escape inside it, the close button or a swipe toward the edge, and on a phone a press on the scrim. */
   onOpenChange: (open: boolean) => void;
   /** Drawn in the head's heading, which names the drawer, so markup in it keeps to what a heading may hold. */
   title: JSX.Element;
@@ -25,7 +25,8 @@ export type DrawerProps = {
 };
 
 /**
- * A modal panel on the right edge on wide screens and a bottom sheet on a phone, following the viewport while open.
+ * A panel beside the page on the right edge on wide screens, which leaves the page usable, and a modal bottom sheet on
+ * a phone, following the viewport while open. The panel insets from the page's content edges.
  * Its children render from an opening until the layer's exit transition ends, and move between the forms, so a
  * field's value and focus survive the switch.
  */

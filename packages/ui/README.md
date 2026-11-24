@@ -105,12 +105,15 @@ falls back to the system face while it loads or where it lacks a script. Monospa
   with `lazy()`. On a wide screen `DropdownMenu` is a `Listbox` hung from its button's end, which the button drives as a
   combobox while it keeps focus, and each item is an option. On a phone its items are menu rows in the sheet, which take
   focus, and the button is a menu button. The button's ARIA follows the viewport.
-- **Responsive drawer:** `Drawer` is a modal panel inset from the right edge on a wide screen, and the standard bottom
-  sheet on a phone. It picks the form by the viewport and follows it while open, and its content moves between the forms
-  with its state and focus. Escape, a press on the scrim, its close button and a swipe toward its edge each close it.
-  Its title is text or markup a heading may hold, and names the drawer. A text title also ends its close button's name.
-  Its content mounts at each opening and stays until the exit transition ends, or goes at once when no transition runs,
-  such as under reduced motion.
+- **Responsive drawer:** `Drawer` is a panel on the right edge of a wide screen, beside the page, and the standard modal
+  bottom sheet on a phone. The panel is not modal and has no scrim, so the page beside it stays usable while it is open.
+  It insets from the page's content edges and follows them as they move. A modal opened while it is open paints over it
+  and makes it inert. The drawer picks the form by the viewport and follows it while open, and its content moves between
+  the forms with its state and focus. Escape with focus inside it, its close button and a swipe toward its edge each
+  close it, and so does a press on the phone sheet's scrim. A press beside the panel does not. Its title is text or
+  markup a heading may hold, and names the drawer. A text title also ends its close button's name. Its content mounts at
+  each opening and stays until the exit transition ends, or goes at once when no transition runs, such as under reduced
+  motion.
 - **Listbox:** opens at its anchor in a floating layer, at least as wide as the anchor, and never takes focus, so the
   control that opened it keeps its keys. A press outside the anchor and the list, Escape and focus leaving them close it
   through `onClose`, and its caller sets `open` from that. A press on the anchor leaves it open. The caller also owns

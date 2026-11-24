@@ -6,13 +6,13 @@ import { Portal, type JSX } from '@solidjs/web';
 import { lockScroll } from '../createScrollLock.js';
 import { containTab, isFocusLostOrInside } from '../focus.js';
 import { ModalFocusFallback } from './layerContext.js';
-import { hideLayer, setLayerLayout, showLayer, topLayer, type LayerLayout } from './modalStack.js';
+import { hideLayer, isModalLayout, setLayerLayout, showLayer, topLayer, type LayerLayout } from './modalStack.js';
 import { sheetHandOff } from './createSheetHandOff.js';
 import s from './ModalLayer.module.css';
 
 export type ModalLayerProps = {
   open: boolean;
-  /** On Escape or a press on the scrim. */
+  /** On Escape or a press on the scrim. Beside the page, on Escape while focus is inside it. */
   onDismiss: () => void;
   id?: string | undefined;
   testId: string;
@@ -37,6 +37,8 @@ const restoreTargets = new WeakMap<Element, HTMLElement | null>();
 /**
  * A modal layer that does what showModal() would itself. Not a `<dialog>` because Safari
  * takes one out of the top layer at once on close() and draws a closing sheet over the phone bar.
+ * The `side` layout is not modal: the page beside it keeps answering, scrolling and taking the pointer. A layout
+ * change while open moves the layer into or out of being modal, in its place among the layers opened around it.
  */
 export function ModalLayer(props: ModalLayerProps): JSX.Element {
   const focusFallback = useContext(ModalFocusFallback);
@@ -46,8 +48,15 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
   let shown = false;
 
   // On the document so a key with focus on the body still reaches the top layer. A surface that took it prevents it.
+  // A layer beside the page answers only while focus is in it, since the page beside it keeps its own Escape.
   function handleDocumentKeyDown(event: KeyboardEvent): void {
-    if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing && topLayer() === frame) {
+    if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || frame === undefined) {
+      return;
+    }
+    const owned = isModalLayout(untrack(() => props.layout))
+      ? topLayer() === frame
+      : event.target instanceof Node && frame.contains(event.target);
+    if (owned) {
       event.preventDefault();
       props.onDismiss();
     }
@@ -71,8 +80,19 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     sheetHandOff.press({ dismiss: props.onDismiss, isTop: () => topLayer() === pressed });
   }
 
+  // The page beside a layer that is not modal scrolls.
+  function syncScrollLock(layout: LayerLayout): void {
+    if (isModalLayout(layout)) {
+      unlockScroll ??= lockScroll();
+      return;
+    }
+    unlockScroll?.();
+    unlockScroll = undefined;
+  }
+
   function hide(): void {
     shown = false;
+    const modal = isModalLayout(untrack(() => props.layout));
     document.removeEventListener('keydown', handleDocumentKeyDown);
     document.removeEventListener('click', handleDocumentClick, true);
     if (frame !== undefined) {
@@ -80,8 +100,8 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     }
     unlockScroll?.();
     unlockScroll = undefined;
-    // A layer opened over this one holds the focus now.
-    if (topLayer() !== undefined && !isFocusLostOrInside(frame)) {
+    // A layer opened over this one holds the focus now, and so may the page beside a layer that is not modal.
+    if ((topLayer() !== undefined || !modal) && !isFocusLostOrInside(frame)) {
       return;
     }
     const trigger = untrack(() => props.restoreFocus?.());
@@ -117,7 +137,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
         );
         document.addEventListener('keydown', handleDocumentKeyDown);
         document.addEventListener('click', handleDocumentClick, true);
-        unlockScroll = lockScroll();
+        syncScrollLock(untrack(() => props.layout));
         const first = untrack(() => props.initialFocus?.());
         (first ?? element.querySelector<HTMLElement>('[data-modal-surface]') ?? element).focus();
       } else if (!open && shown) {
@@ -125,12 +145,13 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
       }
     },
   );
-  // A modal changes its layout while open, so its layer's layout follows.
+  // A modal changes its layout while open, so its layer's layout and whether it is modal follow.
   createEffect(
     () => props.layout,
     layout => {
       if (shown && frame !== undefined) {
         setLayerLayout(frame, layout);
+        syncScrollLock(layout);
       }
     },
   );
@@ -141,7 +162,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
   });
 
   function handleKeyDown(event: KeyboardEvent): void {
-    if (event.key === 'Tab' && frame !== undefined) {
+    if (event.key === 'Tab' && frame !== undefined && isModalLayout(props.layout)) {
       const surface = frame.querySelector<HTMLElement>('[data-modal-surface]') ?? frame;
       containTab(event, surface);
     }
@@ -157,7 +178,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
         class={[s['layer'], props.class]}
         id={props.id}
         role="dialog"
-        aria-modal="true"
+        aria-modal={isModalLayout(props.layout) ? 'true' : undefined}
         tabindex="-1"
         data-modal-layer=""
         data-chrome=""
@@ -170,8 +191,9 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
         aria-labelledby={props.labelledBy}
         onKeyDown={handleKeyDown}
         onClick={event => {
-          // The scrim covers the frame, so only a programmatic click (tests, assistive tech) lands here.
-          if (event.target === event.currentTarget) {
+          // The scrim covers the frame, so only a programmatic click (tests, assistive tech) lands here. A layer that
+          // is not modal has no scrim to press.
+          if (event.target === event.currentTarget && isModalLayout(props.layout)) {
             props.onDismiss();
           }
         }}
@@ -200,7 +222,8 @@ function restoreTargetNow(): HTMLElement | null {
     const open = topLayer();
     return open !== undefined && restoreTargets.has(open) ? (restoreTargets.get(open) ?? null) : null;
   }
-  const outer = active.closest('[data-modal-layer]');
+  // A layer that is not modal stays open beside the new one, so focus comes back to the control inside it.
+  const outer = active.closest('[data-modal-layer][aria-modal]');
   if (outer !== null && restoreTargets.has(outer)) {
     return restoreTargets.get(outer) ?? null;
   }

@@ -177,6 +177,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [one-form-of-a-responsive-component-changes](one-form-of-a-responsive-component-changes.md): a shared component with a
   wide-screen form and a phone form needs a different primitive on one form only, and the question is where the switch
   between the forms lives, what ARIA its trigger carries and which keys it handles.
+- [page-mode-moves-a-shared-component](page-mode-moves-a-shared-component.md): an app's page mode moves where a
+  component of the domain-free shared UI package sits, such as a side panel that must start below a band of changing
+  height, and the question is how the component learns its new placement.
 - [screen-mixes-alignments](screen-mixes-alignments.md): a screen has some text centred and some at the start edge.
 - [section-whose-data-loads-lazily](section-whose-data-loads-lazily.md): a card or popover section's data loads only
   after the card opens, and the question is what the section shows while it loads.
