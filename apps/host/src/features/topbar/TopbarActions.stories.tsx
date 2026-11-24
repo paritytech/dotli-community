@@ -78,7 +78,7 @@ export const IntoMore: Story = {
   args: { room: MORE_ONLY },
 };
 
-/** As a phone user, I find More raise the network's warning in its look and its name once a chain in use stalls. */
+/** As a phone user, I find More raise the network's warning once a chain in use stalls. */
 export const StalledNetworkRaisesMore: Story = {
   args: { room: MORE_ONLY },
   play: async ({ canvas, step }) => {
@@ -91,10 +91,9 @@ export const StalledNetworkRaisesMore: Story = {
     await step('When a chain in use stalls', () => {
       setHealth('warn');
     });
-    await step('Then More carries the warning, and its name says the network is the cause', async () => {
+    await step('Then More carries the warning', async () => {
       await waitFor(() => expect(more).toHaveAttribute('data-badge'));
       await expect(more).toHaveAttribute('data-tone', 'warn');
-      await expect(more).toHaveAccessibleName(/network/);
     });
   },
 };

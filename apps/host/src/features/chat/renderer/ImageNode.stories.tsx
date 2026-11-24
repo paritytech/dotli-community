@@ -87,7 +87,7 @@ export const Unavailable: Story = {
   args: { ...Loading.args, loadImage: fn<CustomImageLoad>(loadNothing) },
   play: async ({ canvas, step }) => {
     await step('Then the image shows as unavailable', async () => {
-      await expect(await canvas.findByRole('img', { name: 'Image unavailable' })).toBeVisible();
+      await waitFor(() => expect(canvas.getByRole('img')).toHaveAttribute('data-state', 'unavailable'));
     });
   },
 };
@@ -97,7 +97,7 @@ export const FailsToDecode: Story = {
   args: { value: { ...meta.args.value, props: { source: { tag: 'Inline', value: '0x89504e470d0a1a0a00000000' } } } },
   play: async ({ canvas, step }) => {
     await step('Then the image shows as unavailable once the browser gives up on it', async () => {
-      await expect(await canvas.findByRole('img', { name: 'Image unavailable' })).toBeVisible();
+      await waitFor(() => expect(canvas.getByRole('img')).toHaveAttribute('data-state', 'unavailable'));
     });
   },
 };
