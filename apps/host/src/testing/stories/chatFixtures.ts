@@ -150,7 +150,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
   // What the views read, following each write as the page's stores reach them through `useStore`.
   const [current, setCurrent] = createSignal(state.get());
   const unlisten = state.listen(() => setCurrent(state.get()));
-  // Strictly rising and close to now, so the list's recency order never ties and bubbles read "just now".
+  // Strictly rising and close to now, so the list's recency order never ties.
   let clock = 0;
   const stamp = (): number => (clock = Math.max(Date.now(), clock + 1));
   let shownRoom: string | null = null;

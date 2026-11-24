@@ -39,7 +39,7 @@
   color: var(--chat-fg-primary);
   font-size: var(--fs-title-lg);
   font-weight: var(--fw-semibold);
-  line-height: 24px;
+  line-height: var(--lh-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -59,8 +59,8 @@
   height: var(--h-chip);
   padding: 0 var(--sp-1_5);
   border-radius: var(--r-full);
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
+  background: var(--chat-bg-unread);
+  color: var(--chat-fg-inverted);
   font-size: var(--fs-label);
   font-weight: var(--fw-semibold);
   line-height: var(--h-chip);
@@ -119,7 +119,7 @@
   color: var(--chat-fg-tertiary);
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);
-  line-height: 16px;
+  line-height: var(--lh-tight);
 }
 .day::before,
 .day::after {
@@ -237,7 +237,7 @@
   color: var(--chat-fg-primary);
   font-family: inherit;
   font-size: var(--fs-title);
-  line-height: 20px;
+  line-height: var(--lh-tight);
 }
 .input::placeholder {
   color: var(--chat-fg-placeholder);
@@ -255,12 +255,12 @@
   padding: var(--sp-1_5);
   border: none;
   border-radius: var(--r-full);
-  background: var(--chrome-primary);
-  color: var(--chrome-on-primary);
+  background: var(--chat-bg-send);
+  color: var(--chat-fg-inverted);
   cursor: pointer;
 }
 .send:hover {
-  background: var(--chrome-primary-hover);
+  background: var(--chat-bg-send-hover);
 }
 .send:focus-visible {
   outline: var(--chrome-focus-ring);

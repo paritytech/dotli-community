@@ -62,7 +62,7 @@
   overflow: hidden;
   font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
-  line-height: 24px;
+  line-height: var(--lh-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -72,7 +72,7 @@
   color: var(--chat-fg-tertiary);
   font-size: var(--fs-body);
   font-weight: var(--fw-medium);
-  line-height: 20px;
+  line-height: var(--lh-body);
   white-space: nowrap;
 }
 
@@ -82,7 +82,7 @@
   overflow: hidden;
   color: var(--chat-fg-secondary);
   font-size: var(--fs-body);
-  line-height: 18px;
+  line-height: var(--lh-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -93,10 +93,10 @@
   min-width: 20px;
   padding: var(--sp-hair) var(--sp-1);
   border-radius: var(--r-full);
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
+  background: var(--chat-bg-unread);
+  color: var(--chat-fg-inverted);
   font-size: var(--fs-caption);
   font-weight: var(--fw-semibold);
-  line-height: 16px;
+  line-height: var(--lh-tight);
   text-align: center;
 }

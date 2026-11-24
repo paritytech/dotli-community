@@ -9,7 +9,7 @@
   height: 100%;
   margin: 0;
   padding: 0;
-  /* Darker than BgSurfaceMain, so product boxes painted with it stand out as the other side's bubbles do. */
+  /* Darker than the other side's bubbles, so they stand out on it. */
   background: var(--chat-bg-panel);
   color-scheme: dark;
 }

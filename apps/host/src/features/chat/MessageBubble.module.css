@@ -27,7 +27,7 @@
   background: var(--chat-bg-surface-main);
   color: var(--chat-fg-primary);
   font-size: var(--fs-title);
-  line-height: 20px;
+  line-height: var(--lh-tight);
   --bubble-muted: var(--chat-fg-tertiary);
 }
 .row[data-author='user'] > .bubble {
@@ -68,7 +68,7 @@
   color: var(--bubble-muted);
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);
-  line-height: 16px;
+  line-height: var(--lh-tight);
   white-space: nowrap;
 }
 

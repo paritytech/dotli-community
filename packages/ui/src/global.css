@@ -51,6 +51,11 @@
   --chat-bg-own: #ffffff;
   --chat-fg-own: #0b0c0f;
   --chat-fg-own-muted: #6f727a;
+  /* The send button and the unread counts, dark marks on a light fill. */
+  --chat-bg-send: #e0e0e0;
+  --chat-bg-send-hover: #ffffff;
+  --chat-bg-unread: #ececec;
+  --chat-fg-inverted: #080808;
 
   /* `viewport-fit=cover` needs an inset per edge. Inline styles set from JS repeat the px fallback,
      because they do not ship with this file. */
