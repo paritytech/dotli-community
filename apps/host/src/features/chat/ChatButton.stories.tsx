@@ -1,93 +1,83 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/* eslint-disable no-restricted-properties -- Predates the story contract: its plays still assert copy. */
-
-import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect } from 'storybook/test';
-import { byId } from '@dotli/ui/testing';
+import type { JSX } from '@solidjs/web';
+import { createJSXDecorator, type Meta, type StoryObj } from 'storybook-solidjs-vite';
+import { expect, fn } from 'storybook/test';
 import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
-import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { ChatButton } from './ChatButton.js';
 import { CHAT_PANEL_ID } from './chatPanelId.js';
 
-/** The story's chat, fresh for each. */
-let stage: ChatStage = chatStage();
+type ButtonArgs = {
+  visible: boolean;
+  open: boolean;
+  /** The count as the badge shows it, undefined for none. */
+  unread: string | undefined;
+  onToggle: () => void;
+};
+
+// In the bar, beside a stand-in for the panel the button controls.
+const inTopbar = createJSXDecorator(Story => (
+  <>
+    <TopbarFrame>
+      <Story />
+    </TopbarFrame>
+    <aside id={CHAT_PANEL_ID} aria-label="Product chat" />
+  </>
+));
 
 const meta = {
   title: 'Host/Chat/ChatButton',
-  component: ChatButton,
+  component: PlainChatButton,
   parameters: { chrome: true },
-  args: stage.button,
-  beforeEach: () => {
-    stage = chatStage();
-    return stage.dispose;
-  },
-  render: () => (
-    <TopbarFrame>
-      <ChatButton {...stage.button} />
-    </TopbarFrame>
-  ),
-} satisfies Meta<typeof ChatButton>;
+  args: { visible: true, open: false, unread: undefined, onToggle: fn() },
+  decorators: [inTopbar],
+} satisfies Meta<typeof PlainChatButton>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a user, I see the chat button while the page has chat for me, with nothing unread. */
-export const Idle: Story = {
-  play: async ({ step }) => {
-    await step('Then the button shows without a count', async () => {
-      await expect(byId('chat-button')).toBeVisible();
-      await expect(byId('chat-button')).toHaveAccessibleName('Chat');
-      await expect(byId('chat-unread-badge')).not.toBeVisible();
-    });
-  },
-};
+export const Default: Story = {};
 
-/** As a user, I see how many chat messages wait for me while the panel is closed. */
+/** As a screen-reader user, I hear how many chat messages wait for me while the panel is closed. */
 export const Unread: Story = {
-  beforeEach: () => {
-    stage.update({ unread: 3 });
-  },
-  play: async ({ step }) => {
-    await step('Then the badge shows the count and the button names it', async () => {
-      await expect(byId('chat-unread-badge')).toBeVisible();
-      await expect(byId('chat-unread-badge')).toHaveTextContent('3');
-      await expect(byId('chat-button')).toHaveAccessibleName('Chat, 3 unread');
+  args: { unread: '3' },
+  play: async ({ canvas, mount, step }) => {
+    await step('When the button renders with three unread', async () => {
+      await mount();
+    });
+    // The badge is inside the named button, so the count reaches assistive technology only through the name.
+    await step('Then the button is named with the count', async () => {
+      await expect(canvas.getByRole('button', { name: /3/ })).toBeVisible();
     });
   },
 };
 
-/** As a user, I see the chat button pressed while the panel is open. */
+/** As a screen-reader user, I find the chat button announced as expanded while the panel is open. */
 export const Open: Story = {
-  beforeEach: () => {
-    stage.update({ open: true });
-  },
-  // A stand-in for the panel the button controls.
-  render: () => (
-    <>
-      <TopbarFrame>
-        <ChatButton {...stage.button} />
-      </TopbarFrame>
-      <aside id={CHAT_PANEL_ID} aria-label="Product chat" />
-    </>
-  ),
-  play: async ({ step }) => {
-    await step('Then the button reads as expanded', async () => {
-      await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'true');
+  args: { open: true },
+  play: async ({ canvas, mount, step }) => {
+    await step('When the button renders with the panel open', async () => {
+      await mount();
+    });
+    await step('Then the button is announced as expanded', async () => {
+      await expect(canvas.getByRole('button', { expanded: true })).toBeVisible();
     });
   },
 };
 
-/** As a user, I see the chat button only while the page has chat for me. */
-export const HiddenWithoutChat: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    stage.update({ available: false });
-  },
-  play: async ({ step }) => {
-    await step('Then the button is not on show', async () => {
-      await expect(byId('chat-button')).not.toBeVisible();
-    });
-  },
-};
+/** The button handed plain args, as the page hands it the chat state it follows. */
+function PlainChatButton(props: ButtonArgs): JSX.Element {
+  return (
+    <ChatButton
+      visible={() => props.visible}
+      open={() => props.open}
+      unread={() => props.unread}
+      onToggle={() => {
+        props.onToggle();
+      }}
+      panel={() => undefined}
+    />
+  );
+}

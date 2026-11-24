@@ -5,6 +5,7 @@
 // the chat button in its bar and the drawer it opens.
 
 import type { JSX } from '@solidjs/web';
+import { createJSXDecorator } from 'storybook-solidjs-vite';
 import type { ChatPanelModule } from '../../features/chat/ChatDock.js';
 import { ChatItem } from '../../features/chat/ChatButton.js';
 import { ChatDock } from '../../features/chat/ChatDock.js';
@@ -32,6 +33,13 @@ export function ChatSurface(props: { children: JSX.Element }): JSX.Element {
     </div>
   );
 }
+
+/** A story's part of the chat on the chat panel's surface. */
+export const onChatSurface = createJSXDecorator(Story => (
+  <ChatSurface>
+    <Story />
+  </ChatSurface>
+));
 
 /** The page's chat: the chat button in the bar and the drawer it opens, over the story's chat. */
 export function ChatOnPage(props: { stage: ChatStage; loadPanel?: () => Promise<ChatPanelModule> }): JSX.Element {
