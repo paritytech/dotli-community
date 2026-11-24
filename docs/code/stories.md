@@ -48,6 +48,8 @@ A play is kept for one of these reasons, named by its clause ID:
 
 - **V**: the state the story shows can only be reached through interaction, such as an open popover.
 - **K1**: it documents a public behaviour a user sees and the types do not show, such as a press reported once.
+  An ARIA state that a prop sets and assistive technology relies on, such as a disabled control that stays focusable,
+  counts too, even though the prop only passes through.
 - **K2**: it guards an edge case. Focus that must land or stay, a keyboard path, a close reported once and a race are
   such cases.
 
