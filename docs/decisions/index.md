@@ -113,6 +113,10 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md): a story file's axe check costs
   time or fails where it has nothing to find, such as stories that drive a component at capacity near the test timeout,
   or the contrast rule on text inside a decorative, `aria-hidden` background graphic.
+- [play-checks-a-prop-reaches-an-aria-state](play-checks-a-prop-reaches-an-aria-state.md): a story play checks that a
+  state prop, such as `disabled`, lands as an ARIA attribute that is the only way assistive technology learns the
+  state, and the question is whether the stories contract drops it as a prop passed through or keeps it as a behaviour
+  a user sees.
 
 ## UI
 
