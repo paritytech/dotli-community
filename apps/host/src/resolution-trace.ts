@@ -22,6 +22,14 @@ export type CacheResult = 'hit' | 'miss';
 /** `skipped` is a lookup the settings turned off. */
 export type CidCacheResult = CacheResult | 'skipped';
 
+export interface LoadingWarningFacts {
+  kind: 'progress' | 'chain';
+  message: string;
+  barPercent: number;
+  bytesPerSecond: number | null;
+  chain?: ChainKey;
+}
+
 export interface FinishDetails {
   /** For reading, never grouped on. */
   reason?: string;
@@ -133,6 +141,7 @@ export interface ResolutionTrace {
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
   content: (fetched: number, total: number | null) => void;
+
   nameResolved: (cid: string | null) => void;
   cidCache: (result: CidCacheResult) => void;
   /** Reported as `loading_phase` wherever the load ends. */
@@ -140,6 +149,10 @@ export interface ResolutionTrace {
   /** The sandbox iframe is mounted and the download is its to run. */
   handedOff: () => void;
   warningShown: () => void;
+  /** A warning became visible on the loading screen. */
+  loadingWarning: (facts: LoadingWarningFacts) => void;
+  /** Real progress made the visible loading warning obsolete. */
+  loadingWarningCleared: (barPercent: number) => void;
   /** Idempotent: the first outcome wins. */
   finish: (outcome: ResolutionOutcome, details?: FinishDetails) => void;
   /** For linking this load's errors to its trace. */
@@ -215,6 +228,10 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
   let nameSpan: SpanHandle | null = sampled ? root.child('name_resolution', { startTime: epochStart }) : null;
   let contentSpan: SpanHandle | null = null;
   let finished = false;
+  let loadingWarningCount = 0;
+  const loadingWarningKinds = new Set<LoadingWarningFacts['kind']>();
+  let loadingWarningVisibleAt: number | null = null;
+  let loadingWarningVisibleMs = 0;
 
   const enterPhase = (key: ChainKey, state: ChainState, phase: Phase): void => {
     if (state.phase === phase) {
@@ -343,6 +360,41 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
       warned = true;
     },
 
+    loadingWarning: facts => {
+      if (finished) {
+        return;
+      }
+      warned = true;
+      loadingWarningCount += 1;
+      loadingWarningKinds.add(facts.kind);
+      loadingWarningVisibleAt ??= sinceStart();
+      m.breadcrumb('loading warning shown', {
+        kind: facts.kind,
+        message: facts.message,
+        load_age_ms: Math.round(sinceStart()),
+        bar_percent: facts.barPercent,
+        bytes_per_second: facts.bytesPerSecond,
+        ...(facts.chain === undefined ? {} : { chain: facts.chain }),
+        chains: [...chains].map(([chain, state]) => ({
+          chain,
+          phase: state.phase,
+          peers_max: state.peersMax,
+        })),
+      });
+    },
+
+    loadingWarningCleared: barPercent => {
+      if (finished || loadingWarningVisibleAt === null) {
+        return;
+      }
+      loadingWarningVisibleMs += sinceStart() - loadingWarningVisibleAt;
+      loadingWarningVisibleAt = null;
+      m.breadcrumb('loading warning cleared', {
+        load_age_ms: Math.round(sinceStart()),
+        bar_percent: barPercent,
+      });
+    },
+
     span: root,
 
     finish: (outcome, details) => {
@@ -351,6 +403,10 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
       }
       finished = true;
       const endedAt = at();
+      if (loadingWarningVisibleAt !== null) {
+        loadingWarningVisibleMs += sinceStart() - loadingWarningVisibleAt;
+        loadingWarningVisibleAt = null;
+      }
       const totalMs = sinceStart();
 
       nameSpan?.end(endedAt);
@@ -384,6 +440,9 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
         ...(details?.failedStep !== undefined ? { failed_step: details.failedStep } : {}),
         // An unsampled load still answers "which chain was slow".
         ...chainSummary(chains),
+        loading_warning_count: loadingWarningCount,
+        loading_warning_kinds: [...loadingWarningKinds].join(','),
+        loading_warning_visible_ms: loadingWarningVisibleMs,
       });
       root.end(endedAt);
     },
