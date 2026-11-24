@@ -134,12 +134,31 @@ export const Rooms: Story = {
   },
 };
 
-/** As a user, I see a room opened from the list in the drawer, with a way back to the list. */
+/**
+ * As a user, I see a room opened from the list in the drawer, under a head that names it and the product, with a way
+ * back to the list and what the other rooms hold unread.
+ */
 export const RoomOpen: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     seedShop(stage);
     openShop({ activeRoomId: 'orders' });
+  },
+  play: async ({ step }) => {
+    await step('Given the open room has unread messages of its own and one other room has one', async () => {
+      await waitFor(() => expect(byId('chat-panel-title')).toHaveTextContent('Market orders'), SLOW);
+    });
+    await step("Then the head names the product under the room and counts only the other room's unread", async () => {
+      await expect(byId('chat-panel-subtitle')).toHaveTextContent('Market');
+      await expect(byId('chat-panel-other-unread')).toHaveTextContent('1');
+      await expect(byId('chat-panel-back')).toBeVisible();
+    });
+    await step('When the other room is seen', () => {
+      stage.update({ unreadByRoom: { orders: 2 } });
+    });
+    await step('Then the head shows no unread count', async () => {
+      await waitFor(() => expect(document.getElementById('chat-panel-other-unread')).toBeNull());
+    });
   },
 };
 
@@ -186,10 +205,10 @@ export const OneRoomOpensOnItsConversation: Story = {
       await soleRoomShows();
     });
     await step(
-      'Then its conversation shows, open, with focus on the drawer, no room list and no way back',
+      'Then its conversation shows, open, with focus on the drawer, no head of its own, no room list and no way back',
       async () => {
         await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello from the app'), SLOW);
-        await expect(byId('chat-panel-title')).toHaveTextContent('Main');
+        await expect(document.getElementById('chat-panel-title')).toBeNull();
         await expect(stage.state.get().activeRoomId).toBe('main');
         await expect(within(document.body).getByTestId('chat-panel')).toHaveFocus();
         await expect(byId('chat-panel-rooms')).not.toBeVisible();
@@ -199,7 +218,7 @@ export const OneRoomOpensOnItsConversation: Story = {
     await step('When a second room appears', () => {
       stage.createRoom('news', 'News');
     });
-    await step('Then I stay in the conversation and can go back', async () => {
+    await step('Then I stay in the conversation, under a head that names it, and can go back', async () => {
       await waitFor(() => expect(document.getElementById('chat-panel-back')).toBeVisible(), SLOW);
       await expect(byId('chat-panel-title')).toHaveTextContent('Main');
       await expect(byId('chat-panel-messages')).toBeVisible();

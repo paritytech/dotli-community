@@ -60,10 +60,9 @@ describe('ChatDock island', () => {
     chatPanelState.setOpen(true);
 
     // Then
-    await waitForDom(() => document.getElementById('chat-panel-title')?.textContent === 'Main');
+    await waitForDom(() => document.getElementById('chat-panel-hint')?.textContent === 'No messages yet.');
     expect(byId('chat-panel').hasAttribute('data-open')).toBe(true);
     expect(chatPanelState.store.get().activeRoomId).toBe('main');
-    await waitForDom(() => byId('chat-panel-hint').textContent === 'No messages yet.');
     expect(document.activeElement).not.toBe(byId('chat-panel-input'));
   });
 

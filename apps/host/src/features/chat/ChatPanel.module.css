@@ -28,15 +28,43 @@
   border-bottom: 1px solid var(--chrome-line);
 }
 
-.title {
+.titles {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
+}
+
+.title {
   overflow: hidden;
   color: var(--text-strong);
   font-size: var(--fs-pop-title);
   font-weight: var(--fw-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.subtitle {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.other-unread {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: var(--h-chip);
+  height: var(--h-chip);
+  padding: 0 var(--sp-1_5);
+  border-radius: var(--r-full);
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--h-chip);
+  text-align: center;
 }
 
 .rooms {

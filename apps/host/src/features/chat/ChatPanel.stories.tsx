@@ -124,7 +124,10 @@ async function openRoom(canvasElement: HTMLElement, name: string, count: number)
 
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
-/** As a user of a product with one room, I see its conversation with no way back, and Send waits for my text. */
+/**
+ * As a user of a product with one room, I see its conversation with no head of its own and no way back, and Send waits
+ * for my text.
+ */
 export const OneRoom: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -135,7 +138,9 @@ export const OneRoom: Story = {
   },
   play: async ({ canvas, userEvent, step }) => {
     const send = await canvas.findByRole('button', { name: 'Send' });
-    await step('Given the conversation with nothing typed, Send is off', async () => {
+    await step('Given the conversation with nothing typed, it has no head and Send is off', async () => {
+      await expect(canvas.queryByRole('button', { name: 'Back to rooms' })).toBeNull();
+      await expect(document.getElementById('chat-panel-title')).toBeNull();
       await expect(send).toBeDisabled();
     });
     await step('When I type a message', async () => {

@@ -25,6 +25,7 @@ import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
 import { endsRun } from './messageRuns.js';
+import { chatUnreadLabel } from './unread.js';
 import s from './ChatPanel.module.css';
 
 // Relative timestamps on bubbles and rows go stale while the panel sits open.
@@ -104,6 +105,21 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
   const shownContact = createMemo(() => {
     const id = chat.activeRoomId();
     return id === null ? soleContact() : contacts()?.find(c => c.id === id);
+  });
+
+  // The drawer's head names the product, so the sole room takes no head of its own.
+  const headContact = createMemo(() => (soleContact() === undefined ? shownContact() : undefined));
+
+  // What waits in the rooms going back shows. The shown room is left out, as its messages are on screen.
+  const unreadElsewhere = createMemo(() => {
+    const shownId = headContact()?.id;
+    let total = 0;
+    for (const [roomId, count] of Object.entries(chat.unreadByRoom())) {
+      if (roomId !== shownId) {
+        total += count;
+      }
+    }
+    return total;
   });
 
   // eslint-disable-next-line solid/reactivity -- the feed tracks the shown room in an effect of its own.
@@ -284,25 +300,43 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
 
   return (
     <div class={s['panel']}>
-      <Show when={shownContact()}>
+      <Show when={headContact()}>
         {contact => (
           <div class={s['header']}>
-            <Show when={soleContact() === undefined}>
-              <IconButton
-                id="chat-panel-back"
-                title="Back to rooms"
-                aria-label="Back to rooms"
-                onClick={() => {
-                  chat.backToRooms();
-                }}
-              >
-                <ChevronLeftIcon />
-              </IconButton>
-            </Show>
+            <IconButton
+              id="chat-panel-back"
+              title="Back to rooms"
+              aria-label="Back to rooms"
+              onClick={() => {
+                chat.backToRooms();
+              }}
+            >
+              <ChevronLeftIcon />
+            </IconButton>
             <ContactIcon name={contact().name} icon={contact().icon} size="sm" />
-            <span class={s['title']} id="chat-panel-title">
-              {contact().name}
+            <span class={s['titles']}>
+              <span class={s['title']} id="chat-panel-title">
+                {contact().name}
+              </span>
+              <Show when={chat.productName()}>
+                {name => (
+                  <span class={s['subtitle']} id="chat-panel-subtitle">
+                    {name()}
+                  </span>
+                )}
+              </Show>
             </span>
+            <Show when={unreadElsewhere() > 0}>
+              <span
+                class={s['otherUnread']}
+                id="chat-panel-other-unread"
+                role="img"
+                title="Unread in other rooms"
+                aria-label={`${String(unreadElsewhere())} unread in other rooms`}
+              >
+                {chatUnreadLabel(unreadElsewhere())}
+              </span>
+            </Show>
           </div>
         )}
       </Show>
