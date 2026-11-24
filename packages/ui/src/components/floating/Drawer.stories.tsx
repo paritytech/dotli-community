@@ -10,6 +10,7 @@ import { Drawer } from './Drawer.js';
 const onOpenChange = fn().mockName('onOpenChange');
 // The drawer is portalled into the body, outside the story's canvas.
 const body = within(document.body);
+const DESKTOP = { viewport: { value: 'desktop', isRotated: false } };
 
 function Harness(props: { initiallyOpen?: boolean }) {
   // The initial state only: later arg changes do not reopen it.
@@ -29,9 +30,31 @@ function Harness(props: { initiallyOpen?: boolean }) {
         id="story-drawer"
         testId="story-drawer"
       >
-        <div style={{ padding: '16px' }}>
-          <p style={{ margin: '0 0 12px' }}>Your order #4821 is confirmed.</p>
-          <input type="text" aria-label="Message" placeholder="Message" data-testid="story-message" />
+        <div
+          style={{
+            display: 'flex',
+            'flex-direction': 'column',
+            gap: 'var(--sp-3)',
+            padding: 'var(--sp-4)',
+          }}
+        >
+          <p style={{ margin: '0', color: 'var(--chrome-text)' }}>Your order #4821 is confirmed.</p>
+          <input
+            type="text"
+            aria-label="Message"
+            placeholder="Message"
+            data-testid="story-message"
+            style={{
+              'box-sizing': 'border-box',
+              width: '100%',
+              padding: 'var(--sp-2) var(--sp-3)',
+              border: '1px solid var(--chrome-line)',
+              'border-radius': 'var(--r-full)',
+              background: 'var(--fill-subtle)',
+              color: 'var(--chrome-text)',
+              font: 'inherit',
+            }}
+          />
         </div>
       </Drawer>
     </>
@@ -48,17 +71,17 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a dotli user, I open the drawer from its button and see a modal panel on the right edge with focus inside it. */
+/** As a dotli user, I open the drawer from its button and see a modal panel with focus inside it. */
 export const Open: Story = {
   play: async ({ canvas, userEvent, step }) => {
     await step('When I open the drawer from its button', async () => {
       await userEvent.click(canvas.getByTestId('opener'));
     });
-    await step('Then a modal dialog named Market holds focus in its side panel', async () => {
+    await step('Then a modal dialog named Market holds focus in its panel', async () => {
       const dialog = body.getByRole('dialog', { name: 'Market' });
       await waitFor(() => expect(dialog).toHaveAttribute('data-open'));
       await expect(dialog).toHaveAttribute('aria-modal', 'true');
-      await expect(body.getByTestId('story-drawer-side-head')).toBeVisible();
+      await expect(headPart('head')).toBeVisible();
       await expect(body.getByTestId('story-drawer')).toHaveFocus();
     });
   },
@@ -109,11 +132,11 @@ export const CloseButtonCloses: Story = {
   play: async ({ userEvent, mount, step }) => {
     await step('Given an open drawer', async () => {
       await mount();
-      await waitFor(() => expect(body.getByTestId('story-drawer-side-close')).toBeVisible());
+      await waitFor(() => expect(headPart('close')).toBeVisible());
       onOpenChange.mockClear();
     });
     await step('When I press its close button', async () => {
-      await userEvent.click(body.getByTestId('story-drawer-side-close'));
+      await userEvent.click(headPart('close'));
     });
     await step('Then it reports closed', async () => {
       await expect(onOpenChange).toHaveBeenCalledOnce();
@@ -130,11 +153,11 @@ export const ContentStaysThroughExit: Story = {
     let exitEnded: Promise<void> = Promise.resolve();
     await step('Given an open drawer', async () => {
       await mount();
-      await waitFor(() => expect(body.getByTestId('story-drawer-side-close')).toBeVisible());
+      await waitFor(() => expect(headPart('close')).toBeVisible());
     });
     await step('When I press its close button', async () => {
       exitEnded = transitionSettled(dialog());
-      await userEvent.click(body.getByTestId('story-drawer-side-close'));
+      await userEvent.click(headPart('close'));
     });
     await step('Then the closing panel still holds the content', async () => {
       await expect(dialog()).not.toHaveAttribute('data-open');
@@ -147,9 +170,10 @@ export const ContentStaysThroughExit: Story = {
   },
 };
 
-/** As a touch user, I swipe the drawer's head to the right and the drawer closes. */
+/** As a touch user, I swipe the side panel's head to the right and the drawer closes. */
 export const SwipeRightCloses: Story = {
   args: { initiallyOpen: true },
+  globals: DESKTOP,
   play: async ({ mount, step }) => {
     const head = () => body.getByTestId('story-drawer-side-head');
     await step('Given an open drawer', async () => {
@@ -172,7 +196,7 @@ export const SwipeRightCloses: Story = {
 };
 
 /** As a phone user, I see the drawer as a bottom sheet, and its close button closes it. */
-export const Phone: Story = {
+export const PhoneSheetCloses: Story = {
   args: { initiallyOpen: true },
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ userEvent, mount, step }) => {
@@ -198,6 +222,7 @@ export const Phone: Story = {
 /** As a dotli user, I resize the window across the phone breakpoint and the drawer keeps my typed text and focus. */
 export const SwitchesFormKeepingContent: Story = {
   args: { initiallyOpen: true },
+  globals: DESKTOP,
   play: async ({ userEvent, mount, step }) => {
     const input = () => body.getByTestId<HTMLInputElement>('story-message');
     const { page } = await import('vitest/browser');
@@ -230,6 +255,12 @@ export const SwitchesFormKeepingContent: Story = {
     }
   },
 };
+
+/** A part of the drawer's head in the form the viewport shows, the side panel or the phone's sheet. */
+function headPart(part: 'head' | 'close'): HTMLElement {
+  const form = document.getElementById('story-drawer')?.getAttribute('data-layout') === 'sheet' ? 'sheet' : 'side';
+  return body.getByTestId(`story-drawer-${form}-${part}`);
+}
 
 /** Resolves when a transition of `element` itself, not one inside it, ends or is cancelled. */
 function transitionSettled(element: HTMLElement): Promise<void> {
