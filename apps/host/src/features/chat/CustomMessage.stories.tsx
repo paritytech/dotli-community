@@ -2,235 +2,249 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSignal, Show } from 'solid-js';
-import type { RendererNode } from '@parity/truapi';
-import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, waitFor } from 'storybook/test';
-import { ChatSurface } from '../../testing/stories/chatFrames.js';
-import { CustomMessage, type CustomMessageProps } from './CustomMessage.js';
+import type { HostRendererActionSubscribeItem, RenderContext, RendererNode } from '@parity/truapi';
+import { createJSXDecorator, type Meta, type StoryObj } from 'storybook-solidjs-vite';
+import { expect, fn, waitFor } from 'storybook/test';
+import { toHex } from '@dotli/shared';
+import { onChatSurface } from '../../testing/stories/chatFrames.js';
+import { DELIVERY_TIME_PICKER } from '../../testing/stories/customMessageTrees.js';
+import { encode, fieldNode, loadNothing } from '../../testing/stories/rendererFixtures.js';
+import { CustomMessage } from './CustomMessage.js';
 import type { ChatRenderSink } from './chat.js';
 import type { WatchVisibility } from './visibility.js';
 
-type Sink = ChatRenderSink;
+const PRODUCT = 'chatty.dot';
 
-/** Records the renders and taps a custom message sends to the product. */
-const service = {
-  sinks: [] as Sink[],
-  stops: 0,
-  actions: [] as unknown[],
-  actionFails: false,
-  renderCustomMessage: ({ sink }: { sink: Sink }) => {
-    service.sinks.push(sink);
-    return () => {
-      service.stops += 1;
-    };
-  },
-  triggerRendererAction: (_productId: string, item: unknown) => {
-    service.actions.push(item);
-    return service.actionFails ? Promise.reject(new Error('unreachable')) : Promise.resolve();
-  },
-  loadImage: () => Promise.reject(new Error('No image in this story')),
+const MESSAGE = { roomId: 'main', messageId: 'm1', messageType: 'delivery-time' };
+
+const CONTEXT: RenderContext = { tag: 'ChatMessage', value: MESSAGE };
+
+const VOTE: RendererNode = {
+  tag: 'Button',
+  value: { modifiers: [], props: { text: 'Vote', clickAction: 'vote' }, children: [] },
 };
 
-/** The row's place on screen, scrolled by the play. */
-const screen = {
-  onChange: undefined as ((visible: boolean) => void) | undefined,
-  unwatched: 0,
-  scroll(visible: boolean): void {
-    screen.onChange?.(visible);
-  },
+const voting = productChat(sink => {
+  sink.onUpdate(VOTE);
+});
+
+const failing = productChat(sink => {
+  sink.onError?.(new Error('render failed'));
+});
+
+const typing = productChat(sink => {
+  sink.onUpdate(fieldNode(''));
+});
+
+/** Tells the message whether it is on screen, once it watches, as a play scrolls it. */
+let scroll: ((visible: boolean) => void) | null = null;
+const unwatch = fn();
+
+const watchViewport: WatchVisibility = (_el, onChange) => {
+  scroll = onChange;
+  return unwatch;
 };
-
-const watchVisibility: WatchVisibility = (_el, onChange) => {
-  screen.onChange = onChange;
-  return () => {
-    screen.unwatched += 1;
-  };
-};
-
-function sink(index: number): Sink {
-  const found = service.sinks[index];
-  if (found === undefined) {
-    throw new Error(`No render subscription ${String(index)}`);
-  }
-  return found;
-}
-
-function button(text: string): RendererNode {
-  return { tag: 'Button', value: { modifiers: [], props: { text, clickAction: 'vote' }, children: [] } };
-}
 
 /** Whether the message is still on the page, which a play ends as a reader scrolling it away would. */
 const [shown, setShown] = createSignal(true);
-
-/** The message as a row in the conversation, on the chat panel's surface. */
-function Row(props: CustomMessageProps) {
-  return (
-    <ChatSurface>
-      <Show when={shown()}>
-        <CustomMessage {...props} />
-      </Show>
-    </ChatSurface>
-  );
-}
 
 const meta = {
   title: 'Host/Chat/CustomMessage',
   component: CustomMessage,
   parameters: { chrome: true },
   args: {
-    chat: service,
-    watchVisibility,
-    productId: 'chatty.dot',
-    roomId: 'main',
-    messageId: 'm1',
-    messageType: 'poll',
+    chat: productChat(sink => {
+      sink.onUpdate(DELIVERY_TIME_PICKER);
+    }),
+    productId: PRODUCT,
+    ...MESSAGE,
     payload: '0x01',
   },
-  beforeEach: () => {
-    service.sinks = [];
-    service.stops = 0;
-    service.actions = [];
-    service.actionFails = false;
-    screen.onChange = undefined;
-    screen.unwatched = 0;
-    setShown(true);
-  },
-  render: args => <Row {...args} />,
+  decorators: [onChatSurface],
 } satisfies Meta<typeof CustomMessage>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Scrolls the row into view once the message watches it. */
-async function scrollIn(): Promise<void> {
-  await waitFor(() => expect(screen.onChange).toBeDefined());
-  screen.scroll(true);
-}
-
-/** As a reader of a custom message, I cost the product a render only while the message is on screen. */
-export const SubscribesOnlyOnScreen: Story = {
+// A message whose place on screen the play moves, on the default chat.
+const watched = {
   tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('Given the message is off screen, it asks the product for nothing', async () => {
-      await waitFor(() => expect(screen.onChange).toBeDefined());
-      await expect(service.sinks).toHaveLength(0);
+  args: { watchVisibility: watchViewport },
+  decorators: [
+    createJSXDecorator(Story => (
+      <Show when={shown()}>
+        <Story />
+      </Show>
+    )),
+  ],
+  beforeEach: () => {
+    scroll = null;
+    setShown(true);
+  },
+} satisfies Story;
+
+/** As a reader, I see the product's own content for a custom message. */
+export const Default: Story = {};
+
+/** As a reader, I see a custom message loading until the product sends its content. */
+export const Loading: Story = {
+  args: { chat: productChat() },
+};
+
+/** As a reader, I see a neutral line in place of the product's partial content when its render fails. */
+export const RenderFailureDropsPartialTree: Story = {
+  args: { chat: voting },
+  play: async ({ canvas, step }) => {
+    await step('Given the message shows the product tree', async () => {
+      await canvas.findByRole('button', { name: 'Vote' });
     });
-    await step('When it scrolls in, it subscribes', async () => {
-      screen.scroll(true);
-      await expect(service.sinks).toHaveLength(1);
+    await step('When the render fails', () => {
+      voting.sink().onError?.(new Error('render failed'));
     });
-    await step('When it scrolls out and in again, the first subscription stops and a new one starts', async () => {
-      screen.scroll(false);
-      screen.scroll(true);
-      await expect(service.stops).toBe(1);
-      await expect(service.sinks).toHaveLength(2);
+    await step('Then a neutral line replaces the partial tree', async () => {
+      await waitFor(() => expect(canvas.queryByRole('button', { name: 'Vote' })).toBeNull());
+      await expect(canvas.getByTestId('chat-custom-placeholder')).toBeVisible();
     });
   },
 };
 
-/** As a reader of a custom message, I see Loading until the product sends its tree. */
-export const LoadingUntilTree: Story = {
-  tags: ['!autodocs'],
+/** As a reader, I see a new tree the product sends after a failed render. */
+export const NewTreeAfterFailureShows: Story = {
+  args: { chat: failing },
   play: async ({ canvas, step }) => {
-    await step('Given the message is on screen, it shows Loading', async () => {
-      await scrollIn();
-      await expect(await canvas.findByTestId('chat-custom-root')).toHaveTextContent('Loading…');
+    await step('Given the render failed', async () => {
+      await waitFor(() => expect(failing.renderCustomMessage).toHaveBeenCalledTimes(1));
     });
-    await step('When the product sends its tree', () => {
-      sink(0).onUpdate(button('Vote'));
+    await step('When the product sends a new tree', () => {
+      failing.sink().onUpdate(VOTE);
     });
-    await step('Then the tree replaces Loading', async () => {
+    await step('Then the message shows it', async () => {
       await expect(await canvas.findByRole('button', { name: 'Vote' })).toBeVisible();
       await expect(canvas.queryByTestId('chat-custom-placeholder')).toBeNull();
     });
   },
 };
 
-/** As a reader of a custom message, I see a neutral message in place of a partial tree when the render fails. */
-export const FailedRenderIsNeutral: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvas, step }) => {
-    await step('Given the message shows the product tree', async () => {
-      await scrollIn();
-      sink(0).onUpdate(button('Vote'));
-      await canvas.findByRole('button', { name: 'Vote' });
-    });
-    await step('When the render fails', () => {
-      sink(0).onError?.(new Error('render failed'));
-    });
-    await step('Then a neutral message replaces the partial tree', async () => {
-      await waitFor(() =>
-        expect(canvas.getByTestId('chat-custom-root')).toHaveTextContent('This message can’t be shown right now.'),
-      );
-      await expect(canvas.queryByRole('button', { name: 'Vote' })).toBeNull();
-    });
-  },
-};
-
-/** As a reader of a custom message, I am told under its buttons when I tap one and the app cannot be reached. */
-export const UnreachableTapSaysSo: Story = {
-  tags: ['!autodocs'],
+/** As a user, I tap a custom message's button and the tap reaches the product with the message it came from. */
+export const TapReachesProductWithItsMessage: Story = {
+  args: { chat: voting },
   play: async ({ canvas, userEvent, step }) => {
-    await step('Given the product cannot be reached', async () => {
-      service.actionFails = true;
-      await scrollIn();
-      sink(0).onUpdate(button('Vote'));
-    });
     await step('When I tap its button', async () => {
       await userEvent.click(await canvas.findByRole('button', { name: 'Vote' }));
     });
-    await step(
-      'Then the tap carried the message context and the message says the app could not be reached under its button',
-      async () => {
-        await expect(service.actions).toEqual([
-          {
-            context: { tag: 'ChatMessage', value: { roomId: 'main', messageId: 'm1', messageType: 'poll' } },
-            actionId: 'vote',
-            payload: '0x',
-          },
-        ]);
-        await waitFor(() =>
-          expect(canvas.getByTestId('chat-custom-error')).toHaveTextContent('The app could not be reached.'),
-        );
-        await expect(canvas.getByRole('button', { name: 'Vote' })).toBeVisible();
-      },
-    );
+    await step('Then the product gets the action with the message it came from', async () => {
+      await expect(voting.triggerRendererAction).toHaveBeenCalledWith(PRODUCT, {
+        context: CONTEXT,
+        actionId: 'vote',
+        payload: '0x',
+      });
+    });
   },
 };
 
-/** As a reader of a custom message, I see a new tree the product sends after a failed render. */
-export const NewTreeAfterFailureShows: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvas, step }) => {
-    await step('Given the render failed', async () => {
-      await scrollIn();
-      sink(0).onError?.(new Error('render failed'));
-      await canvas.findByTestId('chat-custom-placeholder');
+/** As a user, I type in a custom message's field and the product gets my text. */
+export const TypedTextReachesProduct: Story = {
+  args: { chat: typing },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('When I type in its field', async () => {
+      await userEvent.type(await canvas.findByRole('textbox', { name: 'Name' }), 'Ann');
     });
-    await step('When the product sends a new tree', () => {
-      sink(0).onUpdate(button('Retry'));
+    await step('Then the product gets the text as the action payload', async () => {
+      await expect(typing.triggerRendererAction).toHaveBeenLastCalledWith(PRODUCT, {
+        context: CONTEXT,
+        actionId: 'name-changed',
+        payload: toHex(encode('Ann')),
+      });
     });
-    await step('Then the message shows it', async () => {
-      await expect(await canvas.findByRole('button', { name: 'Retry' })).toBeVisible();
-      await expect(canvas.queryByTestId('chat-custom-placeholder')).toBeNull();
+  },
+};
+
+/** As a user, I am told under a custom message's buttons when I tap one and the app cannot be reached. */
+export const UnreachableTapSaysSo: Story = {
+  args: {
+    chat: {
+      ...voting,
+      triggerRendererAction: fn(() => Promise.reject(new Error('unreachable'))),
+    },
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('When I tap its button and the app cannot be reached', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Vote' }));
+    });
+    await step('Then I am alerted, and the button stays usable', async () => {
+      await expect(await canvas.findByRole('alert')).toBeVisible();
+      await expect(canvas.getByRole('button', { name: 'Vote' })).toBeEnabled();
+    });
+  },
+};
+
+/** As a reader of a custom message, I cost the product a render only while the message is on screen. */
+export const SubscribesOnlyOnScreen: Story = {
+  ...watched,
+  play: async ({ step }) => {
+    const { chat } = meta.args;
+    await step('Given the message is off screen', async () => {
+      await waitFor(() => expect(scroll).not.toBeNull());
+    });
+    await step('Then it asks the product for nothing', async () => {
+      await expect(chat.renderCustomMessage).not.toHaveBeenCalled();
+    });
+    await step('When it scrolls in', () => {
+      scroll?.(true);
+    });
+    await step('Then it subscribes', async () => {
+      await expect(chat.renderCustomMessage).toHaveBeenCalledTimes(1);
+    });
+    await step('When it scrolls out and in again', () => {
+      scroll?.(false);
+      scroll?.(true);
+    });
+    await step('Then the first subscription stops and a new one starts', async () => {
+      await expect(chat.stopRender).toHaveBeenCalledTimes(1);
+      await expect(chat.renderCustomMessage).toHaveBeenCalledTimes(2);
     });
   },
 };
 
 /** As a reader of a custom message, I stop its render subscription by scrolling it off the page. */
 export const LeavingStopsSubscription: Story = {
-  tags: ['!autodocs'],
+  ...watched,
   play: async ({ step }) => {
+    const { chat } = meta.args;
     await step('Given the message is on screen and subscribed', async () => {
-      await scrollIn();
-      await expect(service.sinks).toHaveLength(1);
+      await waitFor(() => expect(scroll).not.toBeNull());
+      scroll?.(true);
+      await expect(chat.renderCustomMessage).toHaveBeenCalledTimes(1);
     });
     await step('When it leaves the page', () => {
       setShown(false);
     });
     await step('Then its subscription stops and nothing watches it any more', async () => {
-      await waitFor(() => expect(service.stops).toBe(1));
-      await expect(screen.unwatched).toBe(1);
+      await waitFor(() => expect(chat.stopRender).toHaveBeenCalledTimes(1));
+      await expect(unwatch).toHaveBeenCalledTimes(1);
     });
   },
 };
+
+/** A product's chat that answers each render through `answer`, with a play's handle on the latest render. */
+function productChat(answer: (sink: ChatRenderSink) => void = () => undefined) {
+  let latest: ChatRenderSink | null = null;
+  const stopRender = fn();
+  return {
+    renderCustomMessage: fn(({ sink }: { sink: ChatRenderSink }) => {
+      latest = sink;
+      answer(sink);
+      return stopRender;
+    }),
+    stopRender,
+    triggerRendererAction: fn((_productId: string, _item: HostRendererActionSubscribeItem) => Promise.resolve()),
+    loadImage: fn(loadNothing),
+    /** The latest render's sink, as the product holds it. */
+    sink(): ChatRenderSink {
+      if (latest === null) {
+        throw new Error('The message has not asked the product to render');
+      }
+      return latest;
+    },
+  };
+}

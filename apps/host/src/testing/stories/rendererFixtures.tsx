@@ -1,12 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What a story of the chat's renderer draws on: captioned nodes on the chat panel's surface, the small shapes a layout
-// demo places, and a live tree that a play sends the product's next tree to.
+// What a story of the chat's renderer draws on: the chat panel's surface, the small shapes a layout demo places, and a
+// live tree that a play sends the product's next tree to.
 
-import { createSignal, For, untrack } from 'solid-js';
+import { createSignal, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Modifier, RendererNode } from '@parity/truapi';
+import { createJSXDecorator } from 'storybook-solidjs-vite';
 import { CustomNode } from '../../features/chat/renderer/CustomNode.js';
 import type { CustomActionHandler, CustomImageLoad, KindValue } from '../../features/chat/renderer/types.js';
 import { ChatSurface } from './chatFrames.js';
@@ -21,7 +22,7 @@ export function loadNothing(): Promise<never> {
 }
 
 /** The chat panel's surface in a custom message's type, which a product's tree inherits as it does in its message. */
-export function TreeFrame(props: { children: JSX.Element }): JSX.Element {
+function TreeFrame(props: { children: JSX.Element }): JSX.Element {
   return (
     <ChatSurface>
       <div
@@ -39,32 +40,12 @@ export function TreeFrame(props: { children: JSX.Element }): JSX.Element {
   );
 }
 
-/** Nodes side by side on the chat panel's surface, each over a caption that names what it shows. */
-export function Gallery(props: { items: { caption: string; node: JSX.Element }[]; columns: number }): JSX.Element {
-  return (
-    <TreeFrame>
-      <div
-        style={{
-          display: 'grid',
-          'grid-template-columns': `repeat(${String(props.columns)}, minmax(0, 1fr))`,
-          gap: 'var(--sp-3)',
-          'align-items': 'start',
-        }}
-      >
-        <For each={props.items}>
-          {item => (
-            <figure style={{ display: 'grid', gap: 'var(--sp-1_5)', margin: '0' }}>
-              {item.node}
-              <figcaption style={{ color: 'var(--text-muted)', 'font-size': 'var(--fs-label)' }}>
-                {item.caption}
-              </figcaption>
-            </figure>
-          )}
-        </For>
-      </div>
-    </TreeFrame>
-  );
-}
+/** A story's node on the chat panel's surface, in a custom message's type. */
+export const inTreeFrame = createJSXDecorator(Story => (
+  <TreeFrame>
+    <Story />
+  </TreeFrame>
+));
 
 /** A small filled square that shows where a layout puts its children. */
 export function dot(width = 24, height = 24): KindValue<'Box'> {
@@ -99,7 +80,7 @@ export const liveTree: { send: (node: RendererNode) => void } = {
   },
 };
 
-/** A product's tree on the chat panel's surface, which takes each tree `liveTree` sends. */
+/** A product's tree, which takes each tree `liveTree` sends. */
 export function LiveTree(props: {
   node: RendererNode;
   onAction: CustomActionHandler;
@@ -107,9 +88,5 @@ export function LiveTree(props: {
 }): JSX.Element {
   const [node, setNode] = createSignal<RendererNode>(untrack(() => props.node));
   liveTree.send = next => setNode(() => next);
-  return (
-    <TreeFrame>
-      <CustomNode node={node()} onAction={props.onAction} loadImage={props.loadImage ?? loadNothing} />
-    </TreeFrame>
-  );
+  return <CustomNode node={node()} onAction={props.onAction} loadImage={props.loadImage ?? loadNothing} />;
 }

@@ -74,7 +74,8 @@ the placement rules in `docs/code/placement.md`.
 
 How code is shaped and how pieces combine (factories, functions, composition, state, types, errors, modules, naming)
 lives in `docs/code/style.md`. Read it before you design, plan or write code. Where a rule below says otherwise, the
-rule below wins.
+rule below wins. What a story file holds lives in `docs/code/stories.md`, and the `stories` skill plans one before it is
+written.
 
 General:
 

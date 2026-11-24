@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/* eslint-disable no-restricted-properties -- Predates the story contract: its plays still assert copy. */
+
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
 import type { ChainBar } from './chain.js';
@@ -76,9 +78,35 @@ export const OpensItsBlocks: Story = {
   },
 };
 
-/** As a user, a chain the app does not use says so. */
+/** As a user, I press a chain the app does not use and see the blocks it kept, with no peer count. */
 export const NotInUse: Story = {
   args: { chain: { ...RELAY, state: 'unused' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('When I press the row', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: /Relay/ }));
+    });
+    await step('Then the blocks it kept show, with no peer count', async () => {
+      await expect(within(canvas.getByRole('group')).getAllByRole('img')).toHaveLength(12);
+      // A chain nothing uses holds no peers, so a count it kept would mislead.
+      await expect(canvas.queryByTestId('chains-row-peers')).toBeNull();
+    });
+  },
+};
+
+/** As a user, I press a chain with more blocks than its strip holds and see only its newest 48. */
+export const FortyEightSlots: Story = {
+  args: { chain: { ...RELAY, bars: onTime(1, 60) } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('When I press the row', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: /Relay/ }));
+    });
+    await step('Then its strip shows the newest 48 of its 60 blocks', async () => {
+      const shown = within(canvas.getByRole('group'))
+        .getAllByRole('img')
+        .map(bar => bar.dataset['block']);
+      await expect(new Set(shown)).toEqual(new Set(Array.from({ length: 48 }, (_, i) => String(13 + i))));
+    });
+  },
 };
 
 /** As a user, I press a chain the network has no endpoint for and its strip draws none of its old blocks. */

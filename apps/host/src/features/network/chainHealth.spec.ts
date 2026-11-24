@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ChainBar } from './chain.js';
-import { describeChainHealth, type ChainHealthFacts } from './chainHealth.js';
+import { describeChainHealth, readChainHealthFacts, type ChainHealthFacts } from './chainHealth.js';
 
 // A 6 s chain, read as stalled after 60 s with no block.
 const CHAIN = {
@@ -285,5 +285,38 @@ describe('describeChainHealth', () => {
 
     // Then
     expect(health.status.text).toBe('Connected · Live 10% · Block ~1m 5s');
+  });
+});
+
+describe('readChainHealthFacts', () => {
+  const READ = { readAt: 1000, verdict: { tone: 'warn', slow: ['Relay'] } } as const;
+
+  it('As a user whose network names one chain slow, I see that chain behind and the others not', () => {
+    // When
+    const facts = [{ label: 'Relay' }, { label: 'Asset Hub' }].map(chain =>
+      readChainHealthFacts(chain, { network: READ, health: 'warn', now: 1000 }),
+    );
+
+    // Then
+    expect(facts.map(fact => fact.behind)).toEqual([true, false]);
+  });
+
+  it('As a user who went offline, I see a chain read as offline', () => {
+    // When
+    const facts = readChainHealthFacts({ label: 'Relay' }, { network: READ, health: 'err', now: 1000 });
+
+    // Then
+    expect(facts.offline).toBe(true);
+  });
+
+  it('As a user whose whole network is out of reach, I see a chain read as unreachable', () => {
+    // When
+    const facts = readChainHealthFacts(
+      { label: 'Relay' },
+      { network: { readAt: 1000, verdict: { tone: 'unreachable' } }, health: 'unreachable', now: 1000 },
+    );
+
+    // Then
+    expect(facts.unreachable).toBe(true);
   });
 });

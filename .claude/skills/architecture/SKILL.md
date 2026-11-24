@@ -124,12 +124,13 @@ trigger or resulting state is unclear), run event storming with the owner first 
 Claude). Do not guess the package.
 
 Then write the goal: the end state the owner's request asks for, as a check a reader can run against the code once the
-change is done, such as "no module the audit names keeps a lifecycle phase outside one state value". Quote the owner's
-words beside it. Never narrow it to what is easy to prove. The goal stays fixed for the whole change:
+change is done, such as "no module the audit names keeps a lifecycle phase outside one state value". Beside it, restate
+in your own words what the owner meant, so the owner can see it was understood. Never quote the owner. Never narrow the
+goal to what is easy to prove. The goal stays fixed for the whole change:
 
 - The `reviewer` checks the code against it, and `DONE` reports each item as met or not met.
 - Only the owner narrows it. A cut is a `QUESTION` that shows the goal before and after, and never goes to the oracle.
-  The design records the cut with the owner's words.
+  The design records the cut and what the owner meant by it, restated.
 - In a staged change the roadmap holds the goal, and a stage copies its share from the roadmap without rewriting it.
 
 ## Step 2: Size
@@ -161,7 +162,7 @@ file to resolve it.
 Clarify what the frame leaves open, one question at a time, sorted as "Decisions and the oracle" sets. Then write
 `docs/_plans/<topic>-design.md`, at most about 60 lines:
 
-- the frame, and the goal with the owner's words
+- the frame, and the goal with what the owner meant, restated
 - the placement, and the files expected to change
 - the interfaces between layers, and what happens when each layer fails
 - what is out of scope

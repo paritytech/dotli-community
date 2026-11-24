@@ -13,8 +13,13 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [agent-runs-a-skill-that-asks](agent-runs-a-skill-that-asks.md): an agent with no direct line to the owner runs a
   skill that asks the user.
+- [design-records-what-the-owner-said](design-records-what-the-owner-said.md): a design document records the owner's
+  goal and answers, and the question is whether it quotes the owner's words or restates them.
 - [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md): a simple design competes with
   elaborate ones that guard a size, a setup or a first-visit cost, while building rather than in a cleanup.
+- [new-skill-for-one-kind-of-file](new-skill-for-one-kind-of-file.md): a new skill tells agents how to plan and
+  write one kind of file, with a contract doc for that kind, and the question is how the agents that write it come to
+  run the skill and where the reviewer's rows for that kind of file live.
 - [owner-approves-in-advance](owner-approves-in-advance.md): the owner approved a change in advance, and its gates or a
   follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to
@@ -108,6 +113,13 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md): a story file's axe check costs
   time or fails where it has nothing to find, such as stories that drive a component at capacity near the test timeout,
   or the contrast rule on text inside a decorative, `aria-hidden` background graphic.
+- [play-asserts-a-number-shown-as-plain-text](play-asserts-a-number-shown-as-plain-text.md): a kept story play is the
+  only guard of an edge case about a number the component shows as plain text, with no role, accessible name or
+  `data-*` state, and lint refuses `toHaveTextContent` in story files.
+- [play-checks-a-prop-reaches-an-aria-state](play-checks-a-prop-reaches-an-aria-state.md): a story play checks that a
+  state prop, such as `disabled`, lands as an ARIA attribute that is the only way assistive technology learns the
+  state, and the question is whether the stories contract drops it as a prop passed through or keeps it as a behaviour
+  a user sees.
 
 ## UI
 

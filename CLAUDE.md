@@ -8,6 +8,7 @@ the `reduce-complexity` skill runs.
 - `architecture`: decides what the change is and where it goes, then builds it in slices the owner steers.
 - `document-review`: refines a design in `docs/_plans/` before the next step.
 - `reviewer`: audits a branch or PR against the `docs/claude/` checklists.
+- `stories`: plans a story file as a table of distinct states before it is written, then builds it from args.
 - `reduce-complexity`: simplifies modules in rounds of scout, author, verifier and implementer, run by the
   `complexity-orchestrator`.
 - `consult-oracle`: outside `architecture`, asks the `oracle` for the owner's precedent before a choice about how to
