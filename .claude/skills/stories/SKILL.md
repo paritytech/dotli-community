@@ -27,6 +27,15 @@ Read the component and its props type. Then read the story files of the componen
 imports a child's story args from that child's file. Never take another story file as the template for this one, since
 the largest files are the oldest and break the contract most.
 
+The two exemplars are the only story files to model on. Read the one closer to the component:
+
+- `packages/ui/src/components/primitives/SegmentedControl.stories.tsx` for a primitive. `meta` holds the default args
+  and one render that owns the controlled value, a decorator adds what Tab lands on, and each play is one keyboard or
+  pointer behaviour found by role and name.
+- `apps/host/src/features/network/ChainsContent.stories.tsx` for a feature panel. The panel's states are args on a
+  popover decorator, its chains come from the child row's story args, and only the plays that open the popover or move
+  the network over time render it in the bar and read a fixture.
+
 ## Step 4: Plan the table
 
 One row per state the component can show:
