@@ -27,14 +27,11 @@ import { createSide, type Side } from './createSide.js';
 import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
 import { pipeProviders, type PipeProvidersParams } from './pipeProviders.js';
 import { buildFrameUrl, getAppOrigin, getFrameSandbox, type FrameTarget } from './productFrameUrl.js';
-import { registerProductChat } from '../../chat/index.js';
-import { createProductImages, type ProductImages } from './createProductImages.js';
 import { traceProductRender, type RenderTrace } from './traceProductRender.js';
 import { productState } from '../../page/index.js';
 import type { PermissionsChange } from '../../permissions/index.js';
 import type { ShowNotification } from '@dotli/ui';
 import type { ProductFacts } from '../resolve/getProductFacts.js';
-import type { WorkerExecutable } from '../resolve/createNameSource.js';
 import { openLanding } from '../../../kit/getLandingUrl.js';
 import { markAndReload } from '../../../kit/createContinuation.js';
 
@@ -57,9 +54,8 @@ const BRIDGE_SETUP = 'bridge.setup';
 
 /**
  * A product the host loads from a URL it was given, or from its content id on the app subdomain. `chat` says whether it
- * declares chat, which picks its connection's execution kind, so the frame awaits it before it connects the product.
- * `worker` is its worker executable, or null when it publishes none, whose archive holds the images its chat names.
- * `base` is the page path ahead of the product's own, which its frame does not get.
+ * declares chat, which the page records once the product is on screen. Its connection is an App's either way, since
+ * only its worker serves chat. `base` is the page path ahead of the product's own, which its frame does not get.
  */
 export type FrameProduct =
   | {
@@ -68,7 +64,6 @@ export type FrameProduct =
       url: string;
       productId?: string | undefined;
       chat: Promise<boolean>;
-      worker: Promise<WorkerExecutable | null>;
     }
   | {
       mode: 'subdomain';
@@ -76,7 +71,6 @@ export type FrameProduct =
       cid: string;
       base?: string | undefined;
       chat: Promise<boolean>;
-      worker: Promise<WorkerExecutable | null>;
       facts: ProductFacts;
     };
 
@@ -104,8 +98,6 @@ export type ProductFrameParams = {
   page?: ProductFramePage | undefined;
   /** The clock and timers the frame stamps its events with and spaces its renders on. The page's own by default. */
   timers?: Timers;
-  /** Reads the images each product's chat names, built for the frame by default. */
-  images?: Pick<ProductImages, 'createRead'> | undefined;
 };
 
 /** `iframe` is a local or preview URL, which has no root manifest to name it. */
@@ -164,7 +156,7 @@ type Link = {
   coreProvider: CoreProvider;
   /** The id the core parsed for the product, which its connection runs under. */
   productId: ProductId;
-  /** Whether the product declares chat, as its connection was opened. */
+  /** Whether the product declares chat, as its run read it. */
   chat: boolean;
 };
 
@@ -271,9 +263,7 @@ type FrameEffect =
   | { kind: 'runSettled'; origin: RunOrigin; outcome: RunOutcome }
   | ({ kind: 'traced' } & RenderTrace)
   | { kind: 'chatResolved'; capable: boolean }
-  | { kind: 'walletConnected'; chat: boolean }
-  /** Routes the page's chat for `product` to `connection` until the core side of `attempt` ends. */
-  | { kind: 'chatRegistered'; attempt: Attempt; connection: CoreConnection; product: FrameProduct }
+  | { kind: 'walletConnected' }
   | { kind: 'gaveUp'; deaths: number };
 
 type FrameMachine = MachineTypes<FrameState, FrameEvent, FrameEffect>;
@@ -306,8 +296,6 @@ export function createProductFrame({
   notify,
   page = BROWSER_PAGE,
   timers = realTimers,
-  // The page's one product frame reads each archive once for the page, across every connection it registers.
-  images = createProductImages(),
 }: ProductFrameParams) {
   // A core that goes down before the product's connection is open closes that connection with it, so the attempt
   // leases the replacement instead, once.
@@ -353,8 +341,7 @@ export function createProductFrame({
           update(
             runStepWork(
               attempt,
-              // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
-              () => lease.connect({ executionKind: chatCapable ? 'Worker' : 'App' }),
+              () => lease.connect({ executionKind: 'App' }),
               connection => {
                 const coreProvider = lease.own(connection);
                 attempt.core.hold(() => {
@@ -374,11 +361,7 @@ export function createProductFrame({
           const { attempt, product, chat, core: coreSide } = run;
           const link: Link = { coreProvider, productId: connection.productId, chat };
           emitState({ ...getRunParts(run), kind: 'readingAllow', attempt, link, core: coreSide });
-          emitSideEffect({ kind: 'walletConnected', chat });
-          // Only the run's own connection, since a chat view waiting for the product takes the first one registered.
-          if (chat) {
-            emitSideEffect({ kind: 'chatRegistered', attempt, connection, product });
-          }
+          emitSideEffect({ kind: 'walletConnected' });
           update(
             runStepWork(
               attempt,
@@ -699,14 +682,8 @@ export function createProductFrame({
         case 'chatResolved':
           chatReport.log.event('chat capability resolved', { capable: effect.capable });
           return;
-        case 'chatRegistered': {
-          const { worker } = effect.product;
-          const readImage = images.createRead({ readArchiveCid: async () => (await worker)?.cid ?? null });
-          effect.attempt.core.hold(registerProductChat(effect.connection, readImage));
-          return;
-        }
         case 'walletConnected':
-          walletReport.log.event('product connected to wallet core', { kind: effect.chat ? 'Worker' : 'App' });
+          walletReport.log.event('product connected to wallet core');
           return;
         case 'gaveUp':
           reportRerenderFailure(

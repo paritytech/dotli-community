@@ -155,7 +155,7 @@ describe('createProductLoader', () => {
     ],
     ['no worker', 'off', null, false],
   ])(
-    'As a visitor, I open a product with %s and get it rendered with chat %s and that worker for its images',
+    'As a visitor, I open a product with %s and get it rendered with chat %s',
     async (_name, _chat, worker, chatOn) => {
       // Given
       const { loader, ports } = setupLoader({ published: { doom: 'bafy-base' }, worker });
@@ -165,7 +165,7 @@ describe('createProductLoader', () => {
 
       // Then
       const rendered = ports.product.render.mock.calls[0]?.[0];
-      await expect(Promise.all([rendered?.chat, rendered?.worker])).resolves.toEqual([chatOn, worker]);
+      await expect(rendered?.chat).resolves.toBe(chatOn);
     },
   );
 
@@ -1059,8 +1059,8 @@ function readFastPaths(spans: ReturnType<typeof recordSpans>) {
     .map(({ attributes, ended }) => ({ outcome: attributes['outcome'], ended }));
 }
 
-/** The product `doom` the frame is asked to render from `cid`, with any chat flag and worker. */
+/** The product `doom` the frame is asked to render from `cid`, with any chat flag. */
 function getRenderedDoom(cid: string): Record<string, unknown> {
   const pending: unknown = expect.any(Promise);
-  return { mode: 'subdomain', label: 'doom', cid, chat: pending, worker: pending, facts: {} };
+  return { mode: 'subdomain', label: 'doom', cid, chat: pending, facts: {} };
 }

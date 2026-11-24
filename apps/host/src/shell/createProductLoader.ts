@@ -326,7 +326,6 @@ export function createProductLoader(params: Params) {
                   cid,
                   base: params.base,
                   chat: run.chat,
-                  worker: run.worker,
                   facts: getProductFacts(manifests),
                 }),
               () => ({ kind: 'rendered' }),
@@ -587,7 +586,6 @@ function startLoadRun(label: string, params: Pick<Params, 'bridge' | 'names'>) {
   return {
     label,
     chat,
-    worker,
     autoHide,
     // The core boots while the name resolves, so its boot can fail before anything awaits it.
     coreHold: markHandled(params.bridge.acquirePageCore()),

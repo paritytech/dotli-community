@@ -31,8 +31,6 @@ import {
 import { productState } from '../../page/index.js';
 import { chatConnections } from '../../chat/index.js';
 import type { ProductFacts } from '../resolve/getProductFacts.js';
-import type { WorkerExecutable } from '../resolve/createNameSource.js';
-import { createProductImages } from './createProductImages.js';
 import { createPermissionAuthorizations } from '../../permissions/index.js';
 import type { PermissionsChange } from '../../permissions/index.js';
 import { buildLoginResponseFrame } from '../../../testing/buildLoginResponseFrame.js';
@@ -77,8 +75,6 @@ type CreateHarnessParams = {
   reportHandlerError?: (error: unknown, type: SandboxMessageType) => void;
   /** Loads the sandbox checker panel, none by default. */
   loadCheckerPanel?: ProductFrameView['loadCheckerPanel'];
-  /** Reads the images of each product's chat, the frame's own by default. */
-  images?: ProductFrameParams['images'];
 };
 
 type SandboxAskParams = {
@@ -114,11 +110,7 @@ type BuildSubdomainProductParams = {
   cid?: string;
   /** Whether the product declares chat, no by default. */
   chat?: boolean;
-  /** The product's worker executable, none by default. */
-  worker?: WorkerExecutable | null;
 };
-
-const NO_WORKER = Promise.resolve(null);
 
 /** The host page, at the root of a dev host. */
 const ROOT_LOCATION: PageLocation = {
@@ -139,7 +131,6 @@ function createHarness({
   location = {},
   reportHandlerError = rethrow,
   loadCheckerPanel,
-  images,
 }: CreateHarnessParams = {}) {
   const hosts: FakeIframeHost[] = [];
   // What each frame's `onPort` returned for the port of its latest document.
@@ -202,7 +193,6 @@ function createHarness({
     notify: () => undefined,
     page,
     timers,
-    images,
   });
   return {
     ...fakes,
@@ -373,15 +363,14 @@ function buildIframeProduct(label: string): FrameProduct {
     label,
     url: `https://${label}.example/app`,
     chat: Promise.resolve(false),
-    worker: NO_WORKER,
   };
 }
 
 function buildSubdomainProduct(
   label: string,
-  { cid = 'cid', chat = false, worker = null }: BuildSubdomainProductParams = {},
+  { cid = 'cid', chat = false }: BuildSubdomainProductParams = {},
 ): FrameProduct {
-  return { mode: 'subdomain', label, cid, chat: Promise.resolve(chat), worker: Promise.resolve(worker), facts: {} };
+  return { mode: 'subdomain', label, cid, chat: Promise.resolve(chat), facts: {} };
 }
 
 /** Whether the iframe of every host is the one attached at the same place, compared by identity. */
@@ -550,7 +539,6 @@ describe('product frame renders', () => {
         cid: 'cid',
         base: '/Doom.dot',
         chat: Promise.resolve(false),
-        worker: NO_WORKER,
         facts: {},
       },
       0,
@@ -600,7 +588,6 @@ describe('product frame renders', () => {
         cid: 'cid',
         base: '/pr16.back-me-up',
         chat: Promise.resolve(false),
-        worker: NO_WORKER,
         facts: {},
       },
       0,
@@ -629,26 +616,20 @@ describe('product frame renders', () => {
     expect(url.search).toBe(search);
   });
 
-  it('As a dApp user, I open an app that declares chat and one that does not, and the first connects as a Worker recorded chat-capable and the second as an App', async () => {
+  it('As a dApp user, I open an app that declares chat and it connects as an App, with no chat served on its connection', async () => {
     // Given
+    const registered: string[] = [];
+    onTestFinished(chatConnections.onRegister(productId => registered.push(productId)));
     const fakes = createHarness();
 
     // When
     await fakes.settle(buildSubdomainProduct('chatty', { chat: true }), 0);
-    const chattyProviders = nth(fakes.runtimes, 0).createProvider.mock.calls.length;
-    const chattyState = productState.store.get();
-    await fakes.settle(buildSubdomainProduct('quiet'), 1);
 
     // Then
-    expect(nth(fakes.runtimes, 0).createProvider).toHaveBeenNthCalledWith(
-      chattyProviders,
-      expect.objectContaining({ executionKind: 'Worker' }),
-    );
-    expect(chattyState).toMatchObject({ status: 'loaded', label: 'chatty', chat: true });
-    expect(fakes.runtimes.at(-1)?.createProvider).toHaveBeenLastCalledWith(
+    expect(nth(fakes.runtimes, 0).createProvider).toHaveBeenLastCalledWith(
       expect.objectContaining({ executionKind: 'App' }),
     );
-    expect(productState.store.get()).toMatchObject({ status: 'loaded', label: 'quiet', chat: false });
+    expect(registered).toEqual([]);
   });
 
   it('As a dApp user, I open a product and the page records the id its core parsed, so its chat is keyed as the core keys it', async () => {
@@ -658,32 +639,10 @@ describe('product frame renders', () => {
     });
 
     // When
-    await fakes.settle(buildSubdomainProduct('chatty', { chat: true }), 0);
+    await fakes.settle(buildSubdomainProduct('chatty'), 0);
 
     // Then
     expect(productState.store.get()).toMatchObject({ status: 'loaded', label: 'chatty', productId: 'canonical.paseo' });
-  });
-
-  it('As a chat user, I see an image my product names from the archive of its worker', async () => {
-    // Given a chat product whose worker archive holds the image
-    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
-    const fakes = createHarness({
-      fakes: createFakePageCore({ parseProductId: () => asProductId('pictures.paseo') }),
-      images: createProductImages({
-        readFiles: cid =>
-          cid === 'bafy-worker' ? Promise.resolve({ 'logo.png': png }) : Promise.reject(new Error(`No archive ${cid}`)),
-      }),
-    });
-    const worker = { entrypoint: 'index.js', includes: { chat: true }, cid: 'bafy-worker' };
-    await fakes.settle(buildSubdomainProduct('pictures', { chat: true, worker }), 0);
-
-    // When
-    const image = await chatConnections
-      .get('pictures.paseo')
-      ?.loadImage({ tag: 'Archive', value: 'logo.png' }, new AbortController().signal);
-
-    // Then
-    expect(image).toEqual({ bytes: png, type: 'image/png' });
   });
 
   it('As a dApp user, I open my product and the tab names it by its published name from the first render, and the page knows its versions', async () => {
@@ -698,10 +657,7 @@ describe('product frame renders', () => {
     };
 
     // When
-    await fakes.settle(
-      { mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), worker: NO_WORKER, facts },
-      0,
-    );
+    await fakes.settle({ mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), facts }, 0);
 
     // Then
     expect(fakes.frameView.titles).toEqual([{ mode: 'subdomain', label: 'doom', displayName: 'DOOM' }]);
@@ -792,7 +748,6 @@ describe('product frame status', () => {
         cid: 'cid',
         base: '/Doom.dot',
         chat: Promise.resolve(false),
-        worker: NO_WORKER,
         facts: {},
       }),
     );
@@ -823,25 +778,6 @@ describe('product frame status', () => {
     // Then
     expect(firstOutcome).toBe('resolved');
     expect(fakes.readLastStatus()).toBe('connected');
-  });
-
-  it('As a dApp user with a chat view waiting for my product, I open a newer version before the first connects and the chat view gets only the live connection', async () => {
-    // Given a chat product whose first render is superseded before its connection is answered
-    const registered: string[] = [];
-    onTestFinished(chatConnections.onRegister(productId => registered.push(productId)));
-    const fakes = createHarness();
-    const first = fakes.frame.render(buildSubdomainProduct('product', { cid: 'first-cid', chat: true }));
-    await fakes.changes.until(() => fakes.connections.length === 1);
-    const second = fakes.frame.render(buildSubdomainProduct('product', { cid: 'second-cid', chat: true }));
-    await readOutcome(first);
-
-    // When the first connection is answered late, then the second
-    await answerConnection(fakes, 0);
-    await answerConnection(fakes, 1);
-    await second;
-
-    // Then
-    expect(registered).toHaveLength(1);
   });
 });
 

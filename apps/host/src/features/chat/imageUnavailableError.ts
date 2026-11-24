@@ -9,8 +9,7 @@
  * - `undecodable`: bytes the browser cannot decode
  * - `missing`: the backend or the archive has no bytes for it
  * - `mismatch`: bytes that do not hash to their CID
- * - `fetch`: the backend or the archive read failed
- * - `no_archive`: the product publishes no archive to read it from
+ * - `fetch`: the backend read failed
  * - `unsupported_cid`: a CID that is not one raw block
  */
 export type ImageUnavailableReason =
@@ -21,7 +20,6 @@ export type ImageUnavailableReason =
   | 'missing'
   | 'mismatch'
   | 'fetch'
-  | 'no_archive'
   | 'unsupported_cid';
 
 /** An image a custom message names that cannot be drawn, for `reason`. */

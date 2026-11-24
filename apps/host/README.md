@@ -215,6 +215,7 @@ request in session storage, so a reload answers the same round.
 - The product's worker executable is its worker manifest with the CID of its `worker` subname, read once per label in a
   page and cached per label. Whether the product declares chat derives from it. The topbar shows the chat button only
   for a product that declares chat and has a room, to a logged-in user.
+- The product frame connects every product as an App, whatever it declares. Only the product worker serves chat.
 
 ### Product worker
 
