@@ -278,7 +278,7 @@ function applyFrameStyle(frame: HTMLIFrameElement, box: FrameBox): void {
     borderRadius: box.placement === 'staged' ? 'var(--r-pop, 20px)' : '',
     // Staged, the card's ring sits inside its box. Before the token stylesheet applies, the ring is simply absent.
     boxSizing: 'border-box',
-    border: box.placement === 'staged' ? '1px solid var(--chrome-ring)' : 'none',
+    border: box.placement === 'staged' ? '1px solid var(--chrome-line)' : 'none',
     margin: '0',
     padding: '0',
   });
