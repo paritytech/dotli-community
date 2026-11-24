@@ -71,10 +71,9 @@
   display: flex;
   grid-area: body;
   flex-direction: column;
-  gap: var(--sp-hair);
   box-sizing: border-box;
   margin: 0;
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--sp-1);
   overflow-y: auto;
   list-style: none;
 }
@@ -276,6 +275,6 @@
 
 @media (max-width: 560px) {
   .rooms {
-    padding: var(--sp-1) var(--sp-2) var(--sp-4);
+    padding: var(--sp-1) var(--sp-1) var(--sp-4);
   }
 }

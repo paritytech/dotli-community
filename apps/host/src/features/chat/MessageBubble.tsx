@@ -9,6 +9,7 @@ import type { ChatMessageContent, HexString } from '@parity/truapi';
 import { FileIcon, PaperclipIcon } from '@dotli/ui/icons';
 import { InlineActionButton } from './InlineActionButton.js';
 import type { ChatMessageRecord } from './createChatStore.js';
+import { getClockLabel } from './messageDays.js';
 import s from './MessageBubble.module.css';
 
 /** A custom message's product-defined body, which the page renders into the bubble. */
@@ -38,7 +39,7 @@ export function MessageBubble(props: {
       data-timestamp={String(record.timestamp)}
       title={new Date(record.timestamp).toLocaleString()}
     >
-      {new Date(record.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+      {getClockLabel(record.timestamp)}
     </time>
   );
 

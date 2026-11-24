@@ -28,7 +28,7 @@ import { getDayLabel, isDayStart } from './messageDays.js';
 import { chatUnreadLabel } from './unread.js';
 import s from './ChatPanel.module.css';
 
-// Day labels and the rooms' relative times go stale while the panel sits open.
+// Day labels and the rooms' times roll over at midnight while the panel sits open.
 const TIME_REFRESH_MS = 60_000;
 
 type View = 'loading' | 'empty' | 'list' | 'conversation';
