@@ -42,7 +42,9 @@
     box-shadow var(--dur);
 }
 /* The glass is a layer of its own, so the stage can fade it out with the morph: a gradient and its blur interpolate
-   to no glass only through an opacity. */
+   to no glass only through an opacity. Its inset shadow, the lit edge and ring, sits on the layer too, since the
+   bar's own shadow paints under the glass. The bar keeps the same shadow for its drop, because the desktop clip cuts
+   a child's shadow off. */
 .topbar::before {
   content: '';
   position: absolute;
@@ -52,7 +54,10 @@
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   backdrop-filter: var(--chrome-blur);
-  transition: opacity var(--dur-morph) var(--ease-out);
+  box-shadow: var(--chrome-shadow-bar);
+  transition:
+    opacity var(--dur-morph) var(--ease-out),
+    box-shadow var(--dur);
 }
 /* Desktop only: a data-hidden that lands mid-resize across 560px must not fold the phone bar. */
 @media (min-width: 561px) {
@@ -65,12 +70,18 @@
     top: calc(var(--sp-1) + var(--safe-top));
     width: var(--capsule-width);
     height: var(--sp-2);
+  }
+  .topbar[data-hidden],
+  .topbar[data-hidden]::before {
     box-shadow: var(--chrome-shadow-capsule);
   }
   /* Staged, the bar sits in the band the page opens above its cards, so it drops its glass: nothing of it shows but its
      content on the dark page. Only top and the look change, so the morph and the Safari branch below carry over. */
   :global([data-staged]) .topbar {
     top: var(--safe-top);
+  }
+  :global([data-staged]) .topbar,
+  :global([data-staged]) .topbar::before {
     box-shadow: none;
   }
   :global([data-staged]) .topbar::before {
@@ -204,9 +215,12 @@
     height: var(--topbar-height);
     padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
     border-radius: 0;
-    box-shadow: inset 0 1px 0 var(--chrome-line);
     transform: none;
     transition: none;
+  }
+  .topbar,
+  .topbar::before {
+    box-shadow: inset 0 1px 0 var(--chrome-line);
   }
   .row {
     gap: var(--sp-2);
