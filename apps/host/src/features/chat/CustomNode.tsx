@@ -22,7 +22,8 @@ import { InlineActionButton, type InlineActionButtonVariant } from './InlineActi
 import { ImageOffIcon } from './ImageOffIcon.js';
 import { boxStyle, columnStyle, imageStyle, modifierStyle, rowStyle, textStyle } from './customStyles.js';
 import { createEchoHold } from './echoHold.js';
-import { ImageUnavailableError, reportUnavailableImage } from './imageUnavailableError.js';
+import { ImageUnavailableError } from './imageUnavailableError.js';
+import { reportUnavailableImage } from './reportUnavailableImage.js';
 import type { LoadedImage } from './readChatImage.js';
 import s from './CustomNode.module.css';
 

@@ -18,7 +18,8 @@ import {
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
 import { createChatView, type ChatChange, type ChatViewRepo } from './createChatView.js';
-import { ImageUnavailableError, reportUnavailableImage } from './imageUnavailableError.js';
+import { ImageUnavailableError } from './imageUnavailableError.js';
+import { reportUnavailableImage } from './reportUnavailableImage.js';
 import type { LoadedImage } from './readChatImage.js';
 import { reportFailedChatStorage } from './reportFailedChatStorage.js';
 import { NOT_CONNECTED, startCustomRender, type RenderCustomMessageParams } from './startCustomRender.js';
