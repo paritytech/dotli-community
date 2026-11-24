@@ -113,6 +113,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md): a story file's axe check costs
   time or fails where it has nothing to find, such as stories that drive a component at capacity near the test timeout,
   or the contrast rule on text inside a decorative, `aria-hidden` background graphic.
+- [play-asserts-a-number-shown-as-plain-text](play-asserts-a-number-shown-as-plain-text.md): a kept story play is the
+  only guard of an edge case about a number the component shows as plain text, with no role, accessible name or
+  `data-*` state, and lint refuses `toHaveTextContent` in story files.
 - [play-checks-a-prop-reaches-an-aria-state](play-checks-a-prop-reaches-an-aria-state.md): a story play checks that a
   state prop, such as `disabled`, lands as an ARIA attribute that is the only way assistive technology learns the
   state, and the question is whether the stories contract drops it as a prop passed through or keeps it as a behaviour
