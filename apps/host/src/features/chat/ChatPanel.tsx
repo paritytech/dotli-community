@@ -24,7 +24,7 @@ import { MessageRow } from './MessageRow.js';
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
-import { getDayLabel, startsDay } from './messageDays.js';
+import { getDayLabel, isDayStart } from './messageDays.js';
 import { endsRun } from './messageRuns.js';
 import { chatUnreadLabel } from './unread.js';
 import s from './ChatPanel.module.css';
@@ -322,7 +322,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
               <Show when={chat.productName()}>
                 {name => (
                   <span class={s['subtitle']} id="chat-panel-subtitle">
-                    {name()}
+                    {chat.productDomain() === null ? name() : `${name()} · ${chat.productDomain() ?? ''}`}
                   </span>
                 )}
               </Show>
@@ -400,7 +400,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
             <For each={feed.messages() ?? []} keyed={r => r.seq}>
               {(record, index) => (
                 <>
-                  <Show when={startsDay(record(), feed.messages()?.[index() - 1])}>
+                  <Show when={isDayStart(record(), feed.messages()?.[index() - 1])}>
                     <p class={s['day']} data-testid="chat-day">
                       {getDayLabel(record().timestamp, now())}
                     </p>

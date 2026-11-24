@@ -21,9 +21,8 @@ type Params = {
   loadVerify?: typeof loadContentVerify;
   /**
    * Reads the files an archive CID names, each block checked against its hash. By default over the content backend in
-   * force, from the page's block cache unless the settings skip it, as the product's worker reads its archive, and
-   * loaded on first use so the frame's chunk carries no archive reader. Rejects when a block cannot be fetched or fails
-   * its check.
+   * force, from the page's block cache unless the settings skip it, and loaded on first use so the frame's chunk
+   * carries no archive reader. Rejects when a block cannot be fetched or fails its check.
    */
   readFiles?: (cid: string) => Promise<ArchiveFiles>;
 };

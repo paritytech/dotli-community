@@ -4,6 +4,7 @@
 import { createEffect, onCleanup } from 'solid-js';
 import type { ChatStore } from './createChatStore.js';
 import { productState } from '../page/index.js';
+import { getActiveTldSuffix } from '@dotli/config';
 import { useStore } from '@dotli/stores-solid';
 import type { ChatConversation, ChatFeed } from './chat.js';
 import type { ChatDockProps } from './ChatDock.js';
@@ -55,6 +56,10 @@ function useChatConversation(chat: ChatStore): ChatConversation {
   return {
     loggedIn: useStore(chatPanelState.store, state => state.loggedIn),
     productName: () => displayName() ?? label(),
+    productDomain: () => {
+      const name = label();
+      return name === null ? null : name + getActiveTldSuffix();
+    },
     activeRoomId: useStore(chatPanelState.store, state => state.activeRoomId),
     unreadByRoom: useStore(chatPanelState.store, state => state.unreadByRoom),
     composerError: useStore(chatPanelState.store, state => state.composerError),

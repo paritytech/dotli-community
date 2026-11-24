@@ -92,8 +92,10 @@ export type OpenRoomParams = {
 /** What the open panel shows of the page's chat state, and what it asks the page to do. */
 export type ChatConversation = {
   loggedIn: Accessor<boolean>;
-  /** The product's published name, else its label. The drawer's title, and the subtitle of a room open among several. */
+  /** The product's published name, else its label. */
   productName: Accessor<string | null>;
+  /** The product's label with the active TLD, null until a product loads. */
+  productDomain: Accessor<string | null>;
   /** Null shows the room list, or the room when it is the only one. */
   activeRoomId: Accessor<string | null>;
   unreadByRoom: Accessor<Readonly<Record<string, number>>>;

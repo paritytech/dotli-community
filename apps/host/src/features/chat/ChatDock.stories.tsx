@@ -97,7 +97,7 @@ type Story = StoryObj<typeof meta>;
 
 /** Opens the drawer on a shop's product, as each story of a canvas state starts. */
 function openShop(patch: Partial<StageState> = {}): void {
-  stage.update({ open: true, productName: 'Market', ...patch });
+  stage.update({ open: true, productName: 'Market', productDomain: 'market.dot', ...patch });
 }
 
 /** The shop's one room, the default, holding every kind of message. */
@@ -149,7 +149,7 @@ export const RoomOpen: Story = {
       await waitFor(() => expect(byId('chat-panel-title')).toHaveTextContent('Market orders'), SLOW);
     });
     await step("Then the head names the product under the room and counts only the other room's unread", async () => {
-      await expect(byId('chat-panel-subtitle')).toHaveTextContent('Market');
+      await expect(byId('chat-panel-subtitle')).toHaveTextContent('Market · market.dot');
       await expect(byId('chat-panel-other-unread')).toHaveTextContent('1');
       await expect(byId('chat-panel-back')).toBeVisible();
     });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { getDayLabel, startsDay } from './messageDays.js';
+import { getDayLabel, isDayStart } from './messageDays.js';
 
 // Local times, so the cases hold in any time zone.
 function at(year: number, month: number, day: number, hour = 12, minute = 0): number {
@@ -20,9 +20,9 @@ describe('message days', () => {
 
     // When
     const starts = [
-      startsDay(lateNight, undefined),
-      startsDay(pastMidnight, lateNight),
-      startsDay(morning, pastMidnight),
+      isDayStart(lateNight, undefined),
+      isDayStart(pastMidnight, lateNight),
+      isDayStart(morning, pastMidnight),
     ];
 
     // Then

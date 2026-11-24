@@ -9,7 +9,7 @@ type DayMessage = Pick<ChatMessageRecord, 'timestamp'>;
  * Whether `message` opens a day of the conversation: it is the oldest, or falls on another local calendar day than
  * `previous`, the message before it, undefined for the oldest.
  */
-export function startsDay(message: DayMessage, previous: DayMessage | undefined): boolean {
+export function isDayStart(message: DayMessage, previous: DayMessage | undefined): boolean {
   return previous === undefined || startOfDay(previous.timestamp) !== startOfDay(message.timestamp);
 }
 

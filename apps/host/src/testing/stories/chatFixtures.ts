@@ -33,6 +33,7 @@ export type StageState = {
   available: boolean;
   loggedIn: boolean;
   productName: string | null;
+  productDomain: string | null;
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
   /** The page's total across rooms, which the button shows while the panel is closed. */
@@ -46,6 +47,7 @@ const INITIAL: StageState = {
   available: true,
   loggedIn: true,
   productName: 'chatty',
+  productDomain: 'chatty.dot',
   activeRoomId: null,
   unreadByRoom: {},
   unread: 0,
@@ -213,6 +215,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
   const conversation: ChatConversation = {
     loggedIn: () => current().loggedIn,
     productName: () => current().productName,
+    productDomain: () => current().productDomain,
     activeRoomId: () => current().activeRoomId,
     unreadByRoom: () => current().unreadByRoom,
     composerError: () => current().composerError,
