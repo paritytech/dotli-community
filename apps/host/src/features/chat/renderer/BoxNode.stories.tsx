@@ -88,6 +88,28 @@ export const OverlaidChildren: Story = {
   ),
 };
 
+/** As a user, I see a child that fills the box's width span it, though the box aligns its content to the start. */
+export const FillingChild: Story = {
+  render: () => (
+    <TreeFrame>
+      <BoxNode value={{ modifiers: frame(64), props: { contentAlignment: 'TopStart' } }}>
+        <BoxCell>
+          <BoxNode
+            value={{
+              modifiers: [
+                { tag: 'FillWidth', value: true },
+                { tag: 'Height', value: 24 },
+                { tag: 'Background', value: { color: 'BgSurfaceNested', shape: { tag: 'Rounded', value: 6 } } },
+              ],
+              props: {},
+            }}
+          />
+        </BoxCell>
+      </BoxNode>
+    </TreeFrame>
+  ),
+};
+
 /** As a user, I see product backgrounds and borders in each shape, a shaped background clipping what it holds. */
 export const BackgroundsAndBorders: Story = {
   render: () => (

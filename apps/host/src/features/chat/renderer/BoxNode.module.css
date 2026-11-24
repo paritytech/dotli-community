@@ -9,8 +9,13 @@
   padding: 0;
 }
 
-/* One cell for all children, which the box's align-items and justify-items place. */
+/* One cell spanning the box, so a child that fills fills the box. The child sits in it at the box's alignment. */
 .cell {
+  display: grid;
   grid-area: 1 / 1;
+  align-self: stretch;
+  justify-self: stretch;
+  align-items: inherit;
+  justify-items: inherit;
   min-width: 0;
 }
