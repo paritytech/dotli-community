@@ -16,7 +16,6 @@
   min-height: var(--content-height);
   margin: var(--content-top) 0 0;
   padding: 0;
-  background: var(--bg-page);
   color: var(--text);
   text-align: center;
 }
