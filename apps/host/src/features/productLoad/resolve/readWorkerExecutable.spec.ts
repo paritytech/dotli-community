@@ -6,12 +6,7 @@ import type { Network } from '@dotli/config';
 import { createDeferred } from '@dotli/shared';
 import { createMemoryStorage } from '@dotli/shared/testing';
 import type { WorkerExecutable } from './createNameSource.js';
-import {
-  createStorageExecutableCache,
-  readChatCapability,
-  readWorkerExecutable,
-  type ExecutableCache,
-} from './readWorkerExecutable.js';
+import { createStorageExecutableCache, readWorkerExecutable, type ExecutableCache } from './readWorkerExecutable.js';
 import { bindReports } from '../../../testing/bindReports.js';
 import { createBlockedStorage } from '../../../testing/createBlockedStorage.js';
 
@@ -129,75 +124,22 @@ describe('worker executable', () => {
     // Then
     expect(executable).toEqual(CHAT_WORKER);
   });
-});
 
-describe('chat capability', () => {
-  it.each([
-    ['a worker that includes chat', 'on', CHAT_WORKER, true],
-    ['a worker that leaves chat out', 'off', QUIET_WORKER, false],
-    ['no worker', 'off', null, false],
-  ])('As a visitor on a product with %s, I load it and chat is %s', async (_name, _chat, worker, chatOn) => {
+  it('As a visitor whose worker cannot be read, I load my product and it gets no worker this load', async () => {
     // Given
     const { cache } = createPage();
 
     // When
-    const chat = await readChat(readingWorker(worker), cache);
+    const executable = await readWorkerExecutable(
+      'myapp',
+      { readWorkerExecutable: () => Promise.reject(new Error('offline')) },
+      { cache, network: NETWORK },
+    );
 
     // Then
-    expect(chat).toBe(chatOn);
-  });
-
-  it('As a visitor whose worker cannot be read, I load my product and it gets no chat this load', async () => {
-    // Given
-    const { cache } = createPage();
-
-    // When
-    const chat = await readChat({ readWorkerExecutable: () => Promise.reject(new Error('offline')) }, cache);
-
-    // Then
-    expect(chat).toBe(false);
-  });
-
-  it('As a returning visitor whose product dropped chat, I load it and this load keeps the kept answer while the next load gets the new one', async () => {
-    // Given
-    const { cache } = createPage({ seed: { [KEPT_KEY]: JSON.stringify(CHAT_WORKER) } });
-    const read = createDeferred<WorkerExecutable | null>();
-
-    // When
-    const chat = await readChat({ readWorkerExecutable: () => read.promise }, cache);
-    read.resolve(QUIET_WORKER);
-    await read.promise;
-    const next = await readChat({ readWorkerExecutable: () => new Promise(() => undefined) }, cache);
-
-    // Then
-    expect([chat, next]).toEqual([true, false]);
-  });
-
-  it('As a returning visitor whose chat answer was kept before workers were, I load my product and chat answers from it at once until the read replaces it', async () => {
-    // Given
-    const { stored, cache } = createPage({ seed: { 'dotli:chat-capable:myapp': '1' } });
-    const read = createDeferred<WorkerExecutable | null>();
-
-    // When
-    const chat = await readChat({ readWorkerExecutable: () => read.promise }, cache);
-    read.resolve(QUIET_WORKER);
-    await read.promise;
-    const next = cache.getChat('myapp', NETWORK);
-
-    // Then
-    expect({ chat, legacy: stored.getItem('dotli:chat-capable:myapp'), next }).toEqual({
-      chat: true,
-      legacy: null,
-      next: false,
-    });
+    expect(executable).toBeNull();
   });
 });
-
-/** Whether `myapp` declares chat, from one worker read through `names`, as a load reads it. */
-function readChat(names: Parameters<typeof readWorkerExecutable>[1], cache: ExecutableCache): Promise<boolean> {
-  const options = { cache, network: NETWORK };
-  return readChatCapability('myapp', readWorkerExecutable('myapp', names, options), options);
-}
 
 /** Returns a name source whose worker read answers `worker`. */
 function readingWorker(worker: WorkerExecutable | null): {

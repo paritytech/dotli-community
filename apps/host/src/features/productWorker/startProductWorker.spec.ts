@@ -6,6 +6,7 @@ import { asProductId } from '@parity/truapi';
 import type { ExecutableKind, WorkerDemandChange } from '@parity/truapi-host';
 import { recordReports } from '@dotli/metrics/testing';
 import { createAsyncTaskPool, createDeferred, noop } from '@dotli/shared';
+import type { ModuleFiles } from '@dotli/quickjs-runtime';
 import type { WorkerExecutable } from '../productLoad/index.js';
 import type { CoreConnection, CoreProvider } from '../productRuntime/index.js';
 import { createChanges, type Changes } from '../../testing/changes.js';
@@ -14,6 +15,10 @@ import { startProductWorker, type WorkerLease } from './startProductWorker.js';
 const PRODUCT_ID = asProductId('shop');
 
 const EXECUTABLE: WorkerExecutable = { entrypoint: 'index.js', includes: { chat: false }, cid: 'bafy-worker' };
+
+const CHAT_EXECUTABLE: WorkerExecutable = { ...EXECUTABLE, includes: { chat: true } };
+
+const FILES: ModuleFiles = new Map([['index.js', new TextEncoder().encode('export {};')]]);
 
 type HarnessParams = {
   /** What the product publishes. A worker by default. */
@@ -29,6 +34,7 @@ function createHarness({ executable = EXECUTABLE, holdFirstRead = false }: Harne
   const passes = createAsyncTaskPool({ poolSize: 1 });
   const leases: FakeLease[] = [];
   const vms: FakeVm[] = [];
+  const served: ServedChat[] = [];
   const heldRead = createDeferred<undefined>();
   let reads = 0;
 
@@ -37,6 +43,7 @@ function createHarness({ executable = EXECUTABLE, holdFirstRead = false }: Harne
     reports,
     leases,
     vms,
+    served,
     reads: () => reads,
     releaseRead: () => {
       heldRead.resolve(undefined);
@@ -60,13 +67,20 @@ function createHarness({ executable = EXECUTABLE, holdFirstRead = false }: Harne
           }
           return executable;
         },
-        readFiles: () => Promise.resolve(new Map([['index.js', new TextEncoder().encode('export {};')]])),
+        readFiles: () => Promise.resolve(FILES),
         openGate: () => ({ isHostAllowed: () => Promise.resolve(false), dispose: noop }),
         startVm: () => {
           const vm = createFakeVm(changes);
           vms.push(vm);
           changes.notify();
           return vm.vm;
+        },
+        serveChat: (connection, files) => {
+          const chat = { connection, files, stopped: false };
+          served.push(chat);
+          return () => {
+            chat.stopped = true;
+          };
         },
         passes,
       });
@@ -80,6 +94,9 @@ function createHarness({ executable = EXECUTABLE, holdFirstRead = false }: Harne
   };
 }
 
+/** A chat the worker served, on which connection and with which files, and whether it stopped. */
+type ServedChat = { connection: CoreConnection; files: ModuleFiles; stopped: boolean };
+
 type FakeLease = ReturnType<typeof createFakeLease>;
 
 /** A lease whose ledger counts references as the core does, and whose demand and core loss the test drives. */
@@ -89,6 +106,7 @@ function createFakeLease(changes: Changes) {
   let downListener: (() => void) | null = null;
   const demandListeners = new Set<(change: WorkerDemandChange) => void>();
   const connections: ExecutableKind[] = [];
+  const opened: CoreConnection[] = [];
   const providers: { disposed: boolean }[] = [];
 
   function setDemand(wanted: boolean): void {
@@ -125,8 +143,10 @@ function createFakeLease(changes: Changes) {
     },
     connect: ({ executionKind = 'App' } = {}) => {
       connections.push(executionKind);
-      // The worker hands the connection on to `own` alone, which the fake answers without reading it.
-      return Promise.resolve({ productId: PRODUCT_ID, close: noop } as unknown as CoreConnection);
+      // The worker hands the connection on to `own` and the chat it serves, which the fakes answer without reading it.
+      const connection = { productId: PRODUCT_ID, close: noop } as unknown as CoreConnection;
+      opened.push(connection);
+      return Promise.resolve(connection);
     },
     own: () => {
       const provider = createFakeProvider(changes);
@@ -148,6 +168,7 @@ function createFakeLease(changes: Changes) {
   return {
     lease,
     connections,
+    opened,
     providers,
     references: () => references,
     released: () => released,
@@ -333,5 +354,49 @@ describe('startProductWorker', () => {
 
     // Then
     expect({ vms: harness.vms.length, reads: harness.reads() }).toEqual({ vms: 1, reads: 1 });
+  });
+
+  it('As a page whose product declares chat, I serve chat on its worker connection with the files the run read', async () => {
+    // Given
+    const harness = createHarness({ executable: CHAT_EXECUTABLE });
+
+    // When
+    harness.start();
+    await harness.running();
+
+    // Then
+    const [lease] = harness.leases;
+    expect(harness.served).toHaveLength(1);
+    expect(harness.served[0]?.connection).toBe(lease?.opened[0]);
+    expect(harness.served[0]?.files).toBe(FILES);
+  });
+
+  it('As a page whose product declares no chat, I serve no chat', async () => {
+    // Given
+    const harness = createHarness();
+
+    // When
+    harness.start();
+    await harness.running();
+
+    // Then
+    expect(harness.served).toEqual([]);
+  });
+
+  it.each([
+    ['the core no longer wants the worker', (lease: FakeLease | undefined) => lease?.setDemand(false)],
+    ['the core under it goes down', (lease: FakeLease | undefined) => lease?.goDown()],
+    ['the page stops the worker', (_lease: FakeLease | undefined, stop: () => void) => stop()],
+  ] as const)('As a page, I stop serving chat as the run ends when %s', async (_case, end) => {
+    // Given
+    const harness = createHarness({ executable: CHAT_EXECUTABLE });
+    const stop = harness.start();
+    await harness.running();
+
+    // When
+    end(harness.leases[0], stop);
+
+    // Then
+    expect(harness.served[0]?.stopped).toBe(true);
   });
 });

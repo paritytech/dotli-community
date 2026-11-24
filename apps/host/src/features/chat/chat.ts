@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the chat panel reads and asks for. The room and bot records hold only the fields the panel shows, so a story
+// What the chat panel reads and asks for. The room records hold only the fields the panel shows, so a story
 // builds them without a product, and the runtime's records fit them.
 
 import type { Accessor } from 'solid-js';
@@ -54,17 +54,8 @@ export type ChatRoom = {
   footer?: ChatRoomFooter | undefined;
 };
 
-export type ChatBot = {
-  botId: string;
-  name: string;
-  /** URL or base64 image, as supplied by the product. */
-  icon: string;
-  createdAt: number;
-};
-
 export type ChatContacts = {
   rooms: readonly ChatRoom[];
-  bots: readonly ChatBot[];
   lastMessageTimes: ReadonlyMap<string, number>;
 };
 

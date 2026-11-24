@@ -114,13 +114,15 @@ export function createMemoryChatRepo(): ChatRepo & {
       repo.bots.push({ ...bot, createdAt: (clock += 1) });
       return Promise.resolve('New');
     },
+    hasRoom(productId: string, roomId: string): Promise<boolean> {
+      return Promise.resolve(repo.rooms.some(r => r.productId === productId && r.roomId === roomId));
+    },
     appendMessage(message: Omit<ChatMessageRecord, 'seq'>): Promise<number> {
       const seq = repo.messages.length + 1;
       repo.messages.push({ ...message, seq });
       return Promise.resolve(seq);
     },
     listRooms: (productId: string) => runGatedRead('rooms', () => repo.rooms.filter(r => r.productId === productId)),
-    listBots: (productId: string) => Promise.resolve(repo.bots.filter(b => b.productId === productId)),
     readLatestMessageTimestamps: (productId: string) =>
       Promise.resolve(
         new Map(repo.messages.filter(m => m.productId === productId).map(m => [m.roomId, m.timestamp] as const)),

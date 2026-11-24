@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+export { hostArchiveReader } from './createArchiveReader.js';
 export type { PreimageBlock, PreimageFetch } from './createBlockFetch.js';
 export { fetchContentBlock } from './createBlockFetch.js';
 export { hostBitswapClient } from './createHostBitswapClient.js';

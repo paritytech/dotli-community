@@ -44,6 +44,8 @@ export type ChatRepo = ChatViewRepo & {
   setRoomFooter(params: SetRoomFooterParams): Promise<boolean>;
   /** Answers TrUAPI `ChatBotRegistrationStatus`. A re-registration refreshes the name and icon. */
   registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'>;
+  /** Whether the product has a room with this id. */
+  hasRoom(productId: string, roomId: string): Promise<boolean>;
   /** Resolves the message's `seq` once it is stored. */
   appendMessage(message: Omit<ChatMessageRecord, 'seq'>): Promise<number>;
 };
@@ -175,9 +177,13 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       return status;
     },
 
-    /** Stores the product's message and resolves its new id. Rejects when the repo fails. */
+    /**
+     * Stores the product's message and resolves its new id. Its change says whether it landed in one of the product's
+     * rooms. Rejects when the repo fails.
+     */
     async postProductMessage({ productId, roomId, content }: PostProductMessageParams): Promise<string> {
       const messageId = createRandomId();
+      const inRoom = await repo.hasRoom(productId, roomId);
       await repo.appendMessage({
         productId,
         roomId,
@@ -186,7 +192,7 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
         content,
         timestamp: timers.now(),
       });
-      notify({ kind: 'message', productId, roomId, author: 'product' });
+      notify({ kind: 'message', productId, roomId, author: 'product', inRoom });
       return messageId;
     },
 
@@ -291,11 +297,10 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       }
     },
 
-    /** Whether the product has a room or a bot. Resolves false when the read fails, which is reported. */
+    /** Whether the product has a room. Resolves false when the read fails, which is reported. */
     async hasContacts(productId: string): Promise<boolean> {
       try {
-        const [rooms, bots] = await Promise.all([repo.listRooms(productId), repo.listBots(productId)]);
-        return rooms.length > 0 || bots.length > 0;
+        return (await repo.listRooms(productId)).length > 0;
       } catch (error) {
         reportFailedChatStorage(error, 'chat_contacts_check');
         return false;
@@ -310,11 +315,15 @@ export const chatStore = createChatStore({
     createRoom: chat.createRoom,
     setRoomFooter: chat.setRoomFooter,
     registerBot: chat.registerBot,
+    hasRoom: hasStoredRoom,
     appendMessage: chat.appendMessage,
     listRooms: chat.listRooms,
-    listBots: chat.listBots,
     readLatestMessageTimestamps: chat.getLatestMessageTimestamps,
     listMessages: chat.listMessages,
   },
   connections: chatConnections,
 });
+
+async function hasStoredRoom(productId: string, roomId: string): Promise<boolean> {
+  return (await chat.listRooms(productId)).some(room => room.roomId === roomId);
+}

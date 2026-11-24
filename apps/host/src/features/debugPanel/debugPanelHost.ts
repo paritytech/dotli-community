@@ -5,11 +5,8 @@
 // of the boot chunk.
 
 import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
-import { getCacheSettings } from '@dotli/config';
-import { blockCache } from '@dotli/storage';
-import { hostBitswapClient } from '../chains/index.js';
+import { hostArchiveReader } from '../chains/index.js';
 import { productFrameLayout, type ProductFrameLayout } from '../page/index.js';
-import { readServedArchive } from '../productLoad/index.js';
 import { topbarState } from '../page/index.js';
 import { closeDebugMode } from '../debug/index.js';
 import { authControl } from '../account/index.js';
@@ -31,7 +28,7 @@ export function createDebugPanelHost({ layout }: Params): DebugPanelHost {
     walletMode: walletModeState.store,
     walletSwitch: { importPhrase: authControl.importPhrase, usePolkadotApp: authControl.logout },
     diagnostics: pageDiagnostics,
-    archive: cid => readServedArchive(cid, hostBitswapClient, getCacheSettings().skipArchiveCache ? null : blockCache),
+    archive: cid => hostArchiveReader.read(cid),
     contentInsets: { top: 'var(--content-top)', bottom: 'var(--content-bottom)' },
     topbarPresent: () => topbarState.get().present,
     reportDockInset(inset) {

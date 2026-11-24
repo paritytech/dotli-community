@@ -64,12 +64,7 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
   });
   // The product's worker runs from its first done for the page's life, so the stops go unused.
   shell.sandboxLoad.subscribeCleared(() => {
-    void startProductWorker({
-      label,
-      names,
-      bridge,
-      blockCache: settings.cache.skipArchiveCache ? null : pageBlockCache,
-    });
+    void startProductWorker({ label, names, bridge });
   });
   const author = createProductAuthor({
     readOwner: readLoadedOwner,

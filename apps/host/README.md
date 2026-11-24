@@ -59,7 +59,8 @@ The features:
 
 - **Product runtime:** the TrUAPI side whole. It holds the core connection and the host callbacks. The runtime bridge
   sits there too.
-- **Chains:** the page's chain pool and the reads every flow shares, below product runtime.
+- **Chains:** the page's chain pool and the reads every flow shares, below product runtime. It holds the page's one
+  archive reader, which the product worker and the debug panel read through.
 - **Debug panel:** the panel's view of the page, above product runtime, loaded only in debug mode.
 
 No feature imports another in a cycle, so each sits above the features it reads.
@@ -213,8 +214,8 @@ request in session storage, so a reload answers the same round.
   then halts until the user reloads.
 - The product card's author is read and cached with the manifests.
 - The product's worker executable is its worker manifest with the CID of its `worker` subname, read once per label in a
-  page and cached per label. Whether the product declares chat derives from it. The topbar shows the chat button only
-  for a product that declares chat and has a room or a bot, to a logged-in user.
+  page and cached per label. The load starts the read beside the CID, so the worker finds it done.
+- The product frame connects every product as an App as soon as the core is leased. Only the product worker serves chat.
 
 ### Product worker
 
@@ -224,7 +225,21 @@ request in session storage, so a reload answers the same round.
   core counts the rest.
 - A run that fails, or finds no worker, is not tried again until the demand turns wanted again.
 - When the core goes down, the run goes with it, and the reference and the demand are taken again on the replacement.
+- A run whose worker declares chat serves the page's chat on its own connection until the run ends. Chat images come
+  from the archive the run read, or as single Bulletin blocks checked against their CID.
+- The topbar shows the chat button once the product's worker registers chat and the product has a room, to a logged-in
+  user.
 - The worker's console output goes to the debug log, never to the always-on channels.
+
+### Archives
+
+- Every archive the host reads itself goes through the page's archive reader. A product load's blocks go through the
+  sandbox's block relay instead.
+- On a light client the reader takes each block from the block cache, else over bitswap, and hashes every one, since
+  these blocks bypass the relay's checks. On the gateway backend it reads through the gateway.
+- Overlapping reads of one archive share one read. Its files are kept for the page's life. A failed read keeps nothing,
+  so the next read tries again.
+- Skipping the archive cache in the settings bypasses the block cache, not the files the page keeps.
 
 ### Network
 
@@ -237,8 +252,7 @@ request in session storage, so a reload answers the same round.
 
 - The bridge, chat store, panel bodies, product card, debug panel, local wallet, host runtime, chain client, QR encoder
   and product worker load on demand, each in its own chunk. The chat panel counts unread messages, and learns whether
-  the product has a room or a bot, from once the chat store loads. CI startup size budgets guard what each page loads
-  first.
+  the product has a room, from once the chat store loads. CI startup size budgets guard what each page loads first.
 - A shared lazy module loads once. A failed load is forgotten, so the next caller retries without a page reload.
 - Islands that must stand in for themselves wrap their trees in an error boundary. An island whose code never ran offers
   a reload.

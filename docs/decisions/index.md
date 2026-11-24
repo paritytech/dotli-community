@@ -73,8 +73,12 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [fact-about-each-network](fact-about-each-network.md): UI depends on a fact about the network the visitor picked,
   such as whether its tokens have value, and the network table holds no field for it.
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
-  much structure, or files that serve one feature sit in a top-level folder filed by kind.
+  much structure, or files that serve one feature sit in a top-level folder filed by kind, or a helper's only caller
+  moves to another feature, or several features come to read through a helper built on a low feature's infrastructure.
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
+- [moved-helper-reads-what-its-new-home-holds](moved-helper-reads-what-its-new-home-holds.md): a helper moves into
+  another feature with its only caller, and it still reads and caches data itself that the new feature already holds
+  for as long as the helper can be asked.
 - [new-outcome-in-an-existing-flow](new-outcome-in-an-existing-flow.md): a new reaction, such as an automatic reload,
   joins a signal an existing flow already turns into an outcome, such as a failure screen, and the question is whether
   it gets a module of its own or a state of its own, where its action runs, and where a choice that needs a call with a
@@ -88,6 +92,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   callbacks each serve a different feature.
 - [security-critical-config-to-a-sandboxed-child](security-critical-config-to-a-sandboxed-child.md): a sandboxed child
   reads config from its parent through URL params any embedder can write, and one value is security-critical.
+- [read-serves-sources-of-different-trust](read-serves-sources-of-different-trust.md): one read checks what a
+  caller's source returns, such as hashing blocks against their ids, and its callers' sources differ in trust, so the
+  question is whether the read picks the check or each caller wraps its own source.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
   value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
@@ -99,8 +106,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   item's status, and the state layer's existing verdict, which other readers share, reports a waiting state the view
   would rather not show, such as a brief one after the page returns from hidden or one for an item nothing on the page
   holds.
-- [what-a-removal-leaves-unreached](what-a-removal-leaves-unreached.md): a removal leaves a variant no entry uses, a
-  table column with one reader of one member's value, or a choice the user can no longer select.
+- [what-a-removal-leaves-unreached](what-a-removal-leaves-unreached.md): a removal leaves something nothing reaches or
+  only one reader reads, such as a variant no entry uses or an unselectable choice. It covers a flow that still waits
+  on and records a fact that no longer decides its step, once another layer owns the capability.
 
 ## Product requests
 
@@ -165,6 +173,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   after the card opens, and the question is what the section shows while it loads.
 - [status-mark-drawn-around-an-icon](status-mark-drawn-around-an-icon.md): a design carries an entity's state in a
   disc or ring around its icon, and the question is whether that breaks the rule that icons stand bare.
+- [surface-available-while-its-run-restarts](surface-available-while-its-run-restarts.md): a panel and its button show
+  while a background run has registered for the item on screen, and the question is whether they hide when the run
+  ends for a transient reason and restarts, or stay available while an action in the gap fails.
 - [surface-placed-against-its-trigger](surface-placed-against-its-trigger.md): a shared surface that opens from a
   trigger, such as a dropdown or a tooltip card, places itself in its own way or must line up with the edge of the bar
   its trigger sits in, and the question is how a host places it or what carries the bar's edge into the component.

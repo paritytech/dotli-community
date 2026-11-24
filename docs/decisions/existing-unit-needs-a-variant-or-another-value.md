@@ -61,6 +61,11 @@ The variant would only place a shared surface against something other than its t
 that aligns to an enclosing bar's edge. Add no variant. The surface sits against its trigger, as
 [a surface is placed against its trigger](surface-placed-against-its-trigger.md) says.
 
+The aspect is how much to check what a caller's source returns, which only the caller knows from where the source
+comes, and the package already exports a wrapper for each level of check. Add no option to the shared read. Each
+caller wraps its own source, as [read-serves-sources-of-different-trust](read-serves-sources-of-different-trust.md)
+says.
+
 ## Cases
 
 - A state machine's effects needed a phase that runs once every queued step has finished. It became an option on the
@@ -80,5 +85,8 @@ that aligns to an enclosing bar's edge. Add no variant. The surface sits against
 - Counter-case: a shared tooltip card had to drop from an enclosing bar's edge rather than its trigger's. Offered a new
   named placement reading the bar's published custom property, the owner added no variant and kept the card against
   its trigger. (docs/\_plans/floating-placement-design.md, feat/floating-ui)
+- Counter-case: a merged content read served callers whose block sources differed in trust. Offered a parameter naming
+  the trust, the owner added none and let each caller wrap its source with the package's exported check.
+  (docs/\_plans/worker-chat-design.md, archive extension of the worker-chat change)
 
 Status: active

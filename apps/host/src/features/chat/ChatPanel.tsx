@@ -93,7 +93,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
 
   const contacts = createMemo((): ContactEntry[] | null => {
     const shown = feed.contacts();
-    return shown === null ? null : contactEntries(shown.rooms, shown.bots, shown.lastMessageTimes);
+    return shown === null ? null : contactEntries(shown.rooms, shown.lastMessageTimes);
   });
 
   // With one room there is no list to pick from, so that room shows.
@@ -357,7 +357,6 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
                     rowEls.set(id, el);
                   }}
                   id={id}
-                  kind={contact().kind}
                   name={contact().name}
                   icon={contact().icon}
                   readOnly={contact().footer === 'Empty'}

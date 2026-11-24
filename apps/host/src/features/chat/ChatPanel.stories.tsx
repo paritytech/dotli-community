@@ -27,7 +27,6 @@ const LONG = 'A message long enough to take a few lines in the panel.';
 /** One room the courier writes in, yesterday and today. */
 const COURIER: ChatSeed = {
   rooms: [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }],
-  bots: [],
   messages: [
     say('courier', 'I am two streets away.', 24 * 60),
     say('courier', 'Is the gate open?', 24 * 60),
@@ -39,7 +38,6 @@ const COURIER: ChatSeed = {
 /** One room of forty messages a second apart up to now, so its conversation scrolls. */
 const LONG_ROOM: ChatSeed = {
   rooms: rooms(1),
-  bots: [],
   messages: Array.from({ length: 40 }, (_, i) => say('r0', `${String(i + 1)}. ${LONG}`, (40 - i) / 60)),
   unreadByRoom: {},
 };
@@ -91,7 +89,6 @@ export const Default: Story = {};
 export const OneRoom: Story = {
   args: {
     rooms: [{ roomId: 'market', name: 'Market', icon: '', createdAt: 0 }],
-    bots: [],
     messages: everyKindIn('market'),
     unreadByRoom: {},
   },
@@ -109,7 +106,7 @@ export const Loading: Story = {
 
 /** As a user of a product that has started no chat, I am told the app has not started one yet. */
 export const NoRooms: Story = {
-  args: { rooms: [], bots: [], messages: [], unreadByRoom: {} },
+  args: { rooms: [], messages: [], unreadByRoom: {} },
 };
 
 /** As a logged-out user, I am told chat opens once I log in. */
@@ -283,7 +280,7 @@ export const ConversationRecovers: Story = {
 
 /** As a keyboard user, I keep my focus on a room row when a new message moves it to the top. */
 export const MovedRowKeepsFocus: Story = {
-  args: { rooms: rooms(5), bots: [], messages: [], unreadByRoom: {} },
+  args: { rooms: rooms(5), messages: [], unreadByRoom: {} },
   play: async ({ step }) => {
     const rows = (): HTMLElement[] => within(body.getByRole('list', { name: 'Chat rooms' })).getAllByRole('button');
     const oldest = await body.findByRole('button', { name: /Room 0/ });

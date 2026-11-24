@@ -27,15 +27,11 @@ export async function openTarget(target: LocalTarget, shell: Shell): Promise<voi
   shell.startup.bridge.setPageProduct({ label: target.host, productId: target.productId });
   pageNotifications().init();
   try {
-    // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
-    // unconditionally for product testing. With no worker archive, their archive images draw as unavailable.
     await shell.productFrame.render({
       mode: 'iframe',
       label: target.host,
       url: target.url,
       productId: target.productId,
-      chat: Promise.resolve(true),
-      worker: Promise.resolve(null),
     });
   } catch (error) {
     shell.productFrame.halt();

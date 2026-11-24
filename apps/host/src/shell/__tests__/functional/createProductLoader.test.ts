@@ -23,7 +23,7 @@ import { beginAttempt } from '../../../features/productLoad/index.js';
 import { rethrow } from '../../../testing/rethrow.js';
 import type { LoadFailure } from '../../../features/productLoad/index.js';
 import { pageLoading } from '../../../features/productLoad/index.js';
-import type { NameSource, WorkerExecutable } from '../../../features/productLoad/index.js';
+import type { NameSource } from '../../../features/productLoad/index.js';
 import { createLoadTelemetry } from '../../../features/productLoad/index.js';
 import { createProductLoader } from '../../createProductLoader.js';
 import { createUpdateReload } from '../../../kit/createUpdateReload.js';
@@ -39,8 +39,6 @@ type Params = {
   published?: Record<string, string>;
   cached?: { cid: string; manifests: CachedManifests };
   skipCidCache?: boolean;
-  /** What the worker executable read answers. No worker without it. */
-  worker?: WorkerExecutable | null;
   resolveError?: Error;
   /** Thrown as the failure screen shows. */
   failToShow?: Error;
@@ -145,29 +143,6 @@ describe('createProductLoader', () => {
     expect(recents).toEqual(['doom']);
     expect(countForgotten()).toBe(1);
   });
-
-  it.each([
-    [
-      'a worker that includes chat',
-      'on',
-      { entrypoint: 'index.js', includes: { chat: true }, cid: 'bafy-worker' },
-      true,
-    ],
-    ['no worker', 'off', null, false],
-  ])(
-    'As a visitor, I open a product with %s and get it rendered with chat %s and that worker for its images',
-    async (_name, _chat, worker, chatOn) => {
-      // Given
-      const { loader, ports } = setupLoader({ published: { doom: 'bafy-base' }, worker });
-
-      // When
-      await loader.load('doom');
-
-      // Then
-      const rendered = ports.product.render.mock.calls[0]?.[0];
-      await expect(Promise.all([rendered?.chat, rendered?.worker])).resolves.toEqual([chatOn, worker]);
-    },
-  );
 
   it('As a visitor, I return to a cached app and see it without a name read while it is checked against the network', async () => {
     // Given
@@ -847,7 +822,7 @@ function setupLoader(params: Params = {}) {
         : Promise.resolve(published[`app.${label}`] ?? published[label] ?? null);
     }),
     readManifests: vi.fn(() => Promise.resolve(NO_MANIFESTS)),
-    readWorkerExecutable: vi.fn(() => Promise.resolve(params.worker ?? null)),
+    readWorkerExecutable: vi.fn(() => Promise.resolve(null)),
     readPrimaryName: vi.fn(() => Promise.resolve(null)),
   };
   const ports = {
@@ -1059,8 +1034,7 @@ function readFastPaths(spans: ReturnType<typeof recordSpans>) {
     .map(({ attributes, ended }) => ({ outcome: attributes['outcome'], ended }));
 }
 
-/** The product `doom` the frame is asked to render from `cid`, with any chat flag and worker. */
+/** The product `doom` the frame is asked to render from `cid`. */
 function getRenderedDoom(cid: string): Record<string, unknown> {
-  const pending: unknown = expect.any(Promise);
-  return { mode: 'subdomain', label: 'doom', cid, chat: pending, worker: pending, facts: {} };
+  return { mode: 'subdomain', label: 'doom', cid, facts: {} };
 }

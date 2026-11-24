@@ -20,13 +20,14 @@ import { byId } from '@dotli/ui/testing';
 
 describe('bindTopbarStatus', () => {
   it('As a signed-in user with the chat panel closed, I get a product message and the bar leads with the action dot', async () => {
-    // Given a bound bar on a loaded chat product, logged in, with the panel closed
+    // Given a bound bar on a loaded chat product with a room, logged in, with the panel closed
     document.body.innerHTML = '<header id="topbar"></header>';
     const bar = byId('topbar');
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
     const stopChat = chatPanelState.start({ chat: () => Promise.resolve(chat) });
     const product = asProductId(toProductId('chatty'));
-    productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
+    await chat.createRoom(product, { roomId: 'main', name: 'Main', icon: '' });
+    productState.setLoaded({ label: 'chatty', productId: product });
     authState.set({ tag: 'Connected', session: { connected: true } });
     const unbind = bindTopbarStatus(bar, atom<NetworkHealth>('ok'));
     onTestFinished(() => {

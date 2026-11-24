@@ -11,7 +11,7 @@ const report = createReporter({ flow: 'chat' });
 
 /**
  * One failed read of the chat store: the panel's contacts or messages, after which the panel keeps its last view, a
- * product's room list, which then rejects to its caller, or whether a product has any room or bot. Tagged `outcome`
+ * product's room list, which then rejects to its caller, or whether a product has any room. Tagged `outcome`
  * (error) and `reason` (the error's name).
  */
 const chatReadMetric = defineCount<'error'>('chat.read');

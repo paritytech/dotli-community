@@ -1,18 +1,21 @@
 # What a removal leaves unreached
 
-A developer removes something that other code was built around: an entry of a table or catalog that drives a
-mechanism, or a view that read one column of a feature's facts table. Looking around after the removal, they find
-something that nothing reaches or reads anymore, though the code still compiles:
+A developer removes something that other code was built around. It may be an entry of a table or catalog that drives a
+mechanism, or a view that read one column of a feature's facts table. It may be a flow step's dependency on a fact, when
+the capability the fact names moves to another layer. Looking around after the removal, they find something that nothing reaches or reads
+anymore, or that only one reader still reads, though the code still compiles:
 
 - a variant of a fact that no remaining entry uses, with the branches, notices and tests it drives, which unit tests now
   reach only through the real table
 - a column of a facts table whose one remaining reader, in a sibling feature, reads the value of a single member
 - a choice the user is offered that now holds the same values as another, so reading the current choice back always
   lands on the other and the user can never select it
+- a flow that waited on a fact because it decided how a step ran, and still reads the fact and records it on shared
+  state for one other reader, while another layer that now owns the capability reads the same source and acts on it
 
 The question is whether what is left goes with the removal or stays. It could stay as a capability, or behind a
 test-only seam that keeps it covered. A value could stay as a named export for its one reader, and a choice beside its
-twin.
+twin. A fact could stay read and recorded by the old flow, with or without its wait.
 
 ## How to resolve
 
@@ -26,12 +29,18 @@ twin.
 4. Drop a choice the user can no longer select. The choice that stays takes any cue the dropped one carried for those
    values, such as a warning. Do not change the other choice's values so the two differ again, and do not store which
    choice the user picked.
-5. Name a removed capability and why it goes in the commit or PR.
+5. When a fact stops deciding how a flow's step runs, drop it from that flow entirely. The wait and the read go. So do
+   the field the flow recorded on shared state and any storage key kept only for the fact. Its remaining reader learns it from the layer that
+   now owns the capability. That layer publishes what it does only when the fact holds, such as registering the
+   connection it opens, and the reader keys off that publication being there. Do not keep the wait, and do not keep the
+   old flow reading the fact in the background just to record it.
+6. Name a removed capability and why it goes in the commit or PR.
 
 A variant with no entry is the case the cleanup rule in `AGENTS.md` asks the owner about, a working capability with no
 caller. Asked, the owner chose to delete it with its tests, without stating a further reason. The owner also chose that
 the remaining reader keeps its own value, without stating a further reason. A choice the user cannot select is a defect,
-so the piece that offers it loses that choice rather than staying as it was.
+so the piece that offers it loses that choice rather than staying as it was. The owner chose that a fact's remaining
+reader learns it from the layer that now owns the capability, without stating a further reason.
 
 ## Example
 
@@ -83,6 +92,24 @@ const levels = [closed, open];
 const warns = (level: Level) => level.id === 'open';
 ```
 
+A sync's mode no longer depends on whether the account's background job declares `archive`, since the job now runs the
+archive itself, and a badge read the flag:
+
+```ts
+// Before: the open flow waits on the declaration and records it for the badge.
+const declaration = await readJobDeclaration(account);
+openSync(account, declaration.archive ? 'full' : 'light');
+$openAccount.set({ ...$openAccount.get(), hasArchive: declaration.archive });
+const showBadge = computed($openAccount, a => a.hasArchive);
+
+// After: the open flow neither waits nor records. The job registers its archive
+// link only when its declaration has `archive`, and the badge shows while one exists.
+openSync(account);
+// in the job's run
+if (declaration.archive) archiveLinks.register(account, link);
+const showBadge = computed(archiveLinks.$byAccount, links => links.has(account));
+```
+
 Not this:
 
 ```ts
@@ -105,6 +132,13 @@ export const LOST_NOTE = 'Signal lost. Retrying'; // a named export for one outs
   read the sentence of one health from the same table and nothing else read the column. The owner chose that the topbar
   keeps its own sentence, over keeping the column for every health or exporting the one sentence from the network
   feature. (docs/_plans/network-head-dot-design.md, feat/network-chain-indicators)
+- Chat moved from the product frame to the product worker's run, so the product's chat capability, read from the
+  worker's declaration, stopped picking the kind of connection the load flow opens. The load flow still waited on that
+  read and recorded the capability on the loaded-product state for the chat panel's button. The owner chose to drop the
+  fact from the load flow, with its wait, its page-state field, the now-unread capability read and its legacy storage
+  key. The panel learns it from the worker run, which registers its chat connection only when its declaration has the
+  capability, so the button shows while such a registration exists. The owner chose this over keeping the wait, or
+  reading the fact beside the connection and recording it when it arrives. (docs/_plans/worker-chat-design.md)
 
 Related: [entry-the-product-no-longer-supports](entry-the-product-no-longer-supports.md) keeps a dropped protocol entry
 out of every piece of logic at once.

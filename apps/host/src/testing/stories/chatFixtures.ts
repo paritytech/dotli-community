@@ -19,7 +19,7 @@ import { chatUnreadLabel } from '../../features/chat/unread.js';
 import type { ChatMessageRecord } from '../../features/chat/createChatStore.js';
 import { ChatReplyUndeliveredError } from '../../features/chat/chatReplyUndeliveredError.js';
 import type { ChatRenderSink } from '../../features/chat/chat.js';
-import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../features/chat/chat.js';
+import type { ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../features/chat/chat.js';
 import type { ChatButtonProps } from '../../features/chat/ChatButton.js';
 import { DELIVERY_TIME_PICKER, PAYMENT_REQUEST } from './customMessageTrees.js';
 
@@ -84,7 +84,6 @@ export type ChatStage = {
   state: WritableAtom<StageState>;
   update(patch: Partial<StageState>): void;
   rooms: ChatRoom[];
-  bots: ChatBot[];
   messages: ChatMessageRecord[];
   /** While set, the room list cannot be read. */
   contactsFail: boolean;
@@ -105,7 +104,6 @@ export type ChatStage = {
   /** How many renders were disposed. */
   disposedRenders: () => number;
   createRoom(roomId: string, name: string, icon?: string): void;
-  registerBot(botId: string, name: string, icon?: string): void;
   productSays(roomId: string, content: ChatMessageContent | string): void;
   conversation: ChatConversation;
   /** The panel's chat, and whether its frame holds it. */
@@ -127,11 +125,9 @@ export type StoryMessage = {
   author?: ChatMessageRecord['author'];
 };
 
-/** What a story's chat holds as it starts: the page's chat state, the product's rooms, bots and messages, and its faults. */
+/** What a story's chat holds as it starts: the page's chat state, the product's rooms and messages, and its faults. */
 export type ChatSeed = Partial<StageState> &
-  Partial<
-    Pick<ChatStage, 'rooms' | 'bots' | 'contactsFail' | 'readsHeld' | 'messagesFail' | 'sendError' | 'refuseError'>
-  > & {
+  Partial<Pick<ChatStage, 'rooms' | 'contactsFail' | 'readsHeld' | 'messagesFail' | 'sendError' | 'refuseError'>> & {
     messages?: readonly StoryMessage[];
   };
 
@@ -139,7 +135,6 @@ export type ChatSeed = Partial<StageState> &
 export function chatStage(seed: ChatSeed = {}): ChatStage {
   const {
     rooms = [],
-    bots = [],
     messages = [],
     contactsFail = false,
     readsHeld = false,
@@ -173,9 +168,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
     }
     const last = feed.get();
     const lastMessageTimes = new Map(stage.messages.map(m => [m.roomId, m.timestamp] as const));
-    const contacts = stage.contactsFail
-      ? last.contacts
-      : { rooms: [...stage.rooms], bots: [...stage.bots], lastMessageTimes };
+    const contacts = stage.contactsFail ? last.contacts : { rooms: [...stage.rooms], lastMessageTimes };
     let messages: readonly ChatMessageRecord[] | null = null;
     if (shownRoom !== null) {
       messages = stage.messagesFail ? last.messages : stage.messages.filter(m => m.roomId === shownRoom);
@@ -301,7 +294,6 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
     state,
     update,
     rooms: [...rooms],
-    bots: [...bots],
     messages: [],
     contactsFail,
     readsHeld,
@@ -316,10 +308,6 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
     disposedRenders: () => disposed,
     createRoom: (roomId, name, icon = '') => {
       stage.rooms.push({ roomId, name, icon, createdAt: stamp() });
-      readSoon();
-    },
-    registerBot: (botId, name, icon = '') => {
-      stage.bots.push({ botId, name, icon, createdAt: stamp() });
       readSoon();
     },
     productSays: (roomId, content) => {
@@ -422,14 +410,13 @@ export function everyKindIn(roomId: string): StoryMessage[] {
   ];
 }
 
-/** A shop's chat: two rooms with unread messages, a bot, and one room the user can only read. Orders holds every kind. */
+/** A shop's chat: two rooms with unread messages and one room the user can only read. Orders holds every kind. */
 export const SHOP_CHAT: ChatSeed = {
   rooms: [
     { roomId: 'orders', name: 'Market orders', icon: '', createdAt: 0 },
     { roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 },
     { roomId: 'promos', name: 'Promotions', icon: '', createdAt: 0, footer: 'Empty' },
   ],
-  bots: [{ botId: 'support', name: 'Support', icon: '', createdAt: 0 }],
   messages: [
     {
       roomId: 'promos',
@@ -444,8 +431,7 @@ export const SHOP_CHAT: ChatSeed = {
       minutesAgo: 24 * 60,
       author: 'user',
     },
-    { roomId: 'support', content: { tag: 'Text', value: { text: 'How can we help?' } }, minutesAgo: 60 },
     ...everyKindIn('orders'),
   ],
-  unreadByRoom: { orders: 2, support: 1 },
+  unreadByRoom: { orders: 2, courier: 1 },
 };
