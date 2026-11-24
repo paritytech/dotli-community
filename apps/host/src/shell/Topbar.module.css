@@ -57,6 +57,19 @@
     height: var(--sp-2);
     box-shadow: var(--chrome-shadow-capsule);
   }
+  /* Staged, the bar sits in the band the page opens above its cards, so it drops its glass: nothing of it shows but its
+     content on the dark page. Only top and the look change, so the morph and the Safari branch below carry over. */
+  :global([data-staged]) .topbar {
+    top: var(--safe-top);
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+  /* Centred in the thin strip the band shrinks to. */
+  :global([data-staged]) .topbar[data-hidden] {
+    top: calc(var(--sp-1_5) + var(--safe-top));
+  }
   /* Without interpolate-size, as in Safari, a width can't animate to fit-content. There the width always follows the
      content and the cap animates instead. The cap opens towards 95vw, past the content, so it opens linearly, or it
      reaches the content at once. */
