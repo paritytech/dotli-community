@@ -23,7 +23,7 @@ import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from
 import type { ChatButtonProps } from '../../features/chat/ChatButton.js';
 import { DELIVERY_TIME_PICKER, PAYMENT_REQUEST } from './customMessageTrees.js';
 
-const PRODUCT = 'chatty.dot';
+const PRODUCT = 'market.dot';
 const MINUTE = 60_000;
 
 /** The page's chat state, as the views read it. */
@@ -46,8 +46,8 @@ const INITIAL: StageState = {
   open: false,
   available: true,
   loggedIn: true,
-  productName: 'chatty',
-  productDomain: 'chatty.dot',
+  productName: 'Market',
+  productDomain: 'market.dot',
   activeRoomId: null,
   unreadByRoom: {},
   unread: 0,
