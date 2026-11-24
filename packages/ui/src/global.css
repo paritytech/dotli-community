@@ -40,6 +40,9 @@
   --chat-fg-warning: var(--chrome-warn-text);
   /* The host's own chat, which products never paint with. */
   --chat-bg-panel: #0b0c0f;
+  --chat-bg-control: #404249;
+  /* Low contrast on --chat-bg-control, as the design draws it. */
+  --chat-fg-placeholder: #585b62;
   /* The user's own messages, light on the dark panel. */
   --chat-bg-own: #ffffff;
   --chat-fg-own: #0b0c0f;

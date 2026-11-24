@@ -17,7 +17,7 @@ import {
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { IconButton, Spinner } from '@dotli/ui';
-import { ChatIcon, ChevronLeftIcon, CircleAlertIcon, LockIcon, SendIcon } from '@dotli/ui/icons';
+import { ArrowUpIcon, ChatIcon, ChevronLeftIcon, CircleAlertIcon, LockIcon } from '@dotli/ui/icons';
 import { ContactIcon } from './ContactIcon.js';
 import { ContactRow } from './ContactRow.js';
 import { MessageRow } from './MessageRow.js';
@@ -458,7 +458,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
             id="chat-panel-input"
             class={s['input']}
             type="text"
-            placeholder="Message"
+            placeholder="Write a message..."
             autocomplete="off"
             maxlength="4000"
             disabled={!composing()}
@@ -477,7 +477,7 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
             aria-label="Send"
             disabled={draft().trim() === ''}
           >
-            <SendIcon size={16} />
+            <ArrowUpIcon size={20} />
           </button>
         </div>
       </form>
