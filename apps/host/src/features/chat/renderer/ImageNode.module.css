@@ -1,0 +1,58 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Defaults only: a product's size and shape arrive as inline styles. */
+.image {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* The box a loading or unavailable image holds. Its modifiers' size and shape override it. */
+.image-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1_5);
+  box-sizing: border-box;
+  width: 120px;
+  max-width: 100%;
+  height: 120px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--chat-bg-surface-container);
+  color: var(--neutral-solid);
+}
+
+.image-note {
+  color: var(--chat-fg-secondary);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
+}
+
+.shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, var(--chrome-ring-subtle) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: image-shimmer 1.4s linear infinite;
+}
+@keyframes image-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+  }
+}
