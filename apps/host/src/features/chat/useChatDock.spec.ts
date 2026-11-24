@@ -25,7 +25,7 @@ let stopState: () => void = () => undefined;
 beforeEach(() => {
   connections = createChatConnections();
   chat = createChatStore({ repo: createMemoryChatRepo(), connections });
-  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat) });
+  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat), connections });
   productState.setLoaded({ label: LABEL, productId: PRODUCT });
   authState.set({ tag: 'Connected', session: { connected: true } });
 });
@@ -36,13 +36,60 @@ afterEach(() => {
 });
 
 /** The dock's props, read from the page's chat state under a fresh owner. */
-function mountDock() {
-  const { dock, dispose } = createRoot(d => ({ dock: useChatDock(chat), dispose: d }));
+function mountDock(docked: boolean[] = []) {
+  const layout = {
+    setSidePanel: (panel: { docked: boolean }) => {
+      docked.push(panel.docked);
+    },
+  };
+  const { dock, dispose } = createRoot(d => ({ dock: useChatDock(chat, layout), dispose: d }));
   flush();
   return { dock, dispose };
 }
 
 describe('useChatDock', () => {
+  it('As a user, I open the chat panel and the page docks it, then I close it and the page undocks it', async () => {
+    // Given a room of a connected product, so the panel can open
+    connections.register(PRODUCT, createRecordingConnection());
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    await chat.settle();
+    const docked: boolean[] = [];
+    const { dispose } = mountDock(docked);
+
+    // When
+    chatPanelState.setOpen(true);
+    flush();
+
+    // Then
+    expect(docked.at(-1)).toBe(true);
+
+    // When
+    chatPanelState.setOpen(false);
+    flush();
+
+    // Then
+    expect(docked.at(-1)).toBe(false);
+    dispose();
+  });
+
+  it('As a user with the panel open, the chat island goes away and the page undocks it', async () => {
+    // Given a room of a connected product, so the panel can open
+    connections.register(PRODUCT, createRecordingConnection());
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    await chat.settle();
+    const docked: boolean[] = [];
+    const { dispose } = mountDock(docked);
+    chatPanelState.setOpen(true);
+    flush();
+    expect(docked.at(-1)).toBe(true);
+
+    // When
+    dispose();
+
+    // Then
+    expect(docked.at(-1)).toBe(false);
+  });
+
   it('As the chat panel, the composer is asked to take focus once after I pick a room', () => {
     // Given
     const { dock, dispose } = mountDock();

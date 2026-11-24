@@ -3,7 +3,7 @@
 
 import { createEffect, createMemo, onCleanup } from 'solid-js';
 import type { ChatStore } from './createChatStore.js';
-import { productState } from '../page/index.js';
+import { productFrameLayout, productState, type ProductFrameLayout } from '../page/index.js';
 import { useStore } from '@dotli/stores-solid';
 import type { ChatConversation, ChatFeed } from './chat.js';
 import type { ChatDockProps } from './ChatDock.js';
@@ -65,12 +65,23 @@ function useChatConversation(chat: ChatStore): ChatConversation {
 }
 
 /** The chat drawer's props, for an island's own lifetime. */
-export function useChatDock(chat: ChatStore): ChatDockProps {
+export function useChatDock(
+  chat: ChatStore,
+  layout: Pick<ProductFrameLayout, 'setSidePanel'> = productFrameLayout,
+): ChatDockProps {
   const conversation = useChatConversation(chat);
   // The view the open panel follows, so its rooms are null while the drawer is closed.
   const contacts = useStore(chat.view, state => state.contacts, { initial: chat.view.get() });
+  const open = useStore(chatPanelState.store, state => state.open);
+  // The page stages itself while the panel is docked, so a gone island must undock it.
+  createEffect(open, docked => {
+    layout.setSidePanel({ docked });
+  });
+  onCleanup(() => {
+    layout.setSidePanel({ docked: false });
+  });
   return {
-    open: useStore(chatPanelState.store, state => state.open),
+    open,
     available: useStore(chatPanelState.store, chatPanelState.isButtonVisible),
     onOpenChange: chatPanelState.setOpen,
     conversation,
