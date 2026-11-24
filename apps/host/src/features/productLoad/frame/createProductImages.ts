@@ -7,8 +7,10 @@
 
 import { CID } from 'multiformats/cid';
 import { code as RAW_CODE } from 'multiformats/codecs/raw';
+import { getCacheSettings } from '@dotli/config';
 import { CONTENT_ERRORS, loadVerify as loadContentVerify, type ArchiveFiles } from '@dotli/content';
 import { createAsyncTaskPool } from '@dotli/shared';
+import { blockCache } from '@dotli/storage';
 import { fetchContentBlock, hostBitswapClient, type PreimageFetch } from '../../chains/index.js';
 import { ImageUnavailableError, type ProductImageRead } from '../../chat/index.js';
 
@@ -18,9 +20,10 @@ type Params = {
   /** The loader of the hashing chunk. The content package's by default. */
   loadVerify?: typeof loadContentVerify;
   /**
-   * Reads the files an archive CID names, each block checked against its hash. Over the content backend in force by
-   * default, loaded on first use so the frame's chunk carries no archive reader. Rejects when a block cannot be fetched
-   * or fails its check.
+   * Reads the files an archive CID names, each block checked against its hash. By default over the content backend in
+   * force, from the page's block cache unless the settings skip it, as the product's worker reads its archive, and
+   * loaded on first use so the frame's chunk carries no archive reader. Rejects when a block cannot be fetched or fails
+   * its check.
    */
   readFiles?: (cid: string) => Promise<ArchiveFiles>;
 };
@@ -146,5 +149,5 @@ function findFile(files: ArchiveFiles, path: string): Uint8Array | null {
 
 async function readServedFiles(cid: string): Promise<ArchiveFiles> {
   const { readServedArchive } = await import('../resolve/readServedArchive.js');
-  return readServedArchive(cid, hostBitswapClient, null);
+  return readServedArchive(cid, hostBitswapClient, getCacheSettings().skipArchiveCache ? null : blockCache);
 }
