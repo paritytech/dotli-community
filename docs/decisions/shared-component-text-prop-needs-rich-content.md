@@ -54,4 +54,7 @@ each open a detail. Then build from those parts and leave the component as it is
   chose neither and widened the one title prop to take any JSX node. (design `docs/_plans/chat-head-in-drawer-design.md`,
   branch `feat/chat-figma-design`)
 
+Related: [markup-in-a-shared-components-head-row](markup-in-a-shared-components-head-row.md), for how large the
+consumer's markup may be.
+
 Status: active

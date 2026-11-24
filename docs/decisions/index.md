@@ -189,5 +189,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   component draws a string prop inside its own chrome, such as a drawer's title beside its close button, and one
   consumer needs markup there that changes with its state, so the question is whether to add a second prop or widen
   the one it has.
+- [markup-in-a-shared-components-head-row](markup-in-a-shared-components-head-row.md): a consumer passes its own
+  markup, such as a back button and an avatar, into a shared component's head row beside its small control, and the
+  question is how large it may be when the head shifts as the consumer switches states.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.
