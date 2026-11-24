@@ -27,7 +27,8 @@
   .page[data-staged] {
     --content-top: calc(var(--h-bar) + var(--safe-top));
   }
-  .page[data-staged]:has(#topbar[data-hidden]) {
+  /* Global, since a module scopes ids as it does classes. */
+  .page[data-staged]:has(:global(#topbar[data-hidden])) {
     --content-top: calc(var(--sp-3) + var(--safe-top));
   }
 }
