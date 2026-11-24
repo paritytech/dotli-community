@@ -10,4 +10,4 @@ export { networkHealthState } from './networkHealthState.js';
 export type { ChainPhase, NetworkMonitor } from './networkMonitorState.js';
 export { networkMonitorState } from './networkMonitorState.js';
 export type { NetworkHealth } from './networkVerdict.js';
-export { NETWORK_HEALTH, isNetworkOffline } from './networkVerdict.js';
+export { isNetworkOffline } from './networkVerdict.js';
