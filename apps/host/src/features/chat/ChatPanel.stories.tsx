@@ -340,16 +340,20 @@ export const ResizingKeepsMeAtBottom: Story = {
     const list = await atNewest();
     // The drawer's panel, which the window sizes on the page.
     const drawer = body.getByTestId('chat-panel');
-    await step('When the panel gets shorter, I stay at the newest message', async () => {
+    await step('When the panel gets shorter', async () => {
       await resized(list, () => {
         drawer.style.marginBottom = '200px';
       });
+    });
+    await step('Then I stay at the newest message', async () => {
       await expect(belowView(list)).toBeLessThanOrEqual(1);
     });
-    await step('When the panel gets narrower and the messages wrap taller, I stay at the newest message', async () => {
+    await step('When the panel gets narrower and the messages wrap taller', async () => {
       await resized(thread(list), () => {
         drawer.style.width = '240px';
       });
+    });
+    await step('Then I still stay at the newest message', async () => {
       await expect(belowView(list)).toBeLessThanOrEqual(1);
     });
   },
@@ -378,25 +382,28 @@ export const ResizingLeavesMeScrolledUp: Story = {
 /** As a reader, I close the panel and its watch on the conversation's size stops with it. */
 export const ClosingStopsTheSizeWatch: Story = {
   args: LONG_ROOM,
+  // The play puts the closed conversation back in the canvas, where nothing else removes it.
+  beforeEach:
+    ({ canvasElement }) =>
+    () => {
+      within(canvasElement).queryByRole('log', { name: 'Messages' })?.remove();
+    },
   play: async ({ canvasElement, userEvent, step }) => {
     const list = await atNewest();
     await step('When I close the panel', async () => {
       await userEvent.click(body.getByRole('button', { name: /^Close/ }));
       await waitFor(() => expect(list.isConnected).toBe(false));
     });
-    await step(
-      'Then its size watch has stopped, so the old conversation resized no longer pins to the bottom',
-      async () => {
-        // Put back, shorter than its messages, it grows from nothing and starts at the top, where a watch still
-        // running would pin it to the end.
-        list.style.height = '200px';
-        await resized(list, () => {
-          canvasElement.append(list);
-        });
-        await expect(list.scrollTop).toBe(0);
-        list.remove();
-      },
-    );
+    await step('When the old conversation is put back, shorter than its messages', async () => {
+      // It grows from nothing and starts at the top, where a watch still running would pin it to the end.
+      list.style.height = '200px';
+      await resized(list, () => {
+        canvasElement.append(list);
+      });
+    });
+    await step('Then its size watch has stopped, so it is not pinned to the bottom', async () => {
+      await expect(list.scrollTop).toBe(0);
+    });
   },
 };
 

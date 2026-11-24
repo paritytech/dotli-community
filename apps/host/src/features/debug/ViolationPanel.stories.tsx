@@ -108,15 +108,16 @@ export const FrameEndsAbovePanel: Story = {
   },
 };
 
-/** As a dotli developer, I collapse the panel, which is announced as collapsed, and the app frame grows to its header. */
+/** As a dotli developer, I collapse the panel and the app frame grows to its header. */
 export const CollapsingGrowsFrame: Story = {
   play: async ({ canvasElement, userEvent, step }) => {
     const toggle = await shown(canvasElement);
     await step('When I collapse the panel', async () => {
       await userEvent.click(toggle);
-    });
-    await step('Then its toggle is announced as collapsed and the app frame ends at its header', async () => {
+      // The frame already clears the open panel, so its fit proves nothing until the collapse lands.
       await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'));
+    });
+    await step('Then the app frame ends at its header', async () => {
       await waitFor(() => frameClearsPanel(canvasElement));
     });
   },
@@ -153,10 +154,12 @@ export const DragHandleResizes: Story = {
     const viewport = window.innerHeight;
     // Resizing is the panel's height, which no data-* state expresses.
     const height = (): number => panel().getBoundingClientRect().height;
-    await step('When I drag the handle up, the panel follows the pointer', async () => {
+    await step('When I drag the handle up', () => {
       const handle = body.getByTestId('sc-resize-handle');
       pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: viewport - 168 });
       pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 200 });
+    });
+    await step('Then the panel follows the pointer', async () => {
       await waitFor(() => expect(height()).toBe(200));
     });
   },

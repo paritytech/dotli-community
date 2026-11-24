@@ -38,10 +38,16 @@ export type ChainHealthFacts = {
   unreachable: boolean;
 };
 
+type ReadChainHealthFactsParams = {
+  network: Pick<NetworkView, 'readAt' | 'verdict'>;
+  health: NetworkHealth;
+  now: number;
+};
+
 /** What the popover knows beside one chain, read from the network and its health as of `now`. */
 export function readChainHealthFacts(
   chain: Pick<ChainView, 'label'>,
-  { network, health, now }: { network: Pick<NetworkView, 'readAt' | 'verdict'>; health: NetworkHealth; now: number },
+  { network, health, now }: ReadChainHealthFactsParams,
 ): ChainHealthFacts {
   return {
     sinceRead: now - network.readAt,

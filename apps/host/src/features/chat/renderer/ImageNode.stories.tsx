@@ -107,7 +107,9 @@ export const NewTreeKeepsImage: Story = {
   tags: ['!autodocs'],
   render: args => <LiveTree node={{ tag: 'Image', value: args.value }} onAction={fn()} loadImage={args.loadImage} />,
   play: async ({ args, canvas, step }) => {
-    await waitFor(() => expect(canvas.getByTestId('chat-custom-image')).toHaveAttribute('data-state', 'loaded'));
+    await step('Given the image is drawn', async () => {
+      await waitFor(() => expect(canvas.getByTestId('chat-custom-image')).toHaveAttribute('data-state', 'loaded'));
+    });
     const drawn = canvas.getByTestId('chat-custom-image');
     await step('When the product sends a tree that resizes the same image', () => {
       liveTree.send({

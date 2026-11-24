@@ -43,4 +43,4 @@ A package that bans imports adds its own `tsconfigRootDir` and spreads `importBa
   repo's code-style bans, and caps each function's complexity at 12, tests included.
 - **`astro`:** extends `vite` with Astro rules. Type-aware rules are off in `.astro` files, where `astro check` runs.
 - **Tests and stories:** matched by file pattern, so one config covers all of them. Story files also get Storybook's
-  recommended rules, refuse assertions on copy, and warn when a file passes a size cap.
+  recommended rules. They refuse assertions on copy and warn past a size cap.
