@@ -28,9 +28,6 @@
   margin: 0;
   padding: 0;
   border-radius: var(--r-full);
-  background: var(--chrome-glass);
-  -webkit-backdrop-filter: var(--chrome-blur);
-  backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-bar);
   color: var(--chrome-text);
   font-family: var(--font-sans);
@@ -43,6 +40,19 @@
     height var(--dur-morph) var(--ease-out),
     top var(--dur-morph) var(--ease-out),
     box-shadow var(--dur);
+}
+/* The glass is a layer of its own, so the stage can fade it out with the morph: a gradient and its blur interpolate
+   to no glass only through an opacity. */
+.topbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  transition: opacity var(--dur-morph) var(--ease-out);
 }
 /* Desktop only: a data-hidden that lands mid-resize across 560px must not fold the phone bar. */
 @media (min-width: 561px) {
@@ -61,10 +71,10 @@
      content on the dark page. Only top and the look change, so the morph and the Safari branch below carry over. */
   :global([data-staged]) .topbar {
     top: var(--safe-top);
-    background: none;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
     box-shadow: none;
+  }
+  :global([data-staged]) .topbar::before {
+    opacity: 0;
   }
   /* Centred in the thin strip the band shrinks to. */
   :global([data-staged]) .topbar[data-hidden] {
@@ -206,6 +216,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .topbar,
+  .topbar::before,
   .row,
   .topbar[data-hidden] .row,
   .strip,
