@@ -6,7 +6,7 @@
 
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, isShallowEqual, type MachineTypes, type Transition } from '@dotli/shared';
-import type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord } from '@dotli/storage';
+import type { ChatMessageRecord, ChatRoomRecord } from '@dotli/storage';
 import { computed } from 'nanostores';
 import { reportFailedChatStorage } from './reportFailedChatStorage.js';
 
@@ -22,8 +22,6 @@ const storeTransitionMetric = defineCount<'error'>('chat.store_transition');
 export type ChatViewRepo = {
   /** The product's rooms, in creation order. */
   listRooms(productId: string): Promise<ChatRoomRecord[]>;
-  /** The product's bots, in registration order. */
-  listBots(productId: string): Promise<ChatBotRecord[]>;
   /** The time of the latest message in each of the product's rooms that has one, by room id. */
   readLatestMessageTimestamps(productId: string): Promise<Map<string, number>>;
   /** The room's latest messages, in insertion order. */
@@ -50,7 +48,6 @@ export type ChatFollow = {
 
 export type ChatContacts = {
   rooms: readonly ChatRoomRecord[];
-  bots: readonly ChatBotRecord[];
   lastMessageTimes: ReadonlyMap<string, number>;
 };
 
@@ -187,6 +184,10 @@ export function createChatView({ repo }: Params) {
           if (change.productId !== follow.productId) {
             return;
           }
+          // A bot is stored but never shown, so its registration changes nothing on screen.
+          if (change.kind === 'bots') {
+            return;
+          }
           if (change.kind !== 'message' || follow.roomId === null) {
             transition.emitState({
               ...state,
@@ -294,12 +295,11 @@ export function createChatView({ repo }: Params) {
     switch (request.read) {
       case 'contacts': {
         const { productId } = request;
-        const [rooms, bots, lastMessageTimes] = await Promise.all([
+        const [rooms, lastMessageTimes] = await Promise.all([
           repo.listRooms(productId),
-          repo.listBots(productId),
           repo.readLatestMessageTimestamps(productId),
         ]);
-        return { contacts: { rooms, bots, lastMessageTimes }, contactsFailed: false };
+        return { contacts: { rooms, lastMessageTimes }, contactsFailed: false };
       }
       case 'messages':
         return { messages: await repo.listMessages(request.productId, request.roomId), messagesFailed: false };

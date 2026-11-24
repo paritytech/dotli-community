@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Outside Solid, since islands that hydrate apart read it. It keeps no rooms, bots or messages.
+// Outside Solid, since islands that hydrate apart read it. It keeps no rooms or messages.
 
 import { createSharedRun, registerStoreStateReset, registerAtomReset, isShallowEqual } from '@dotli/shared';
 import type { ProductId } from '@parity/truapi';
@@ -19,7 +19,7 @@ export type ChatPanelState = {
   /** The id the core parsed for the loaded product, which keys its chat. */
   runtimeProductId: ProductId | null;
   available: boolean;
-  /** Whether the product has a room or a bot. False until a read or a write shows one. */
+  /** Whether the product has a room. False until a read or a write shows one. */
   hasContacts: boolean;
   loggedIn: boolean;
   open: boolean;
@@ -34,7 +34,7 @@ export type ChatPanelState = {
 type ChatSource = Pick<ChatStore, 'subscribe' | 'hasContacts'>;
 
 type Params = {
-  /** Loads the chat store whose product messages count as unread and whose rooms and bots show the button. */
+  /** Loads the chat store whose product messages count as unread and whose rooms show the button. */
   chat?: () => Promise<ChatSource>;
 };
 
@@ -93,7 +93,7 @@ export const chatPanelState = {
   claimComposerFocus,
   /**
    * Follows the session, the product on show and its chat until the returned stop. The chat is followed from once its
-   * store has loaded, which reads whether the product has a room or a bot, and again for each product loaded after. A
+   * store has loaded, which reads whether the product has a room, and again for each product loaded after. A
    * call while the follows run joins them and ignores its params, and they end with the last caller's stop. Never
    * throws.
    */
@@ -115,7 +115,7 @@ registerStoreStateReset(() => {
 
 /**
  * Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. A product with no room
- * or bot has nothing to show.
+ * has nothing to show.
  */
 function isButtonVisible(state: ChatPanelState = panel.get()): boolean {
   return state.available && state.loggedIn && state.hasContacts;
@@ -266,7 +266,7 @@ function followProduct(): void {
 }
 
 /**
- * Reads whether the product on show has a room or a bot, unless it is known to have one. Each load reads again while
+ * Reads whether the product on show has a room, unless it is known to have one. Each load reads again while
  * none is known, as another tab of the product may have added one meanwhile.
  */
 function checkContacts(store: ChatSource): void {
@@ -285,11 +285,13 @@ function checkContacts(store: ChatSource): void {
 function followChat(change: ChatChange): void {
   switch (change.kind) {
     case 'rooms':
-    case 'bots':
-      // The store announces a room or bot write once it is stored, so the product has one.
+      // The store announces a room write once it is stored, so the product has one.
       if (change.productId === panel.get().runtimeProductId) {
         update({ hasContacts: true });
       }
+      return;
+    case 'bots':
+      // A bot is stored but never shown, so it does not make the product have contacts.
       return;
     case 'message':
       countUnreadMessage(change);

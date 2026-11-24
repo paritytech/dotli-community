@@ -214,7 +214,7 @@ request in session storage, so a reload answers the same round.
 - The product card's author is read and cached with the manifests.
 - The product's worker executable is its worker manifest with the CID of its `worker` subname, read once per label in a
   page and cached per label. Whether the product declares chat derives from it. The topbar shows the chat button only
-  for a product that declares chat and has a room or a bot, to a logged-in user.
+  for a product that declares chat and has a room, to a logged-in user.
 
 ### Product worker
 
@@ -237,8 +237,7 @@ request in session storage, so a reload answers the same round.
 
 - The bridge, chat store, panel bodies, product card, debug panel, local wallet, host runtime, chain client, QR encoder
   and product worker load on demand, each in its own chunk. The chat panel counts unread messages, and learns whether
-  the product has a room or a bot, from once the chat store loads. CI startup size budgets guard what each page loads
-  first.
+  the product has a room, from once the chat store loads. CI startup size budgets guard what each page loads first.
 - A shared lazy module loads once. A failed load is forgotten, so the next caller retries without a page reload.
 - Islands that must stand in for themselves wrap their trees in an error boundary. An island whose code never ran offers
   a reload.

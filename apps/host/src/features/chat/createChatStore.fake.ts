@@ -120,7 +120,6 @@ export function createMemoryChatRepo(): ChatRepo & {
       return Promise.resolve(seq);
     },
     listRooms: (productId: string) => runGatedRead('rooms', () => repo.rooms.filter(r => r.productId === productId)),
-    listBots: (productId: string) => Promise.resolve(repo.bots.filter(b => b.productId === productId)),
     readLatestMessageTimestamps: (productId: string) =>
       Promise.resolve(
         new Map(repo.messages.filter(m => m.productId === productId).map(m => [m.roomId, m.timestamp] as const)),

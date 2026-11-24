@@ -12,22 +12,20 @@ describe('contacts', () => {
         { roomId: 'old', name: 'Old', icon: '', createdAt: 1 },
         { roomId: 'new', name: 'New', icon: '', createdAt: 5 },
       ],
-      [{ botId: 'bot', name: 'Bot', icon: '', createdAt: 3 }],
       new Map([['old', 10]]),
     );
 
     // Then
-    expect(entries.map(e => e.id)).toEqual(['old', 'new', 'bot']);
+    expect(entries.map(e => e.id)).toEqual(['old', 'new']);
   });
 
-  it('As a user, a room shows the footer its product set, and a room or bot without one takes text', () => {
+  it('As a user, a room shows the footer its product set, and a room without one takes text', () => {
     // When
     const entries = contactEntries(
       [
         { roomId: 'quiet', name: 'Quiet', icon: '', createdAt: 2, footer: 'Empty' },
         { roomId: 'plain', name: 'Plain', icon: '', createdAt: 1 },
       ],
-      [{ botId: 'bot', name: 'Bot', icon: '', createdAt: 0 }],
       new Map(),
     );
 
@@ -35,7 +33,6 @@ describe('contacts', () => {
     expect(entries.map(e => [e.id, e.footer])).toEqual([
       ['quiet', 'Empty'],
       ['plain', 'TextInput'],
-      ['bot', 'TextInput'],
     ]);
   });
 });

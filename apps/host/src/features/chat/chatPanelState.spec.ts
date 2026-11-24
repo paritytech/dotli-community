@@ -12,7 +12,7 @@ import { productState } from '../page/index.js';
 import { authState } from '../account/index.js';
 import { recordNotified } from '../../testing/recordNotified.js';
 import { chatPanelState } from './chatPanelState.js';
-import { createDeferred, noop, waitForStatus } from '@dotli/shared';
+import { createDeferred, noop } from '@dotli/shared';
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
 let remove: () => void = noop;
@@ -80,17 +80,31 @@ describe('chat panel state', () => {
     expect(chatPanelState.isButtonVisible()).toBe(false);
   });
 
-  it('As a logged-in user, I open a product that already has a bot and see the chat button', async () => {
+  it('As a logged-in user, I open a product that has only a bot and see no chat button', async () => {
     // Given
     authState.set({ tag: 'Connected', session: { connected: true } });
     await chat.registerBot(toProductId('app'), { botId: 'helper', name: 'Helper', icon: '' });
 
     // When
+    remove();
+    const checked = createDeferred<boolean>();
+    remove = chatPanelState.start({
+      chat: () =>
+        Promise.resolve({
+          subscribe: chat.subscribe,
+          hasContacts: async productId => {
+            const has = await chat.hasContacts(productId);
+            checked.resolve(has);
+            return has;
+          },
+        }),
+    });
     productState.setLoaded({ label: 'app', productId: asProductId(toProductId('app')), details: { chat: true } });
-    await waitForStatus(chatPanelState.store, state => state.hasContacts);
+    const has = await checked.promise;
 
     // Then
-    expect(chatPanelState.isButtonVisible()).toBe(true);
+    expect(has).toBe(false);
+    expect(chatPanelState.isButtonVisible()).toBe(false);
   });
 
   it('As a user, I leave a product before the read of its rooms lands and see no chat button for the next one', async () => {

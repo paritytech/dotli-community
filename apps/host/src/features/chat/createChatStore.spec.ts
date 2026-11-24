@@ -440,7 +440,7 @@ describe('chat store', () => {
 const TEXT = { tag: 'Text', value: { text: 'hi' } } as const;
 
 describe('chat store view', () => {
-  it('As a user with the chat panel open, I follow a product and see its rooms, bots and message times', async () => {
+  it('As a user with the chat panel open, I follow a product and see its rooms and message times, and no bots', async () => {
     // Given
     const { chat } = setup();
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
@@ -454,7 +454,6 @@ describe('chat store view', () => {
 
     // Then
     expect(contacts?.rooms.map(room => room.roomId)).toEqual(['main']);
-    expect(contacts?.bots.map(bot => bot.botId)).toEqual(['helper']);
     expect([...(contacts?.lastMessageTimes.keys() ?? [])]).toEqual(['main']);
   });
 

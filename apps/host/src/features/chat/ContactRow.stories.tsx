@@ -26,7 +26,6 @@ const meta = {
   args: {
     ...contactIconStories.args,
     id: 'room-1',
-    kind: 'room',
     readOnly: false,
     lastMessageAt: NOW - 24 * 60 * MINUTE,
     now: NOW,

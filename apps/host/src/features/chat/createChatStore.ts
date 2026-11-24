@@ -291,11 +291,10 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       }
     },
 
-    /** Whether the product has a room or a bot. Resolves false when the read fails, which is reported. */
+    /** Whether the product has a room. Resolves false when the read fails, which is reported. */
     async hasContacts(productId: string): Promise<boolean> {
       try {
-        const [rooms, bots] = await Promise.all([repo.listRooms(productId), repo.listBots(productId)]);
-        return rooms.length > 0 || bots.length > 0;
+        return (await repo.listRooms(productId)).length > 0;
       } catch (error) {
         reportFailedChatStorage(error, 'chat_contacts_check');
         return false;
@@ -312,7 +311,6 @@ export const chatStore = createChatStore({
     registerBot: chat.registerBot,
     appendMessage: chat.appendMessage,
     listRooms: chat.listRooms,
-    listBots: chat.listBots,
     readLatestMessageTimestamps: chat.getLatestMessageTimestamps,
     listMessages: chat.listMessages,
   },

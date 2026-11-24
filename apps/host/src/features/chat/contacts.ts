@@ -2,47 +2,32 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ChatRoomFooter } from './createChatStore.js';
-import type { ChatBot, ChatRoom } from './chat.js';
+import type { ChatRoom } from './chat.js';
 
-/** Whether a contact is a room the product made or a bot it registered. */
-export type ContactKind = 'room' | 'bot';
-
-/** A room or a registered bot. A bot's conversation is keyed by its botId, which the product uses as the roomId. */
+/** A room of the product's contact list. */
 export type ContactEntry = {
   id: string;
-  kind: ContactKind;
   name: string;
   icon: string;
   createdAt: number;
   /** Null until the conversation has a message. */
   lastMessageAt: number | null;
-  /** What the conversation shows below its messages. A bot's conversation always takes text. */
+  /** What the conversation shows below its messages. */
   footer: ChatRoomFooter;
 };
 
 export function contactEntries(
   rooms: readonly ChatRoom[],
-  bots: readonly ChatBot[],
   lastMessageTimes: ReadonlyMap<string, number>,
 ): ContactEntry[] {
   const entries: ContactEntry[] = [
     ...rooms.map(room => ({
       id: room.roomId,
-      kind: 'room' as const,
       name: room.name,
       icon: room.icon,
       createdAt: room.createdAt,
       lastMessageAt: lastMessageTimes.get(room.roomId) ?? null,
       footer: room.footer ?? 'TextInput',
-    })),
-    ...bots.map(bot => ({
-      id: bot.botId,
-      kind: 'bot' as const,
-      name: bot.name,
-      icon: bot.icon,
-      createdAt: bot.createdAt,
-      lastMessageAt: lastMessageTimes.get(bot.botId) ?? null,
-      footer: 'TextInput' as const,
     })),
   ];
   const recency = (entry: ContactEntry): number => entry.lastMessageAt ?? entry.createdAt;
