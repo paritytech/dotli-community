@@ -61,23 +61,23 @@ export const BUILTIN_NETWORK_SERVICES: Record<Network, ServicesConfig> = {
     description: 'Product Preview Network',
     testnet: true,
     relay: {
-      genesis: '0x860145753657e73c29b9388ffa0a8aebc643ea87434b4b271b6c3c3cc9e6bf92',
+      genesis: '0x48ab0689e87be8c502ace5f1c953baf4337daad39406f1e596c5f2fed5950fe6',
       rpcs: ['wss://previewnet.substrate.dev/relay/alice', 'wss://previewnet.substrate.dev/relay/bob'],
       blockTimeMs: 6000,
     },
     assethub: {
-      genesis: '0xbac97e23fc8f4bccae72a98f8aeb2bcab20bf755862304e4b46ad6473456e896',
+      genesis: '0xf7d88e2e343e911c9a5c1a7e6ed53d06ef4cd73276fc3afff87062a1f6f90514',
       rpcs: ['wss://previewnet.substrate.dev/asset-hub'],
       blockTimeMs: 2000,
     },
     bulletin: {
-      genesis: '0xa081192b90c1f6a3f8e9ce7b2a8246f41af805c66456c84e05fd97c2b3502425',
+      genesis: '0x1c0a1c27946ca0e7def02955315633db590bc38b0c537936e423efeb6c554876',
       rpcs: ['wss://previewnet.substrate.dev/bulletin'],
       blockTimeMs: 6000,
       ipfsGateways: ['https://previewnet.substrate.dev'],
     },
     people: {
-      genesis: '0x55e3e689ecfa9d2fffcf7d309b8011956671493982230bfd0420c683542249e9',
+      genesis: '0x732abb4e3052154ebd9201a375b0aacf2d1fe7015700235c0a8b30d44b401c19',
       rpcs: ['wss://previewnet.substrate.dev/people'],
       blockTimeMs: 2000,
     },
