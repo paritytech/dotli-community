@@ -4,7 +4,7 @@
 import type { ColorToken, ContentAlignment, Modifier } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { dot, frame, Gallery, TreeFrame } from '../../../testing/stories/rendererFixtures.js';
-import { BoxNode } from './BoxNode.js';
+import { BoxCell, BoxNode } from './BoxNode.js';
 
 const CONTENT_ALIGNMENTS: ContentAlignment[] = [
   'TopStart',
@@ -33,7 +33,9 @@ const meta = {
   render: args => (
     <TreeFrame>
       <BoxNode {...args}>
-        <BoxNode value={dot()} />
+        <BoxCell>
+          <BoxNode value={dot()} />
+        </BoxCell>
       </BoxNode>
     </TreeFrame>
   ),
@@ -51,11 +53,38 @@ export const ContentAlignments: Story = {
         caption: contentAlignment,
         node: (
           <BoxNode value={{ modifiers: frame(64), props: { contentAlignment } }}>
-            <BoxNode value={dot()} />
+            <BoxCell>
+              <BoxNode value={dot()} />
+            </BoxCell>
           </BoxNode>
         ),
       }))}
     />
+  ),
+};
+
+/** As a user, I see a product box overlay its children in one cell, a badge over a tile. */
+export const OverlaidChildren: Story = {
+  render: () => (
+    <TreeFrame>
+      <BoxNode value={{ modifiers: frame(64), props: { contentAlignment: 'TopEnd' } }}>
+        <BoxCell>
+          <BoxNode value={dot(48, 48)} />
+        </BoxCell>
+        <BoxCell>
+          <BoxNode
+            value={{
+              modifiers: [
+                { tag: 'Width', value: 16 },
+                { tag: 'Height', value: 16 },
+                { tag: 'Background', value: { color: 'FgError', shape: { tag: 'Circle' } } },
+              ],
+              props: {},
+            }}
+          />
+        </BoxCell>
+      </BoxNode>
+    </TreeFrame>
   ),
 };
 

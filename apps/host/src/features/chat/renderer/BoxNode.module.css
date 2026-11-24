@@ -8,3 +8,9 @@
   margin: 0;
   padding: 0;
 }
+
+/* One cell for all children, which the box's align-items and justify-items place. */
+.cell {
+  grid-area: 1 / 1;
+  min-width: 0;
+}

@@ -18,3 +18,8 @@ export function BoxNode(props: { value: KindValue<'Box'>; children?: JSX.Element
     </div>
   );
 }
+
+/** The cell a box puts one child in, so every child overlays the others in the box's one cell. */
+export function BoxCell(props: { children?: JSX.Element }): JSX.Element {
+  return <div class={s['cell']}>{props.children}</div>;
+}

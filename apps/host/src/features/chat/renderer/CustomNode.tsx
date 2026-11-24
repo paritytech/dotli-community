@@ -7,7 +7,7 @@
 import { For, Match, Switch } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { RendererNode } from '@parity/truapi';
-import { BoxNode } from './BoxNode.js';
+import { BoxCell, BoxNode } from './BoxNode.js';
 import { ButtonNode } from './ButtonNode.js';
 import { ColumnNode } from './ColumnNode.js';
 import { ImageNode } from './ImageNode.js';
@@ -30,7 +30,7 @@ export function CustomNode(props: NodeHost & { node: RendererNode }): JSX.Elemen
       <Match when={valueOf(props.node, 'Box')}>
         {value => (
           <BoxNode value={value()}>
-            <Children nodes={value().children} onAction={props.onAction} loadImage={props.loadImage} />
+            <Children nodes={value().children} cell={BoxCell} onAction={props.onAction} loadImage={props.loadImage} />
           </BoxNode>
         )}
       </Match>
@@ -90,10 +90,25 @@ function valueOf<Tag extends NodeTag>(node: RendererNode, tag: Tag): NodeValue<T
   return node.tag === tag ? ((node as { value?: unknown }).value as NodeValue<Tag>) : false;
 }
 
-function Children(props: NodeHost & { nodes: RendererNode[] }): JSX.Element {
+/** A cell that adds no element. */
+function Bare(props: { children?: JSX.Element }): JSX.Element {
+  return <>{props.children}</>;
+}
+
+/** A node's children by position, each in the parent's `cell` when it places them in cells. */
+function Children(
+  props: NodeHost & { nodes: RendererNode[]; cell?: (props: { children?: JSX.Element }) => JSX.Element },
+): JSX.Element {
   return (
     <For each={props.nodes} keyed={false}>
-      {child => <CustomNode node={child()} onAction={props.onAction} loadImage={props.loadImage} />}
+      {child => {
+        const Cell = props.cell ?? Bare;
+        return (
+          <Cell>
+            <CustomNode node={child()} onAction={props.onAction} loadImage={props.loadImage} />
+          </Cell>
+        );
+      }}
     </For>
   );
 }
