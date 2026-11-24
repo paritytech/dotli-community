@@ -1,8 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The sheet sits above the phone bar, so its body holds no safe area, and content that fills the drawer reaches the
-   sheet's bottom edge. The class is doubled so it outranks the sheet's own body rule whichever stylesheet loads last. */
+/* Content that fills the drawer reaches the bottom edge on a phone. Doubled, so it wins whichever stylesheet loads
+   last. */
 .sheetBody.sheetBody {
   padding-bottom: 0;
 }
