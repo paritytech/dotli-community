@@ -56,7 +56,7 @@ const inDrawer = createJSXDecorator(Story => {
           'flex-direction': 'column',
           'box-sizing': 'border-box',
           height: '100%',
-          background: 'var(--chat-bg-surface-main)',
+          background: 'var(--chat-bg-panel)',
           'color-scheme': 'dark',
         }}
       >

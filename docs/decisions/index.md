@@ -143,6 +143,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   primitive renders a flat list, and a caller needs several kinds of items under visible headings in one list.
 - [dim-a-graphic-of-overlapping-parts](dim-a-graphic-of-overlapping-parts.md): a decorative graphic of overlapping
   parts, such as dots on lines, must look faint against the page, and the question is where the faintness goes.
+- [feature-with-its-own-color-tokens-adopts-a-design](feature-with-its-own-color-tokens-adopts-a-design.md): a feature
+  with its own family of color tokens adopts a design whose colors the family does not hold, and close general tokens
+  exist.
 - [entry-animation-follows-a-measured-side](entry-animation-follows-a-measured-side.md): a shared surface's entry
   slides toward a side known only after the shown surface is measured, so the first entry on a new side slides a few
   pixels the other way.

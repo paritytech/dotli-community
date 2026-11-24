@@ -20,7 +20,7 @@ export function ChatSurface(props: { children: JSX.Element }): JSX.Element {
         'max-width': '100%',
         padding: 'var(--sp-3)',
         'border-radius': 'var(--r-pop)',
-        background: 'var(--chat-bg-surface-main)',
+        background: 'var(--chat-bg-panel)',
       }}
     >
       {props.children}

@@ -25,11 +25,10 @@ import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
 import { getDayLabel, isDayStart } from './messageDays.js';
-import { endsRun } from './messageRuns.js';
 import { chatUnreadLabel } from './unread.js';
 import s from './ChatPanel.module.css';
 
-// Relative timestamps on bubbles and rows go stale while the panel sits open.
+// Day labels and the rooms' relative times go stale while the panel sits open.
 const TIME_REFRESH_MS = 60_000;
 
 type View = 'loading' | 'empty' | 'list' | 'conversation';
@@ -407,8 +406,6 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
                   <MessageRow
                     chat={chat.actions}
                     record={record()}
-                    now={now()}
-                    endsRun={endsRun(record(), feed.messages()?.[index() + 1])}
                     onActionError={() => {
                       chat.setComposerError('The app could not be reached.');
                     }}

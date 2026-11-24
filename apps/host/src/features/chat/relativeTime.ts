@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** A bubble's relative time label, such as "5 mins ago". */
+/** A room's relative time label, such as "5 mins ago". */
 export function relativeTime(timestamp: number, now: number): string {
   const minutes = Math.floor((now - timestamp) / 60_000);
   if (minutes < 1) {

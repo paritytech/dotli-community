@@ -9,7 +9,6 @@ import type { ChatMessageContent, HexString } from '@parity/truapi';
 import { FileIcon, PaperclipIcon } from '@dotli/ui/icons';
 import { InlineActionButton } from './InlineActionButton.js';
 import type { ChatMessageRecord } from './createChatStore.js';
-import { relativeTime } from './relativeTime.js';
 import s from './MessageBubble.module.css';
 
 /** A custom message's product-defined body, which the page renders into the bubble. */
@@ -23,12 +22,9 @@ type BubbleLook = 'message' | 'actions' | 'custom';
 
 export function MessageBubble(props: {
   record: ChatMessageRecord;
-  now: number;
-  /** The bubble ends its run of messages, so it takes its tail corner and shows the time. */
-  endsRun: boolean;
   /** A tap on one of an actions message's buttons. */
   onAction: (actionId: string) => void;
-  /** Renders a custom message's body, before the timestamp. */
+  /** Renders a custom message's body, above the time. */
   custom: (body: CustomBody) => JSX.Element;
 }): JSX.Element {
   // Records are immutable and rows are keyed by seq, so an untracked one-time read is intentional.
@@ -42,20 +38,17 @@ export function MessageBubble(props: {
       data-timestamp={String(record.timestamp)}
       title={new Date(record.timestamp).toLocaleString()}
     >
-      {relativeTime(record.timestamp, props.now)}
+      {new Date(record.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
     </time>
   );
 
   const bubble = (look: BubbleLook, body: JSX.Element): JSX.Element => (
-    <>
-      <div class={s['bubble']} data-testid="chat-msg-bubble" data-look={look}>
-        {body}
-      </div>
-      <Show when={props.endsRun}>{time()}</Show>
-    </>
+    <div class={s['bubble']} data-testid="chat-msg-bubble" data-look={look}>
+      <div class={s['body']}>{body}</div>
+      {time()}
+    </div>
   );
 
-  // An event stands apart from the runs around it, so it always carries its own time.
   const event = (text: string): JSX.Element => (
     <div class={s['event']} data-testid="chat-msg-bubble">
       {text}
@@ -139,12 +132,7 @@ export function MessageBubble(props: {
   };
 
   return (
-    <div
-      class={s['row']}
-      data-testid="chat-msg"
-      data-author={record.author}
-      data-run-end={props.endsRun ? '' : undefined}
-    >
+    <div class={s['row']} data-testid="chat-msg" data-author={record.author}>
       {message()}
     </div>
   );
