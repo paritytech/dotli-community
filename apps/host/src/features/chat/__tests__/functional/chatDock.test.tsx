@@ -15,6 +15,7 @@ import { createChatStore, type ChatStore } from '../../createChatStore.js';
 import { toProductId } from '../../../../kit/getAskedProductId.js';
 import { authState } from '../../../account/session/authState.js';
 import { productState } from '../../../page/productState.js';
+import { createRecordingConnection } from '../../createChatConnections.fake.js';
 import { createMemoryChatRepo } from '../../createChatStore.fake.js';
 import { ChatDockIsland } from '../../ChatDockIsland.js';
 import { chatPanelState } from '../../chatPanelState.js';
@@ -27,7 +28,7 @@ let chat: ChatStore;
 let stopState: () => void = () => undefined;
 let unmount: (() => void) | undefined;
 
-/** The dock as Astro hydrates it, on a loaded chat-capable product with one room and a session. */
+/** The dock as Astro hydrates it, on a loaded product with chat, one room and a session. */
 function mountIsland(): void {
   const slot = document.createElement('div');
   document.body.append(slot);
@@ -36,9 +37,11 @@ function mountIsland(): void {
 }
 
 beforeEach(async () => {
-  chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
-  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat) });
-  productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
+  const connections = createChatConnections();
+  chat = createChatStore({ repo: createMemoryChatRepo(), connections });
+  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat), connections });
+  connections.register(PRODUCT, createRecordingConnection());
+  productState.setLoaded({ label: LABEL, productId: PRODUCT });
   authState.set({ tag: 'Connected', session: { connected: true } });
   await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
 });

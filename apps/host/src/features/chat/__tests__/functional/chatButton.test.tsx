@@ -16,6 +16,7 @@ import { createChatStore, type ChatStore } from '../../createChatStore.js';
 import { toProductId } from '../../../../kit/getAskedProductId.js';
 import { authState } from '../../../account/session/authState.js';
 import { productState } from '../../../page/productState.js';
+import { createRecordingConnection } from '../../createChatConnections.fake.js';
 import { createMemoryChatRepo } from '../../createChatStore.fake.js';
 import { ChatButtonIsland } from '../../ChatButtonIsland.js';
 import { ChatDockIsland } from '../../ChatDockIsland.js';
@@ -28,9 +29,11 @@ let stopState: () => void = () => undefined;
 let unmount: (() => void) | undefined;
 
 beforeEach(() => {
-  chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
-  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat) });
-  productState.setLoaded({ label: 'chatty', productId: PRODUCT, details: { chat: true } });
+  const connections = createChatConnections();
+  chat = createChatStore({ repo: createMemoryChatRepo(), connections });
+  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat), connections });
+  connections.register(PRODUCT, createRecordingConnection());
+  productState.setLoaded({ label: 'chatty', productId: PRODUCT });
   authState.set({ tag: 'Connected', session: { connected: true } });
   const slot = document.createElement('div');
   document.body.append(slot);

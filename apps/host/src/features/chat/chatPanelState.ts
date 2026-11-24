@@ -10,6 +10,7 @@ import { createReporter } from '@dotli/metrics';
 import type { ChatStore } from './createChatStore.js';
 import type { ChatChange, ChatView } from './createChatView.js';
 import type { OpenRoomParams } from './chat.js';
+import { chatConnections, type ChatConnections } from './createChatConnections.js';
 import { productState } from '../page/index.js';
 import { authState } from '../account/index.js';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
@@ -18,6 +19,10 @@ export type ChatPanelState = {
   label: string | null;
   /** The id the core parsed for the loaded product, which keys its chat. */
   runtimeProductId: ProductId | null;
+  /**
+   * Whether a chat connection registered for the product on show since it showed. It stays true when that
+   * registration ends, so a post in the gap fails as not connected rather than the panel closing.
+   */
   available: boolean;
   /** Whether the product has a room. False until a read or a write shows one. */
   hasContacts: boolean;
@@ -33,9 +38,13 @@ export type ChatPanelState = {
 
 type ChatSource = Pick<ChatStore, 'subscribe' | 'hasContacts'>;
 
+type ChatRegistry = Pick<ChatConnections, 'get' | 'onRegister'>;
+
 type Params = {
   /** Loads the chat store whose product messages count as unread and whose rooms show the button. */
   chat?: () => Promise<ChatSource>;
+  /** The connections whose registration for the product on show makes chat available. */
+  connections?: ChatRegistry;
 };
 
 const report = createReporter({ flow: 'chat' });
@@ -92,10 +101,10 @@ export const chatPanelState = {
   /** Returns whether a room asked to focus its composer, and clears that one-shot request. Never throws. */
   claimComposerFocus,
   /**
-   * Follows the session, the product on show and its chat until the returned stop. The chat is followed from once its
-   * store has loaded, which reads whether the product has a room, and again for each product loaded after. A
-   * call while the follows run joins them and ignores its params, and they end with the last caller's stop. Never
-   * throws.
+   * Follows the session, the product on show, the chat connections registered for it and its chat until the returned
+   * stop. The chat is followed from once its store has loaded, which reads whether the product has a room, and again
+   * for each product loaded and each connection registered after. A call while the follows run joins them and ignores
+   * its params, and they end with the last caller's stop. Never throws.
    */
   start,
   /** Returns the panel's element, or undefined when none is handed over. Never throws. */
@@ -179,8 +188,11 @@ function claimComposerFocus(): boolean {
   return true;
 }
 
-function start({ chat = async () => (await import('./createChatStore.js')).chatStore }: Params = {}): () => void {
-  return run.join({ chat });
+function start({
+  chat = async () => (await import('./createChatStore.js')).chatStore,
+  connections = chatConnections,
+}: Params = {}): () => void {
+  return run.join({ chat, connections });
 }
 
 function getElement(): HTMLElement | undefined {
@@ -197,9 +209,9 @@ function setElement(element: HTMLElement): () => void {
   return releaseElement;
 }
 
-function beginFollowing({ chat }: Required<Params>): () => void {
+function beginFollowing({ chat, connections }: Required<Params>): () => void {
   followSession();
-  followProduct();
+  followProduct(connections);
   // The store's chunk stays off the boot path, so following the chat starts once it loads.
   const following = new AbortController();
   chat().then(
@@ -208,10 +220,17 @@ function beginFollowing({ chat }: Required<Params>): () => void {
         return;
       }
       following.signal.addEventListener('abort', store.subscribe(followChat));
-      // Listens from once the store loads, so a product load is committed to the panel before its rooms are checked.
+      // Listens from once the store loads, so a product load or a registration is committed to the panel before its
+      // rooms are checked.
       following.signal.addEventListener(
         'abort',
         productState.store.listen(() => {
+          checkContacts(store);
+        }),
+      );
+      following.signal.addEventListener(
+        'abort',
+        connections.onRegister(() => {
           checkContacts(store);
         }),
       );
@@ -223,7 +242,10 @@ function beginFollowing({ chat }: Required<Params>): () => void {
   );
   const unsubscribes = [
     authState.loggedInStore.listen(followSession),
-    productState.store.listen(followProduct),
+    productState.store.listen(() => {
+      followProduct(connections);
+    }),
+    connections.onRegister(followRegistration),
     () => {
       following.abort();
     },
@@ -240,7 +262,7 @@ function followSession(): void {
   update({ loggedIn: authState.loggedInStore.get() });
 }
 
-function followProduct(): void {
+function followProduct(connections: ChatRegistry): void {
   const product = productState.store.get();
   if (product.status === 'error') {
     update({ label: null, runtimeProductId: null, available: false, hasContacts: false });
@@ -257,12 +279,25 @@ function followProduct(): void {
       : {
           ...state,
           label,
+          available: false,
           hasContacts: false,
           activeRoomId: null,
           unreadByRoom: {},
           composerError: null,
         };
-  commit({ ...base, runtimeProductId: productId, available: product.chat === true });
+  // A connection may register before the product shows, as well as after.
+  commit({
+    ...base,
+    runtimeProductId: productId,
+    available: base.available || connections.get(productId) !== undefined,
+  });
+}
+
+/** A registration ending is not heard: chat stays available until another product shows. */
+function followRegistration(productId: string): void {
+  if (productId === panel.get().runtimeProductId) {
+    update({ available: true });
+  }
 }
 
 /**
