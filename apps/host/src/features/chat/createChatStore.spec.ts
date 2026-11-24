@@ -422,7 +422,7 @@ describe('chat store', () => {
     expect(sentry.counted('chat.read')).toEqual([{ outcome: 'error', reason: GONE.name }]);
   });
 
-  it('As a user, the store cannot tell whether my product has a room, and the failure is reported while the answer is no', async () => {
+  it('As a user whose room list cannot be read, I see my product treated as having no room, and the failure reported', async () => {
     // Given a product with a room, whose room list reads fail
     const { repo, chat, captured } = setup();
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });

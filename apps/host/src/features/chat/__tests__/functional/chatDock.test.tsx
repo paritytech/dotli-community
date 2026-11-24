@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 describe('ChatDock island', () => {
-  it("As a user of a product with one room, the open panel shows that room from the page's chat as open, with the composer unfocused", async () => {
+  it('As a user of a product with one room, I open the panel and see that room open, with the composer unfocused', async () => {
     // Given
     mountIsland();
 
