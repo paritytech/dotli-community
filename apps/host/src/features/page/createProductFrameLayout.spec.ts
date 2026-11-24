@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createProductFrameLayout, type FrameBox, type ProductFrameLayout } from './createProductFrameLayout.js';
 import { createStandInFrame } from '../../testing/createStandInFrame.js';
 
@@ -32,7 +33,7 @@ describe('product frame layout', () => {
     layout.attach(frame);
 
     // Then
-    expect(getBoxes(frame)).toEqual([{ belowBar: true, staged: false, morph: false, right: 0, bottom: 0 }]);
+    expect(getBoxes(frame)).toEqual([{ placement: 'belowBar', morph: false, right: 0, bottom: 0 }]);
   });
 
   it('As a dApp user, I arm the bar and pin it again and the frame takes the full height and then sits below it', () => {
@@ -47,9 +48,9 @@ describe('product frame layout', () => {
 
     // Then
     expect(getBoxes(frame)).toEqual([
-      { belowBar: true, staged: false, morph: false, right: 0, bottom: 0 },
-      { belowBar: false, staged: false, morph: false, right: 0, bottom: 0 },
-      { belowBar: true, staged: false, morph: false, right: 0, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 0 },
+      { placement: 'full', morph: false, right: 0, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 0 },
     ]);
   });
 
@@ -65,7 +66,7 @@ describe('product frame layout', () => {
     layout.attach(reloaded);
 
     // Then the new frame gets the whole layout
-    expect(getBoxes(reloaded)).toEqual([{ belowBar: false, staged: false, morph: false, right: 360, bottom: 0 }]);
+    expect(getBoxes(reloaded)).toEqual([{ placement: 'full', morph: false, right: 360, bottom: 0 }]);
   });
 
   it('As a dotli developer, I close a docked panel after a product reload and only the new frame resizes', () => {
@@ -98,7 +99,7 @@ describe('product frame layout', () => {
     layout.attach(frame);
 
     // Then
-    expect(getBoxes(frame)).toEqual([{ belowBar: false, staged: false, morph: false, right: 360, bottom: 0 }]);
+    expect(getBoxes(frame)).toEqual([{ placement: 'full', morph: false, right: 360, bottom: 0 }]);
   });
 
   it('As a dotli integrator, I attach a frame on a page without a bar and it gets the full safe height', () => {
@@ -110,7 +111,7 @@ describe('product frame layout', () => {
     layout.attach(frame);
 
     // Then
-    expect(getBoxes(frame)).toEqual([{ belowBar: false, staged: false, morph: false, right: 0, bottom: 0 }]);
+    expect(getBoxes(frame)).toEqual([{ placement: 'full', morph: false, right: 0, bottom: 0 }]);
   });
 });
 
@@ -127,9 +128,9 @@ describe('product frame layout: docked panels', () => {
 
     // Then
     expect(getBoxes(frame)).toEqual([
-      { belowBar: true, staged: false, morph: false, right: 0, bottom: 0 },
-      { belowBar: true, staged: false, morph: false, right: 400, bottom: 0 },
-      { belowBar: true, staged: false, morph: false, right: 0, bottom: 300 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 400, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 300 },
     ]);
   });
 
@@ -193,7 +194,7 @@ describe('product frame layout: the stage', () => {
 
     // Then
     expect({ box: getBoxes(frame).at(-1), stages: getStages() }).toEqual({
-      box: { belowBar: true, staged: true, morph: true, right: 0, bottom: 0 },
+      box: { placement: 'staged', morph: true, right: 0, bottom: 0 },
       stages: [true],
     });
   });
@@ -228,7 +229,7 @@ describe('product frame layout: the stage', () => {
   it('As a dApp user, I narrow the window to a phone with the side panel open and the frame morphs out of the stage', () => {
     // Given
     const { layout, getBoxes, getStages, setPhone } = createRecordingLayout();
-    const { frame } = createStandInFrame();
+    const { frame } = createStandInFrame({ transitions: true });
     layout.attach(frame);
     layout.setSidePanel({ docked: true });
 
@@ -237,7 +238,7 @@ describe('product frame layout: the stage', () => {
 
     // Then
     expect({ box: getBoxes(frame).at(-1), stages: getStages() }).toEqual({
-      box: { belowBar: true, staged: false, morph: true, right: 0, bottom: 0 },
+      box: { placement: 'belowBar', morph: true, right: 0, bottom: 0 },
       stages: [true, false],
     });
   });
@@ -258,7 +259,7 @@ describe('product frame layout: the stage', () => {
   it('As a dApp user, I close the side panel and the frame morphs back and then changes at once', () => {
     // Given
     const { layout, getBoxes, getStages } = createRecordingLayout();
-    const stand = createStandInFrame();
+    const stand = createStandInFrame({ transitions: true });
     layout.attach(stand.frame);
     layout.setSidePanel({ docked: true });
 
@@ -268,23 +269,67 @@ describe('product frame layout: the stage', () => {
 
     // Then
     expect({
-      boxes: getBoxes(stand.frame).map(({ staged, morph }) => ({ staged, morph })),
+      boxes: getBoxes(stand.frame).map(({ placement, morph }) => ({ placement, morph })),
       stages: getStages(),
     }).toEqual({
       boxes: [
-        { staged: false, morph: false },
-        { staged: true, morph: true },
-        { staged: false, morph: true },
-        { staged: false, morph: false },
+        { placement: 'belowBar', morph: false },
+        { placement: 'staged', morph: true },
+        { placement: 'belowBar', morph: true },
+        { placement: 'belowBar', morph: false },
       ],
       stages: [true, false],
     });
   });
 
+  it('As a dApp user who prefers reduced motion, I close the side panel and the next change of the frame lands at once', () => {
+    // Given a frame that runs no transition
+    const { layout, getBoxes } = createRecordingLayout();
+    const { frame } = createStandInFrame();
+    layout.attach(frame);
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: false });
+
+    // When
+    layout.setDockInset({ right: 360, bottom: 0 }, 'debug');
+
+    // Then
+    expect(getBoxes(frame).at(-1)?.morph).toBe(false);
+  });
+
+  it('As a dApp user, I change the frame mid-morph back, which replaces its transition, and its next change still morphs', () => {
+    // Given
+    const { layout, getBoxes } = createRecordingLayout();
+    const stand = createStandInFrame({ transitions: true });
+    layout.attach(stand.frame);
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: false });
+
+    // When the change replaces the running transition
+    stand.replaceTransition();
+    layout.setDockInset({ right: 360, bottom: 0 }, 'debug');
+
+    // Then
+    expect(getBoxes(stand.frame).at(-1)?.morph).toBe(true);
+  });
+
+  it('As a dotli developer, I reset the stores while the page is staged and the page is no longer marked staged', () => {
+    // Given
+    const { layout, getStages } = createRecordingLayout();
+    layout.attach(createStandInFrame().frame);
+    layout.setSidePanel({ docked: true });
+
+    // When
+    resetAllStoresForTests();
+
+    // Then
+    expect(getStages()).toEqual([true, false]);
+  });
+
   it('As a dApp user, I open another product while the frame morphs back and the new frame changes at once', () => {
     // Given
     const { layout, getBoxes } = createRecordingLayout();
-    layout.attach(createStandInFrame().frame);
+    layout.attach(createStandInFrame({ transitions: true }).frame);
     layout.setSidePanel({ docked: true });
     layout.setSidePanel({ docked: false });
     const { frame: next } = createStandInFrame();
@@ -307,7 +352,7 @@ describe('product frame layout: the stage', () => {
     layout.attach(frame);
 
     // Then
-    expect(getBoxes(frame)).toEqual([{ belowBar: true, staged: false, morph: false, right: 0, bottom: 0 }]);
+    expect(getBoxes(frame)).toEqual([{ placement: 'belowBar', morph: false, right: 0, bottom: 0 }]);
   });
 });
 
