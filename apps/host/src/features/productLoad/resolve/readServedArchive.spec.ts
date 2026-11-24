@@ -5,6 +5,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { CID } from 'multiformats/cid';
 import { create } from 'multiformats/hashes/digest';
 import { describe, expect, it, vi } from 'vitest';
+import { CONTENT_ERRORS } from '@dotli/content';
 import { readServedArchive } from './readServedArchive.js';
 
 const RAW = 0x55;
@@ -41,5 +42,18 @@ describe('readServedArchive', () => {
     // Then bitswap was never asked
     expect(Object.keys(files)).toEqual(['index.html']);
     expect(bitswap.get).not.toHaveBeenCalled();
+  });
+
+  it('As a visitor whose block cache holds substituted bytes, I open a product and the read is refused', async () => {
+    // Given a cache that returns other bytes for the block
+    const { cid } = rawBlock('<p>hi</p>');
+    const bitswap = { get: vi.fn(() => Promise.reject(new Error('unreachable'))) };
+    const cache = { get: vi.fn(() => Promise.resolve(new TextEncoder().encode('<p>steal()</p>'))) };
+
+    // When the archive is read
+    const read = readServedArchive(cid, bitswap, cache);
+
+    // Then the substituted block fails its hash check
+    await expect(read).rejects.toMatchObject({ name: CONTENT_ERRORS.VERIFICATION });
   });
 });

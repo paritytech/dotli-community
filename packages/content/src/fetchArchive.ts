@@ -4,7 +4,7 @@
 import { getErrorName } from '@dotli/shared';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import { CID } from 'multiformats/cid';
-import { readViaBitswap, readViaGateway, type ReadViaGatewayParams } from './readArchive.js';
+import { readArchive } from './readArchive.js';
 import type { BitswapBlockSource, FetchResult, StatusCallback } from './types.js';
 import { createRootVerifyingBlockSource } from './verify.js';
 
@@ -60,7 +60,7 @@ export async function fetchArchive(
   try {
     const result =
       bitswapBlockSource === null
-        ? await fetchViaGateway({ cid, fetch: gatewayFetch ?? fetch, onStatus })
+        ? await fetchViaGateway(cid, gatewayFetch, onStatus)
         : await fetchViaBitswapRpc({ cid, blockSource: bitswapBlockSource, onStatus });
     measureContentSize(result);
     return result;
@@ -107,19 +107,23 @@ async function fetchViaBitswapRpc({ cid: cidString, blockSource, onStatus }: Bit
   }
 
   // The host's relay checked every block. Re-hashing the root ties the walk to the CID this sandbox was given.
-  const result = await readViaBitswap({
-    rootCid,
-    verifiedSource: createRootVerifyingBlockSource(rootCid, traceBlock),
-    onStatus,
-  });
+  const result = await readArchive(
+    cidString,
+    { blockSource: createRootVerifyingBlockSource(rootCid, traceBlock) },
+    { onStatus },
+  );
   m.distribution(CONTENT_BITSWAP_BLOCKS, blockCount, { unit: 'none' });
   return result;
 }
 
-async function fetchViaGateway(params: ReadViaGatewayParams): Promise<FetchResult> {
+async function fetchViaGateway(
+  cid: string,
+  gatewayFetch: typeof fetch | undefined,
+  onStatus: StatusCallback | undefined,
+): Promise<FetchResult> {
   const stopGateway = m.timer(CONTENT_GATEWAY);
   try {
-    return await readViaGateway(params);
+    return await readArchive(cid, { gateway: true, fetch: gatewayFetch }, { onStatus });
   } finally {
     stopGateway();
   }

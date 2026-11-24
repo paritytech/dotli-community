@@ -74,7 +74,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
   such as whether its tokens have value, and the network table holds no field for it.
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
   much structure, or files that serve one feature sit in a top-level folder filed by kind, or a helper's only caller
-  moves to another feature.
+  moves to another feature, or several features come to read through a helper built on a low feature's infrastructure.
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
 - [moved-helper-reads-what-its-new-home-holds](moved-helper-reads-what-its-new-home-holds.md): a helper moves into
   another feature with its only caller, and it still reads and caches data itself that the new feature already holds
@@ -92,6 +92,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   callbacks each serve a different feature.
 - [security-critical-config-to-a-sandboxed-child](security-critical-config-to-a-sandboxed-child.md): a sandboxed child
   reads config from its parent through URL params any embedder can write, and one value is security-critical.
+- [read-serves-sources-of-different-trust](read-serves-sources-of-different-trust.md): one read checks what a
+  caller's source returns, such as hashing blocks against their ids, and its callers' sources differ in trust, so the
+  question is whether the read picks the check or each caller wraps its own source.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds a
   value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end

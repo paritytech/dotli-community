@@ -3,7 +3,7 @@
 
 import type { BitswapClient } from '@dotli/bitswap';
 import { getBackend, hasLightClient } from '@dotli/config';
-import { readArchiveFiles, type ArchiveFiles } from '@dotli/content';
+import { createVerifyingBlockSource, readArchive, type ArchiveFiles } from '@dotli/content';
 
 /** The block cache a read may serve from. */
 export type ServedBlockCache = { get(cid: string): Promise<Uint8Array | null> };
@@ -13,12 +13,20 @@ export type ServedBlockCache = { get(cid: string): Promise<Uint8Array | null> };
  * `bitswap`, and on rpc-gateway, the gateway. A null `cache` reads every block over `bitswap`. Rejects when a block
  * cannot be fetched or fails its hash check.
  */
-export function readServedArchive(
+export async function readServedArchive(
   cid: string,
   bitswap: Pick<BitswapClient, 'get'>,
   cache: ServedBlockCache | null,
 ): Promise<ArchiveFiles> {
-  return readArchiveFiles(cid, hasLightClient(getBackend()) ? { blockSource: readBlock } : { gateway: true });
+  // These blocks bypass the relay that checks a product load's blocks, so every one is hashed here.
+  const result = await readArchive(
+    cid,
+    hasLightClient(getBackend())
+      ? { blockSource: createVerifyingBlockSource(blockCid => readBlock(blockCid.toString())) }
+      : { gateway: true },
+  );
+  // A single file is the page the sandbox serves as index.html.
+  return result.type === 'single' ? { 'index.html': result.content } : result.files;
 
   async function readBlock(blockCid: string): Promise<Uint8Array> {
     return (await cache?.get(blockCid)) ?? bitswap.get(blockCid);

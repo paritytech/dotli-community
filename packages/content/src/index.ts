@@ -9,5 +9,6 @@ export { fetchFromIpfs } from './fetchFromIpfs.js';
 export { loadVerify } from './lazy.js';
 export { packArchive } from './packArchive.js';
 export { parseIpfsResponse } from './parseIpfsResponse.js';
-export { readArchiveFiles } from './readArchiveFiles.js';
+export { readArchive } from './readArchive.js';
 export type { ArchiveFiles, FetchResult } from './types.js';
+export { createRootVerifyingBlockSource, createVerifyingBlockSource } from './verify.js';

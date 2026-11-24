@@ -3,8 +3,10 @@
 An app's source is grouped or regrouped into folders, and the question is how much structure it gets. A level, an
 `index.ts`, a lint boundary or a set of subfolders each look useful on their own. Or the code is already grouped by
 feature, but some files that serve a single feature still sit in a top-level folder filed by kind, such as functional
-and end-to-end tests under `tests/`. Or a change moves the only caller of a helper from one feature into another, and the
-helper still sits in the old feature's folder.
+and end-to-end tests under `tests/`. Or a change moves the only caller of a helper from one feature into another, and
+the helper still sits in the old feature's folder. Or a helper grows into something several other features read
+through, its own feature no longer calls it, and it builds on infrastructure that a low feature, one any feature may
+import, already holds.
 
 ## How to resolve
 
@@ -21,13 +23,16 @@ helper still sits in the old feature's folder.
    trim it as [a moved helper reads what its new home holds](moved-helper-reads-what-its-new-home-holds.md) says.
 5. Put what spans several features in the folder that composes them, such as the shell. Keep in a central folder only
    what several features share, such as suite configs and fixtures.
-6. Give a folder an `index.ts` and a lint boundary when other folders depend on it as a whole, as on a feature. A small
+6. A piece that several features read through, built on infrastructure a low feature holds, moves into that low
+   feature beside what it reads through. It does not stay in its old feature exported for the readers. It gets no new
+   folder of its own, and it does not become a `kit/` helper the shell builds and passes to each feature.
+7. Give a folder an `index.ts` and a lint boundary when other folders depend on it as a whole, as on a feature. A small
    app whose folders have a few cycles, each resting on one import, gets neither
    ([an import cycle between folders](import-cycle-between-folders.md)).
 
-The owner's reason for moving a feature's files into its folder: it is much simpler. The owner chose the other steps,
-and moving a helper with its only caller, without stating a reason. Together they add structure only where it pays, and keep the parts of one purpose side by
-side.
+The owner's reason for moving a feature's files into its folder: it is much simpler. The owner chose the other steps
+without stating a reason, among them moving a helper with its only caller and moving a shared reader into the low
+feature it builds on. Together they add structure only where it pays, and keep the parts of one purpose side by side.
 
 ## Example
 
@@ -76,6 +81,21 @@ features/
     receiptImages.ts       moved with the caller
 ```
 
+A reader that started in `orders/` and that `invoices/` and `audit/` now read through, built on the client in the low
+`network/` feature:
+
+```text
+features/
+  orders/                  before: documentReader.ts sat here, exported for the readers
+  network/                 low, any feature may import it
+    blockClient.ts
+    fetchBlock.ts
+    documentReader.ts      moved beside what it reads through
+    index.ts
+  invoices/                reads through network/index.ts
+  audit/                   reads through network/index.ts
+```
+
 Not this, folders by file kind:
 
 ```text
@@ -100,5 +120,10 @@ tests/
   product frame's feature into the product worker's feature with its only caller. The owner chose this over filing it
   in the chat feature, whose error and image-read types it uses, or leaving it in its old feature exported for the
   worker. (docs/_plans/worker-chat-design.md)
+- The host's archive read became a page-level reader that dedupes overlapping reads and keeps archives for the page's
+  life, read by the product worker and the debug panel but no longer by the product load feature it sat in. It moved
+  into the low chains feature beside the block-exchange client and the block fetch it reads through. The owner chose
+  this over keeping it in its old feature, a new feature of its own, or a `kit/` helper the shell builds and passes in.
+  (docs/_plans/worker-chat-design.md, archive extension)
 
 Status: active
