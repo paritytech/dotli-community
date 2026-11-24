@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
+import { bindLogSink, type LogLevel } from '@dotli/shared';
 import { RAW } from './codecs.js';
 import { readArchive } from './readArchive.js';
 import { createBlockSource } from './testing/createBlockSource.js';
@@ -26,7 +27,7 @@ describe('readArchive', () => {
     const { root, blocks } = createUnixFsDirectory({ 'index.html': '<h1>hi</h1>', 'app.js': 'run()' });
 
     // When
-    const result = await readArchive(root.toString(), { blockSource: createBlockSource(blocks) });
+    const result = await readArchive(root.toString(), { kind: 'blockSource', blockSource: createBlockSource(blocks) });
 
     // Then
     expect(result).toEqual({
@@ -43,6 +44,7 @@ describe('readArchive', () => {
 
     // When
     const result = await readArchive(root.toString(), {
+      kind: 'blockSource',
       blockSource: createBlockSource(new Map([[root.toString(), bytes]])),
     });
 
@@ -55,8 +57,9 @@ describe('readArchive', () => {
     const { root, car } = createPackedSite({ 'index.html': '<h1>hi</h1>', 'app.js': 'run()' });
 
     // When it is read over the gateway and over a block source
-    const viaGateway = await readArchive(root.toString(), { gateway: true, fetch: createGatewayFetch(car) });
+    const viaGateway = await readArchive(root.toString(), { kind: 'gateway', fetch: createGatewayFetch(car) });
     const viaBitswap = await readArchive(root.toString(), {
+      kind: 'blockSource',
       blockSource: createBlockSource(new Map([[root.toString(), car]])),
     });
 
@@ -71,9 +74,61 @@ describe('readArchive', () => {
     const root = createSha256Cid(bytes, RAW);
 
     // When it is read over the gateway
-    const result = await readArchive(root.toString(), { gateway: true, fetch: createGatewayFetch(bytes) });
+    const result = await readArchive(root.toString(), { kind: 'gateway', fetch: createGatewayFetch(bytes) });
 
     // Then it reads as one file
     expect(result).toEqual({ type: 'single', content: bytes });
+  });
+
+  it('As an operator, I watch a measured read lose a block and it is counted as an error under its error name and logged', async () => {
+    // Given a block no peer holds
+    const logged: LogLevel[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: ({ level }) => {
+          logged.push(level);
+        },
+      }),
+    );
+    const missing = Object.assign(new Error('provider discovery exhausted'), { name: 'BitswapNotFoundError' });
+    const root = createSha256Cid(encodeText('<p>one</p>'), RAW);
+
+    // When a measured read asks for it
+    const read = readArchive(
+      root.toString(),
+      { kind: 'blockSource', blockSource: () => Promise.reject(missing) },
+      { measure: true },
+    );
+
+    // Then the read fails with it, counted under its name and logged as an error
+    await expect(read).rejects.toBe(missing);
+    expect(metrics.counted('content.bitswap_rpc')).toEqual([{ outcome: 'error', reason: 'BitswapNotFoundError' }]);
+    expect(logged).toContain('error');
+  });
+
+  it('As an operator, I watch the frame tear down a measured read and it is counted as aborted with no error logged', async () => {
+    // Given a block request the frame gave up as it went away
+    const logged: LogLevel[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: ({ level }) => {
+          logged.push(level);
+        },
+      }),
+    );
+    const teardown = new DOMException('bitswap-relay: aborted, the sandbox frame was torn down', 'AbortError');
+    const root = createSha256Cid(encodeText('<p>one</p>'), RAW);
+
+    // When a measured read asks for it
+    const read = readArchive(
+      root.toString(),
+      { kind: 'blockSource', blockSource: () => Promise.reject(teardown) },
+      { measure: true },
+    );
+
+    // Then the read fails with it, counted as aborted, and no error is logged
+    await expect(read).rejects.toBe(teardown);
+    expect(metrics.counted('content.bitswap_rpc')).toEqual([{ outcome: 'aborted', reason: 'AbortError' }]);
+    expect(logged).not.toContain('error');
   });
 });

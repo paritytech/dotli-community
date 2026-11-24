@@ -1,11 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Reads content by CID over a block source its caller checks or over an IPFS gateway, with no marks or metrics.
+// Reads content by CID over a block source its caller checks or over an IPFS gateway, and measures the read as a load
+// when its caller asks.
 
-import { formatDuration } from '@dotli/shared';
+import { formatDuration, getErrorName } from '@dotli/shared';
 import { CID } from 'multiformats/cid';
-import { createReporter } from '@dotli/metrics';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import { DAG_PB, RAW } from './codecs.js';
 import { fetchCarFromIpfs, fetchFromIpfs } from './fetchFromIpfs.js';
 import { getDefaultGateway } from './getDefaultGateway.js';
@@ -18,21 +19,46 @@ import { walkUnixFsDag } from './walkUnixFsDag.js';
 
 const report = createReporter({ flow: 'content' });
 
+/** One content read, by the method it is tagged with. */
+const CONTENT_FETCH = 'content.fetch';
+
+/**
+ * One `bitswap_v1_get` round trip. Tag `outcome` (`ok, error, aborted`) and, on a failure, `reason` (the error name).
+ */
+const contentBitswapRpcMetric = defineCount<'aborted' | 'error' | 'ok'>('content.bitswap_rpc');
+
+/** Blocks per content read, as a distribution: 1 for raw and N for dag-pb directories. */
+const CONTENT_BITSWAP_BLOCKS = 'content.bitswap_blocks';
+
+const CONTENT_GATEWAY = 'content.gateway';
+
+/** Bytes. */
+const CONTENT_SIZE = 'content.size';
+
 /** Where the blocks come from. */
-type Transport =
+export type ArchiveTransport =
   | {
+      kind: 'blockSource';
       /** A source the caller wrapped with the check that fits how far it trusts it. Read as it returns. */
       blockSource: BlockSource;
     }
   | {
-      gateway: true;
+      kind: 'gateway';
       /** The gateway path's network. The page's own `fetch` when not given. */
       fetch?: typeof fetch | undefined;
     };
 
+/** The `content_method` tag a measured read carries, by transport. */
+const CONTENT_METHODS = {
+  blockSource: 'bitswap-rpc',
+  gateway: 'gateway',
+} satisfies Record<ArchiveTransport['kind'], string>;
+
 type Params = {
   /** Receives progress text while the read runs. */
   onStatus?: StatusCallback | undefined;
+  /** Records the marks, timers, counts and logs a product load is measured by. Off when not given. */
+  measure?: boolean | undefined;
 };
 
 type ReadViaBitswapParams = {
@@ -58,10 +84,107 @@ type ReadViaGatewayParams = {
  * source is read as it returns its blocks, and every gateway block is hashed against the CID. Rejects when a block
  * cannot be fetched or fails a check, or when the CID's codec is neither raw nor dag-pb.
  */
-export async function readArchive(cid: string, transport: Transport, { onStatus }: Params = {}): Promise<FetchResult> {
-  return 'blockSource' in transport
-    ? readViaBitswap({ rootCid: CID.parse(cid), blockSource: transport.blockSource, onStatus })
-    : readViaGateway({ cid, fetch: transport.fetch ?? fetch, onStatus });
+export async function readArchive(
+  cid: string,
+  transport: ArchiveTransport,
+  { onStatus, measure = false }: Params = {},
+): Promise<FetchResult> {
+  if (!measure) {
+    return readOver(cid, transport, onStatus);
+  }
+
+  const method = CONTENT_METHODS[transport.kind];
+  performance.mark('dotli:fetch:start');
+  const stopFetch = m.timer(CONTENT_FETCH);
+  m.tag('content_method', method);
+
+  try {
+    const result = await readMeasuredOver(cid, transport, onStatus);
+    const bytes =
+      result.type === 'single'
+        ? result.content.length
+        : Object.values(result.files).reduce((sum, file) => sum + file.length, 0);
+    m.distribution(CONTENT_SIZE, bytes, { unit: 'byte' });
+    return result;
+  } catch (error) {
+    if (isAbort(error)) {
+      // A frame's teardown ends its load quietly, so the abort is a breadcrumb rather than an error.
+      report.log.event(`Fetch of ${cid} stopped as its frame went away`, { method });
+    } else {
+      report.log.error(`[dot.li fetch] ${method} failed for ${cid}:`, error);
+    }
+    throw error;
+  } finally {
+    performance.mark('dotli:fetch:end');
+    stopFetch();
+  }
+}
+
+async function readOver(
+  cid: string,
+  transport: ArchiveTransport,
+  onStatus: StatusCallback | undefined,
+): Promise<FetchResult> {
+  switch (transport.kind) {
+    case 'blockSource':
+      return readViaBitswap({ rootCid: CID.parse(cid), blockSource: transport.blockSource, onStatus });
+    case 'gateway':
+      return readViaGateway({ cid, fetch: transport.fetch ?? fetch, onStatus });
+  }
+}
+
+/** Reads as `readOver` does, timing each block of a block source and the whole of a gateway read. */
+async function readMeasuredOver(
+  cid: string,
+  transport: ArchiveTransport,
+  onStatus: StatusCallback | undefined,
+): Promise<FetchResult> {
+  switch (transport.kind) {
+    case 'blockSource': {
+      const rootCid = CID.parse(cid);
+      report.log.event(`Fetching ${cid} via bitswap`, {
+        codec: `0x${rootCid.code.toString(16)}`,
+        hash: `0x${rootCid.multihash.code.toString(16)}`,
+        version: rootCid.version,
+      });
+      let blockCount = 0;
+      const result = await readViaBitswap({
+        rootCid,
+        blockSource: blockCid => {
+          blockCount += 1;
+          return traceBlock(blockCid, transport.blockSource);
+        },
+        onStatus,
+      });
+      m.distribution(CONTENT_BITSWAP_BLOCKS, blockCount, { unit: 'none' });
+      return result;
+    }
+    case 'gateway': {
+      const stopGateway = m.timer(CONTENT_GATEWAY);
+      try {
+        return await readOver(cid, transport, onStatus);
+      } finally {
+        stopGateway();
+      }
+    }
+  }
+}
+
+async function traceBlock(cid: CID, blockSource: BlockSource): Promise<Uint8Array> {
+  const stopRpc = m.timer(contentBitswapRpcMetric.name);
+  try {
+    const bytes = await blockSource(cid);
+    contentBitswapRpcMetric.count({ outcome: 'ok' });
+    return bytes;
+  } catch (error) {
+    contentBitswapRpcMetric.count({
+      outcome: isAbort(error) ? 'aborted' : 'error',
+      reason: getErrorName(error) ?? 'unknown',
+    });
+    throw error;
+  } finally {
+    stopRpc();
+  }
 }
 
 async function readViaBitswap({ rootCid, blockSource, onStatus }: ReadViaBitswapParams): Promise<FetchResult> {
@@ -140,4 +263,9 @@ function toFetchResult(files: ArchiveFiles): FetchResult {
   }
   report.log.event(`Archive has ${String(keys.length)} files`, { files: keys.length });
   return { type: 'archive', files };
+}
+
+/** A frame's teardown rejects its fetches by the platform's abort name, which is not a failure. */
+function isAbort(error: unknown): boolean {
+  return getErrorName(error) === 'AbortError';
 }

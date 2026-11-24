@@ -18,20 +18,20 @@ Fetches a product's files by CID and proves they match the CID. No gateway or pe
 
 ### `@dotli/content`
 
-| Export                           | What it does                                                                |
-| -------------------------------- | --------------------------------------------------------------------------- |
-| `readArchive`                    | Reads a CID's files over a block source or the gateway.                     |
-| `fetchArchive`                   | A product load's read, with load metrics and progress text.                 |
-| `fetchFromIpfs`                  | Fetches one raw block from a gateway, unverified.                           |
-| `parseIpfsResponse`              | Turns a gateway response into `ArchiveFiles`.                               |
-| `packArchive`                    | Packs `ArchiveFiles` into one buffer plus an offset index.                  |
-| `ArchiveFiles`, `FetchResult`    | A path to bytes map, and a fetch's result.                                  |
-| `CONTENT_ERRORS`                 | Names of the verification and gateway errors. A wrong password has its own. |
-| `isEncrypted`, `decryptContent`  | Detect and decrypt encrypted content.                                       |
-| `createCidFromHash`              | The raw-codec CIDv1 of a hex blake2b-256 hash.                              |
-| `loadVerify`                     | Loads `assertBlockMatchesCid` and `isBlockMatchingCid` on first use.        |
-| `createVerifyingBlockSource`     | Wraps a block source so every block it returns is hashed against its CID.   |
-| `createRootVerifyingBlockSource` | Wraps a block source so only the root block is hashed.                      |
+| Export                           | What it does                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `readArchive`                    | Reads a CID's files over a block source or the gateway, measured on request. |
+| `ArchiveTransport`               | Where a read's blocks come from: a block source or the gateway.              |
+| `fetchFromIpfs`                  | Fetches one raw block from a gateway, unverified.                            |
+| `parseIpfsResponse`              | Turns a gateway response into `ArchiveFiles`.                                |
+| `packArchive`                    | Packs `ArchiveFiles` into one buffer plus an offset index.                   |
+| `ArchiveFiles`, `FetchResult`    | A path to bytes map, and a fetch's result.                                   |
+| `CONTENT_ERRORS`                 | Names of the verification and gateway errors. A wrong password has its own.  |
+| `isEncrypted`, `decryptContent`  | Detect and decrypt encrypted content.                                        |
+| `createCidFromHash`              | The raw-codec CIDv1 of a hex blake2b-256 hash.                               |
+| `loadVerify`                     | Loads `assertBlockMatchesCid` and `isBlockMatchingCid` on first use.         |
+| `createVerifyingBlockSource`     | Wraps a block source so every block it returns is hashed against its CID.    |
+| `createRootVerifyingBlockSource` | Wraps a block source so only the root block is hashed.                       |
 
 ## Design
 
@@ -43,6 +43,8 @@ flowchart LR
 ```
 
 - **One source per fetch:** gateway or Bitswap, never a fallback. Bitswap is passed in as a block-fetching function.
+- **Measuring:** a read records no metrics unless its caller asks. A product load asks, and its read then records the
+  timers, marks and distributions that measure the load. Its failure log tells a frame's teardown from a real failure.
 - **Gateway:** the network is passed in, the page's own by default. A stalled, oversized or unreachable gateway fails
   with a named error, so the visitor can retry.
 - **Who hashes:** the read checks every gateway block, since the gateway is untrusted. It does not check a block

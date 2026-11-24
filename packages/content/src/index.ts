@@ -4,11 +4,11 @@
 export { createCidFromHash } from './createCidFromHash.js';
 export { decryptContent, isEncrypted } from './decrypt.js';
 export { CONTENT_ERRORS } from './errors.js';
-export { fetchArchive } from './fetchArchive.js';
 export { fetchFromIpfs } from './fetchFromIpfs.js';
 export { loadVerify } from './lazy.js';
 export { packArchive } from './packArchive.js';
 export { parseIpfsResponse } from './parseIpfsResponse.js';
+export type { ArchiveTransport } from './readArchive.js';
 export { readArchive } from './readArchive.js';
 export type { ArchiveFiles, FetchResult } from './types.js';
 export { createRootVerifyingBlockSource, createVerifyingBlockSource } from './verify.js';

@@ -3,13 +3,25 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 
-import { CONTENT_ERRORS, type ArchiveFiles, type FetchResult } from '@dotli/content';
+import {
+  CONTENT_ERRORS,
+  readArchive,
+  type ArchiveFiles,
+  type ArchiveTransport,
+  type FetchResult,
+} from '@dotli/content';
 import { bindLogSink, setErrorName } from '@dotli/shared';
+import { CID as ContentId } from 'multiformats/cid';
+import { sha256 } from 'multiformats/hashes/sha2';
 
 import type { HostMessages } from '../hostLink/createHostMessages.js';
 import { loadProduct, type LoadProductDeps, type SandboxParams } from './loadProduct.js';
 
-type FetchArchive = LoadProductDeps['fetchArchive'];
+/** What one read was asked, its progress callback left out. */
+type Read = { transport: ArchiveTransport } & Omit<
+  NonNullable<Parameters<LoadProductDeps['readArchive']>[2]>,
+  'onStatus'
+>;
 
 /** Deps a case replaces. A host message it replaces leaves the others recording. */
 type Overrides = Partial<Omit<LoadProductDeps, 'hostMessages'>> & {
@@ -20,8 +32,8 @@ type Harness = {
   deps: LoadProductDeps;
   /** What the load did, in order. */
   events: string[];
-  /** The options each `fetchArchive` call got. */
-  fetches: Parameters<FetchArchive>[1][];
+  /** What each read was asked. */
+  fetches: Read[];
   workers: { waitForFreshController: boolean }[];
   written: string[];
   stored: ArchiveFiles[];
@@ -48,10 +60,15 @@ function encode(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
+/** The raw-codec CID of `bytes`, as the relay is asked for it. */
+async function createRawCid(bytes: Uint8Array): Promise<string> {
+  return ContentId.createV1(0x55, await sha256.digest(bytes)).toString();
+}
+
 /** A sandbox page whose network, worker and window are fakes. `fetched` is what the fetch gives back or throws. */
 function createHarness(fetched: FetchResult | Error, overrides: Overrides = {}): Harness {
   const events: string[] = [];
-  const fetches: Parameters<FetchArchive>[1][] = [];
+  const fetches: Read[] = [];
   const workers: { waitForFreshController: boolean }[] = [];
   const written: string[] = [];
   const stored: ArchiveFiles[] = [];
@@ -79,9 +96,9 @@ function createHarness(fetched: FetchResult | Error, overrides: Overrides = {}):
       workers.push(options);
       return Promise.resolve(true);
     },
-    fetchArchive(_cid, params) {
-      const { onStatus: _onStatus, ...options } = params;
-      fetches.push(options);
+    readArchive(_cid, transport, options = {}) {
+      const { onStatus: _onStatus, ...rest } = options;
+      fetches.push({ transport, ...rest });
       return fetched instanceof Error ? Promise.reject(fetched) : Promise.resolve(fetched);
     },
     blockSource: null,
@@ -112,7 +129,7 @@ describe('loadProduct', () => {
 
     // Then the page is written after the host hears it loaded, and the write is reported
     expect(outcome).toEqual({ outcome: 'loaded' });
-    expect(page.fetches).toEqual([{ bitswapBlockSource: null }]);
+    expect(page.fetches).toEqual([{ transport: { kind: 'gateway' }, measure: true }]);
     expect(page.written).toEqual(['<h1>hi</h1>']);
     expect(page.events.slice(-2)).toEqual(['loaded', 'write']);
     expect(page.reports).toEqual([
@@ -120,16 +137,48 @@ describe('loadProduct', () => {
     ]);
   });
 
-  it("As a visitor on a light client backend, I open the product and its content is fetched through the host's block relay", async () => {
-    // Given a light client backend whose block source is the relay
-    const page = createHarness({ type: 'single', content: encode('<h1>hi</h1>') }, { blockSource: BLOCK_SOURCE });
+  it("As a visitor on a light client backend, I open the product and its content is read through the host's block relay", async () => {
+    // Given a light client backend whose relay holds the page's block
+    const bytes = encode('<h1>hi</h1>');
+    const root = await createRawCid(bytes);
+    const asked: string[] = [];
+    const page = createHarness(new Error('the real read runs'), {
+      readArchive,
+      blockSource: cid => {
+        asked.push(cid);
+        return Promise.resolve(bytes);
+      },
+    });
 
     // When the first attempt loads it
-    const outcome = await loadProduct({ params: createParams({ backend: 'smoldot-direct' }), attempt: 1 }, page.deps);
+    const outcome = await loadProduct(
+      { params: createParams({ cid: root, backend: 'smoldot-direct' }), attempt: 1 },
+      page.deps,
+    );
 
-    // Then the fetch reads its blocks from the relay
+    // Then the block came from the relay and the page is written
     expect(outcome).toEqual({ outcome: 'loaded' });
-    expect(page.fetches).toEqual([{ bitswapBlockSource: BLOCK_SOURCE }]);
+    expect(asked).toEqual([root]);
+    expect(page.written).toEqual(['<h1>hi</h1>']);
+  });
+
+  it("As a visitor on a light client backend, I open a product whose root block the host's relay altered and see it fail at the verify step", async () => {
+    // Given a relay that answers the root with other bytes
+    const root = await createRawCid(encode('<h1>hi</h1>'));
+    const page = createHarness(new Error('the real read runs'), {
+      readArchive,
+      blockSource: () => Promise.resolve(encode('<h1>altered</h1>')),
+    });
+
+    // When the first attempt loads it
+    const outcome = await loadProduct(
+      { params: createParams({ cid: root, backend: 'smoldot-direct' }), attempt: 1 },
+      page.deps,
+    );
+
+    // Then the load fails at the verify step, and nothing is written
+    expect(outcome).toMatchObject({ outcome: 'failed', step: 'verify' });
+    expect(page.written).toEqual([]);
   });
 
   it('As an operator, I read the log of a load and see it start before its fetch, and the fetch end before the write', async () => {

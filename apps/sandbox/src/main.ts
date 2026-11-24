@@ -8,7 +8,7 @@
 import './boot/boot.js';
 import '@dotli/ui/styles.css';
 import { BASE_DOMAIN, getActiveServicesConfig, hasLightClient, setActiveNetwork } from '@dotli/config';
-import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
+import { decryptContent, isEncrypted, parseIpfsResponse, readArchive } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
 import { getEndpointHost } from '@dotli/shared';
 
@@ -137,7 +137,7 @@ runSandbox(
           await registerAppServiceWorker(appWorker, options);
           return (appWorker.container?.controller ?? null) !== null;
         },
-        fetchArchive,
+        readArchive,
         blockSource,
         decrypt: decryptIfNeeded,
         storeArchive: files =>

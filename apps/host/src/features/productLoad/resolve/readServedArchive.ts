@@ -22,8 +22,8 @@ export async function readServedArchive(
   const result = await readArchive(
     cid,
     hasLightClient(getBackend())
-      ? { blockSource: createVerifyingBlockSource(blockCid => readBlock(blockCid.toString())) }
-      : { gateway: true },
+      ? { kind: 'blockSource', blockSource: createVerifyingBlockSource(blockCid => readBlock(blockCid.toString())) }
+      : { kind: 'gateway' },
   );
   // A single file is the page the sandbox serves as index.html.
   return result.type === 'single' ? { 'index.html': result.content } : result.files;
