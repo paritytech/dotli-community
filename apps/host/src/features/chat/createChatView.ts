@@ -38,7 +38,7 @@ export type ChatChange =
       productId: string;
       roomId: string;
       author: 'product';
-      /** Whether `roomId` is one of the product's rooms, rather than a conversation no list shows, such as a bot's. */
+      /** Whether `roomId` is one of the product's stored rooms. A bot's conversation is not. */
       inRoom: boolean;
     };
 
