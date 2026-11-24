@@ -202,14 +202,19 @@ function beginFollowing({ chat }: Required<Params>): () => void {
   followProduct();
   // The store's chunk stays off the boot path, so following the chat starts once it loads.
   const following = new AbortController();
-  let loaded: ChatSource | null = null;
   chat().then(
     store => {
       if (following.signal.aborted) {
         return;
       }
-      loaded = store;
       following.signal.addEventListener('abort', store.subscribe(followChat));
+      // Listens from once the store loads, so a product load is committed to the panel before its rooms are checked.
+      following.signal.addEventListener(
+        'abort',
+        productState.store.listen(() => {
+          checkContacts(store);
+        }),
+      );
       checkContacts(store);
     },
     (error: unknown) => {
@@ -218,12 +223,7 @@ function beginFollowing({ chat }: Required<Params>): () => void {
   );
   const unsubscribes = [
     authState.loggedInStore.listen(followSession),
-    productState.store.listen(() => {
-      followProduct();
-      if (loaded !== null) {
-        checkContacts(loaded);
-      }
-    }),
+    productState.store.listen(followProduct),
     () => {
       following.abort();
     },
