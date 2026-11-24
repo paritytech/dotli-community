@@ -246,5 +246,21 @@ above the linter: semantics, data flow and naming.
 - **minor** (AGENTS.md § Code style, Tests:): A test, story step or comment that checks or says removed behaviour is
   gone.
 
+## Stories
+
+- **major** (docs/code/stories.md § Which components get stories): Stories of a component that only fills in another
+  component's props, such as a notice built for one case or one button of a bar.
+- **major** (docs/code/stories.md § When a story has a play): A play with no V, K1 or K2 reason, or one that asserts copy
+  in any form, such as a text match or an accessible name compared to a string.
+- **minor** (docs/code/stories.md § Which states a file shows): A story that shows the same state as another in its
+  file, only another copy, or one value of a prop that Controls shows with no change of look or behaviour worth naming.
+- **minor** (docs/code/stories.md § How stories are built): A `render` in each story where a decorator on `meta` would
+  do, or a story that restates args another story or `meta` already holds instead of building on them.
+- **minor** (docs/code/stories.md § How stories are built): A parent's story file that writes its own copy of a child's
+  fixture instead of importing the child's story args, or a `beforeEach` fixture for state the component takes as a
+  prop.
+- **minor** (docs/code/stories.md § When a story has a play): A play that checks two behaviours, or finds an element by
+  test id where a role and name would find it.
+
 When you cite a rule, quote `file:line`, state it in one line with its doc and section, and suggest the fix in one or
 two sentences. Group findings by theme and end with the blocking, major and minor counts.
