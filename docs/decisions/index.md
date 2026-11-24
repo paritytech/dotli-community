@@ -182,5 +182,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [surface-placed-against-its-trigger](surface-placed-against-its-trigger.md): a shared surface that opens from a
   trigger, such as a dropdown or a tooltip card, places itself in its own way or must line up with the edge of the bar
   its trigger sits in, and the question is how a host places it or what carries the bar's edge into the component.
+- [shared-component-text-prop-needs-rich-content](shared-component-text-prop-needs-rich-content.md): a shared
+  component draws a string prop inside its own chrome, such as a drawer's title beside its close button, and one
+  consumer needs markup there that changes with its state, so the question is whether to add a second prop or widen
+  the one it has.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.

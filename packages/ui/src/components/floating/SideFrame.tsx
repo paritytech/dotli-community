@@ -1,16 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { onCleanup } from 'solid-js';
+import { children, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '../createDrags.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { getCloseLabel } from './closeLabel.js';
 import { dragSheet } from './dragSheet.js';
 import s from './SideFrame.module.css';
 
 export type SideFrameProps = {
-  title: string;
+  /** Text or markup a heading may hold. The close button's name ends with it when it is text. */
+  title: JSX.Element;
+  /** On the heading, so the layer can be named by it. */
+  titleId?: string | undefined;
   /** On the close button or a swipe. */
   onDismiss: () => void;
   /** Prefix for `-side-head`, `-side-title`, `-side-close`. */
@@ -26,6 +30,8 @@ export function SideFrame(props: SideFrameProps): JSX.Element {
   let head: HTMLDivElement | undefined;
   const drags = createDrags();
   onCleanup(drags.stopAll);
+  // Read twice, by the heading and the close label, so markup is built once.
+  const title = children(() => props.title);
 
   function handlePointerDown(down: PointerEvent): void {
     if (head === undefined || panel === undefined || down.button !== 0) {
@@ -56,13 +62,13 @@ export function SideFrame(props: SideFrameProps): JSX.Element {
         data-testid={`${props.testId}-side-head`}
         onPointerDown={handlePointerDown}
       >
-        <h2 class={s['title']} data-testid={`${props.testId}-side-title`}>
-          {props.title}
+        <h2 class={s['title']} id={props.titleId} data-testid={`${props.testId}-side-title`}>
+          {title()}
         </h2>
         <IconButton
           size="sm"
           testId={`${props.testId}-side-close`}
-          aria-label={`Close ${props.title}`}
+          aria-label={getCloseLabel(title())}
           onClick={() => {
             props.onDismiss();
           }}

@@ -44,8 +44,12 @@
   border-bottom: 1px solid var(--chrome-line);
   touch-action: none;
 }
+/* A row, so markup in the title lines up beside its text. */
 .title {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   min-width: 0;
   margin: 0;
   color: var(--chrome-text);

@@ -1,19 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { onCleanup, Show, type Component } from 'solid-js';
+import { children, onCleanup, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '../createDrags.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { IconTile } from '../primitives/IconTile.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { getCloseLabel } from './closeLabel.js';
 import { InSheet, type Sheet } from './inSheet.js';
 import { dragSheet } from './dragSheet.js';
 import s from './SheetFrame.module.css';
 
 export type SheetFrameProps = {
-  title: string;
+  /** Text or markup a heading may hold. The default close label ends with it when it is text. */
+  title: JSX.Element;
+  /** On the heading, so the layer can be named by it. */
+  titleId?: string | undefined;
   /** Drawn bare before the title. */
   icon?: Component<IconProps> | undefined;
   onDismiss: () => void;
@@ -52,6 +56,8 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
   // takes no room.
   const aside = (<div class={s['aside']} />) as HTMLDivElement;
   const place: Sheet = { aside };
+  // Read twice, by the heading and the close label, so markup is built once.
+  const title = children(() => props.title);
 
   function handlePointerDown(down: PointerEvent): void {
     if (head === undefined || sheet === undefined || down.button !== 0) {
@@ -85,13 +91,13 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         onPointerDown={handlePointerDown}
       >
         <div class={s['grabber']} aria-hidden="true" />
-        <Heading title={props.title} icon={props.icon} testId={props.testId} />
+        <Heading title={title()} titleId={props.titleId} icon={props.icon} testId={props.testId} />
         {aside}
         <Show when={props.closable !== false}>
           <IconButton
             size="sm"
             testId={`${props.testId}-sheet-close`}
-            aria-label={props.closeLabel ?? `Close ${props.title}`}
+            aria-label={props.closeLabel ?? getCloseLabel(title())}
             onClick={() => {
               props.onDismiss();
             }}
@@ -116,13 +122,15 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
 }
 
 /** The head's title, led by its icon when it has one. */
-function Heading(props: { title: string; icon: Component<IconProps> | undefined; testId: string }): JSX.Element {
+function Heading(
+  props: Pick<SheetFrameProps, 'title' | 'titleId' | 'testId'> & { icon: Component<IconProps> | undefined },
+): JSX.Element {
   return (
     <div class={s['heading']}>
       <Show when={props.icon}>
         {icon => <IconTile icon={icon()} class={s['icon']} testId={`${props.testId}-sheet-icon`} />}
       </Show>
-      <h2 class={s['title']} data-testid={`${props.testId}-sheet-title`}>
+      <h2 class={s['title']} id={props.titleId} data-testid={`${props.testId}-sheet-title`}>
         {props.title}
       </h2>
     </div>

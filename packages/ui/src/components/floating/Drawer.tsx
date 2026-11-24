@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { children, createEffect, createSignal, isHydrating, onSettled, Show } from 'solid-js';
+import { children, createEffect, createSignal, createUniqueId, isHydrating, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
 import { createPresence } from './createPresence.js';
@@ -14,8 +14,8 @@ export type DrawerProps = {
   open: boolean;
   /** Escape, a press on the scrim, the close button or a swipe toward the edge. */
   onOpenChange: (open: boolean) => void;
-  /** The head's title and the drawer's name. */
-  title: string;
+  /** Drawn in the head's heading, which names the drawer, so markup in it keeps to what a heading may hold. */
+  title: JSX.Element;
   /** A trigger whose `aria-controls` names it closes the phone sheet on a press, rather than handing the sheet off. */
   id?: string | undefined;
   /** On the panel or sheet, with `-backdrop`, `-scrim`, `-side-*` and `-sheet-*` variants. */
@@ -69,6 +69,9 @@ export function Drawer(props: DrawerProps): JSX.Element {
   const dismiss = (): void => {
     props.onOpenChange(false);
   };
+  // Built once, so markup in the title moves between the forms as the content does.
+  const title = children(() => props.title);
+  const titleId = createUniqueId();
 
   return (
     <ModalLayer
@@ -76,7 +79,7 @@ export function Drawer(props: DrawerProps): JSX.Element {
       onDismiss={dismiss}
       id={props.id}
       testId={props.testId}
-      label={props.title}
+      labelledBy={titleId}
       layout={phone() ? 'sheet' : 'side'}
       ref={element => {
         frame = element;
@@ -85,12 +88,12 @@ export function Drawer(props: DrawerProps): JSX.Element {
       <Show
         when={phone()}
         fallback={
-          <SideFrame title={props.title} onDismiss={dismiss} testId={props.testId} open={props.open}>
+          <SideFrame title={title()} titleId={titleId} onDismiss={dismiss} testId={props.testId} open={props.open}>
             {content()}
           </SideFrame>
         }
       >
-        <SheetFrame title={props.title} onDismiss={dismiss} testId={props.testId} open={props.open}>
+        <SheetFrame title={title()} titleId={titleId} onDismiss={dismiss} testId={props.testId} open={props.open}>
           {content()}
         </SheetFrame>
       </Show>

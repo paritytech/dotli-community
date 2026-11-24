@@ -4,7 +4,9 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { ChevronLeftIcon } from '../icons/ChevronLeftIcon.js';
 import { Button } from '../primitives/Button.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { Drawer, type DrawerProps } from './Drawer.js';
 
 // The drawer is portalled into the body, outside the story's canvas.
@@ -36,6 +38,21 @@ export const PhoneSheet: Story = {
     await step('Then it reports closed once', async () => {
       await expect(args.onOpenChange).toHaveBeenCalledOnce();
       await expect(args.onOpenChange).toHaveBeenCalledWith(false);
+    });
+  },
+};
+
+/** As a dotli user, I press a back button the drawer's title holds, and it goes back while the drawer stays open. */
+export const MarkupTitle: Story = {
+  globals: DESKTOP,
+  args: { onBack: fn() },
+  play: async ({ args, userEvent, step }) => {
+    await step('When I press the back button in the head', async () => {
+      await userEvent.click(await body.findByRole('button', { name: 'Back' }));
+    });
+    await step('Then it reports back once and no close', async () => {
+      await expect(args.onBack).toHaveBeenCalledOnce();
+      await expect(args.onOpenChange).not.toHaveBeenCalled();
     });
   },
 };
@@ -166,14 +183,29 @@ export const SwitchesFormKeepingContent: Story = {
   },
 };
 
-/** The drawer with the button that opens it, owning its open state and passing each change on. */
-function OwnedDrawer(props: Omit<DrawerProps, 'children'>) {
+/**
+ * The drawer with the button that opens it, owning its open state and passing each change on. With `onBack` its title
+ * is markup, a back button before the text.
+ */
+function OwnedDrawer(props: Omit<DrawerProps, 'children' | 'title'> & { title: string; onBack?: () => void }) {
   const [open, setOpen] = createSignal(() => props.open);
   return (
     <>
       <Button onClick={() => setOpen(true)}>Open chat</Button>
       <Drawer
         {...props}
+        title={
+          props.onBack === undefined ? (
+            props.title
+          ) : (
+            <>
+              <IconButton size="sm" aria-label="Back" onClick={() => props.onBack?.()}>
+                <ChevronLeftIcon />
+              </IconButton>
+              {props.title}
+            </>
+          )
+        }
         open={open()}
         onOpenChange={next => {
           setOpen(next);
