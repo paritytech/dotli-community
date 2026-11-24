@@ -3,6 +3,7 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn } from 'storybook/test';
+import { ChatSurface } from '../../testing/stories/chatFrames.js';
 import { ContactRow } from './ContactRow.js';
 
 const NOW = Date.UTC(2026, 10, 23, 12);
@@ -24,9 +25,11 @@ const meta = {
     onOpen: fn(),
   },
   render: args => (
-    <ul style={{ 'list-style': 'none', margin: '0', padding: '0', width: '360px', 'max-width': '100%' }}>
-      <ContactRow {...args} />
-    </ul>
+    <ChatSurface>
+      <ul style={{ 'list-style': 'none', margin: '0', padding: '0' }}>
+        <ContactRow {...args} />
+      </ul>
+    </ChatSurface>
   ),
 } satisfies Meta<typeof ContactRow>;
 
@@ -34,7 +37,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a user, I see a room with nothing unread and when its last message came. */
-export const Contact: Story = {};
+export const Room: Story = {};
 
 /** As a user, I see a room that has had no message yet, with no time. */
 export const NoMessageYet: Story = {
@@ -59,12 +62,4 @@ export const UnreadBadge: Story = {
       await expect(canvas.getByRole('img', { name: '12 unread messages' })).toBeVisible();
     });
   },
-};
-
-/** As a phone user, I see a larger row with an unread badge. */
-export const Phone: Story = {
-  // A docs iframe renders at the column's width, never the phone's.
-  tags: ['!autodocs'],
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  args: { name: 'Market orders', unread: 2, lastMessageAt: NOW - 2 * MINUTE },
 };

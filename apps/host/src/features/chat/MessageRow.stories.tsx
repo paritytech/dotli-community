@@ -13,6 +13,7 @@ import {
 } from '../../testing/stories/customMessageTrees.js';
 import type { ChatRenderSink } from './chat.js';
 import type { ChatMessageRecord } from './createChatStore.js';
+import { ChatSurface } from '../../testing/stories/chatFrames.js';
 import { MessageRow } from './MessageRow.js';
 
 const NOW = 1_700_000_000_000;
@@ -92,14 +93,53 @@ const meta = {
     onActionError: fn(),
   },
   render: args => (
-    <div style={{ display: 'flex', 'flex-direction': 'column', 'max-width': '380px' }}>
+    <ChatSurface>
       <MessageRow {...args} />
-    </div>
+    </ChatSurface>
   ),
 } satisfies Meta<typeof MessageRow>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+/** As a reader, I see a custom message loading in its card, before its time. */
+export const CustomLoading: Story = {
+  tags: ['!autodocs'],
+  args: { record: CUSTOM },
+};
+
+/** As a reader, I see a custom message the app could not render as a neutral line in its card. */
+export const CustomRenderFailed: Story = {
+  tags: ['!autodocs'],
+  args: {
+    record: CUSTOM,
+    chat: chatRendering(sink => {
+      sink.onError?.(new Error('render failed'));
+    }),
+  },
+};
+
+/** As a reader, I see an app's delivery time picker composed of its nodes, the first slot chosen. */
+export const DeliveryTimePicker: Story = {
+  tags: ['!autodocs'],
+  args: {
+    record: custom('delivery-time'),
+    chat: chatRendering(sink => {
+      sink.onUpdate(DELIVERY_TIME_PICKER);
+    }),
+  },
+};
+
+/** As a reader, I see an app's payment request with its amount, the amount's parts, and Decline beside Pay. */
+export const PaymentRequest: Story = {
+  tags: ['!autodocs'],
+  args: {
+    record: custom('payment'),
+    chat: chatRendering(sink => {
+      sink.onUpdate(PAYMENT_REQUEST);
+    }),
+  },
+};
 
 /** As a user, I press an action button and it reaches the app, or I am told it could not. */
 export const ActionButtonsReachApp: Story = {
@@ -135,23 +175,6 @@ export const ActionButtonsReachApp: Story = {
   },
 };
 
-/** As a reader, I see a custom message loading in its card, before its time. */
-export const CustomMessageBeforeTimestamp: Story = {
-  tags: ['!autodocs'],
-  args: { record: CUSTOM },
-};
-
-/** As a reader, I see a custom message the app could not render as a neutral line in its card. */
-export const CustomRenderFailed: Story = {
-  tags: ['!autodocs'],
-  args: {
-    record: CUSTOM,
-    chat: chatRendering(sink => {
-      sink.onError?.(new Error('render failed'));
-    }),
-  },
-};
-
 /** As a user, I tap a custom message's button when the app cannot be reached and am told so inside the message. */
 export const CustomTapUnreachable: Story = {
   tags: ['!autodocs'],
@@ -173,28 +196,6 @@ export const CustomTapUnreachable: Story = {
       await waitFor(() => expect(within(card).getByRole('alert')).toHaveTextContent('The app could not be reached.'));
       await expect(within(card).getByRole('button', { name: 'Confirm' })).toBeEnabled();
     });
-  },
-};
-
-/** As a reader, I see an app's delivery time picker composed of its nodes, the first slot chosen. */
-export const DeliveryTimePicker: Story = {
-  tags: ['!autodocs'],
-  args: {
-    record: custom('delivery-time'),
-    chat: chatRendering(sink => {
-      sink.onUpdate(DELIVERY_TIME_PICKER);
-    }),
-  },
-};
-
-/** As a reader, I see an app's payment request with its amount, the amount's parts, and Decline beside Pay. */
-export const PaymentRequest: Story = {
-  tags: ['!autodocs'],
-  args: {
-    record: custom('payment'),
-    chat: chatRendering(sink => {
-      sink.onUpdate(PAYMENT_REQUEST);
-    }),
   },
 };
 

@@ -5,9 +5,8 @@ import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn } from 'storybook/test';
+import { ChatSurface } from '../../testing/stories/chatFrames.js';
 import { InlineActionButton, type InlineActionButtonVariant } from './InlineActionButton.js';
-
-const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
 const VARIANTS: { variant: InlineActionButtonVariant; label: string }[] = [
   { variant: 'primary', label: 'Confirm' },
@@ -15,33 +14,35 @@ const VARIANTS: { variant: InlineActionButtonVariant; label: string }[] = [
   { variant: 'text', label: 'Details' },
 ];
 
-/** Each variant at rest, disabled and loading, one row per variant. */
+/** Each variant at rest, disabled and loading, one row per variant, on the chat panel's surface. */
 function States(): JSX.Element {
   return (
-    <div
-      style={{
-        display: 'grid',
-        'grid-template-columns': 'repeat(3, minmax(0, 160px))',
-        gap: 'var(--sp-3)',
-        'align-items': 'center',
-      }}
-    >
-      <For each={VARIANTS}>
-        {({ variant, label }) => (
-          <>
-            <InlineActionButton variant={variant} onClick={fn()}>
-              {label}
-            </InlineActionButton>
-            <InlineActionButton variant={variant} disabled onClick={fn()}>
-              {label}
-            </InlineActionButton>
-            <InlineActionButton variant={variant} loading onClick={fn()}>
-              {label}
-            </InlineActionButton>
-          </>
-        )}
-      </For>
-    </div>
+    <ChatSurface>
+      <div
+        style={{
+          display: 'grid',
+          'grid-template-columns': 'repeat(3, minmax(0, 1fr))',
+          gap: 'var(--sp-2)',
+          'align-items': 'center',
+        }}
+      >
+        <For each={VARIANTS}>
+          {({ variant, label }) => (
+            <>
+              <InlineActionButton variant={variant} onClick={fn()}>
+                {label}
+              </InlineActionButton>
+              <InlineActionButton variant={variant} disabled onClick={fn()}>
+                {label}
+              </InlineActionButton>
+              <InlineActionButton variant={variant} loading onClick={fn()}>
+                {label}
+              </InlineActionButton>
+            </>
+          )}
+        </For>
+      </div>
+    </ChatSurface>
   );
 }
 
@@ -52,9 +53,9 @@ const meta = {
   args: { variant: 'primary', onClick: fn(), children: 'Confirm' },
   argTypes: { variant: { control: 'inline-radio', options: ['primary', 'secondary', 'text'] } },
   render: args => (
-    <div style={{ 'max-width': '200px' }}>
+    <ChatSurface>
       <InlineActionButton {...args} />
-    </div>
+    </ChatSurface>
   ),
 } satisfies Meta<typeof InlineActionButton>;
 
@@ -63,13 +64,6 @@ type Story = StoryObj<typeof meta>;
 
 /** As a user, I see each inline action button variant at rest, disabled and loading. */
 export const VariantsAndStates: Story = {
-  render: () => <States />,
-};
-
-/** As a phone user, I see the inline action buttons at the phone's touch size. */
-export const Phone: Story = {
-  tags: ['!autodocs'],
-  globals: PHONE,
   render: () => <States />,
 };
 

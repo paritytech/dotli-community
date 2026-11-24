@@ -5,11 +5,11 @@ import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, within } from 'storybook/test';
+import { ChatSurface } from '../../testing/stories/chatFrames.js';
 import type { ChatMessageRecord } from './createChatStore.js';
 import { MessageBubble } from './MessageBubble.js';
 
 const NOW = 1_700_000_000_000;
-const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
 type Author = ChatMessageRecord['author'];
 
@@ -38,19 +38,12 @@ function actions(prompt: string, layout: 'Column' | 'Grid', titles: string[]): u
 
 /** The page's custom body, standing in for the product's live render. */
 function customBody() {
-  return <div data-testid="chat-custom-root">poll</div>;
+  return <div data-testid="chat-custom-root">The app's own content</div>;
 }
 
-/** A conversation's column of messages, as wide as the panel. */
+/** A conversation's column of messages, on the chat panel's surface. */
 function Thread(props: { children: JSX.Element }): JSX.Element {
-  return (
-    <div
-      data-testid="thread"
-      style={{ display: 'flex', 'flex-direction': 'column', gap: 'var(--sp-hair)', 'max-width': '380px' }}
-    >
-      {props.children}
-    </div>
-  );
+  return <ChatSurface>{props.children}</ChatSurface>;
 }
 
 /** A run of one author's messages, the last ending the run. */
@@ -103,6 +96,45 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a reader, I see an app's run of messages close together, the last with its tail and time. */
+export const ProductRun: Story = {
+  render: () => (
+    <Thread>
+      <Run author="product" contents={PRODUCT_RUN} />
+    </Thread>
+  ),
+};
+
+/** As a reader, I see my own run of messages at the end, in my own tint. */
+export const OwnRun: Story = {
+  render: () => (
+    <Thread>
+      <Run author="user" contents={OWN_RUN} />
+    </Thread>
+  ),
+};
+
+/** As a reader, I see an actions message's buttons stacked in a column. */
+export const ActionsColumn: Story = {
+  args: {
+    record: record(
+      actions('How was your last order?', 'Column', ['Great', 'Something was missing', 'Talk to support']),
+    ),
+  },
+};
+
+/** As a reader, I see an actions message's buttons in a grid. */
+export const ActionsGrid: Story = {
+  args: { record: record(actions('Add a drink?', 'Grid', ['Water', 'Lemonade', 'Cola', 'No, thanks'])) },
+};
+
+/** As a reader, I see a custom message as the page's custom body in a card, before its time. */
+export const CustomCard: Story = {
+  args: {
+    record: record({ tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }),
+  },
+};
+
 /** As a reader, I see a product message as text, and the exact time on hover. */
 export const TextWithRelativeTime: Story = {
   play: async ({ canvas, step }) => {
@@ -131,24 +163,6 @@ export const InsideARun: Story = {
   },
 };
 
-/** As a reader, I see an app's run of messages close together, the last with its tail and time. */
-export const ProductRun: Story = {
-  render: () => (
-    <Thread>
-      <Run author="product" contents={PRODUCT_RUN} />
-    </Thread>
-  ),
-};
-
-/** As a reader, I see my own run of messages at the end, in my own tint. */
-export const OwnRun: Story = {
-  render: () => (
-    <Thread>
-      <Run author="user" contents={OWN_RUN} />
-    </Thread>
-  ),
-};
-
 /** As a reader, I see rich text with a line that counts its attachments. */
 export const RichTextAttachments: Story = {
   args: {
@@ -171,20 +185,6 @@ export const File: Story = {
       await expect(canvas.getByTestId('chat-msg-meta').textContent).toBe('File');
     });
   },
-};
-
-/** As a reader, I see an actions message's buttons stacked in a column. */
-export const ActionsColumn: Story = {
-  args: {
-    record: record(
-      actions('How was your last order?', 'Column', ['Great', 'Something was missing', 'Talk to support']),
-    ),
-  },
-};
-
-/** As a reader, I see an actions message's buttons in a grid. */
-export const ActionsGrid: Story = {
-  args: { record: record(actions('Add a drink?', 'Grid', ['Water', 'Lemonade', 'Cola', 'No, thanks'])) },
 };
 
 const EVENTS = [
@@ -222,25 +222,4 @@ export const Events: Story = {
       }
     });
   },
-};
-
-/** As a reader, I see a custom message as the page's custom body in a card, before its time. */
-export const CustomBodyBeforeTimestamp: Story = {
-  tags: ['!autodocs'],
-  args: {
-    record: record({ tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }),
-  },
-};
-
-/** As a phone user, I read a conversation at the phone's size. */
-export const Phone: Story = {
-  tags: ['!autodocs'],
-  globals: PHONE,
-  render: () => (
-    <Thread>
-      <Run author="product" contents={[text('Your order #4821 is confirmed.'), text('When should we bring it?')]} />
-      <Run author="product" contents={[actions('Add a drink?', 'Grid', ['Water', 'Lemonade'])]} />
-      <Run author="user" contents={OWN_RUN} />
-    </Thread>
-  ),
 };

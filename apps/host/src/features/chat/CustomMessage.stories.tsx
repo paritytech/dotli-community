@@ -5,6 +5,7 @@ import { createSignal, Show } from 'solid-js';
 import type { RendererNode } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
+import { ChatSurface } from '../../testing/stories/chatFrames.js';
 import { CustomMessage, type CustomMessageProps } from './CustomMessage.js';
 import type { ChatRenderSink } from './chat.js';
 import type { WatchVisibility } from './visibility.js';
@@ -58,18 +59,17 @@ function button(text: string): RendererNode {
   return { tag: 'Button', value: { modifiers: [], props: { text, clickAction: 'vote' }, children: [] } };
 }
 
-/** The message as a row in the conversation, which the reader can scroll away by removing it. */
+/** Whether the message is still on the page, which a play ends as a reader scrolling it away would. */
+const [shown, setShown] = createSignal(true);
+
+/** The message as a row in the conversation, on the chat panel's surface. */
 function Row(props: CustomMessageProps) {
-  const [shown, setShown] = createSignal(true);
   return (
-    <>
-      <button type="button" onClick={() => setShown(false)}>
-        Remove message
-      </button>
+    <ChatSurface>
       <Show when={shown()}>
         <CustomMessage {...props} />
       </Show>
-    </>
+    </ChatSurface>
   );
 }
 
@@ -93,6 +93,7 @@ const meta = {
     service.actionFails = false;
     screen.onChange = undefined;
     screen.unwatched = 0;
+    setShown(true);
   },
   render: args => <Row {...args} />,
 } satisfies Meta<typeof CustomMessage>;
@@ -219,13 +220,13 @@ export const NewTreeAfterFailureShows: Story = {
 /** As a reader of a custom message, I stop its render subscription by scrolling it off the page. */
 export const LeavingStopsSubscription: Story = {
   tags: ['!autodocs'],
-  play: async ({ canvas, userEvent, step }) => {
+  play: async ({ step }) => {
     await step('Given the message is on screen and subscribed', async () => {
       await scrollIn();
       await expect(service.sinks).toHaveLength(1);
     });
-    await step('When it leaves the page', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Remove message' }));
+    await step('When it leaves the page', () => {
+      setShown(false);
     });
     await step('Then its subscription stops and nothing watches it any more', async () => {
       await waitFor(() => expect(service.stops).toBe(1));
