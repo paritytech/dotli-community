@@ -180,11 +180,6 @@ export const ShowCollapseExpandResizesFrame: Story = {
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');
       await waitFor(() => frameClearsPanel(canvasElement));
     });
-    await step('When chat opens, the frame keeps clear of the panel', async () => {
-      productFrameLayout.setChatWidth(360);
-      await frameClearsPanel(canvasElement);
-      productFrameLayout.setChatWidth(0);
-    });
     await step('When I drag the handle of the collapsed panel, nothing resizes', () => {
       const handle = canvas.getByTestId('sc-resize-handle');
       pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: 100 });

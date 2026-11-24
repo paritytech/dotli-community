@@ -6,12 +6,13 @@ import type { JSX } from '@solidjs/web';
 import { ChatIcon } from '@dotli/ui/icons';
 import { ActionItem, ActionsContext, Chip, IconButton, isFocusLostOrInside, focusTrigger } from '@dotli/ui';
 import { TOPBAR_PRIORITY } from '../page/index.js';
+import { CHAT_PANEL_ID } from './chatPanelId.js';
 import s from './ChatButton.module.css';
 
 export type ChatButtonProps = {
   /** Chat is available to this session in this product. */
   visible: Accessor<boolean>;
-  /** The docked chat panel is open. */
+  /** The chat panel is open. */
   open: Accessor<boolean>;
   /** The unread count as shown, undefined while there is none to show (the panel is open or nothing is unread). */
   unread: Accessor<string | undefined>;
@@ -23,7 +24,7 @@ export type ChatButtonProps = {
 };
 
 /**
- * The topbar's button for the docked chat panel.
+ * The topbar's button for the chat panel.
  * The unread count shows only while the panel is closed, since the room rows carry their own. When the panel
  * closes with focus inside it, focus returns here, or to `fallbackFocus` while this button is not on show.
  */
@@ -54,7 +55,7 @@ export function ChatButton(props: ChatButtonProps): JSX.Element {
       title="Chat"
       aria-label={props.unread() === undefined ? 'Chat' : `Chat, ${String(props.unread())} unread`}
       aria-expanded={props.open() ? 'true' : 'false'}
-      aria-controls="chat-panel"
+      aria-controls={CHAT_PANEL_ID}
       hidden={!props.visible()}
     >
       <ChatIcon />

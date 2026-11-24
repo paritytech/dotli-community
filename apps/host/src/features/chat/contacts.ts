@@ -4,9 +4,13 @@
 import type { ChatRoomFooter } from './createChatStore.js';
 import type { ChatBot, ChatRoom } from './chat.js';
 
+/** Whether a contact is a room the product made or a bot it registered. */
+export type ContactKind = 'room' | 'bot';
+
 /** A room or a registered bot. A bot's conversation is keyed by its botId, which the product uses as the roomId. */
 export type ContactEntry = {
   id: string;
+  kind: ContactKind;
   name: string;
   icon: string;
   createdAt: number;
@@ -24,6 +28,7 @@ export function contactEntries(
   const entries: ContactEntry[] = [
     ...rooms.map(room => ({
       id: room.roomId,
+      kind: 'room' as const,
       name: room.name,
       icon: room.icon,
       createdAt: room.createdAt,
@@ -32,6 +37,7 @@ export function contactEntries(
     })),
     ...bots.map(bot => ({
       id: bot.botId,
+      kind: 'bot' as const,
       name: bot.name,
       icon: bot.icon,
       createdAt: bot.createdAt,

@@ -3,18 +3,20 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { bindCaptureSink } from '@dotli/metrics';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { expectPhone, TopbarFrame } from '../../testing/stories/topbarFrame.js';
+import { expectPhone } from '../../testing/stories/topbarFrame.js';
+import { ChatOnPage } from '../../testing/stories/chatFrames.js';
 import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
 import type { ChatPanelModule } from './ChatDock.js';
 import { ChatItem } from './ChatButton.js';
 import { ChatDock } from './ChatDock.js';
 
-// The topbar's chat button over the docked panel, on a story's chat.
+// The topbar's chat button and the chat drawer it opens, on a story's chat. The panel's own states are its stories.
 
 const SLOW = { timeout: 5000 };
+const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
 /** A bot's icon that loads, so its row shows the image and not the letter fallback. */
 const ICON =
@@ -36,10 +38,21 @@ function openChat(): void {
   byId('chat-button').click();
 }
 
+/** The drawer's close button, in the side panel or, on a phone, the sheet. */
+function closeButton(): HTMLElement {
+  const form = byId('chat-panel').getAttribute('data-layout') === 'sheet' ? 'sheet' : 'side';
+  return within(document.body).getByTestId(`chat-panel-${form}-close`);
+}
+
 async function openRoom(name: string): Promise<void> {
   await waitFor(() => expect(rows().some(row => row.textContent.includes(name))).toBe(true), SLOW);
   rowNamed(name).click();
   await waitFor(() => expect(byId('chat-panel-rooms')).not.toBeVisible());
+}
+
+/** Waits for the conversation the panel opens on when the product has one room. */
+async function soleRoomShows(): Promise<void> {
+  await waitFor(() => expect(byId('chat-panel-messages')).toBeVisible(), SLOW);
 }
 
 function send(text: string): void {
@@ -63,41 +76,144 @@ const meta = {
   title: 'Host/Chat/ChatDock',
   component: ChatDock,
   args: stage.dock,
+  parameters: { chrome: true },
+  // The drawer covers the page it opens on, so it has no docs block.
   beforeEach: () => {
     stage = chatStage();
     return stage.dispose;
   },
-  render: () => (
-    <>
-      <ChatItem {...stage.button} />
-      <ChatDock {...stage.dock} />
-    </>
-  ),
+  render: () => <ChatOnPage stage={stage} />,
 } satisfies Meta<typeof ChatDock>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a user, I see a waiting hint while the room list is empty. */
-export const EmptyRoomListHint: Story = {
-  tags: ['!autodocs'],
+/** As a user, I see the unread count on the chat button while the panel is closed and press it to toggle the panel. */
+export const PressTogglesPanel: Story = {
+  beforeEach: () => {
+    stage.update({ available: false });
+  },
   play: async ({ step }) => {
-    await step('As a user, an empty room list shows a waiting hint', async () => {
-      // When
+    await step(
+      'As a user, the button carries the unread count while the panel is closed and toggles the panel, saying whether it is open',
+      async () => {
+        // Given
+        stage.update({ available: true, unread: 3 });
+        await waitFor(() => expect(byId('chat-button')).toHaveAttribute('aria-label', 'Chat, 3 unread'));
+        await expect(byId('chat-unread-badge')).toHaveTextContent('3');
+        await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'false');
+
+        // When
+        byId('chat-button').click();
+
+        // Then
+        await waitFor(() => expect(byId('chat-panel')).toBeVisible());
+        await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'true');
+
+        // When
+        byId('chat-button').click();
+
+        // Then
+        await waitFor(() => expect(byId('chat-panel')).not.toBeVisible());
+        await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'false');
+      },
+    );
+  },
+};
+
+/** As a keyboard user, I press Escape to close the panel and focus returns to the chat button. */
+export const EscapeClosesAndRefocusesButton: Story = {
+  play: async ({ step, userEvent }) => {
+    await step('As a user, Escape closes the panel and returns focus to the chat button', async () => {
+      // Given
       openChat();
+      await waitFor(() => expect(closeButton()).toBeVisible(), SLOW);
+      closeButton().focus();
+
+      // When
+      await userEvent.keyboard('{Escape}');
 
       // Then
-      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible(), SLOW);
-      await expect(byId('chat-panel-hint')).toHaveTextContent('Waiting for the app to start a chat.');
-      await expect(byId('chat-panel')).toBeVisible();
-      await expect(byId('chat-panel-composer')).not.toBeVisible();
+      await waitFor(() => expect(byId('chat-panel')).not.toBeVisible());
+      await expect(byId('chat-button')).toHaveFocus();
+    });
+  },
+};
+
+/** As a phone user, the chat button collapsed into More opens the panel from its row. */
+export const PhoneMoreRowOpensPanel: Story = {
+  globals: PHONE,
+  render: () => (
+    <>
+      <GroupFrame room={40}>
+        <ChatItem {...stage.button} />
+      </GroupFrame>
+      <ChatDock {...stage.dock} />
+    </>
+  ),
+  play: async ({ userEvent, step }) => {
+    await expectPhone(step);
+    await step('When I open More', async () => {
+      await openMore(userEvent);
+    });
+    await step('Then the chat button collapsed into More as its Chat row', async () => {
+      await expect(moreRow('chat')).toHaveTextContent('Chat');
+    });
+    await step('When I choose the Chat row', async () => {
+      await userEvent.click(moreRow('chat'));
+    });
+    await step('Then the panel is open and More is closed', async () => {
+      await waitFor(() => expect(byId('chat-panel')).toBeVisible());
+      await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'true');
+      await expect(document.getElementById('more-popover')).not.toHaveAttribute('data-open');
+    });
+  },
+};
+
+/**
+ * As a user of a product with one room, I land in its conversation with the keyboard down, and a second room lets me go
+ * back to the list.
+ */
+export const OneRoomOpensOnItsConversation: Story = {
+  play: async ({ step }) => {
+    await step('Given a product with one room', () => {
+      stage.createRoom('main', 'Main');
+      stage.productSays('main', 'hello from the app');
+    });
+    await step('When I open the chat', async () => {
+      openChat();
+      await soleRoomShows();
+    });
+    await step(
+      'Then its conversation shows, open, with focus on the drawer, no head of its own, no room list and no way back',
+      async () => {
+        await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello from the app'), SLOW);
+        await expect(document.getElementById('chat-panel-title')).toBeNull();
+        await expect(stage.state.get().activeRoomId).toBe('main');
+        await expect(within(document.body).getByTestId('chat-panel')).toHaveFocus();
+        await expect(byId('chat-panel-rooms')).not.toBeVisible();
+        await expect(document.getElementById('chat-panel-back')).toBeNull();
+      },
+    );
+    await step('When a second room appears', () => {
+      stage.createRoom('news', 'News');
+    });
+    await step('Then I stay in the conversation, under a head that names it, and can go back', async () => {
+      await waitFor(() => expect(document.getElementById('chat-panel-back')).toBeVisible(), SLOW);
+      await expect(byId('chat-panel-title')).toHaveTextContent('Main');
+      await expect(byId('chat-panel-messages')).toBeVisible();
+    });
+    await step('When I go back', () => {
+      byId('chat-panel-back').click();
+    });
+    await step('Then the list shows both rooms', async () => {
+      await waitFor(() => expect(rows()).toHaveLength(2), SLOW);
     });
   },
 };
 
 /** As a user, I read product messages and my replies reach the product. */
 export const MessagesRenderAndRepliesPublish: Story = {
-  tags: ['!autodocs'],
   play: async ({ step }) => {
     await step('As a user, product messages render and replies reach the product', async () => {
       // Given
@@ -106,7 +222,7 @@ export const MessagesRenderAndRepliesPublish: Story = {
 
       // When
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
 
       // Then
       await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello from the app'), SLOW);
@@ -126,7 +242,6 @@ export const MessagesRenderAndRepliesPublish: Story = {
 
 /** As a reader, I see one time under a run of messages an author sent within a minute. */
 export const OneTimePerRun: Story = {
-  tags: ['!autodocs'],
   play: async ({ step }) => {
     await step('As a reader, a run of messages shows its time once, under its last message', async () => {
       // Given
@@ -136,13 +251,13 @@ export const OneTimePerRun: Story = {
 
       // When
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
       send('mine');
 
       // Then
       await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('mine'), SLOW);
-      const bubbles = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-msg-bubble"]')];
-      await expect(bubbles.map(bubble => bubble.querySelector('[data-testid="chat-msg-time"]') !== null)).toEqual([
+      const messages = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-msg"]')];
+      await expect(messages.map(message => message.querySelector('[data-testid="chat-msg-time"]') !== null)).toEqual([
         false,
         true,
         true,
@@ -153,7 +268,6 @@ export const OneTimePerRun: Story = {
 
 /** As a user, I see bots and rooms in one list ordered by last message time. */
 export const BotsAndRoomsByLastMessage: Story = {
-  tags: ['!autodocs'],
   play: async ({ step }) => {
     await step('As a user, bots and rooms share one list ordered by last message time', async () => {
       // Given
@@ -192,6 +306,7 @@ export const BotsAndRoomsByLastMessage: Story = {
       const botMessage = byId('chat-panel-messages').querySelector('[data-testid="chat-msg"]');
       await expect([...(botMessage?.children ?? [])].map(child => child.getAttribute('data-testid'))).toEqual([
         'chat-msg-bubble',
+        'chat-msg-time',
       ]);
 
       // When
@@ -205,11 +320,11 @@ export const BotsAndRoomsByLastMessage: Story = {
 
 /** As a user, a custom message asks the product to render, a tap on it reaches the product and leaving the room disposes the render. */
 export const CustomMessageTreeAndTaps: Story = {
-  tags: ['!autodocs'],
   play: async ({ step }) => {
     await step('As a user, custom messages render live trees and taps reach the product', async () => {
       // Given
       stage.createRoom('main', 'Main');
+      stage.createRoom('other', 'Other');
       stage.productSays('main', { tag: 'Custom', value: { messageType: 'poll', payload: '0x0102' } });
       const messageId = stage.messages[0]?.messageId;
 
@@ -263,7 +378,6 @@ export const CustomMessageTreeAndTaps: Story = {
 
 /** As a user, I see each room's unread count on its row and the total on the chat button. */
 export const PerRoomUnreadUntilOpened: Story = {
-  tags: ['!autodocs'],
   play: async ({ step }) => {
     await step("As a user, I see each room's unread count on its row and the total on the chat button", async () => {
       // Given
@@ -303,7 +417,7 @@ export const PerRoomUnreadUntilOpened: Story = {
       );
 
       // When
-      byId('chat-panel-close').click();
+      closeButton().click();
 
       // Then
       await waitFor(() => expect(byId('chat-unread-badge')).toBeVisible());
@@ -312,36 +426,37 @@ export const PerRoomUnreadUntilOpened: Story = {
   },
 };
 
-/** As a keyboard user, I press Escape to close the panel and focus returns to the chat button. */
-export const EscapeClosesAndRefocusesButton: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step, userEvent }) => {
-    await step('As a user, Escape closes the panel and returns focus to the chat button', async () => {
+/** As a keyboard user, I open a room and focus lands in the composer. */
+export const OpeningRoomFocusesComposer: Story = {
+  play: async ({ step }) => {
+    await step('As a user, opening a room focuses the composer', async () => {
       // Given
+      stage.createRoom('main', 'Main');
+      stage.createRoom('other', 'Other');
       openChat();
-      await waitFor(() => expect(byId('chat-panel-close')).toBeVisible(), SLOW);
-      byId('chat-panel-close').focus();
 
       // When
-      await userEvent.keyboard('{Escape}');
+      await openRoom('Main');
 
       // Then
-      await waitFor(() => expect(byId('chat-panel')).not.toBeVisible());
-      await expect(byId('chat-button')).toHaveFocus();
+      await waitFor(() => expect(byId('chat-panel-input')).toHaveFocus());
+    });
+    await step('As a user, a room with no messages says so', async () => {
+      // Then
+      await expect(byId('chat-panel-hint')).toHaveTextContent('No messages yet.');
     });
   },
 };
 
 /** As a user, I see a failed reply keep my message and show why it failed. */
 export const FailedReplyKeepsMessage: Story = {
-  tags: ['!autodocs'],
   play: async ({ step }) => {
     await step('As a user, a failed reply keeps the message and shows why', async () => {
       // Given
       stage.sendError = new Error('boom');
       stage.createRoom('main', 'Main');
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
 
       // When
       send('again');
@@ -358,14 +473,13 @@ export const FailedReplyKeepsMessage: Story = {
 
 /** As a user whose reply could not be kept, such as with no live connection or a failed store, I keep my text. */
 export const UnkeptReplyKeepsText: Story = {
-  tags: ['!autodocs'],
   play: async ({ step }) => {
     await step('As a user, a reply that was not kept stays in the composer', async () => {
       // Given
       stage.refuseError = new Error('IndexedDB is gone');
       stage.createRoom('main', 'Main');
       openChat();
-      await openRoom('Main');
+      await soleRoomShows();
 
       // When
       send('hello');
@@ -378,42 +492,19 @@ export const UnkeptReplyKeepsText: Story = {
   },
 };
 
-/** As a keyboard user, I open a room and focus lands in the composer. */
-export const OpeningRoomFocusesComposer: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('As a user, opening a room focuses the composer', async () => {
-      // Given
-      stage.createRoom('main', 'Main');
-      openChat();
-
-      // When
-      await openRoom('Main');
-
-      // Then
-      await waitFor(() => expect(byId('chat-panel-input')).toHaveFocus());
-    });
-    await step('As a user, a room with no messages says so', async () => {
-      // Then
-      await expect(byId('chat-panel-hint')).toHaveTextContent('No messages yet.');
-    });
-  },
-};
-
 /** As a user, I see a render error close the panel and the next open recovers it. */
 export const RenderErrorClosesThenRecovers: Story = {
-  tags: ['!autodocs'],
   beforeEach: () => bindCaptureSink({ exception: fn(), expected: fn() }),
   play: async ({ step }) => {
     await step('As a user, a render error closes the panel and the next open recovers it', async () => {
-      // Given a product whose published name cannot be read the first time, which the panel title reads with no room open
+      // Given a session the empty room list cannot read the first time, which its hint shows
       let thrown = false;
-      stage.conversation.productName = () => {
+      stage.conversation.loggedIn = () => {
         if (!thrown) {
           thrown = true;
           throw new Error('render boom');
         }
-        return 'Broken render';
+        return true;
       };
 
       // When
@@ -427,21 +518,16 @@ export const RenderErrorClosesThenRecovers: Story = {
       openChat();
 
       // Then
-      await waitFor(() => expect(byId('chat-panel-close')).toBeVisible(), SLOW);
-      await expect(byId('chat-panel-title')).toHaveTextContent('Broken render');
+      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible(), SLOW);
+      await expect(byId('chat-panel-hint')).toHaveTextContent('Waiting for the app to start a chat.');
+      await expect(byId('chat-panel-composer')).not.toBeVisible();
     });
   },
 };
 
 /** As a user, I find the panel closed when the chat code cannot load, and the next open retries. */
 export const ChunkLoadFailureRetries: Story = {
-  tags: ['!autodocs'],
-  render: () => (
-    <>
-      <ChatItem {...stage.button} />
-      <ChatDock {...stage.dock} loadPanel={loadMissingPanel} />
-    </>
-  ),
+  render: () => <ChatOnPage stage={stage} loadPanel={loadMissingPanel} />,
   beforeEach: () => {
     chunkCalls = 0;
     return bindCaptureSink({ exception: fn(), expected: fn() });
@@ -462,81 +548,6 @@ export const ChunkLoadFailureRetries: Story = {
       // Then
       await waitFor(() => expect(chunkCalls).toBe(before + 1), SLOW);
       await waitFor(() => expect(byId('chat-panel')).not.toBeVisible());
-    });
-  },
-};
-
-/** As a user, I see the unread count on the chat button while the panel is closed and press it to toggle the panel. */
-export const PressTogglesPanel: Story = {
-  tags: ['!autodocs'],
-  parameters: { chrome: true },
-  beforeEach: () => {
-    stage.update({ available: false });
-  },
-  render: () => (
-    <>
-      <TopbarFrame>
-        <ChatItem {...stage.button} />
-      </TopbarFrame>
-      <ChatDock {...stage.dock} />
-    </>
-  ),
-  play: async ({ step }) => {
-    await step(
-      'As a user, the button carries the unread count while the panel is closed and toggles the panel, saying whether it is open',
-      async () => {
-        // Given
-        stage.update({ available: true, unread: 3 });
-        await waitFor(() => expect(byId('chat-button')).toHaveAttribute('aria-label', 'Chat, 3 unread'));
-        await expect(byId('chat-unread-badge')).toHaveTextContent('3');
-        await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'false');
-
-        // When
-        byId('chat-button').click();
-
-        // Then
-        await waitFor(() => expect(byId('chat-panel')).toBeVisible());
-        await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'true');
-
-        // When
-        byId('chat-button').click();
-
-        // Then
-        await waitFor(() => expect(byId('chat-panel')).not.toBeVisible());
-        await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'false');
-      },
-    );
-  },
-};
-
-/** As a phone user, the chat button collapsed into More opens the panel from its row. */
-export const MoreRowOpensPanel: Story = {
-  tags: ['!autodocs'],
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  parameters: { chrome: true },
-  render: () => (
-    <>
-      <GroupFrame room={40}>
-        <ChatItem {...stage.button} />
-      </GroupFrame>
-      <ChatDock {...stage.dock} />
-    </>
-  ),
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I open More', async () => {
-      await openMore(userEvent);
-    });
-    await step('Then the chat button collapsed into More as its Chat row', async () => {
-      await expect(moreRow('chat')).toHaveTextContent('Chat');
-    });
-    await step('When I choose the Chat row', async () => {
-      await userEvent.click(moreRow('chat'));
-    });
-    await step('Then the panel is open and More is closed', async () => {
-      await waitFor(() => expect(byId('chat-panel')).toBeVisible());
-      await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'true');
-      await expect(document.getElementById('more-popover')).not.toHaveAttribute('data-open');
     });
   },
 };

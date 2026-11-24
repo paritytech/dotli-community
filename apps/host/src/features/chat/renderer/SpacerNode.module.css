@@ -1,0 +1,10 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Defaults only: a product's layout arrives as inline styles. */
+.spacer {
+  flex: 1;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}

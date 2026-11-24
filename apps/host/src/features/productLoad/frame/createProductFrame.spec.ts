@@ -31,6 +31,8 @@ import {
 import { productState } from '../../page/index.js';
 import { chatConnections } from '../../chat/index.js';
 import type { ProductFacts } from '../resolve/getProductFacts.js';
+import type { WorkerExecutable } from '../resolve/createNameSource.js';
+import { createProductImages } from './createProductImages.js';
 import { createPermissionAuthorizations } from '../../permissions/index.js';
 import type { PermissionsChange } from '../../permissions/index.js';
 import { buildLoginResponseFrame } from '../../../testing/buildLoginResponseFrame.js';
@@ -75,6 +77,8 @@ type CreateHarnessParams = {
   reportHandlerError?: (error: unknown, type: SandboxMessageType) => void;
   /** Loads the sandbox checker panel, none by default. */
   loadCheckerPanel?: ProductFrameView['loadCheckerPanel'];
+  /** Reads the images of each product's chat, the frame's own by default. */
+  images?: ProductFrameParams['images'];
 };
 
 type SandboxAskParams = {
@@ -110,7 +114,11 @@ type BuildSubdomainProductParams = {
   cid?: string;
   /** Whether the product declares chat, no by default. */
   chat?: boolean;
+  /** The product's worker executable, none by default. */
+  worker?: WorkerExecutable | null;
 };
+
+const NO_WORKER = Promise.resolve(null);
 
 /** The host page, at the root of a dev host. */
 const ROOT_LOCATION: PageLocation = {
@@ -131,6 +139,7 @@ function createHarness({
   location = {},
   reportHandlerError = rethrow,
   loadCheckerPanel,
+  images,
 }: CreateHarnessParams = {}) {
   const hosts: FakeIframeHost[] = [];
   // What each frame's `onPort` returned for the port of its latest document.
@@ -193,6 +202,7 @@ function createHarness({
     notify: () => undefined,
     page,
     timers,
+    images,
   });
   return {
     ...fakes,
@@ -358,14 +368,20 @@ function crash(connection: FakeCoreProvider): void {
 }
 
 function buildIframeProduct(label: string): FrameProduct {
-  return { mode: 'iframe', label, url: `https://${label}.example/app`, chat: Promise.resolve(false) };
+  return {
+    mode: 'iframe',
+    label,
+    url: `https://${label}.example/app`,
+    chat: Promise.resolve(false),
+    worker: NO_WORKER,
+  };
 }
 
 function buildSubdomainProduct(
   label: string,
-  { cid = 'cid', chat = false }: BuildSubdomainProductParams = {},
+  { cid = 'cid', chat = false, worker = null }: BuildSubdomainProductParams = {},
 ): FrameProduct {
-  return { mode: 'subdomain', label, cid, chat: Promise.resolve(chat), facts: {} };
+  return { mode: 'subdomain', label, cid, chat: Promise.resolve(chat), worker: Promise.resolve(worker), facts: {} };
 }
 
 /** Whether the iframe of every host is the one attached at the same place, compared by identity. */
@@ -528,7 +544,15 @@ describe('product frame renders', () => {
 
     // When
     await fakes.settle(
-      { mode: 'subdomain', label: 'doom', cid: 'cid', base: '/Doom.dot', chat: Promise.resolve(false), facts: {} },
+      {
+        mode: 'subdomain',
+        label: 'doom',
+        cid: 'cid',
+        base: '/Doom.dot',
+        chat: Promise.resolve(false),
+        worker: NO_WORKER,
+        facts: {},
+      },
       0,
     );
     const url = new URL(nth(fakes.hosts, 0).options.iframeUrl);
@@ -576,6 +600,7 @@ describe('product frame renders', () => {
         cid: 'cid',
         base: '/pr16.back-me-up',
         chat: Promise.resolve(false),
+        worker: NO_WORKER,
         facts: {},
       },
       0,
@@ -639,6 +664,28 @@ describe('product frame renders', () => {
     expect(productState.store.get()).toMatchObject({ status: 'loaded', label: 'chatty', productId: 'canonical.paseo' });
   });
 
+  it('As a chat user, I see an image my product names from the archive of its worker', async () => {
+    // Given a chat product whose worker archive holds the image
+    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+    const fakes = createHarness({
+      fakes: createFakePageCore({ parseProductId: () => asProductId('pictures.paseo') }),
+      images: createProductImages({
+        readFiles: cid =>
+          cid === 'bafy-worker' ? Promise.resolve({ 'logo.png': png }) : Promise.reject(new Error(`No archive ${cid}`)),
+      }),
+    });
+    const worker = { entrypoint: 'index.js', includes: { chat: true }, cid: 'bafy-worker' };
+    await fakes.settle(buildSubdomainProduct('pictures', { chat: true, worker }), 0);
+
+    // When
+    const image = await chatConnections
+      .get('pictures.paseo')
+      ?.loadImage({ tag: 'Archive', value: 'logo.png' }, new AbortController().signal);
+
+    // Then
+    expect(image).toEqual({ bytes: png, type: 'image/png' });
+  });
+
   it('As a dApp user, I open my product and the tab names it by its published name from the first render, and the page knows its versions', async () => {
     // Given
     const fakes = createHarness();
@@ -651,7 +698,10 @@ describe('product frame renders', () => {
     };
 
     // When
-    await fakes.settle({ mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), facts }, 0);
+    await fakes.settle(
+      { mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), worker: NO_WORKER, facts },
+      0,
+    );
 
     // Then
     expect(fakes.frameView.titles).toEqual([{ mode: 'subdomain', label: 'doom', displayName: 'DOOM' }]);
@@ -742,6 +792,7 @@ describe('product frame status', () => {
         cid: 'cid',
         base: '/Doom.dot',
         chat: Promise.resolve(false),
+        worker: NO_WORKER,
         facts: {},
       }),
     );

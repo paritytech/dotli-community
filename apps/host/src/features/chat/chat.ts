@@ -8,10 +8,12 @@ import type { Accessor } from 'solid-js';
 import type {
   HexString,
   HostRendererActionSubscribeItem,
+  ImageSource,
   ProductRendererRenderRequest,
   RendererNode,
 } from '@parity/truapi';
 import type { ChatMessageRecord, ChatRoomFooter } from './createChatStore.js';
+import type { LoadedImage } from './readChatImage.js';
 
 /** Where a custom message's renderer streams its trees. */
 export type ChatRenderSink = {
@@ -19,7 +21,7 @@ export type ChatRenderSink = {
   onError?: (error: Error) => void;
 };
 
-/** What a message asks of the product: a custom tree, a tap on an action or a gesture inside a tree. */
+/** What a message asks of the product: a custom tree, an image in it, a tap on an action or a gesture inside a tree. */
 export type ChatMessageActions = {
   /** Streams replacement trees into `sink` until disposed. Never throws: a failure reaches `sink.onError`. */
   renderCustomMessage: (params: {
@@ -35,6 +37,11 @@ export type ChatMessageActions = {
   }) => Promise<void>;
   /** Hands a gesture inside a custom message's tree to the product. Rejects when it cannot reach the product. */
   triggerRendererAction: (productId: string, item: HostRendererActionSubscribeItem) => Promise<void>;
+  /**
+   * Resolves the bytes and type of an image a custom message's tree names. Rejects when it cannot be drawn, and with
+   * the signal's reason once `signal` aborts.
+   */
+  loadImage: (productId: string, source: ImageSource, signal: AbortSignal) => Promise<LoadedImage>;
 };
 
 export type ChatRoom = {
@@ -76,22 +83,30 @@ export type ChatFeed = {
   follow: (shown: Accessor<string | null>) => void;
 };
 
+/** How a room opens. */
+export type OpenRoomParams = {
+  /** Whether its composer takes focus once its messages show. True unless the panel opened the room itself. */
+  focusComposer?: boolean;
+};
+
 /** What the open panel shows of the page's chat state, and what it asks the page to do. */
 export type ChatConversation = {
   loggedIn: Accessor<boolean>;
-  /** The product's published name, else its label. The title while no room is open. */
+  /** The product's published name, else its label. */
   productName: Accessor<string | null>;
-  /** Null shows the room list. */
+  /** The product's label with the active TLD, null until a product loads. */
+  productDomain: Accessor<string | null>;
+  /** Null shows the room list, or the room when it is the only one. */
   activeRoomId: Accessor<string | null>;
   unreadByRoom: Accessor<Readonly<Record<string, number>>>;
   composerError: Accessor<string | null>;
-  /** Called as the panel body opens, under its owner, so its reads stop as the panel closes. */
+  /** Called as the panel body mounts, under its owner, so its reads stop as it unmounts. */
   openFeed: () => ChatFeed;
-  openRoom: (roomId: string) => void;
+  openRoom: (roomId: string, params?: OpenRoomParams) => void;
   backToRooms: () => void;
   /** The open room is no longer in the list. */
   roomGone: () => void;
-  /** True once after a room was picked, which asks the composer to take focus. */
+  /** True once after the user picked a room, which asks the composer to take focus. */
   claimComposerFocus: () => boolean;
   setComposerError: (message: string | null) => void;
   /**

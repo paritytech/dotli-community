@@ -3,19 +3,13 @@
 
 // Outside Solid, since islands that hydrate apart read it. It keeps no rooms, bots or messages.
 
-import {
-  createSharedRun,
-  pageLocalStorage,
-  registerStoreStateReset,
-  registerAtomReset,
-  isShallowEqual,
-  type SafeStorage,
-} from '@dotli/shared';
+import { createSharedRun, registerStoreStateReset, registerAtomReset, isShallowEqual } from '@dotli/shared';
 import type { ProductId } from '@parity/truapi';
 import { atom, type ReadableAtom } from 'nanostores';
 import { createReporter } from '@dotli/metrics';
 import type { ChatStore } from './createChatStore.js';
 import type { ChatChange, ChatView } from './createChatView.js';
+import type { OpenRoomParams } from './chat.js';
 import { productState } from '../page/index.js';
 import { authState } from '../account/index.js';
 import { reportLazyMiss } from '../../kit/reportLazyMiss.js';
@@ -25,51 +19,43 @@ export type ChatPanelState = {
   /** The id the core parsed for the loaded product, which keys its chat. */
   runtimeProductId: ProductId | null;
   available: boolean;
+  /** Whether the product has a room or a bot. False until a read or a write shows one. */
+  hasContacts: boolean;
   loggedIn: boolean;
   open: boolean;
-  /** null shows the room list. */
+  /** null shows the room list, or the room when it is the only one. */
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
   composerError: string | null;
-  /** One-shot: focus the composer after picking a room. */
+  /** One-shot: focus the composer once the room the user picked shows. */
   focusComposer: boolean;
-  width: number;
 };
 
-type WidthStorage = Pick<SafeStorage, 'getItem' | 'setItem'>;
+type ChatSource = Pick<ChatStore, 'subscribe' | 'hasContacts'>;
 
 type Params = {
-  /** Loads the chat store whose product messages count as unread, the page's by default. */
-  chat?: () => Promise<Pick<ChatStore, 'subscribe'>>;
-  /** Keeps the dragged panel width across sessions, the page's local storage by default. */
-  storage?: WidthStorage;
+  /** Loads the chat store whose product messages count as unread and whose rooms and bots show the button. */
+  chat?: () => Promise<ChatSource>;
 };
 
 const report = createReporter({ flow: 'chat' });
-
-const PANEL_WIDTH_KEY = 'dotli:chat-panel-width';
-const MIN_PANEL_WIDTH = 280;
-const MAX_PANEL_WIDTH = 560;
-const DEFAULT_PANEL_WIDTH = 360;
 
 const panel = atom<ChatPanelState>({
   label: null,
   runtimeProductId: null,
   available: false,
+  hasContacts: false,
   loggedIn: false,
   open: false,
   activeRoomId: null,
   unreadByRoom: {},
   composerError: null,
   focusComposer: false,
-  width: DEFAULT_PANEL_WIDTH,
 });
-// A drag past the clamp and repeated product or session events rebuild an equal state.
+// Repeated product or session events rebuild an equal state.
 panel.eq = isShallowEqual;
 registerAtomReset(panel);
 const store: ReadableAtom<ChatPanelState> = panel;
-
-let widthStorage: WidthStorage = pageLocalStorage;
 
 // The panel hydrates as an island of its own, so its element is handed over here, not passed in.
 let panelElement: HTMLElement | undefined;
@@ -85,9 +71,12 @@ export const chatPanelState = {
   isButtonVisible,
   /** Returns the unread count summed over every room of `state`. Never throws. */
   getTotalUnread,
-  /** Opens the panel at its stored width, or closes it. The panel stays closed while the button is hidden. Never throws. */
+  /** Opens or closes the panel. The panel stays closed while the button is hidden. Never throws. */
   setOpen,
-  /** Shows the room `roomId` and focuses its composer. Never throws. */
+  /**
+   * Shows the room `roomId` and focuses its composer, unless `focusComposer` is false, as for a room the panel opens
+   * itself. Never throws.
+   */
   openRoom,
   /** Shows the room list and clears the composer error, also in place of a room that no longer exists. Never throws. */
   backToRooms,
@@ -102,14 +91,11 @@ export const chatPanelState = {
   setComposerError,
   /** Returns whether a room asked to focus its composer, and clears that one-shot request. Never throws. */
   claimComposerFocus,
-  /** Sets the panel width, clamped to the allowed range. Never throws. */
-  setWidth,
-  /** Stores the panel's width for later sessions. Never throws. */
-  persistWidth,
   /**
-   * Follows the session, the product on show and its chat messages until the returned stop. The messages are followed
-   * from once the chat store has loaded. A call while the follows run joins them and ignores its params, and they end
-   * with the last caller's stop. Never throws.
+   * Follows the session, the product on show and its chat until the returned stop. The chat is followed from once its
+   * store has loaded, which reads whether the product has a room or a bot, and again for each product loaded after. A
+   * call while the follows run joins them and ignores its params, and they end with the last caller's stop. Never
+   * throws.
    */
   start,
   /** Returns the panel's element, or undefined when none is handed over. Never throws. */
@@ -121,17 +107,18 @@ export const chatPanelState = {
   setElement,
 };
 
-// The store resets itself. The width storage beside it goes back to the page's, the follows end and the element is
-// let go.
+// The store resets itself. The follows end and the element is let go.
 registerStoreStateReset(() => {
-  widthStorage = pageLocalStorage;
   run.end();
   panelElement = undefined;
 });
 
-/** Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. */
+/**
+ * Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. A product with no room
+ * or bot has nothing to show.
+ */
 function isButtonVisible(state: ChatPanelState = panel.get()): boolean {
-  return state.available && state.loggedIn;
+  return state.available && state.loggedIn && state.hasContacts;
 }
 
 function getTotalUnread(state: ChatPanelState = panel.get()): number {
@@ -143,15 +130,11 @@ function getTotalUnread(state: ChatPanelState = panel.get()): number {
 }
 
 function setOpen(open: boolean): void {
-  const state = panel.get();
-  if (state.open === open) {
-    return;
-  }
-  update(open ? { open, width: readStoredWidth() } : { open });
+  update({ open });
 }
 
-function openRoom(roomId: string): void {
-  update({ activeRoomId: roomId, focusComposer: true });
+function openRoom(roomId: string, { focusComposer = true }: OpenRoomParams = {}): void {
+  update({ activeRoomId: roomId, focusComposer });
 }
 
 function backToRooms(): void {
@@ -196,19 +179,8 @@ function claimComposerFocus(): boolean {
   return true;
 }
 
-function setWidth(width: number): void {
-  update({ width: clampWidth(width) });
-}
-
-function persistWidth(): void {
-  widthStorage.setItem(PANEL_WIDTH_KEY, String(panel.get().width));
-}
-
-function start({
-  chat = async () => (await import('./createChatStore.js')).chatStore,
-  storage = pageLocalStorage,
-}: Params = {}): () => void {
-  return run.join({ chat, storage });
+function start({ chat = async () => (await import('./createChatStore.js')).chatStore }: Params = {}): () => void {
+  return run.join({ chat });
 }
 
 function getElement(): HTMLElement | undefined {
@@ -225,17 +197,25 @@ function setElement(element: HTMLElement): () => void {
   return releaseElement;
 }
 
-function beginFollowing({ chat, storage }: Required<Params>): () => void {
-  widthStorage = storage;
+function beginFollowing({ chat }: Required<Params>): () => void {
   followSession();
   followProduct();
-  // The store's chunk stays off the boot path, so unread counting starts once it loads.
+  // The store's chunk stays off the boot path, so following the chat starts once it loads.
   const following = new AbortController();
   chat().then(
     store => {
-      if (!following.signal.aborted) {
-        following.signal.addEventListener('abort', store.subscribe(countUnreadMessage));
+      if (following.signal.aborted) {
+        return;
       }
+      following.signal.addEventListener('abort', store.subscribe(followChat));
+      // Listens from once the store loads, so a product load is committed to the panel before its rooms are checked.
+      following.signal.addEventListener(
+        'abort',
+        productState.store.listen(() => {
+          checkContacts(store);
+        }),
+      );
+      checkContacts(store);
     },
     (error: unknown) => {
       reportLazyMiss({ report, step: 'chat_store_load', error });
@@ -263,7 +243,7 @@ function followSession(): void {
 function followProduct(): void {
   const product = productState.store.get();
   if (product.status === 'error') {
-    update({ label: null, runtimeProductId: null, available: false });
+    update({ label: null, runtimeProductId: null, available: false, hasContacts: false });
     return;
   }
   if (product.status !== 'loaded') {
@@ -277,6 +257,7 @@ function followProduct(): void {
       : {
           ...state,
           label,
+          hasContacts: false,
           activeRoomId: null,
           unreadByRoom: {},
           composerError: null,
@@ -284,9 +265,41 @@ function followProduct(): void {
   commit({ ...base, runtimeProductId: productId, available: product.chat === true });
 }
 
-function countUnreadMessage(change: ChatChange): void {
+/**
+ * Reads whether the product on show has a room or a bot, unless it is known to have one. Each load reads again while
+ * none is known, as another tab of the product may have added one meanwhile.
+ */
+function checkContacts(store: ChatSource): void {
+  const { runtimeProductId: productId, available, hasContacts } = panel.get();
+  if (productId === null || !available || hasContacts) {
+    return;
+  }
+  void store.hasContacts(productId).then(has => {
+    // A read for a product no longer on show tells nothing about the one that is.
+    if (has && panel.get().runtimeProductId === productId) {
+      update({ hasContacts: true });
+    }
+  });
+}
+
+function followChat(change: ChatChange): void {
+  switch (change.kind) {
+    case 'rooms':
+    case 'bots':
+      // The store announces a room or bot write once it is stored, so the product has one.
+      if (change.productId === panel.get().runtimeProductId) {
+        update({ hasContacts: true });
+      }
+      return;
+    case 'message':
+      countUnreadMessage(change);
+      return;
+  }
+}
+
+function countUnreadMessage(change: Extract<ChatChange, { kind: 'message' }>): void {
   const state = panel.get();
-  if (change.kind !== 'message' || change.author !== 'product' || change.productId !== state.runtimeProductId) {
+  if (change.author !== 'product' || change.productId !== state.runtimeProductId) {
     return;
   }
   if (state.open && state.activeRoomId === change.roomId) {
@@ -298,18 +311,6 @@ function countUnreadMessage(change: ChatChange): void {
       [change.roomId]: (state.unreadByRoom[change.roomId] ?? 0) + 1,
     },
   });
-}
-
-function readStoredWidth(): number {
-  const raw = Number(widthStorage.getItem(PANEL_WIDTH_KEY));
-  if (Number.isFinite(raw) && raw >= MIN_PANEL_WIDTH) {
-    return Math.min(raw, MAX_PANEL_WIDTH);
-  }
-  return DEFAULT_PANEL_WIDTH;
-}
-
-function clampWidth(width: number): number {
-  return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, width));
 }
 
 function commit(next: ChatPanelState): void {

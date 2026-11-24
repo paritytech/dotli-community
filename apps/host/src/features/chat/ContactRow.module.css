@@ -9,12 +9,12 @@
 .room-item {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   box-sizing: border-box;
   margin: 0;
   padding: var(--sp-2);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
   font-family: inherit;
@@ -29,9 +29,15 @@
   outline-offset: -2px;
 }
 
-.room-name {
+.text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: var(--sp-hair);
   min-width: 0;
+}
+
+.room-name {
   overflow: hidden;
   font-size: var(--fs-body);
   text-overflow: ellipsis;
@@ -42,8 +48,26 @@
   font-weight: var(--fw-semibold);
 }
 
-.room-unread {
+.detail {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+
+.side {
+  display: flex;
   flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1);
+}
+
+.time {
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
+.room-unread {
   box-sizing: border-box;
   min-width: var(--h-chip);
   height: var(--h-chip);
@@ -58,7 +82,23 @@
 }
 
 @media (max-width: 560px) {
+  .room-item {
+    min-height: 60px;
+    padding: var(--sp-2) var(--sp-3);
+  }
   .room-name {
     font-size: var(--fs-title);
+  }
+  .detail {
+    font-size: var(--fs-small);
+  }
+  .time {
+    font-size: var(--fs-caption);
+  }
+  .room-unread {
+    min-width: 20px;
+    height: 20px;
+    font-size: var(--fs-caption);
+    line-height: 20px;
   }
 }

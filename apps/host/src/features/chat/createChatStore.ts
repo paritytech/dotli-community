@@ -5,7 +5,7 @@
 // only writer of chat data, so every write is announced through `subscribe` and shown through `view`. User replies and
 // custom-message taps reach the product through its live connection.
 
-import type { ChatMessageContent, HostRendererActionSubscribeItem } from '@parity/truapi';
+import type { ChatMessageContent, HostRendererActionSubscribeItem, ImageSource } from '@parity/truapi';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createListenerSet, createRandomId, realTimers, type Timers } from '@dotli/shared';
 import {
@@ -18,6 +18,9 @@ import {
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
 import { createChatView, type ChatChange, type ChatViewRepo } from './createChatView.js';
+import { ImageUnavailableError } from './imageUnavailableError.js';
+import { reportUnavailableImage } from './reportUnavailableImage.js';
+import type { LoadedImage } from './readChatImage.js';
 import { reportFailedChatStorage } from './reportFailedChatStorage.js';
 import { NOT_CONNECTED, startCustomRender, type RenderCustomMessageParams } from './startCustomRender.js';
 
@@ -255,6 +258,27 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     },
 
     /**
+     * Resolves the bytes and type of an image a custom message's tree names, on the product's newest connection.
+     * Rejects with `ImageUnavailableError` without a live connection and when the image cannot be read or drawn, each
+     * reported, and with the signal's reason once `signal` aborts.
+     */
+    async loadImage(productId: string, source: ImageSource, signal: AbortSignal): Promise<LoadedImage> {
+      try {
+        const connection = connections.get(productId);
+        if (connection === undefined) {
+          throw new ImageUnavailableError('not_connected', NOT_CONNECTED);
+        }
+        return await connection.loadImage(source, signal);
+      } catch (error) {
+        // A node that let go of its image aborted the load, which is no failure.
+        if (!signal.aborted) {
+          reportUnavailableImage(error, 'chat_image_load');
+        }
+        throw error;
+      }
+    },
+
+    /**
      * The product's rooms, in creation order. A failed read is reported, and the call then rejects with the repo's
      * error.
      */
@@ -264,6 +288,17 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       } catch (error) {
         reportFailedChatStorage(error, 'chat_rooms_read');
         throw error;
+      }
+    },
+
+    /** Whether the product has a room or a bot. Resolves false when the read fails, which is reported. */
+    async hasContacts(productId: string): Promise<boolean> {
+      try {
+        const [rooms, bots] = await Promise.all([repo.listRooms(productId), repo.listBots(productId)]);
+        return rooms.length > 0 || bots.length > 0;
+      } catch (error) {
+        reportFailedChatStorage(error, 'chat_contacts_check');
+        return false;
       }
     },
   };

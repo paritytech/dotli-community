@@ -11,6 +11,7 @@ import type {
   ContentAlignment,
   Dimensions,
   HorizontalAlignment,
+  ImageFit,
   Modifier,
   Shape,
   Size,
@@ -113,6 +114,14 @@ const BLENDING_MODE_CSS: Record<BlendingMode, string> = {
   Luminosity: 'luminosity',
 };
 
+const IMAGE_FIT_CSS: Record<ImageFit, string> = {
+  None: 'none',
+  Fill: 'fill',
+  Cover: 'cover',
+  Contain: 'contain',
+  ScaleDown: 'scale-down',
+};
+
 function px(value: Size): string {
   return `${String(Number(value))}px`;
 }
@@ -203,6 +212,11 @@ export function modifierStyle(modifiers: Modifier[]): CustomStyle {
     }
   }
   return style;
+}
+
+/** An image's box from its modifiers, which it meets as `fit` says, `Fill` when unset. */
+export function imageStyle(fit: ImageFit | undefined, modifiers: Modifier[]): CustomStyle {
+  return { ...modifierStyle(modifiers), 'object-fit': IMAGE_FIT_CSS[fit ?? 'Fill'] };
 }
 
 export function boxStyle(contentAlignment: ContentAlignment | undefined, modifiers: Modifier[]): CustomStyle {

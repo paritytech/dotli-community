@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The one writer of the product iframe's inline geometry. Every report recomputes and writes the whole
-// box, so a product reload keeps the chat width and docks, and the chat width keeps the safe-area insets.
+// box, so a product reload keeps the docks, and the docks keep the safe-area insets.
 
 import { registerStoreStateReset } from '@dotli/shared';
 import { topbarState, type TopbarState } from './topbarState.js';
@@ -19,7 +19,7 @@ type DockSource = 'debug' | 'sandbox-checker';
 export type FrameBox = {
   /** The frame starts below the bar. Otherwise it takes the full safe height. */
   belowBar: boolean;
-  /** In px, reserved at the right edge by chat and the docks there. */
+  /** In px, reserved at the right edge by the docks there. */
   right: number;
   /** In px, reserved at the bottom edge by the docks there. */
   bottom: number;
@@ -39,17 +39,15 @@ type Params = {
   topbar?: { get: () => Pick<TopbarState, 'present'> };
 };
 
-/** Builds a layout with no frame, below the bar, with no chat and no dock. Building it reads no browser global. */
+/** Builds a layout with no frame, below the bar, with no dock. Building it reads no browser global. */
 export function createProductFrameLayout({ apply, topbar = topbarState }: Params) {
   let frame: HTMLIFrameElement | null = null;
   let topbarOffset = true;
-  let chatWidth = 0;
   let docks: Partial<Record<DockSource, DockInset>> = {};
 
   registerStoreStateReset(() => {
     frame = null;
     topbarOffset = true;
-    chatWidth = 0;
     docks = {};
   });
 
@@ -58,7 +56,7 @@ export function createProductFrameLayout({ apply, topbar = topbarState }: Params
       return;
     }
     // Docks at the same edge stack, so their insets add up.
-    let right = chatWidth;
+    let right = 0;
     let bottom = 0;
     for (const dock of Object.values(docks)) {
       right += dock.right;
@@ -82,11 +80,6 @@ export function createProductFrameLayout({ apply, topbar = topbarState }: Params
     write();
   }
 
-  function setChatWidth(width: number): void {
-    chatWidth = width;
-    write();
-  }
-
   function setDockInset(inset: DockInset, source: DockSource): void {
     docks = { ...docks, [source]: inset };
     write();
@@ -104,8 +97,6 @@ export function createProductFrameLayout({ apply, topbar = topbarState }: Params
     getFocusFallback: (): HTMLIFrameElement | undefined => getFrame() ?? undefined,
     /** Records whether the frame keeps clear of the bar, and writes the box. */
     setTopbarLayout,
-    /** Records the px chat covers at the right edge, 0 while the chat panel is closed, and writes the box. */
-    setChatWidth,
     /** Records the inset the dock `source` takes, replacing its last one, and writes the box. */
     setDockInset,
   };

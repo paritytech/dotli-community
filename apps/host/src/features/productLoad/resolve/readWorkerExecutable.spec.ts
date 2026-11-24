@@ -141,7 +141,7 @@ describe('chat capability', () => {
     const { cache } = createPage();
 
     // When
-    const chat = await readChatCapability('myapp', readingWorker(worker), { cache, network: NETWORK });
+    const chat = await readChat(readingWorker(worker), cache);
 
     // Then
     expect(chat).toBe(chatOn);
@@ -152,11 +152,7 @@ describe('chat capability', () => {
     const { cache } = createPage();
 
     // When
-    const chat = await readChatCapability(
-      'myapp',
-      { readWorkerExecutable: () => Promise.reject(new Error('offline')) },
-      { cache, network: NETWORK },
-    );
+    const chat = await readChat({ readWorkerExecutable: () => Promise.reject(new Error('offline')) }, cache);
 
     // Then
     expect(chat).toBe(false);
@@ -168,18 +164,10 @@ describe('chat capability', () => {
     const read = createDeferred<WorkerExecutable | null>();
 
     // When
-    const chat = await readChatCapability(
-      'myapp',
-      { readWorkerExecutable: () => read.promise },
-      { cache, network: NETWORK },
-    );
+    const chat = await readChat({ readWorkerExecutable: () => read.promise }, cache);
     read.resolve(QUIET_WORKER);
     await read.promise;
-    const next = await readChatCapability(
-      'myapp',
-      { readWorkerExecutable: () => new Promise(() => undefined) },
-      { cache, network: NETWORK },
-    );
+    const next = await readChat({ readWorkerExecutable: () => new Promise(() => undefined) }, cache);
 
     // Then
     expect([chat, next]).toEqual([true, false]);
@@ -191,11 +179,7 @@ describe('chat capability', () => {
     const read = createDeferred<WorkerExecutable | null>();
 
     // When
-    const chat = await readChatCapability(
-      'myapp',
-      { readWorkerExecutable: () => read.promise },
-      { cache, network: NETWORK },
-    );
+    const chat = await readChat({ readWorkerExecutable: () => read.promise }, cache);
     read.resolve(QUIET_WORKER);
     await read.promise;
     const next = cache.getChat('myapp', NETWORK);
@@ -208,6 +192,12 @@ describe('chat capability', () => {
     });
   });
 });
+
+/** Whether `myapp` declares chat, from one worker read through `names`, as a load reads it. */
+function readChat(names: Parameters<typeof readWorkerExecutable>[1], cache: ExecutableCache): Promise<boolean> {
+  const options = { cache, network: NETWORK };
+  return readChatCapability('myapp', readWorkerExecutable('myapp', names, options), options);
+}
 
 /** Returns a name source whose worker read answers `worker`. */
 function readingWorker(worker: WorkerExecutable | null): {

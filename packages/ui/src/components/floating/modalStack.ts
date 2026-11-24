@@ -3,7 +3,7 @@
 
 // Shown modal layers and the inertness they put on the page.
 
-export type LayerLayout = 'center' | 'sheet' | 'topbar-end';
+export type LayerLayout = 'center' | 'sheet' | 'side' | 'topbar-end';
 
 type ShownLayer = { element: HTMLElement; layout: LayerLayout };
 

@@ -36,7 +36,7 @@ export function SheetContent(props: {
   let wrapper: HTMLDivElement | undefined;
   const presence = createPresence({
     open: () => props.state.sheet() && props.state.open(),
-    exitMs: SHEET_EXIT_MS,
+    exit: { kind: 'timer', ms: SHEET_EXIT_MS },
   });
   return (
     <Loading>

@@ -1,0 +1,21 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Defaults only: a product's layout and colours arrive as inline styles. */
+.box {
+  display: grid;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* One cell spanning the box, so a child that fills fills the box. The child sits in it at the box's alignment. */
+.cell {
+  display: grid;
+  grid-area: 1 / 1;
+  align-self: stretch;
+  justify-self: stretch;
+  align-items: inherit;
+  justify-items: inherit;
+  min-width: 0;
+}

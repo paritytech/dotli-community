@@ -47,26 +47,11 @@ describe('product frame layout', () => {
     ]);
   });
 
-  it('As a chat user, I open, resize and close chat and the frame narrows and is restored', () => {
-    // Given
-    const { layout, getBoxes } = createRecordingLayout();
-    const { frame } = createStandInFrame();
-    layout.attach(frame);
-
-    // When
-    layout.setChatWidth(360);
-    layout.setChatWidth(420);
-    layout.setChatWidth(0);
-
-    // Then
-    expect(getBoxes(frame).map(box => box.right)).toEqual([0, 360, 420, 0]);
-  });
-
-  it('As a chat user, I reload a product and the new frame keeps the chat-narrowed width', () => {
+  it('As a dotli developer, I reload a product and the new frame keeps clear of the docked panel', () => {
     // Given
     const { layout, getBoxes } = createRecordingLayout();
     layout.attach(createStandInFrame().frame);
-    layout.setChatWidth(360);
+    layout.setDockInset({ right: 360, bottom: 0 }, 'debug');
     layout.setTopbarLayout({ offset: false });
     const { frame: reloaded } = createStandInFrame();
 
@@ -77,17 +62,17 @@ describe('product frame layout', () => {
     expect(getBoxes(reloaded)).toEqual([{ belowBar: false, right: 360, bottom: 0 }]);
   });
 
-  it('As a chat user, I close chat after a product reload and only the new frame resizes', () => {
+  it('As a dotli developer, I close a docked panel after a product reload and only the new frame resizes', () => {
     // Given
     const { layout, getBoxes } = createRecordingLayout();
     const { frame: first } = createStandInFrame();
     const { frame: second } = createStandInFrame();
     layout.attach(first);
-    layout.setChatWidth(360);
+    layout.setDockInset({ right: 360, bottom: 0 }, 'debug');
     layout.attach(second);
 
     // When
-    layout.setChatWidth(0);
+    layout.setDockInset({ right: 0, bottom: 0 }, 'debug');
 
     // Then
     expect({ first: getBoxes(first).at(-1)?.right, second: getBoxes(second).at(-1)?.right }).toEqual({
@@ -99,7 +84,7 @@ describe('product frame layout', () => {
   it('As a dotli integrator, I set the layout before any product frame and it applies once one attaches', () => {
     // Given
     const { layout, getBoxes } = createRecordingLayout();
-    layout.setChatWidth(360);
+    layout.setDockInset({ right: 360, bottom: 0 }, 'debug');
     layout.setTopbarLayout({ offset: false });
     const { frame } = createStandInFrame();
 
@@ -139,25 +124,6 @@ describe('product frame layout: docked panels', () => {
       { belowBar: true, right: 0, bottom: 0 },
       { belowBar: true, right: 400, bottom: 0 },
       { belowBar: true, right: 0, bottom: 300 },
-    ]);
-  });
-
-  it('As a dotli developer, I dock a panel right with chat open and close it, and the frame narrows by both and then by chat alone', () => {
-    // Given
-    const { layout, getBoxes } = createRecordingLayout();
-    const { frame } = createStandInFrame();
-    layout.attach(frame);
-    layout.setChatWidth(360);
-    layout.setTopbarLayout({ offset: false });
-
-    // When
-    layout.setDockInset({ right: 400, bottom: 0 }, 'debug');
-    layout.setDockInset({ right: 0, bottom: 0 }, 'debug');
-
-    // Then chat and the tracked bar still apply
-    expect(getBoxes(frame).slice(-2)).toEqual([
-      { belowBar: false, right: 760, bottom: 0 },
-      { belowBar: false, right: 360, bottom: 0 },
     ]);
   });
 

@@ -4,13 +4,15 @@
 import { createReporter, defineCount, type CountMetric } from '@dotli/metrics';
 import { isExpectedDbError } from '@dotli/storage';
 
-type ChatStorageStep = 'chat_contacts_read' | 'chat_messages_read' | 'chat_rooms_read' | 'chat_reply_store';
+type ChatStorageStep =
+  'chat_contacts_read' | 'chat_contacts_check' | 'chat_messages_read' | 'chat_rooms_read' | 'chat_reply_store';
 
 const report = createReporter({ flow: 'chat' });
 
 /**
- * One failed read of the chat store: the panel's contacts or messages, after which the panel keeps its last view, or
- * a product's room list, which then rejects to its caller. Tagged `outcome` (error) and `reason` (the error's name).
+ * One failed read of the chat store: the panel's contacts or messages, after which the panel keeps its last view, a
+ * product's room list, which then rejects to its caller, or whether a product has any room or bot. Tagged `outcome`
+ * (error) and `reason` (the error's name).
  */
 const chatReadMetric = defineCount<'error'>('chat.read');
 
@@ -19,6 +21,7 @@ const chatReplyStoreMetric = defineCount<'error'>('chat.reply_store');
 
 const STEP_METRICS = {
   chat_contacts_read: chatReadMetric,
+  chat_contacts_check: chatReadMetric,
   chat_messages_read: chatReadMetric,
   chat_rooms_read: chatReadMetric,
   chat_reply_store: chatReplyStoreMetric,

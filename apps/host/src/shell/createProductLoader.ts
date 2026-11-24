@@ -21,7 +21,7 @@ import {
   type Transition,
 } from '@dotli/shared';
 import type { CachedCid } from '@dotli/storage';
-import { readChatCapability } from '../features/productLoad/index.js';
+import { readChatCapability, readWorkerExecutable } from '../features/productLoad/index.js';
 import { describeError, isFromNewerRelease, type ErrorDescription } from '../features/productLoad/index.js';
 import { assertLaunchable } from '../features/productLoad/index.js';
 import { fromCachedManifest, toCachedManifest, type ProductManifests } from '../features/productLoad/index.js';
@@ -326,6 +326,7 @@ export function createProductLoader(params: Params) {
                   cid,
                   base: params.base,
                   chat: run.chat,
+                  worker: run.worker,
                   facts: getProductFacts(manifests),
                 }),
               () => ({ kind: 'rendered' }),
@@ -577,14 +578,16 @@ function runStep<Value>(work: () => Value | Promise<Value>, toEvent: (value: Val
 /** Sets up one load and returns what it holds. Throws what the setup throws. */
 function startLoadRun(label: string, params: Pick<Params, 'bridge' | 'names'>) {
   params.bridge.setPageProduct({ label });
-  // In parallel with the CID.
-  const chat = readChatCapability(label, params.names);
+  // In parallel with the CID. Chat derives from the same read.
+  const worker = readWorkerExecutable(label, params.names);
+  const chat = readChatCapability(label, worker);
   urlPillState.showProduct(label, getActiveTldSuffix());
   // A page loads one product, so the bar folds for the page's life and the cleanup goes unused.
   const autoHide = startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm });
   return {
     label,
     chat,
+    worker,
     autoHide,
     // The core boots while the name resolves, so its boot can fail before anything awaits it.
     coreHold: markHandled(params.bridge.acquirePageCore()),

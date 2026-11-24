@@ -17,7 +17,7 @@ describe('dragSheet', () => {
       drags: createDrags({ selection: createRecordedLock().lock }),
       head,
       surface,
-      down: { pointerId: 7, clientY: 0 },
+      down: { pointerId: 7, clientX: 0, clientY: 0 },
       close: () => closes.push('close'),
     });
 
@@ -41,7 +41,7 @@ describe('dragSheet', () => {
       drags: createDrags({ selection: createRecordedLock().lock }),
       head,
       surface,
-      down: { pointerId: 7, clientY: 0 },
+      down: { pointerId: 7, clientX: 0, clientY: 0 },
       close: () => closes.push('close'),
       timers,
     });
@@ -67,7 +67,7 @@ describe('dragSheet', () => {
       drags: createDrags({ selection: createRecordedLock().lock }),
       head,
       surface,
-      down: { pointerId: 7, clientY: 0 },
+      down: { pointerId: 7, clientX: 0, clientY: 0 },
       close: () => closes.push('close'),
       timers,
     });
@@ -90,7 +90,13 @@ describe('dragSheet', () => {
     const closes: string[] = [];
     const { lock, locks } = createRecordedLock();
     const drags = createDrags({ selection: lock });
-    dragSheet({ drags, head, surface, down: { pointerId: 7, clientY: 0 }, close: () => closes.push('close') });
+    dragSheet({
+      drags,
+      head,
+      surface,
+      down: { pointerId: 7, clientX: 0, clientY: 0 },
+      close: () => closes.push('close'),
+    });
     dispatchPointer(head, 'pointermove', { y: 80 });
 
     // When the sheet's component cleans up
@@ -102,14 +108,39 @@ describe('dragSheet', () => {
     expect(surface.attributes.has('data-dragging')).toBe(false);
     expect(locks).toEqual([true, false]);
   });
+
+  it('As a wide screen user, I swipe a sheet on the right edge to the right past its threshold and lift, and it closes', () => {
+    // Given a sheet on the right edge held at its head
+    const head = new FakeHandle();
+    const surface = createFakeSurface(100);
+    const closes: string[] = [];
+    dragSheet({
+      drags: createDrags({ selection: createRecordedLock().lock }),
+      head,
+      surface,
+      down: { pointerId: 7, clientX: 0, clientY: 0 },
+      close: () => closes.push('close'),
+      edge: 'right',
+    });
+
+    // When the finger moves right past 30% of its width, not down, and lifts
+    dispatchPointer(head, 'pointermove', { x: 80 });
+    dispatchPointer(head, 'pointerup', { x: 80 });
+
+    // Then the sheet closes and lets go of its drag look
+    expect(closes).toEqual(['close']);
+    expect(surface.style.transform).toBe('');
+    expect(surface.attributes.has('data-dragging')).toBe(false);
+  });
 });
 
-/** A sheet surface that keeps what the drag writes to it. */
-function createFakeSurface(height: number): SheetSurface & { attributes: Set<string> } {
+/** A sheet surface as wide as it is high, that keeps what the drag writes to it. */
+function createFakeSurface(size: number): SheetSurface & { attributes: Set<string> } {
   const attributes = new Set<string>();
   return {
     attributes,
-    offsetHeight: height,
+    offsetHeight: size,
+    offsetWidth: size,
     style: { transform: '' },
     setAttribute: name => attributes.add(name),
     removeAttribute: name => attributes.delete(name),

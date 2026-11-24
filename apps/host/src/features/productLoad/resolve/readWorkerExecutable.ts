@@ -74,22 +74,19 @@ export function readWorkerExecutable(
 }
 
 /**
- * Whether `label` declares chat in its worker executable, answered as `readWorkerExecutable` answers. A failed read
- * means no chat for this load.
+ * Whether `label` declares chat in `worker`, the read `readWorkerExecutable` started for it. Answers at once from the
+ * kept answer, or the chat answer kept before workers were, so it never waits on the read when either is there.
  */
 export function readChatCapability(
   label: string,
-  names: Pick<NameSource, 'readWorkerExecutable'>,
+  worker: Promise<WorkerExecutable | null>,
   {
     cache = createStorageExecutableCache({ storage: pageLocalStorage }),
     network = getNetwork(),
   }: ReadWorkerExecutableParams = {},
 ): Promise<boolean> {
   const kept = cache.getChat(label, network);
-  const fresh = readWorkerExecutable(label, names, { cache, network }).then(
-    executable => executable?.includes.chat === true,
-  );
-  return kept === null ? fresh : Promise.resolve(kept);
+  return kept === null ? worker.then(executable => executable?.includes.chat === true) : Promise.resolve(kept);
 }
 
 /** Builds a cache in `storage`. */

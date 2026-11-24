@@ -13,6 +13,7 @@ import { createChatStore, type ChatRepo } from './createChatStore.js';
 import type { ChatChange } from './createChatView.js';
 import { createRecordingConnection, type RecordedRender } from './createChatConnections.fake.js';
 import { createMemoryChatRepo } from './createChatStore.fake.js';
+import { ImageUnavailableError } from './imageUnavailableError.js';
 
 const PRODUCT = 'chatty.dot';
 const GONE = new Error('IndexedDB is gone');
@@ -420,6 +421,20 @@ describe('chat store', () => {
     expect(captured).toEqual(['chat_rooms_read']);
     expect(sentry.counted('chat.read')).toEqual([{ outcome: 'error', reason: GONE.name }]);
   });
+
+  it('As a user whose room list cannot be read, I see my product treated as having no room, and the failure reported', async () => {
+    // Given a product with a room, whose room list reads fail
+    const { repo, chat, captured } = setup();
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    repo.reads.error.rooms = GONE;
+
+    // When
+    const has = await chat.hasContacts(PRODUCT);
+
+    // Then
+    expect(has).toBe(false);
+    expect(captured).toEqual(['chat_contacts_check']);
+  });
 });
 
 const TEXT = { tag: 'Text', value: { text: 'hi' } } as const;
@@ -790,5 +805,49 @@ describe('chat store view, message reads', () => {
     // Then
     expect(repo.reads.count.messages - start).toBe(2);
     expect(chat.view.get().messages).toHaveLength(3);
+  });
+});
+
+describe('chat store images', () => {
+  const LOGO = { tag: 'Bulletin', value: 'bafkreilogo' } as const;
+
+  it('As a user, I see an image whose bytes do not match its CID as unavailable, reported as a defect', async () => {
+    // Given
+    const { chat, connections, captured, expected } = setup();
+    const mismatch = new ImageUnavailableError('mismatch', 'Content hash mismatch');
+    connections.register(PRODUCT, createRecordingConnection({ loadImage: () => Promise.reject(mismatch) }));
+
+    // When
+    const loading = chat.loadImage(PRODUCT, LOGO, new AbortController().signal);
+
+    // Then
+    await expect(loading).rejects.toBe(mismatch);
+    expect(captured).toEqual(['chat_image_load']);
+    expect(expected).toEqual([]);
+  });
+
+  it('As a user who scrolls past an image while it loads, I leave no failure reported', async () => {
+    // Given
+    const { chat, connections, captured, expected } = setup();
+    const aborter = new AbortController();
+    connections.register(
+      PRODUCT,
+      createRecordingConnection({
+        loadImage: (_source, signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => {
+              reject(new Error('Image load aborted', { cause: signal.reason }));
+            });
+          }),
+      }),
+    );
+    const loading = chat.loadImage(PRODUCT, LOGO, aborter.signal);
+
+    // When
+    aborter.abort();
+
+    // Then
+    await expect(loading).rejects.toThrow('Image load aborted');
+    expect([...captured, ...expected]).toEqual([]);
   });
 });

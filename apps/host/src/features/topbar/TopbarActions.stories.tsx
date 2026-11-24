@@ -17,7 +17,9 @@ import { moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js
 import { resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
 import { resetStorySettings, storySettings } from '../../testing/stories/settingsFixtures.js';
 import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
+import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import type { ActionGroupMorph } from '@dotli/ui';
+import { ChatItem } from '../chat/index.js';
 import { NetworkItem } from '../network/index.js';
 import { NETWORK_HEALTH } from '../network/index.js';
 import { PermissionsItem } from '../permissions/index.js';
@@ -25,7 +27,7 @@ import { SettingsItem } from '../settings/index.js';
 import { AccountItem } from '../account/index.js';
 import { TopbarActions } from './TopbarActions.js';
 
-/** A phone bar with room for the account and More only, so every other item is a More row. */
+/** Room in the bar for the account and More only, so every other item is a More row. */
 const MORE_ONLY = 80;
 
 function opened(id: string): Promise<void> {
@@ -37,17 +39,23 @@ function closed(id: string): Promise<void> {
 
 const phone = { viewport: { value: 'phone', isRotated: false } };
 
+/** The story's chat, fresh for each, with no room until a story adds one. */
+let chat: ChatStage = chatStage({ available: false });
+
 /** A bar that never morphs. */
 const STILL: ActionGroupMorph = { running: () => false, onEnd: () => () => undefined };
 
-/** The actions as the host's island renders them, with the story's network, permissions, settings and account. */
-function Actions(): JSX.Element {
+/**
+ * The actions as the host's island renders them, with the story's network, chat, permissions, settings and account.
+ * Without a `room`, the group measures its own width, as the phone bar's room is.
+ */
+function Actions(props: { room?: number }): JSX.Element {
   return (
     <TopbarActions
-      // The group measures its own width, as the phone bar's room is.
-      room={() => undefined}
+      room={() => props.room}
       morph={STILL}
       network={<NetworkItem {...storyNetwork} />}
+      chat={<ChatItem {...chat.button} />}
       permissions={<PermissionsItem {...storyPermissions} />}
       settings={<SettingsItem {...storySettings} />}
       account={
@@ -75,6 +83,8 @@ const meta = {
     resetStorySettings();
     resetStoryAccount();
     disconnect();
+    chat = chatStage({ available: false });
+    return chat.dispose;
   },
   render: () => (
     <TopbarFrame>
@@ -88,14 +98,17 @@ type Story = StoryObj<typeof meta>;
 
 function narrow() {
   return (
-    <TopbarFrame maxWidth={MORE_ONLY}>
-      <Actions />
+    <TopbarFrame>
+      <Actions room={MORE_ONLY} />
     </TopbarFrame>
   );
 }
 
-/** As a mobile user, the More menu's Network row opens the network panel in More's place. */
-export const NetworkAndSettingsRowsOpen: Story = {
+/** As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it. */
+export const PhoneActionsReplaceAddress: Story = {};
+
+/** As a phone user, the More menu's Network row opens the network panel in More's place. */
+export const PhoneNetworkRowOpensPanel: Story = {
   render: narrow,
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
@@ -119,8 +132,29 @@ export const NetworkAndSettingsRowsOpen: Story = {
   },
 };
 
-/** As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it. */
-export const PhoneActionsReplaceAddress: Story = {};
+/** As a phone user, the chat row joins More once the product has a room for me, and choosing it opens the chat. */
+export const PhoneChatRowJoinsMore: Story = {
+  render: narrow,
+  play: async ({ userEvent, step }) => {
+    await expectPhone(step);
+    await step('Given More open while the product has no room', async () => {
+      await openMore(userEvent);
+      await expect(moreRowNames()).not.toContain('chat');
+    });
+    await step('When the product adds its first room', () => {
+      chat.update({ available: true });
+    });
+    await step('Then More lists the chat row', async () => {
+      await waitFor(() => expect(moreRowNames()).toContain('chat'));
+    });
+    await step('When I choose it', async () => {
+      await userEvent.click(moreRow('chat'));
+    });
+    await step('Then the chat opens', async () => {
+      await waitFor(() => expect(chat.state.get().open).toBe(true));
+    });
+  },
+};
 
 /** As a phone user, the Network row leads the More menu with its verdict, and a stalled chain raises More's badge and name. */
 export const PhoneNetworkRowLeads: Story = {
