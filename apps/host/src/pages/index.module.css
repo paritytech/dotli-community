@@ -21,8 +21,8 @@
   text-align: center;
 }
 
-/* Staged, the content starts below a band of its own, which shrinks to a strip while the bar is folded. Everything
-   that insets from the content edges follows. A phone is never staged. */
+/* Staged, the content starts below a band of its own, which shrinks to a strip while the bar is folded. A phone is
+   never staged. */
 @media (min-width: 561px) {
   .page[data-staged] {
     --content-top: calc(var(--h-bar) + var(--safe-top));

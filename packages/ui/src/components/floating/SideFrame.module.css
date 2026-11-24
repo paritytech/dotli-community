@@ -19,7 +19,7 @@
   color: var(--chrome-text);
   font-family: var(--font-sans);
   transform: translateX(calc(100% + var(--inset-end)));
-  /* Its layer passes presses through. */
+  /* Takes the pointer, which the layer does not. */
   pointer-events: auto;
   transition:
     transform var(--dur-morph) var(--ease-out),

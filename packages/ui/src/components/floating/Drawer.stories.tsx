@@ -52,7 +52,7 @@ export const ModalOverPanel: Story = {
   globals: DESKTOP,
   args: { withConfirm: true },
   play: async ({ userEvent, step }) => {
-    const panel = body.getByTestId('story-drawer-backdrop');
+    const panel = body.getByRole('dialog', { name: 'Market' });
     await step('Given the open side panel', async () => {
       await waitFor(() => expect(panel).toHaveAttribute('data-open'));
     });
@@ -60,7 +60,7 @@ export const ModalOverPanel: Story = {
       await userEvent.click(body.getByRole('button', { name: 'Clear chat' }));
     });
     await step('Then the panel is inert under the open modal', async () => {
-      await waitFor(() => expect(body.getByTestId('story-confirm-backdrop')).toHaveAttribute('data-open'));
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Clear chat' })).toHaveAttribute('data-open'));
       await expect(panel).toHaveAttribute('inert');
     });
     await step('When I cancel the modal', async () => {

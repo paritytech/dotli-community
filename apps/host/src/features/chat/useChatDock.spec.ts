@@ -72,7 +72,7 @@ describe('useChatDock', () => {
     dispose();
   });
 
-  it('As a user with the panel open, the chat island goes away and the page undocks it', async () => {
+  it('As a user with the panel open, I lose the chat island and the page undocks the panel', async () => {
     // Given a room of a connected product, so the panel can open
     connections.register(PRODUCT, createRecordingConnection());
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
