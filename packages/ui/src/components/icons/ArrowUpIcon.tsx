@@ -4,14 +4,14 @@
 import type { JSX } from '@solidjs/web';
 import type { IconProps } from './iconProps.js';
 
-/** A paper plane, for sending a message. */
-export function SendIcon(props: IconProps): JSX.Element {
+/** An arrow pointing up, for sending a message. */
+export function ArrowUpIcon(props: IconProps): JSX.Element {
   return (
     <svg
       class={props.class}
       data-testid={props.testId}
-      width={props.size ?? 14}
-      height={props.size ?? 14}
+      width={props.size ?? 16}
+      height={props.size ?? 16}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -20,7 +20,7 @@ export function SendIcon(props: IconProps): JSX.Element {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
+      <path d="M12 19V5m-7 7 7-7 7 7" />
     </svg>
   );
 }

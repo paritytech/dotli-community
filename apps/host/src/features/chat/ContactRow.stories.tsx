@@ -27,7 +27,7 @@ const meta = {
     ...contactIconStories.args,
     id: 'room-1',
     readOnly: false,
-    lastMessageAt: NOW - 24 * 60 * MINUTE,
+    lastMessageAt: NOW - 2 * MINUTE,
     now: NOW,
     unread: 0,
     onOpen: fn(),
@@ -38,7 +38,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a user, I see a room with nothing unread and when its last message came. */
+/** As a user, I see a room with nothing unread and the clock time of its last message today. */
 export const Default: Story = {};
 
 /** As a user, I see a room that has had no message yet, with no time. */
@@ -53,7 +53,7 @@ export const LongName: Story = {
 
 /** As a screen-reader user, I hear the unread badge's full count while it shows a capped one. */
 export const Unread: Story = {
-  args: { unread: 12, lastMessageAt: NOW - 2 * MINUTE },
+  args: { unread: 12 },
   play: async ({ canvas, mount, step }) => {
     await step('When a room with more unread messages than the badge shows renders', async () => {
       await mount();

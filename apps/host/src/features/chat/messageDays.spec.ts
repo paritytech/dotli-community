@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { getDayLabel, isDayStart } from './messageDays.js';
+import { getDayLabel, getLastMessageLabel, isDayStart } from './messageDays.js';
 
 // Local times, so the cases hold in any time zone.
 function at(year: number, month: number, day: number, hour = 12, minute = 0): number {
@@ -45,5 +45,16 @@ describe('message days', () => {
     // Then
     expect([thisYear.includes('20'), thisYear.includes('2026')]).toEqual([true, false]);
     expect(lastYear).toContain('2025');
+  });
+
+  it('As a user, I see a room whose last message came today by its clock time, and an older one by its day', () => {
+    // When
+    const labels = [
+      getLastMessageLabel(at(2026, 11, 24, 8, 5), NOW),
+      getLastMessageLabel(at(2026, 11, 23, 23, 59), NOW),
+    ];
+
+    // Then
+    expect(labels).toEqual([expect.stringContaining('05'), 'Yesterday']);
   });
 });

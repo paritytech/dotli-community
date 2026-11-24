@@ -9,8 +9,8 @@
   height: 100%;
   margin: 0;
   padding: 0;
-  /* The chat palette's surface, so it matches product boxes painted BgSurfaceMain. */
-  background: var(--chat-bg-surface-main);
+  /* Darker than the other side's bubbles, so they stand out on it. */
+  background: var(--chat-bg-panel);
   color-scheme: dark;
 }
 /* A sheet grows with its content, so the panel takes a height of its own to keep the conversation scrolling inside. */

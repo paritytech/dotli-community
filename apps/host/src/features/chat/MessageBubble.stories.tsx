@@ -16,8 +16,6 @@ const meta = {
   parameters: { chrome: true },
   args: {
     record: record({ tag: 'Text', value: { text: 'Your order #4821 is confirmed.' } }),
-    now: NOW,
-    endsRun: true,
     onAction: fn(),
     custom: StandInBody,
   },
@@ -27,17 +25,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a reader, I see a product's message on the left, with its tail and its time. */
+/** As a reader, I see a product's message on the left, with its time inside the bubble. */
 export const Default: Story = {};
 
-/** As a reader, I see my own message on the right, in my own tint. */
+/** As a reader, I see my own message on the right, light on the dark panel. */
 export const Own: Story = {
   args: { record: { ...meta.args.record, author: 'user' } },
-};
-
-/** As a reader, I see a message its author followed up within the minute with no tail and no time. */
-export const InsideARun: Story = {
-  args: { endsRun: false },
 };
 
 /** As a reader, I see a long unbroken word wrap inside the bubble. */
@@ -72,22 +65,14 @@ export const ActionsGrid = {
   args: { record: actions('Grid', ['Water', 'Lemonade', 'Cola', 'No, thanks']) },
 } satisfies Story;
 
-/** As a reader, I see a custom message as the page's custom body in a card, before its time. */
+/** As a reader, I see a custom message as the page's custom body in a card, its time on a line below it. */
 export const Custom = {
   args: { record: record({ tag: 'Custom', value: { messageType: 'delivery-time', payload: '0x01' } }) },
 } satisfies Story;
 
-/** As a reader, I see a reaction as a quiet event that shows its time, though it ends no run. */
+/** As a reader, I see a reaction as a quiet event with its time, never a bubble. */
 export const Reaction: Story = {
-  args: { record: record({ tag: 'Reaction', value: { emoji: '👍' } }), endsRun: false },
-  play: async ({ canvas, mount, step }) => {
-    await step('When a reaction renders inside a run', async () => {
-      await mount();
-    });
-    await step('Then it shows its time', async () => {
-      await expect(canvas.getByTestId('chat-msg-time')).toBeVisible();
-    });
-  },
+  args: { record: record({ tag: 'Reaction', value: { emoji: '👍' } }) },
 };
 
 /** As a reader, I see markup in a product's message as plain text. */

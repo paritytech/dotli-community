@@ -50,6 +50,12 @@ Not this:
 <details><summary><ServerHeader server={server} /></summary>…</details> // the native element written in the row
 ```
 
+## Not when
+
+The caller cannot replace the shared component with plain parts, because it needs the component's own behaviour, such
+as a drawer's close button and drag to close. Then widen the component's string prop to take any element, as
+[shared-component-text-prop-needs-rich-content](shared-component-text-prop-needs-rich-content.md) says.
+
 ## Cases
 
 - A network popover lists each chain as a row with a mark, a name, a status line and a chevron, and a press opens the

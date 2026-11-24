@@ -5,7 +5,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import { onChatSurface } from '../../testing/stories/chatFrames.js';
 import customMessageStories from './CustomMessage.stories.js';
-import messageBubbleStories, { ActionsGrid, Custom } from './MessageBubble.stories.js';
+import { ActionsGrid, Custom } from './MessageBubble.stories.js';
 import { MessageRow } from './MessageRow.js';
 
 const ACTIONS = ActionsGrid.args.record;
@@ -19,8 +19,6 @@ const meta = {
   args: {
     chat,
     record: Custom.args.record,
-    now: messageBubbleStories.args.now,
-    endsRun: true,
     onActionError: fn(),
   },
   decorators: [onChatSurface],
@@ -29,7 +27,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a reader, I see a custom message the product renders live in its card, before its time. */
+/** As a reader, I see a custom message the product renders live in its card, above its time. */
 export const Default: Story = {};
 
 /** As a user, I press an action message's button and the tap reaches the app with the message it came from. */

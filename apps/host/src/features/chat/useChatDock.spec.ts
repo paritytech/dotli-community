@@ -91,23 +91,29 @@ describe('useChatDock', () => {
     dispose();
   });
 
-  it("As a user, the panel's title is the product's published name, else its label", () => {
+  it("As the dock, I name the open panel's sole room, and no room once the panel closes", async () => {
     // Given
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
     const { dock, dispose } = mountDock();
 
-    // Then
-    expect(dock.conversation.productName()).toBe(LABEL);
-
-    // When
-    productState.setLoaded({
-      label: LABEL,
-      productId: PRODUCT,
-      details: { facts: { displayName: 'Chatty' } },
+    // When the panel body opens on the product's rooms
+    const body = createRoot(d => {
+      dock.conversation.openFeed().follow(() => null);
+      return d;
     });
+    flush();
+    await chat.settle();
     flush();
 
     // Then
-    expect(dock.conversation.productName()).toBe('Chatty');
+    expect(dock.shown()).toMatchObject({ contact: { id: 'main' }, sole: true });
+
+    // When the panel body closes
+    body();
+    flush();
+
+    // Then
+    expect(dock.shown()).toBeNull();
     dispose();
   });
 

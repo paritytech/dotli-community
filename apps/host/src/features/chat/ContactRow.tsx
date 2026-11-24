@@ -4,7 +4,7 @@
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ContactIcon } from './ContactIcon.js';
-import { relativeTime } from './relativeTime.js';
+import { getLastMessageLabel } from './messageDays.js';
 import { chatUnreadLabel } from './unread.js';
 import s from './ContactRow.module.css';
 
@@ -21,7 +21,7 @@ export function ContactRow(props: {
   readOnly: boolean;
   /** Null until the conversation has a message. */
   lastMessageAt: number | null;
-  /** The time the last message's age is measured to. */
+  /** The time that tells whether the last message came today. */
   now: number;
   unread: number;
   ref?: ((el: HTMLButtonElement) => void) | undefined;
@@ -34,30 +34,33 @@ export function ContactRow(props: {
         type="button"
         class={s['roomItem']}
         data-testid="chat-room-item"
-        data-unread={props.unread > 0 ? '' : undefined}
         onClick={() => {
           props.onOpen(props.id);
         }}
       >
         <ContactIcon name={props.name} icon={props.icon} />
         <span class={s['text']}>
-          <span class={s['roomName']} data-testid="chat-room-name">
-            {props.name}
-          </span>
-          <span class={s['detail']}>{props.readOnly ? 'Read only' : 'Room'}</span>
-        </span>
-        <span class={s['side']}>
-          <Show when={props.lastMessageAt}>{at => <span class={s['time']}>{relativeTime(at(), props.now)}</span>}</Show>
-          <Show when={props.unread > 0}>
-            <span
-              class={s['roomUnread']}
-              role="img"
-              data-testid="chat-room-unread"
-              aria-label={`${String(props.unread)} unread message${props.unread === 1 ? '' : 's'}`}
-            >
-              {chatUnreadLabel(props.unread)}
+          <span class={s['line']}>
+            <span class={s['roomName']} data-testid="chat-room-name">
+              {props.name}
             </span>
-          </Show>
+            <Show when={props.lastMessageAt}>
+              {at => <span class={s['time']}>{getLastMessageLabel(at(), props.now)}</span>}
+            </Show>
+          </span>
+          <span class={s['line']}>
+            <span class={s['detail']}>{props.readOnly ? 'Read only' : 'Room'}</span>
+            <Show when={props.unread > 0}>
+              <span
+                class={s['roomUnread']}
+                role="img"
+                data-testid="chat-room-unread"
+                aria-label={`${String(props.unread)} unread message${props.unread === 1 ? '' : 's'}`}
+              >
+                {chatUnreadLabel(props.unread)}
+              </span>
+            </Show>
+          </span>
         </span>
       </button>
     </li>

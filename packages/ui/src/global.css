@@ -35,11 +35,26 @@
   --chat-bg-surface-main: #1a1b20;
   --chat-bg-surface-container: rgba(255, 255, 255, 0.07);
   --chat-bg-surface-nested: rgba(255, 255, 255, 0.13);
-  /* The user's own messages. Muted text keeps Lc 75 on it over the chat surface. */
-  --chat-bg-own: rgba(120, 169, 255, 0.18);
   --chat-fg-success: var(--chrome-ok-text);
   --chat-fg-error: var(--chrome-err-text);
   --chat-fg-warning: var(--chrome-warn-text);
+  /* The host's own chat, which products never paint with. */
+  --chat-bg-panel: #0b0c0f;
+  --chat-bg-control: #404249;
+  --chat-fg-placeholder: #a9abb3; /* Lc 45 or more on --chat-bg-control */
+  --chat-line: #404249;
+  /* One pair for every contact that has no icon of its own. */
+  --chat-bg-avatar: #7c3aed;
+  --chat-fg-avatar: #ede9fe;
+  /* The user's own messages, light on the dark panel. */
+  --chat-bg-own: #ffffff;
+  --chat-fg-own: #0b0c0f;
+  --chat-fg-own-muted: #6f727a;
+  /* The send button and the unread counts, dark marks on a light fill. */
+  --chat-bg-send: #e0e0e0;
+  --chat-bg-send-hover: #ffffff;
+  --chat-bg-unread: #ececec;
+  --chat-fg-inverted: #080808;
 
   /* `viewport-fit=cover` needs an inset per edge. Inline styles set from JS repeat the px fallback,
      because they do not ship with this file. */

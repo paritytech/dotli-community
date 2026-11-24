@@ -7,6 +7,7 @@
 export type { IconProps } from './components/icons/iconProps.js';
 export { AlertTriangleIcon } from './components/icons/AlertTriangleIcon.js';
 export { ArrowRightIcon } from './components/icons/ArrowRightIcon.js';
+export { ArrowUpIcon } from './components/icons/ArrowUpIcon.js';
 export { BanIcon } from './components/icons/BanIcon.js';
 export { BellIcon } from './components/icons/BellIcon.js';
 export { ChatIcon } from './components/icons/ChatIcon.js';
@@ -36,7 +37,6 @@ export { PolkadotIcon } from './components/icons/PolkadotIcon.js';
 export { QrCodeIcon } from './components/icons/QrCodeIcon.js';
 export { ReloadIcon } from './components/icons/ReloadIcon.js';
 export { RotateCwIcon } from './components/icons/RotateCwIcon.js';
-export { SendIcon } from './components/icons/SendIcon.js';
 export { ShieldAlertIcon } from './components/icons/ShieldAlertIcon.js';
 export { SlidersIcon } from './components/icons/SlidersIcon.js';
 export { SunIcon } from './components/icons/SunIcon.js';

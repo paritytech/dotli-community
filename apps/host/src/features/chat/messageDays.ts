@@ -31,6 +31,16 @@ export function getDayLabel(timestamp: number, now: number): string {
   });
 }
 
+/** A message's time as the locale's hour and minute, such as 18:56. */
+export function getClockLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/** A room's last message time: its clock for a message of today, else its day label, such as "Yesterday". */
+export function getLastMessageLabel(timestamp: number, now: number): string {
+  return startOfDay(timestamp) === startOfDay(now) ? getClockLabel(timestamp) : getDayLabel(timestamp, now);
+}
+
 function startOfDay(timestamp: number): number {
   const date = new Date(timestamp);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();

@@ -1,11 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { type Accessor, createEffect, lazy, Loading, onSettled, untrack } from 'solid-js';
+import { type Accessor, createEffect, lazy, Loading, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { Drawer, preloadWhenIdle, RootBoundary } from '@dotli/ui';
 import type { ChatConversation } from './chat.js';
+import { ChatHead } from './ChatHead.js';
 import { CHAT_PANEL_ID } from './chatPanelId.js';
+import type { ShownContact } from './contacts.js';
 import type * as ChatPanelNamespace from './ChatPanel.js';
 import s from './ChatDock.module.css';
 
@@ -20,6 +22,8 @@ export type ChatDockProps = {
   /** Escape, a press outside, the close button, a swipe or a broken panel closes it. */
   onOpenChange: (open: boolean) => void;
   conversation: ChatConversation;
+  /** The room the open panel shows, named in the drawer's head. Null, as while the drawer is closed, shows "Chat". */
+  shown: Accessor<ShownContact | null>;
   /** Hands the panel's dialog over once it is on the page. Returns the hand back. */
   handOver?: ((panel: HTMLElement) => () => void) | undefined;
   /** Read once. Without one, the panel's own chunk. */
@@ -48,7 +52,12 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
     <Drawer
       open={props.open()}
       onOpenChange={props.onOpenChange}
-      title={props.conversation.productName() ?? 'Chat'}
+      // Not keyed, so the head stays in place as the room's row changes, and a focused back button keeps its focus.
+      title={
+        <Show when={props.shown()} fallback="Chat">
+          {shown => <ChatHead shown={shown()} onBack={props.conversation.backToRooms} />}
+        </Show>
+      }
       id={CHAT_PANEL_ID}
       testId="chat-panel"
     >

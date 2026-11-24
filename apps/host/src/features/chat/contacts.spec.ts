@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { contactEntries } from './contacts.js';
+import type { ContactEntry } from './contacts.js';
+import { contactEntries, getShownContact } from './contacts.js';
 
 describe('contacts', () => {
   it('As a user, contacts are ordered by last message, falling back to creation time', () => {
@@ -34,5 +35,53 @@ describe('contacts', () => {
       ['quiet', 'Empty'],
       ['plain', 'TextInput'],
     ]);
+  });
+
+  describe('getShownContact', () => {
+    const entry = (id: string): ContactEntry => ({
+      id,
+      name: id,
+      icon: '',
+      createdAt: 1,
+      lastMessageAt: null,
+      footer: 'TextInput',
+    });
+
+    it.each([
+      ['no list', null, null],
+      ['two rooms and none active', ['a', 'b'], null],
+      ['an active room the list does not hold', ['a', 'b'], 'missing'],
+    ])('As the chat, I show no room with %s', (_name, roomIds, activeRoomId) => {
+      // Given the row's rooms
+      const list = roomIds === null ? null : roomIds.map(id => entry(id));
+
+      // When
+      const shown = getShownContact(list, activeRoomId);
+
+      // Then
+      expect(shown).toBeNull();
+    });
+
+    it('As the chat, I show the only room when none is active, with no list behind it', () => {
+      // Given one room and none active
+      const list = [entry('a')];
+
+      // When
+      const shown = getShownContact(list, null);
+
+      // Then
+      expect(shown).toEqual({ contact: list[0], sole: true });
+    });
+
+    it('As the chat, I show the active room of several, with the list behind it', () => {
+      // Given two rooms, the second active
+      const list = [entry('a'), entry('b')];
+
+      // When
+      const shown = getShownContact(list, 'b');
+
+      // Then
+      expect(shown).toEqual({ contact: list[1], sole: false });
+    });
   });
 });

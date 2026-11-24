@@ -21,6 +21,7 @@ import { ChatReplyUndeliveredError } from '../../features/chat/chatReplyUndelive
 import type { ChatRenderSink } from '../../features/chat/chat.js';
 import type { ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../features/chat/chat.js';
 import type { ChatButtonProps } from '../../features/chat/ChatButton.js';
+import { contactEntries, getShownContact, type ShownContact } from '../../features/chat/contacts.js';
 import { DELIVERY_TIME_PICKER, PAYMENT_REQUEST } from './customMessageTrees.js';
 
 const PRODUCT = 'market.dot';
@@ -32,8 +33,6 @@ export type StageState = {
   /** Whether the chat button shows. */
   available: boolean;
   loggedIn: boolean;
-  productName: string | null;
-  productDomain: string | null;
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
   /** The page's total across rooms, which the button shows while the panel is closed. */
@@ -46,8 +45,6 @@ const INITIAL: StageState = {
   open: false,
   available: true,
   loggedIn: true,
-  productName: 'Market',
-  productDomain: 'market.dot',
   activeRoomId: null,
   unreadByRoom: {},
   unread: 0,
@@ -62,12 +59,15 @@ type FeedState = {
   messagesFailed: boolean;
 };
 
+const NO_FEED: FeedState = { contacts: null, contactsFailed: false, messages: null, messagesFailed: false };
+
 /** The page's chat state as the host's dock reads it. */
 export type StageDock = {
   open: Accessor<boolean>;
   available: Accessor<boolean>;
   onOpenChange: (open: boolean) => void;
   conversation: ChatConversation;
+  shown: Accessor<ShownContact | null>;
   handOver: (panel: HTMLElement) => () => void;
 };
 
@@ -145,12 +145,14 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
   } = seed;
   const state = atom<StageState>({ ...INITIAL, ...initial });
   state.eq = isShallowEqual;
-  const feed = atom<FeedState>({ contacts: null, contactsFailed: false, messages: null, messagesFailed: false });
+  const feed = atom<FeedState>(NO_FEED);
   feed.eq = isShallowEqual;
   // What the views read, following each write as the page's stores reach them through `useStore`.
   const [current, setCurrent] = createSignal(state.get());
   const unlisten = state.listen(() => setCurrent(state.get()));
-  // Strictly rising and close to now, so the list's recency order never ties and bubbles read "just now".
+  const [feedContacts, setFeedContacts] = createSignal(feed.get().contacts);
+  const unlistenFeed = feed.listen(next => setFeedContacts(next.contacts));
+  // Strictly rising and close to now, so the list's recency order never ties.
   let clock = 0;
   const stamp = (): number => (clock = Math.max(Date.now(), clock + 1));
   let shownRoom: string | null = null;
@@ -221,17 +223,17 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
         shownRoom = room;
         readSoon();
       });
+      // Unfollowing drops what was read, as the page's view does.
       onCleanup(() => {
         following = false;
         shownRoom = null;
+        feed.set(NO_FEED);
       });
     },
   });
 
   const conversation: ChatConversation = {
     loggedIn: () => current().loggedIn,
-    productName: () => current().productName,
-    productDomain: () => current().productDomain,
     activeRoomId: () => current().activeRoomId,
     unreadByRoom: () => current().unreadByRoom,
     composerError: () => current().composerError,
@@ -325,6 +327,11 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
         update({ open });
       },
       conversation,
+      shown: () => {
+        const read = feedContacts();
+        const entries = read === null ? null : contactEntries(read.rooms, read.lastMessageTimes);
+        return getShownContact(entries, current().activeRoomId);
+      },
       handOver: el => {
         panelElement = el;
         return () => {
@@ -342,7 +349,10 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
       panel: () => panelElement,
     },
     panelElement: () => panelElement,
-    dispose: unlisten,
+    dispose: () => {
+      unlisten();
+      unlistenFeed();
+    },
   };
   const now = Date.now();
   stage.messages = messages.map(({ roomId, content, minutesAgo, author = 'product' }, i) => ({

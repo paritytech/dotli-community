@@ -6,75 +6,23 @@
   display: grid;
   flex: 1;
   grid-template-areas:
-    'head'
     'body'
     'hint'
     'foot';
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   box-sizing: border-box;
   min-height: 0;
   margin: 0;
   padding: 0;
 }
 
-.header {
-  display: flex;
-  grid-area: head;
-  align-items: center;
-  gap: var(--sp-2);
-  box-sizing: border-box;
-  margin: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--chrome-line);
-}
-
-.titles {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.title {
-  overflow: hidden;
-  color: var(--text-strong);
-  font-size: var(--fs-pop-title);
-  font-weight: var(--fw-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.subtitle {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.other-unread {
-  flex-shrink: 0;
-  box-sizing: border-box;
-  min-width: var(--h-chip);
-  height: var(--h-chip);
-  padding: 0 var(--sp-1_5);
-  border-radius: var(--r-full);
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-semibold);
-  line-height: var(--h-chip);
-  text-align: center;
-}
-
 .rooms {
   display: flex;
   grid-area: body;
   flex-direction: column;
-  gap: var(--sp-hair);
   box-sizing: border-box;
   margin: 0;
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--sp-1);
   overflow-y: auto;
   list-style: none;
 }
@@ -89,7 +37,7 @@
   flex-direction: column;
   box-sizing: border-box;
   margin: 0;
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-3);
   overflow-y: auto;
 }
 .messages[hidden] {
@@ -105,20 +53,28 @@
 .thread {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-hair);
+  gap: var(--sp-2);
   box-sizing: border-box;
   margin: auto 0 0;
   padding: 0;
 }
 
+/* The caption sits between two hairlines that fill the rest of the row. */
 .day {
-  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
   margin: var(--sp-2) 0;
-  padding: var(--sp-hair) var(--sp-2);
-  border-radius: var(--r-full);
-  background: var(--fill-subtle);
-  color: var(--text-secondary);
-  font-size: var(--fs-label);
+  color: var(--chat-fg-tertiary);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+.day::before,
+.day::after {
+  flex: 1;
+  border-top: 1px solid var(--chat-line);
+  content: '';
 }
 
 .hint {
@@ -189,7 +145,7 @@
   grid-area: foot;
   box-sizing: border-box;
   margin: 0;
-  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  padding: var(--sp-2);
 }
 .composer[hidden] {
   display: none;
@@ -199,38 +155,41 @@
   padding-top: 0;
 }
 
-/* The field and Send share one pill, which takes the focus ring the borderless field leaves out. */
+/* The field and Send share one pill, which takes the focus ring the borderless field leaves out. The field fills the
+   pill's height, so a tap anywhere left of Send lands in it. */
 .field {
   display: flex;
   align-items: center;
-  gap: var(--sp-1_5);
+  gap: var(--sp-2);
   box-sizing: border-box;
-  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-4);
+  min-height: 48px;
+  padding: 0 var(--sp-2) 0 var(--sp-4);
   border-radius: var(--r-full);
-  background: var(--chrome-well);
-  box-shadow: var(--chrome-shadow-inset);
+  background: var(--chat-bg-control);
 }
 .field:has(> .input:focus-visible) {
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
 
+/* 16 px at every width, as iOS Safari zooms into a focused field set under 16 px. */
 .input {
   flex: 1;
+  align-self: stretch;
   min-width: 0;
   box-sizing: border-box;
-  height: var(--h-control-sm);
   margin: 0;
   padding: 0;
   border: none;
   outline: none;
   background: transparent;
-  color: var(--text-strong);
+  color: var(--chat-fg-primary);
   font-family: inherit;
-  font-size: var(--fs-body);
+  font-size: var(--fs-title);
+  line-height: var(--lh-tight);
 }
 .input::placeholder {
-  color: var(--text-faint);
+  color: var(--chat-fg-placeholder);
 }
 
 .send {
@@ -239,18 +198,18 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: var(--h-control-sm);
-  height: var(--h-control-sm);
+  width: 32px;
+  height: 32px;
   margin: 0;
-  padding: 0;
+  padding: var(--sp-1_5);
   border: none;
   border-radius: var(--r-full);
-  background: var(--chrome-primary);
-  color: var(--chrome-on-primary);
+  background: var(--chat-bg-send);
+  color: var(--chat-fg-inverted);
   cursor: pointer;
 }
 .send:hover {
-  background: var(--chrome-primary-hover);
+  background: var(--chat-bg-send-hover);
 }
 .send:focus-visible {
   outline: var(--chrome-focus-ring);
@@ -259,25 +218,12 @@
 /* After hover, so a disabled button keeps its look under the pointer. */
 .send:disabled {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--chrome-ring);
-  color: var(--text-faint);
+  color: var(--chat-fg-placeholder);
   cursor: default;
 }
 
 @media (max-width: 560px) {
   .rooms {
-    padding: var(--sp-1) var(--sp-2) var(--sp-4);
-  }
-  .messages {
-    padding: var(--sp-3);
-  }
-  .input {
-    height: var(--h-control);
-    /* iOS Safari zooms into a focused field set under 16 px. */
-    font-size: var(--fs-title);
-  }
-  .send {
-    width: var(--h-control);
-    height: var(--h-control);
+    padding: var(--sp-1) var(--sp-1) var(--sp-4);
   }
 }

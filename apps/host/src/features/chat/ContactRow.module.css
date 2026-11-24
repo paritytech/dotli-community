@@ -12,11 +12,11 @@
   gap: var(--sp-3);
   box-sizing: border-box;
   margin: 0;
-  padding: var(--sp-2);
+  padding: var(--sp-3);
   border: none;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--text);
+  color: var(--chat-fg-primary);
   font-family: inherit;
   text-align: left;
   cursor: pointer;
@@ -29,76 +29,74 @@
   outline-offset: -2px;
 }
 
+/* Stretched, so the divider above it sits on the row's top edge whatever the avatar's height. */
 .text {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: var(--sp-hair);
+  align-self: stretch;
+  justify-content: center;
   min-width: 0;
 }
 
+/* Between rows, inset past the avatar as far as the text starts. */
+.room + .room .text::before {
+  position: absolute;
+  top: calc(-1 * var(--sp-3));
+  right: 0;
+  left: 0;
+  border-top: 1px solid var(--chat-line);
+  content: '';
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
 .room-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  font-size: var(--fs-body);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.room-item[data-unread] .room-name {
-  color: var(--text-strong);
-  font-weight: var(--fw-semibold);
+
+.time {
+  flex-shrink: 0;
+  color: var(--chat-fg-tertiary);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-body);
+  white-space: nowrap;
 }
 
 .detail {
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-}
-
-.side {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--sp-1);
-}
-
-.time {
-  color: var(--text-secondary);
-  font-size: var(--fs-label);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--chat-fg-secondary);
+  font-size: var(--fs-body);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .room-unread {
+  flex-shrink: 0;
   box-sizing: border-box;
-  min-width: var(--h-chip);
-  height: var(--h-chip);
-  padding: 0 var(--sp-1_5);
+  min-width: 20px;
+  padding: var(--sp-hair) var(--sp-1);
   border-radius: var(--r-full);
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-size: var(--fs-label);
+  background: var(--chat-bg-unread);
+  color: var(--chat-fg-inverted);
+  font-size: var(--fs-caption);
   font-weight: var(--fw-semibold);
-  line-height: var(--h-chip);
+  line-height: var(--lh-tight);
   text-align: center;
-}
-
-@media (max-width: 560px) {
-  .room-item {
-    min-height: 60px;
-    padding: var(--sp-2) var(--sp-3);
-  }
-  .room-name {
-    font-size: var(--fs-title);
-  }
-  .detail {
-    font-size: var(--fs-small);
-  }
-  .time {
-    font-size: var(--fs-caption);
-  }
-  .room-unread {
-    min-width: 20px;
-    height: 20px;
-    font-size: var(--fs-caption);
-    line-height: 20px;
-  }
 }
