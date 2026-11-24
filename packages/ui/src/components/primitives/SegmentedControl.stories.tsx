@@ -211,11 +211,22 @@ export const OtherKeysPassThrough: Story = {
   },
 };
 
-/** As a dotli user, I press an option of a disabled control, nothing is picked, and my focus stays on it. */
+/**
+ * As a dotli user, I find a disabled control announced as disabled, and when I press an option nothing is picked and my
+ * focus stays on it.
+ */
 export const Disabled: Story = {
   args: { disabled: true },
-  play: async ({ args, canvas, userEvent, step }) => {
+  play: async ({ args, canvas, userEvent, mount, step }) => {
+    await step('When a disabled control renders', async () => {
+      await mount();
+    });
     const dark = canvas.getByRole('button', { name: 'Dark' });
+    // The options stay focusable, so the state reaches assistive technology only through `aria-disabled`.
+    await step('Then the control and its options are announced as disabled', async () => {
+      await expect(canvas.getByRole('group')).toHaveAttribute('aria-disabled', 'true');
+      await expect(dark).toHaveAttribute('aria-disabled', 'true');
+    });
     await step('When I press Dark with the pointer and with the keyboard', async () => {
       await userEvent.click(dark);
       dark.focus();
