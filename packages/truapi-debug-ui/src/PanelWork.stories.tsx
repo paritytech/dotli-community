@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/* eslint-disable no-restricted-properties -- Predates the story contract: its plays still assert copy. */
+
 // The panel's work per frame, click and tick at its 2000-event capacity, counted through the computations it is
 // handed and Solid's dev warnings, with layout from the real browser.
 

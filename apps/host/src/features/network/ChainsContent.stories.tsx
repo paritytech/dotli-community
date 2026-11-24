@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/* eslint-disable no-restricted-properties -- Predates the story contract: its plays still assert copy. */
+
 import type { JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
 import { HISTORY_SLOTS } from './chainStrip.js';

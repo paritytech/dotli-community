@@ -4,6 +4,7 @@
 import js from '@eslint/js';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import solid from 'eslint-plugin-solid';
+import storybook from 'eslint-plugin-storybook';
 import turboPlugin from 'eslint-plugin-turbo';
 import tseslint from 'typescript-eslint';
 import { defineConfig } from 'eslint/config';
@@ -15,6 +16,12 @@ export { featureBoundaries } from './featureBoundaries.js';
 // eslint-plugin-solid types its rules against the ESLint 8 rule API, which
 // ESLint 10's `Plugin` type rejects. The rules themselves run under ESLint 10.
 const solidPlugin = /** @type {import("eslint").ESLint.Plugin} */ (/** @type {unknown} */ (solid));
+
+// The plugin's configs type `files` as possibly undefined, which `exactOptionalPropertyTypes` rejects. They are
+// ordinary flat-config objects.
+const storybookRecommended = /** @type {import("eslint").Linter.Config[]} */ (
+  /** @type {unknown} */ (storybook.configs['flat/recommended'])
+);
 
 const tsExtensionImport = {
   regex: '^\\.{1,2}/.*\\.tsx?$',
@@ -149,6 +156,7 @@ export const config = defineConfig([
   eslintConfigPrettier,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
+  ...storybookRecommended,
   {
     plugins: {
       turbo: turboPlugin,
@@ -235,6 +243,22 @@ export const config = defineConfig([
     files: storyFiles,
     rules: {
       'no-restricted-imports': ['error', { patterns: storyImportPatterns }],
+    },
+  },
+  {
+    // Copy changes with wording and is no contract, so a play asserts the role or state a user acts on.
+    files: storyFiles,
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          property: 'toHaveTextContent',
+          message:
+            'A play asserts the role or state a user acts on, never copy. Query by role and name instead, such as `getByRole` with `name`.',
+        },
+      ],
+      // A long story file usually restates states. Only a warning, since length alone is no defect.
+      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
     },
   },
   {

@@ -13,8 +13,13 @@ The owner may change or remove any rule. A change here lands in the same commit 
 
 - [agent-runs-a-skill-that-asks](agent-runs-a-skill-that-asks.md): an agent with no direct line to the owner runs a
   skill that asks the user.
+- [design-records-what-the-owner-said](design-records-what-the-owner-said.md): a design document records the owner's
+  goal and answers, and the question is whether it quotes the owner's words or restates them.
 - [designs-compete-on-a-measurable-cost](designs-compete-on-a-measurable-cost.md): a simple design competes with
   elaborate ones that guard a size, a setup or a first-visit cost, while building rather than in a cleanup.
+- [new-skill-for-one-kind-of-file](new-skill-for-one-kind-of-file.md): a new skill tells agents how to plan and
+  write one kind of file, with a contract doc for that kind, and the question is how the agents that write it come to
+  run the skill and where the reviewer's rows for that kind of file live.
 - [owner-approves-in-advance](owner-approves-in-advance.md): the owner approved a change in advance, and its gates or a
   follow-up change on the same branch would stop for approval.
 - [rule-a-check-could-hold](rule-a-check-could-hold.md): a rule could be a lint rule or a test, and the docs seem to

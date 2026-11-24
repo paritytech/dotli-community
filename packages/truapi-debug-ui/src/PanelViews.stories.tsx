@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/* eslint-disable no-restricted-properties -- Predates the story contract: its plays still assert copy. */
+
 // The panel's tabs and views: list, timeline, Resolution, Archive and Diagnostics.
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
