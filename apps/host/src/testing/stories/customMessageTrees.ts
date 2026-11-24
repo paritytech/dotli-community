@@ -32,28 +32,6 @@ export const PAYMENT_REQUEST: RendererNode = column(4, [
   ]),
 ]);
 
-/** What the note form becomes once the product has saved the note. */
-export const NOTE_SAVED: RendererNode = column(6, [
-  text('Note saved', { style: 'BodyLargeRegular', color: 'FgSuccess' }),
-  text('The courier sees it on arrival.', { style: 'BodyMediumRegular', color: 'FgSecondary' }),
-]);
-
-/** A note for the courier whose count the product updates as the user types, then saves. */
-export function noteForm(note: string): RendererNode {
-  return column(10, [
-    text('Leave a note for the courier', { style: 'BodyLargeRegular' }),
-    {
-      tag: 'TextField',
-      value: { modifiers: [], props: { text: note, label: 'Note', enabled: true, valueChangeAction: 'note' } },
-    },
-    text(`${String(note.length)} of 80 characters`, {
-      style: 'BodySmallRegular',
-      color: 'FgTertiary',
-    }),
-    button('Save note', 'Primary', 'save-note'),
-  ]);
-}
-
 function text(value: string, props: { style?: TypographyStyle; color?: ColorToken } = {}): RendererNode {
   return { tag: 'Text', value: { modifiers: [], props, children: [{ tag: 'String', value: { text: value } }] } };
 }
