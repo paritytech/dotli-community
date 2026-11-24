@@ -14,8 +14,8 @@
   object-fit: cover;
 }
 .icon[data-size='sm'] {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
 }
 
 .icon[data-fallback] {
@@ -28,16 +28,12 @@
   font-weight: var(--fw-semibold);
 }
 .icon[data-size='sm'][data-fallback] {
-  font-size: var(--fs-body);
+  font-size: var(--fs-caption);
 }
 
 @media (max-width: 560px) {
   .icon {
     width: 44px;
     height: 44px;
-  }
-  .icon[data-size='sm'] {
-    width: 36px;
-    height: 36px;
   }
 }

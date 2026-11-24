@@ -24,6 +24,7 @@ export function ChatHead(props: ChatHeadProps): JSX.Element {
       <Show when={!props.shown.sole}>
         <IconButton
           id="chat-panel-back"
+          size="sm"
           title="Back to rooms"
           aria-label="Back to rooms"
           onClick={() => {
