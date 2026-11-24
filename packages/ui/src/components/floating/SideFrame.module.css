@@ -11,6 +11,8 @@
   width: var(--w-pop-lg);
   margin: calc(var(--sp-2) + var(--content-top)) var(--inset-end) calc(var(--sp-2) + var(--content-bottom)) 0;
   overflow: hidden;
+  /* A border, not an inset ring, which content that fills the panel would paint over. */
+  border: 1px solid var(--chrome-ring);
   border-radius: var(--r-pop);
   background: var(--chrome-surface);
   -webkit-backdrop-filter: var(--chrome-blur);
