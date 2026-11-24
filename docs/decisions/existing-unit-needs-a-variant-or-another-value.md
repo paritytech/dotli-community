@@ -3,7 +3,8 @@
 A shared unit already does a job through one call. It may be a state machine that runs effects, or a helper that
 listens to one source of events and reports one value per frame. A consumer needs a little more from it:
 
-- the same work done slightly differently, where the difference is one aspect only, such as when it runs
+- the same work done slightly differently, where the difference is one aspect only, such as when it runs or which
+  event ends it
 - the same work reporting a second value from the same events, such as the other pointer axis
 
 A second call, a second runner or a sibling helper with its own listener looks like the quick way. So does a parameter
@@ -71,6 +72,11 @@ that aligns to an enclosing bar's edge. Add no variant. The surface sits against
   gained an option rather than a second layer, as
   [light-dismiss-popover-closes-when-it-should-not](light-dismiss-popover-closes-when-it-should-not.md) says.
   (architecture change "Action group More: Listbox on wide screens", docs/\_plans/more-listbox-design.md)
+- A shared modal surface had to keep its content on screen while it slid out after a close. Offered the package's
+  presence helper as the sibling layers use it, ending the exit on a timer of the exit's length, the same helper with
+  an option to end the exit on the surface's real `transitionend`, or children mounted for good with a context telling
+  them whether the surface is shown, the owner chose the presence helper with the `transitionend` option.
+  (docs/\_plans/chat-panel-design.md, feat/chat-panel)
 - Counter-case: a shared tooltip card had to drop from an enclosing bar's edge rather than its trigger's. Offered a new
   named placement reading the bar's published custom property, the owner added no variant and kept the card against
   its trigger. (docs/\_plans/floating-placement-design.md, feat/floating-ui)
