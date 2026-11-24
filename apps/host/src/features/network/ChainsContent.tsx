@@ -6,8 +6,8 @@ import type { JSX } from '@solidjs/web';
 import { Accordion, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainRow } from './ChainRow.js';
 import { isWatched } from './chain.js';
-import type { ChainHealthFacts } from './chainHealth.js';
-import { isNetworkOffline, NETWORK_HEALTH } from './networkVerdict.js';
+import { readChainHealthFacts, type ChainHealthFacts } from './chainHealth.js';
+import { NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
 import { describeTransfer, type TransferRow } from './describeTransfer.js';
@@ -62,12 +62,8 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
       clearInterval(ticker);
     };
   });
-  const facts = (chain: ChainView): ChainHealthFacts => ({
-    sinceRead: now() - props.network().readAt,
-    behind: props.network().verdict.slow?.includes(chain.label) === true,
-    offline: isNetworkOffline(props.health()),
-    unreachable: props.network().verdict.tone === 'unreachable',
-  });
+  const facts = (chain: ChainView): ChainHealthFacts =>
+    readChainHealthFacts(chain, { network: props.network(), health: props.health(), now: now() });
   const transfer = createMemo(() => describeTransfer(props.network().transfer, !props.productLoaded()));
   return (
     <Surface width="md" padded testId="chains-content">

@@ -4,8 +4,9 @@
 // A chain's health as the mobile app reads it: its live share, the predicted block time over the measured one, and
 // the mark and status line that share implies.
 
-import type { ChainView } from './chains.js';
+import type { ChainView, NetworkView } from './chains.js';
 import { pendingBar, type PendingBarView } from './chainStrip.js';
+import { isNetworkOffline, type NetworkHealth } from './networkVerdict.js';
 
 /** The colour of a short chain's arc. */
 export type ArcBand = 'plain' | 'warn' | 'err';
@@ -36,6 +37,19 @@ export type ChainHealthFacts = {
   /** Whether the verdict finds the whole network out of reach. */
   unreachable: boolean;
 };
+
+/** What the popover knows beside one chain, read from the network and its health as of `now`. */
+export function readChainHealthFacts(
+  chain: Pick<ChainView, 'label'>,
+  { network, health, now }: { network: Pick<NetworkView, 'readAt' | 'verdict'>; health: NetworkHealth; now: number },
+): ChainHealthFacts {
+  return {
+    sinceRead: now - network.readAt,
+    behind: network.verdict.slow?.includes(chain.label) === true,
+    offline: isNetworkOffline(health),
+    unreachable: network.verdict.tone === 'unreachable',
+  };
+}
 
 type HealthChain = Pick<
   ChainView,
