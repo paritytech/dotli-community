@@ -10,9 +10,8 @@
   box-sizing: border-box;
   width: var(--w-pop-lg);
   margin: calc(var(--sp-2) + var(--content-top)) var(--inset-end) calc(var(--sp-2) + var(--content-bottom)) 0;
+  position: relative;
   overflow: hidden;
-  /* A border, not an inset ring, which content that fills the panel would paint over. */
-  border: 1px solid var(--chrome-ring);
   border-radius: var(--r-pop);
   background: var(--chrome-surface);
   -webkit-backdrop-filter: var(--chrome-blur);
@@ -26,6 +25,16 @@
   transition:
     transform var(--dur-morph) var(--ease-out),
     margin-top var(--dur-morph) var(--ease-out);
+}
+/* The ring rides over the content, which fills the panel and would cover an inset ring of the panel's own. It lands on
+   the same edge pixels as the surface's inset ring and highlight, so the edge stays one line. */
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+  pointer-events: none;
 }
 .panel[data-state='open'] {
   transform: translateX(0);
