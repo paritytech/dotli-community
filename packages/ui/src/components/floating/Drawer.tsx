@@ -9,6 +9,7 @@ import { InSheet } from './inSheet.js';
 import { ModalLayer } from './ModalLayer.js';
 import { SheetFrame } from './SheetFrame.js';
 import { SideFrame } from './SideFrame.js';
+import s from './Drawer.module.css';
 
 export type DrawerProps = {
   open: boolean;
@@ -93,7 +94,14 @@ export function Drawer(props: DrawerProps): JSX.Element {
           </SideFrame>
         }
       >
-        <SheetFrame title={title()} titleId={titleId} onDismiss={dismiss} testId={props.testId} open={props.open}>
+        <SheetFrame
+          title={title()}
+          titleId={titleId}
+          onDismiss={dismiss}
+          testId={props.testId}
+          open={props.open}
+          body={{ class: s['sheetBody'] }}
+        >
           {content()}
         </SheetFrame>
       </Show>
