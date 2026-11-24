@@ -22,8 +22,6 @@ import { ChatPanel } from './ChatPanel.js';
 /** The chat of the story on show, which its panel built from the args. */
 let stage: ChatStage = chatStage();
 
-const LONG = 'A message long enough to take a few lines in the panel.';
-
 /** One room the courier writes in, yesterday and today. */
 const COURIER: ChatSeed = {
   rooms: [{ roomId: 'courier', name: 'Courier', icon: '', createdAt: 0 }],
@@ -35,13 +33,6 @@ const COURIER: ChatSeed = {
   unreadByRoom: {},
 };
 
-/** One room of forty messages a second apart up to now, so its conversation scrolls. */
-const LONG_ROOM: ChatSeed = {
-  rooms: rooms(1),
-  messages: Array.from({ length: 40 }, (_, i) => say('r0', `${String(i + 1)}. ${LONG}`, (40 - i) / 60)),
-  unreadByRoom: {},
-};
-
 // The drawer renders into the body, outside the story's canvas.
 const body = within(document.body);
 
@@ -49,7 +40,7 @@ const body = within(document.body);
 const inDrawer = createJSXDecorator(Story => {
   const [open, setOpen] = createSignal(true);
   return (
-    <Drawer open={open()} onOpenChange={setOpen} title="Market" testId="chat-panel">
+    <Drawer open={open()} onOpenChange={setOpen} title="Chat" testId="chat-panel">
       <div
         style={{
           display: 'flex',
@@ -259,130 +250,6 @@ export const MovedRowKeepsFocus: Story = {
   },
 };
 
-/** As a reader at the newest message, I stay there when a custom message grows late. */
-export const LateCustomRenderStaysAtBottom: Story = {
-  args: {
-    ...LONG_ROOM,
-    messages: [
-      ...(LONG_ROOM.messages ?? []).slice(1),
-      { roomId: 'r0', content: { tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }, minutesAgo: 0 },
-    ],
-  },
-  play: async ({ step }) => {
-    const list = await atNewest();
-    await step('Given I am at the newest message, a custom one waiting for its tree', async () => {
-      await waitFor(() => expect(stage.renders).toHaveLength(1));
-    });
-    await step('When its tree arrives and makes the conversation taller', async () => {
-      await resized(thread(list), () => {
-        stage.renders[0]?.sink.onUpdate({
-          tag: 'Box',
-          value: {
-            modifiers: [{ tag: 'Height', value: 300 }],
-            props: {},
-            children: [{ tag: 'String', value: { text: 'Poll' } }],
-          },
-        });
-      });
-    });
-    await step('Then I stay at the newest message', async () => {
-      await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
-    });
-  },
-};
-
-/** As a reader at the newest message, I stay there when the panel gets shorter or narrower. */
-export const ResizingKeepsMeAtBottom: Story = {
-  args: LONG_ROOM,
-  play: async ({ step }) => {
-    const list = await atNewest();
-    // The drawer's panel, which the window sizes on the page.
-    const drawer = body.getByTestId('chat-panel');
-    await step('When the panel gets shorter', async () => {
-      await resized(list, () => {
-        drawer.style.marginBottom = '200px';
-      });
-    });
-    await step('Then I stay at the newest message', async () => {
-      await expect(belowView(list)).toBeLessThanOrEqual(1);
-    });
-    await step('When the panel gets narrower and the messages wrap taller', async () => {
-      await resized(thread(list), () => {
-        drawer.style.width = '240px';
-      });
-    });
-    await step('Then I still stay at the newest message', async () => {
-      await expect(belowView(list)).toBeLessThanOrEqual(1);
-    });
-  },
-};
-
-/** As a reader who scrolled up, I stay where I am when the panel is resized. */
-export const ResizingLeavesMeScrolledUp: Story = {
-  args: LONG_ROOM,
-  play: async ({ step }) => {
-    const list = await atNewest();
-    const drawer = body.getByTestId('chat-panel');
-    await step('Given I scrolled up the conversation', async () => {
-      await scrollTo(list, 100);
-    });
-    await step('When the panel gets narrower and the messages wrap taller', async () => {
-      await resized(thread(list), () => {
-        drawer.style.width = '240px';
-      });
-    });
-    await step('Then I stay off the newest message', async () => {
-      await expect(belowView(list)).toBeGreaterThan(24);
-    });
-  },
-};
-
-/** As a reader, I close the panel and its watch on the conversation's size stops with it. */
-export const ClosingStopsTheSizeWatch: Story = {
-  args: LONG_ROOM,
-  // The play puts the closed conversation back in the canvas, where nothing else removes it.
-  beforeEach:
-    ({ canvasElement }) =>
-    () => {
-      within(canvasElement).queryByRole('log', { name: 'Messages' })?.remove();
-    },
-  play: async ({ canvasElement, userEvent, step }) => {
-    const list = await atNewest();
-    await step('When I close the panel', async () => {
-      await userEvent.click(body.getByRole('button', { name: /^Close/ }));
-      await waitFor(() => expect(list.isConnected).toBe(false));
-    });
-    await step('When the old conversation is put back, shorter than its messages', async () => {
-      // It grows from nothing and starts at the top, where a watch still running would pin it to the end.
-      list.style.height = '200px';
-      await resized(list, () => {
-        canvasElement.append(list);
-      });
-    });
-    await step('Then its size watch has stopped, so it is not pinned to the bottom', async () => {
-      await expect(list.scrollTop).toBe(0);
-    });
-  },
-};
-
-/** As a reader who scrolled up, I am brought to my own message when I send it. */
-export const SendingBringsMeToMine: Story = {
-  args: LONG_ROOM,
-  play: async ({ userEvent, step }) => {
-    const list = await atNewest();
-    await step('Given a conversation I scrolled up in', async () => {
-      await scrollTo(list, 100);
-    });
-    await step('When I send a message', async () => {
-      await userEvent.type(body.getByRole('textbox'), 'hi{Enter}');
-    });
-    await step('Then it shows and I am brought to it', async () => {
-      await waitFor(() => expect(messages()).toHaveLength(41));
-      await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
-    });
-  },
-};
-
 /** The panel on a chat that holds what the args say as the panel mounts. The toolbar's remount applies new args. */
 function StoryChatPanel(props: ChatSeed): JSX.Element {
   const chat = untrack(() => chatStage({ ...props }));
@@ -411,49 +278,4 @@ function rooms(count: number): ChatRoom[] {
 
 function messages(): HTMLElement[] {
   return within(body.getByRole('log', { name: 'Messages' })).getAllByTestId('chat-msg');
-}
-
-/** The conversation once it shows every message, with the reader at the newest. */
-async function atNewest(): Promise<HTMLElement> {
-  const list = await body.findByRole('log', { name: 'Messages' });
-  await waitFor(() => expect(messages()).toHaveLength(40));
-  await waitFor(() => expect(belowView(list)).toBeLessThanOrEqual(1));
-  return list;
-}
-
-/** What wraps the bubbles, so its height is the conversation's. */
-function thread(list: HTMLElement): HTMLElement {
-  return within(list).getByTestId('chat-panel-thread');
-}
-
-/** Scroll room left below the reader. */
-function belowView(list: HTMLElement): number {
-  return list.scrollHeight - list.scrollTop - list.clientHeight;
-}
-
-/** Scrolls the conversation as a reader would, and waits for the panel to hear it. */
-async function scrollTo(list: HTMLElement, top: number): Promise<void> {
-  const heard = new Promise(resolve => {
-    list.addEventListener('scroll', resolve, { once: true });
-  });
-  list.scrollTop = top;
-  await heard;
-}
-
-/**
- * Resolves once a ResizeObserver made after the panel's sees `el` change size, so the panel's own observer has run.
- */
-function resized(el: HTMLElement, change: () => void): Promise<void> {
-  const before = el.getBoundingClientRect();
-  return new Promise(resolve => {
-    const observer = new ResizeObserver(([entry]) => {
-      const now = entry?.contentRect;
-      if (now !== undefined && (now.width !== before.width || now.height !== before.height)) {
-        observer.disconnect();
-        resolve();
-      }
-    });
-    observer.observe(el);
-    change();
-  });
 }

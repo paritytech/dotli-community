@@ -252,8 +252,11 @@ above the linter: semantics, data flow and naming.
   component's props, such as a notice built for one case or one button of a bar.
 - **major** (docs/code/stories.md § When a story has a play): A play with no V, K1 or K2 reason, or one that asserts copy
   in any form, such as a text match or an accessible name compared to a string.
+- **major** (docs/code/stories.md § When a story has a play): A play that needs heavy browser setup, such as a
+  hand-built observer, inline layout poked on another element or an element re-attached, or a play for where a view
+  keeps its scroll.
 - **minor** (docs/code/stories.md § Which states a file shows): A story that shows the same state as another in its
-  file, only another copy, or one value of a prop that Controls shows with no change of look or behaviour worth naming.
+  file, play-only stories on one canvas included, only another copy, or one value of a prop that Controls shows with no change of look or behaviour worth naming.
 - **minor** (docs/code/stories.md § How stories are built): A `render` in each story where a decorator on `meta` would
   do, or a story that restates args another story or `meta` already holds instead of building on them.
 - **minor** (docs/code/stories.md § How stories are built): A parent's story file that writes its own copy of a child's

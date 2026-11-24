@@ -323,7 +323,6 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
       >
         <div
           class={s['thread']}
-          data-testid="chat-panel-thread"
           ref={el => {
             threadEl = el;
           }}
