@@ -278,7 +278,7 @@ A deployment enables one or more of these networks.
 | `net`           | TLD       | Asset Hub genesis (`chain`)                                          |
 | --------------- | --------- | -------------------------------------------------------------------- |
 | `paseo-next-v2` | `paseo`   | `0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a` |
-| `previewnet`    | `testnet` | `0xbac97e23fc8f4bccae72a98f8aeb2bcab20bf755862304e4b46ad6473456e896` |
+| `previewnet`    | `testnet` | `0xf7d88e2e343e911c9a5c1a7e6ed53d06ef4cd73276fc3afff87062a1f6f90514` |
 | `pcf-devnet`    | `dot`     | `0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2` |
 
 ## Messages
