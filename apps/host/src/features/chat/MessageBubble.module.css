@@ -28,7 +28,7 @@
   color: var(--chat-fg-primary);
   font-size: var(--fs-body);
   line-height: var(--lh-tight);
-  --bubble-muted: var(--chat-fg-tertiary);
+  --bubble-muted: var(--chat-fg-secondary);
 }
 .row[data-author='user'] > .bubble {
   padding-right: var(--sp-2);

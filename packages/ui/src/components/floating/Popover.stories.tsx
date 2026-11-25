@@ -81,14 +81,14 @@ const CONTENTS = {
   text: () => <p style={{ padding: '12px', margin: '0' }}>Nothing to press here.</p>,
   link: () => (
     <p style={{ padding: '12px', margin: '0' }}>
-      <a href="#story-link" data-testid="inside-link">
+      <a href="#story-link" data-testid="inside-link" style={{ color: 'var(--chrome-text)' }}>
         Read more
       </a>
     </p>
   ),
   'link-first': () => (
     <div style={{ padding: '12px', display: 'flex', gap: '8px' }}>
-      <a href="#story-link" data-testid="inside-link">
+      <a href="#story-link" data-testid="inside-link" style={{ color: 'var(--chrome-text)' }}>
         Read more
       </a>
       <select aria-label="Network" data-testid="inside-select">

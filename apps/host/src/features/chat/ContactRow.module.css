@@ -69,7 +69,7 @@
 
 .time {
   flex-shrink: 0;
-  color: var(--chat-fg-tertiary);
+  color: var(--chat-fg-secondary);
   font-size: var(--fs-body);
   font-weight: var(--fw-medium);
   line-height: var(--lh-body);
