@@ -15,9 +15,10 @@ import type { WatchVisibility } from './visibility.js';
 
 const PRODUCT = 'chatty.dot';
 
-const MESSAGE = { roomId: 'main', messageId: 'm1', messageType: 'delivery-time' };
-
-const CONTEXT: RenderContext = { tag: 'ChatMessage', value: MESSAGE };
+const CONTEXT: RenderContext = {
+  tag: 'ChatMessage',
+  value: { roomId: 'main', messageId: 'm1', messageType: 'delivery-time' },
+};
 
 const VOTE: RendererNode = {
   tag: 'Button',
@@ -57,7 +58,7 @@ const meta = {
       sink.onUpdate(DELIVERY_TIME_PICKER);
     }),
     productId: PRODUCT,
-    ...MESSAGE,
+    context: CONTEXT,
     payload: '0x01',
   },
   decorators: [onChatSurface],

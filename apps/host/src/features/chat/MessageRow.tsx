@@ -39,9 +39,10 @@ export function MessageRow(props: {
         <CustomMessage
           chat={chat}
           productId={record.productId}
-          roomId={record.roomId}
-          messageId={record.messageId}
-          messageType={body.messageType}
+          context={{
+            tag: 'ChatMessage',
+            value: { roomId: record.roomId, messageId: record.messageId, messageType: body.messageType },
+          }}
           payload={body.payload}
         />
       )}
