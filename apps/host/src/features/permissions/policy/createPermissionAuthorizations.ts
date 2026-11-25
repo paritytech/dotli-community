@@ -100,9 +100,10 @@ export function createPermissionAuthorizations() {
   }
 
   async function getAllowAttribute(label: string): Promise<string> {
-    // TrUAPI has no screen capture permission, and the browser's picker asks on every capture anyway.
+    // TrUAPI has no screen capture or wake lock permission. The browser's picker asks on every capture anyway, and a
+    // wake lock asks for nothing and ends when the page hides.
     const directives = (await getFramePermissions(label)).flatMap(name => getFrameDirective(name) ?? []);
-    return ['clipboard-write', 'display-capture', ...directives].join('; ');
+    return ['clipboard-write', 'display-capture', 'screen-wake-lock', ...directives].join('; ');
   }
 
   return {

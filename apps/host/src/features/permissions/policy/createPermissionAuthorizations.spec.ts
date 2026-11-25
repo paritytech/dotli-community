@@ -185,7 +185,7 @@ describe('getAllowAttribute', () => {
 
     // Then
     expect(allow).toBe(
-      'clipboard-write; display-capture; camera; microphone; geolocation; accelerometer; gyroscope; bluetooth; clipboard-read; publickey-credentials-get',
+      'clipboard-write; display-capture; screen-wake-lock; camera; microphone; geolocation; accelerometer; gyroscope; bluetooth; clipboard-read; publickey-credentials-get',
     );
   });
 
@@ -200,7 +200,7 @@ describe('getAllowAttribute', () => {
 
     // Then
     expect(allow).toBe(
-      'clipboard-write; display-capture; microphone; geolocation; accelerometer; gyroscope; bluetooth; clipboard-read; publickey-credentials-get',
+      'clipboard-write; display-capture; screen-wake-lock; microphone; geolocation; accelerometer; gyroscope; bluetooth; clipboard-read; publickey-credentials-get',
     );
   });
 
@@ -212,6 +212,6 @@ describe('getAllowAttribute', () => {
     const allow = await permissions.getAllowAttribute('otherapp');
 
     // Then
-    expect(allow).toBe('clipboard-write; display-capture');
+    expect(allow).toBe('clipboard-write; display-capture; screen-wake-lock');
   });
 });
