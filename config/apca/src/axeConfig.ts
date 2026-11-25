@@ -2,25 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import axe from 'axe-core';
+import { getBackgrounds } from './getBackgrounds.js';
 import { scoreText } from './scoreText.js';
-
-declare module 'axe-core' {
-  // axe's color helpers are public but untyped. Only the calls this module makes are declared.
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- augmenting axe's Commons needs declaration merging
-  interface Commons {
-    color: {
-      getBackgroundColor(node: Element, backgroundElements: Element[]): Color | null;
-      getForegroundColor(node: Element, noScroll: boolean, background: Color): Color | null;
-    };
-  }
-}
-
-type Color = {
-  red: number;
-  green: number;
-  blue: number;
-  toHexString(): string;
-};
 
 const CHECK_ID = 'apca-bronze';
 
@@ -63,24 +46,27 @@ export const axeConfig: axe.Spec = {
 };
 
 function evaluateBronze(this: axe.CheckHelper, node: Element): boolean | undefined {
-  const background = axe.commons.color.getBackgroundColor(node, []);
-  const foreground = background && axe.commons.color.getForegroundColor(node, false, background);
-  // Text over an image or a gradient has no single color. axe files the node as incomplete, as its own rule does.
-  if (!background || !foreground) {
-    return undefined;
+  const pairs = [];
+  for (const background of getBackgrounds(node)) {
+    const foreground = axe.commons.color.getForegroundColor(node, false, background);
+    if (!foreground) {
+      return undefined;
+    }
+    pairs.push({ foreground, background });
   }
   const fontSize = Number.parseFloat(getComputedStyle(node).fontSize);
-  const { lc, minimum, passes } = scoreText({
-    foreground: [foreground.red, foreground.green, foreground.blue],
-    background: [background.red, background.green, background.blue],
-    fontSize,
-  });
+  const score = scoreText({ pairs, fontSize });
+  // Text over an image, under another element or clipped has no color axe can tell. axe files the node as incomplete,
+  // as its own rule does.
+  if (!score) {
+    return undefined;
+  }
   this.data({
-    lc,
-    minimum,
+    lc: score.lc,
+    minimum: score.minimum,
     fontSize,
-    foreground: foreground.toHexString(),
-    background: background.toHexString(),
+    foreground: score.pair.foreground.toHexString(),
+    background: score.pair.background.toHexString(),
   });
-  return passes;
+  return score.passes;
 }

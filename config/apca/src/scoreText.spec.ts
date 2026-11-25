@@ -15,22 +15,43 @@ describe('scoreText', () => {
     'As a story author, I score $foreground text on $background at $fontSize px and it $verdict Bronze with Lc $lc',
     ({ foreground, background, fontSize, lc, passes }) => {
       // Given
-      const colors = { foreground: toRgb(foreground), background: toRgb(background) };
+      const pairs = [{ foreground: toRgb(foreground), background: toRgb(background) }];
 
       // When
-      const score = scoreText({ ...colors, fontSize });
+      const score = scoreText({ pairs, fontSize });
 
       // Then
-      expect(score.lc).toBeCloseTo(lc, 1);
-      expect(score.passes).toBe(passes);
+      expect(score?.lc).toBeCloseTo(lc, 1);
+      expect(score?.passes).toBe(passes);
     },
   );
+
+  it('As a story author, I score text on a gradient and its worst background decides', () => {
+    // Given
+    const light = { foreground: toRgb('#d4d5db'), background: toRgb('#34363b') };
+    const dark = { foreground: toRgb('#d4d5db'), background: toRgb('#0b0c0f') };
+
+    // When
+    const score = scoreText({ pairs: [dark, light], fontSize: 13 });
+
+    // Then
+    expect(score?.pair).toBe(light);
+    expect(score?.passes).toBe(false);
+  });
+
+  it('As a story author, I score text with no known background and get no verdict', () => {
+    // When
+    const score = scoreText({ pairs: [], fontSize: 13 });
+
+    // Then
+    expect(score).toBeNull();
+  });
 });
 
 function toRgb(hex: string): Rgb {
-  return [
-    Number.parseInt(hex.slice(1, 3), 16),
-    Number.parseInt(hex.slice(3, 5), 16),
-    Number.parseInt(hex.slice(5, 7), 16),
-  ];
+  return {
+    red: Number.parseInt(hex.slice(1, 3), 16),
+    green: Number.parseInt(hex.slice(3, 5), 16),
+    blue: Number.parseInt(hex.slice(5, 7), 16),
+  };
 }

@@ -37,11 +37,21 @@ axe `config` of the story's own would replace the addon's rules and drop the rul
 - **Scoring:** the absolute Lc from the APCA reference implementation, whose math is never copied, as its license asks.
   The raw Lc is compared, so a score that rounds up to the minimum still fails.
 - **Colors:** the rule selects text as axe's own contrast rule does, and the check reads the foreground and background
-  through axe's color helpers. A color axe cannot tell, such as text over an image or a gradient, gives no verdict, so
-  the element lands in "Incomplete".
+  through axe's color helpers. A color axe cannot tell, such as text over an image or under another element, gives no
+  verdict, so the element lands in "Incomplete".
+- **Gradients:** where axe gives up only because of a gradient, the check walks the elements under the text itself. Each
+  color stop, flattened over the layers beneath it, is one background the text may sit on, and the lowest Lc among them
+  is the verdict. Rather than guess, the walk leaves the element in "Incomplete" when it meets:
+  - an image or a graphic element under the text
+  - a gradient sized or blended apart from its element
+  - a layer that covers only part of the text
+  - opacity or blending of an element on the way down
+  - a text shadow or translucent text
+  - a stack that misses the page's body, where axe adds the page's own background
 - **Public axe API only:** the check travels in the settings as a function. A rerun from Storybook's panel, whose
   channel drops functions, reports the rule as incomplete until the view reloads. Tests and normal renders always run
   it.
 - **One axe:** the check must import the same axe the a11y check runs, since axe's color helpers read that run's state.
   So axe is a peer dependency, and the package never brings a copy of its own.
-- **Unit tests:** the scoring runs under Node. The color lookup runs in the stories' own a11y check.
+- **Unit tests:** the scoring and the reading of gradient stops run under Node. The color lookup and the walk run in the
+  stories' own a11y check.
