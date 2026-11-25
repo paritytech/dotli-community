@@ -89,7 +89,7 @@ flowchart TD
     typescript["typescript, no eslint config"]
     vite[vite]
   end
-  host --> astroSolid & eslint & storybook & typescript & vite
+  host -->|every package| tooling
   storybookConfig -->|addon| apca
   viteUsers --> eslint & vite
   eslintOnly --> eslint
