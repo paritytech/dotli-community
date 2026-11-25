@@ -75,6 +75,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [grouping-source-into-folders](grouping-source-into-folders.md): an app's source gets folders, and the question is how
   much structure, or files that serve one feature sit in a top-level folder filed by kind, or a helper's only caller
   moves to another feature, or several features come to read through a helper built on a low feature's infrastructure.
+- [hold-kept-while-a-core-has-open-work](hold-kept-while-a-core-has-open-work.md): a callback adapter takes a page-wide
+  hold while a protocol core has begun work it has not ended, the core's runtime never ends that work at teardown or on
+  a fault, and the question is what releases the hold.
 - [import-cycle-between-folders](import-cycle-between-folders.md): two folders import each other.
 - [moved-helper-reads-what-its-new-home-holds](moved-helper-reads-what-its-new-home-holds.md): a helper moves into
   another feature with its only caller, and it still reads and caches data itself that the new feature already holds for
@@ -168,8 +171,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   listbox primitive, and each row needs a remove action though an option may not hold a control.
 - [list-row-opens-a-detail-beneath-it](list-row-opens-a-detail-beneath-it.md): a list row with a rich header opens a
   detail under it on press, and the shared disclosure primitive's header takes only a string.
-- [focus-ring-only-for-keyboard-focus](focus-ring-only-for-keyboard-focus.md): a focus ring should show only for keyboard
-  focus, the browser matches `:focus-visible` on a clicked text field, and the question is whether to build an
+- [focus-ring-only-for-keyboard-focus](focus-ring-only-for-keyboard-focus.md): a focus ring should show only for
+  keyboard focus, the browser matches `:focus-visible` on a clicked text field, and the question is whether to build an
   input-modality tracker instead.
 - [icon-text-and-controls-in-one-row](icon-text-and-controls-in-one-row.md): a card or row has a leading icon, a title
   over a body and trailing controls taller than the title's line.
@@ -198,12 +201,11 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [surface-placed-against-its-trigger](surface-placed-against-its-trigger.md): a shared surface that opens from a
   trigger, such as a dropdown or a tooltip card, places itself in its own way or must line up with the edge of the bar
   its trigger sits in, and the question is how a host places it or what carries the bar's edge into the component.
-- [shared-component-text-prop-needs-rich-content](shared-component-text-prop-needs-rich-content.md): a shared
-  component draws a string prop inside its own chrome, such as a drawer's title beside its close button, and one
-  consumer needs markup there that changes with its state, so the question is whether to add a second prop or widen
-  the one it has.
-- [markup-in-a-shared-components-head-row](markup-in-a-shared-components-head-row.md): a consumer passes its own
-  markup, such as a back button and an avatar, into a shared component's head row beside its small control, and the
-  question is how large it may be when the head shifts as the consumer switches states.
+- [shared-component-text-prop-needs-rich-content](shared-component-text-prop-needs-rich-content.md): a shared component
+  draws a string prop inside its own chrome, such as a drawer's title beside its close button, and one consumer needs
+  markup there that changes with its state, so the question is whether to add a second prop or widen the one it has.
+- [markup-in-a-shared-components-head-row](markup-in-a-shared-components-head-row.md): a consumer passes its own markup,
+  such as a back button and an avatar, into a shared component's head row beside its small control, and the question is
+  how large it may be when the head shifts as the consumer switches states.
 - [static-page-content-a-runtime-setting-gates](static-page-content-a-runtime-setting-gates.md): a page rendered at
   build must show a piece of content only when a setting the visitor picks at runtime says so.

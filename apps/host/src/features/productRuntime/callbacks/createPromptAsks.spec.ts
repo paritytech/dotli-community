@@ -40,6 +40,7 @@ describe('one core asks', () => {
       blockingModalScope: scope,
       phoneRequests: createPhoneRequestTracker(),
       isLive: () => true,
+      ended: new AbortController().signal,
       isInService: () => true,
       sessionInMemory: false,
     });

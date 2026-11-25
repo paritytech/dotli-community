@@ -74,7 +74,7 @@ export function createHostCallbacks({
     // native cores alone, and Bulletin preimages, the browser core's own, are V4 on every host.
     extrinsicVersion: { transactionExtensionVersions: () => Promise.resolve({ chains: [] }) },
     productStorage: localStorageCallbacks,
-    productOperations: createProductOperations(),
+    productOperations: createProductOperations({ core }),
     coreStorage: coreStorage.createAdapters({ sessionInMemory }),
     auth: {
       authStateChanged: createAuthStateChanged(pairing?.label ?? label, {

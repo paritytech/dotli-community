@@ -37,6 +37,7 @@ const context: CoreContext = {
   blockingModalScope: createBlockingModalCoordinator().createScope(),
   phoneRequests: createPhoneRequestTracker(),
   isLive: () => true,
+  ended: new AbortController().signal,
   isInService: () => true,
   sessionInMemory: false,
 };
