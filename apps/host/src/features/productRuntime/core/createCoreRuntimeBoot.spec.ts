@@ -148,10 +148,24 @@ describe('core runtime boot', () => {
     expect(localBoot?.create).toBe(create);
     expect(localBoot?.hostConfig).not.toHaveProperty('productId');
     expect(localBoot?.wallet).toBe(WALLET);
-    expect(localBoot?.isLive()).toBe(true);
     expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
     expect(callbackOptions[0]?.core).toBe(context);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('As a local wallet user whose core left, I see its signing core boot told the core is gone', async () => {
+    // Given a boot over a stored wallet, for a core that is live
+    const { params, bootLocalWalletCore } = createHarness({ reads: [WALLET] });
+    const ended = new AbortController();
+    await createCoreRuntimeBoot(params)({ ...context, ended: ended.signal });
+    const [localBoot] = bootLocalWalletCore.mock.calls[0] ?? [];
+    const liveBefore = localBoot?.isLive();
+
+    // When the core leaves
+    ended.abort();
+
+    // Then the boot heard the core live, and hears it gone
+    expect([liveBefore, localBoot?.isLive()]).toEqual([true, false]);
   });
 
   it.each([
