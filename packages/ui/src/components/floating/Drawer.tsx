@@ -4,6 +4,7 @@
 import { children, createEffect, createSignal, createUniqueId, isHydrating, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
+import type { CloseInput } from './closeReason.js';
 import { createPresence } from './createPresence.js';
 import { InSheet } from './inSheet.js';
 import { ModalLayer } from './ModalLayer.js';
@@ -13,7 +14,7 @@ import s from './Drawer.module.css';
 
 export type DrawerProps = {
   open: boolean;
-  /** Escape, a press on the scrim, the close button or a swipe toward the edge. */
+  /** Escape inside it, the close button or a swipe toward the edge, and on a phone a press on the scrim. */
   onOpenChange: (open: boolean) => void;
   /** Drawn in the head's heading, which names the drawer, so markup in it keeps to what a heading may hold. */
   title: JSX.Element;
@@ -21,11 +22,21 @@ export type DrawerProps = {
   id?: string | undefined;
   /** On the panel or sheet, with `-backdrop`, `-scrim`, `-side-*` and `-sheet-*` variants. */
   testId: string;
+  /** Overrides what held focus at opening as the initiator, for a trigger the browser may not focus on click. */
+  restoreFocus?: (() => HTMLElement | undefined) | undefined;
+  /**
+   * Where focus inside it goes after a pointer close: a click or tap on its close button, a swipe or a press on the
+   * scrim. `initiator`, the default, returns it to the initiator, and `document` lets it go to the document. A keyboard
+   * close, Escape or Enter or Space on the close button, always returns it to the initiator, so a keyboard user keeps
+   * their place. A close the open prop makes alone restores focus as a keyboard close does.
+   */
+  pointerCloseFocus?: 'initiator' | 'document' | undefined;
   children: JSX.Element;
 };
 
 /**
- * A modal panel on the right edge on wide screens and a bottom sheet on a phone, following the viewport while open.
+ * A panel beside the page on the right edge on wide screens, which leaves the page usable, and a modal bottom sheet on
+ * a phone, following the viewport while open. The panel insets from the page's content edges.
  * Its children render from an opening until the layer's exit transition ends, and move between the forms, so a
  * field's value and focus survive the switch.
  */
@@ -67,7 +78,18 @@ export function Drawer(props: DrawerProps): JSX.Element {
       {(_opening: number) => <InSheet value={() => (phone() ? {} : undefined)}>{props.children}</InSheet>}
     </Show>
   ));
-  const dismiss = (): void => {
+  // What made the last close, read as the layer hides. A close the open prop makes alone leaves none.
+  let closedBy: CloseInput | null = null;
+  createEffect(
+    () => props.open,
+    open => {
+      if (open) {
+        closedBy = null;
+      }
+    },
+  );
+  const dismiss = (input: CloseInput): void => {
+    closedBy = input;
     props.onOpenChange(false);
   };
   // Built once, so markup in the title moves between the forms as the content does.
@@ -81,6 +103,8 @@ export function Drawer(props: DrawerProps): JSX.Element {
       id={props.id}
       testId={props.testId}
       labelledBy={titleId}
+      restoreFocus={() => props.restoreFocus?.()}
+      releaseFocus={() => closedBy === 'pointer' && props.pointerCloseFocus === 'document'}
       layout={phone() ? 'sheet' : 'side'}
       ref={element => {
         frame = element;

@@ -66,8 +66,8 @@ panel.eq = isShallowEqual;
 registerAtomReset(panel);
 const store: ReadableAtom<ChatPanelState> = panel;
 
-// The panel hydrates as an island of its own, so its element is handed over here, not passed in.
-let panelElement: HTMLElement | undefined;
+// The button hydrates as an island of its own, so where focus returns to is handed over here, not passed in.
+let trigger: (() => HTMLElement | undefined) | undefined;
 
 // A second subscription would count each product message twice as unread.
 const run = createSharedRun<Required<Params>>({ begin: beginFollowing });
@@ -107,19 +107,22 @@ export const chatPanelState = {
    * its params, and they end with the last caller's stop.
    */
   start,
-  /** Returns the panel's element, or undefined when none is handed over. Never throws. */
-  getElement,
   /**
-   * Hands over the panel's element. Returns a release that clears it, unless another element was handed over since.
-   * Never throws.
+   * Returns the control focus returns to as the panel closes, the chat button or what stands in for it, or undefined
+   * when none is handed over. Never throws.
    */
-  setElement,
+  getTrigger,
+  /**
+   * Hands over what finds the control focus returns to. Returns a release that clears it, unless another was handed
+   * over since. Never throws.
+   */
+  setTrigger,
 };
 
-// The store resets itself. The follows end and the element is let go.
+// The store resets itself. The follows end and the trigger is let go.
 registerStoreStateReset(() => {
   run.end();
-  panelElement = undefined;
+  trigger = undefined;
 });
 
 /**
@@ -195,18 +198,18 @@ function start({
   return run.join({ chat, connections });
 }
 
-function getElement(): HTMLElement | undefined {
-  return panelElement;
+function getTrigger(): HTMLElement | undefined {
+  return trigger?.();
 }
 
-function setElement(element: HTMLElement): () => void {
-  panelElement = element;
-  function releaseElement(): void {
-    if (panelElement === element) {
-      panelElement = undefined;
+function setTrigger(find: () => HTMLElement | undefined): () => void {
+  trigger = find;
+  function releaseTrigger(): void {
+    if (trigger === find) {
+      trigger = undefined;
     }
   }
-  return releaseElement;
+  return releaseTrigger;
 }
 
 function beginFollowing({ chat, connections }: Required<Params>): () => void {

@@ -28,9 +28,6 @@
   margin: 0;
   padding: 0;
   border-radius: var(--r-full);
-  background: var(--chrome-glass);
-  -webkit-backdrop-filter: var(--chrome-blur);
-  backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-bar);
   color: var(--chrome-text);
   font-family: var(--font-sans);
@@ -44,6 +41,24 @@
     top var(--dur-morph) var(--ease-out),
     box-shadow var(--dur);
 }
+/* The glass is a layer of its own, so the stage can fade it out with the morph: a gradient and its blur interpolate
+   to no glass only through an opacity. Its inset shadow, the lit edge and ring, sits on the layer too, since the
+   bar's own shadow paints under the glass. The bar keeps the same shadow for its drop, because the desktop clip cuts
+   a child's shadow off. */
+.topbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-bar);
+  transition:
+    opacity var(--dur-morph) var(--ease-out),
+    box-shadow var(--dur);
+}
 /* Desktop only: a data-hidden that lands mid-resize across 560px must not fold the phone bar. */
 @media (min-width: 561px) {
   /* Clip, not hidden: a hidden overflow scrolls the strip away when a clipped control takes focus. */
@@ -55,7 +70,69 @@
     top: calc(var(--sp-1) + var(--safe-top));
     width: var(--capsule-width);
     height: var(--sp-2);
+  }
+  .topbar[data-hidden],
+  .topbar[data-hidden]::before {
     box-shadow: var(--chrome-shadow-capsule);
+  }
+  /* Staged, the bar is the band above the cards, glassless and as wide as the window. Folded, only its height shrinks,
+     so the row fades out as it rises with the band, and hovering the strip reveals it. */
+  :global([data-staged]) .topbar {
+    --topbar-max-width: calc(100vw - 2 * var(--sp-2) - var(--safe-left) - var(--safe-right));
+    top: var(--safe-top);
+    align-items: center;
+    width: var(--topbar-max-width);
+    height: calc(var(--h-bar) + var(--sp-2));
+    overflow: visible;
+  }
+  :global([data-staged]) .topbar,
+  :global([data-staged]) .topbar::before {
+    box-shadow: none;
+  }
+  :global([data-staged]) .topbar::before {
+    opacity: 0;
+  }
+  /* The max width undoes the capsule's cap of the branch without interpolate-size. */
+  :global([data-staged]) .topbar[data-hidden] {
+    max-width: var(--topbar-max-width);
+    height: calc(var(--sp-1) + var(--sp-2));
+  }
+  /* The status capsule, centred in the folded strip. */
+  :global([data-staged]) .strip {
+    inset: var(--sp-hair) auto auto 50%;
+    width: var(--capsule-width);
+    height: var(--sp-2);
+    transform: translateX(-50%);
+  }
+  /* Into the stage and out, the width morphs slower than the rest. Folded, the bar leaves the stage at the capsule's
+     width at once, while its glass is still clear, so the capsule never shrinks in from the band's width. */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(:root:has([data-morph])) .topbar {
+      transition:
+        width calc(var(--dur-morph) * 1.5) var(--ease-out),
+        height var(--dur-morph) var(--ease-out),
+        top var(--dur-morph) var(--ease-out),
+        box-shadow var(--dur);
+    }
+    :global(:root:has([data-morph])) .topbar[data-hidden] {
+      transition:
+        height var(--dur-morph) var(--ease-out),
+        top var(--dur-morph) var(--ease-out),
+        box-shadow var(--dur);
+    }
+  }
+  /* Through the stage and out, the row fills the bar and its two sides share the room the address leaves. At the
+     pill's width each side fits its content, so the address glides to the middle as the bar widens. */
+  :global(:root:has([data-morph])) .row {
+    width: 100%;
+  }
+  :global(:root:has([data-morph])) .start {
+    display: flex;
+    flex: 1 1 0;
+  }
+  :global(:root:has([data-morph])) .row :global(#topbar-actions) {
+    flex: 1 1 0;
+    justify-content: flex-end;
   }
   /* Without interpolate-size, as in Safari, a width can't animate to fit-content. There the width always follows the
      content and the cap animates instead. The cap opens towards 95vw, past the content, so it opens linearly, or it
@@ -78,6 +155,10 @@
         box-shadow var(--dur);
     }
   }
+}
+/* Takes no box, so the logo sits in the row as its own item until the stage stretches this side. */
+.start {
+  display: contents;
 }
 .row {
   display: flex;
@@ -121,7 +202,10 @@
   .topbar[data-hidden] .strip {
     visibility: visible;
     opacity: 1;
-    transition: opacity var(--dur-morph) ease-in;
+    /* Top too, so the capsule glides from its place in the staged strip to the floating one. */
+    transition:
+      opacity var(--dur-morph) ease-in,
+      top var(--dur-morph) var(--ease-out);
   }
 }
 /* --tone comes from the topbar's data-tone. */
@@ -181,9 +265,12 @@
     height: var(--topbar-height);
     padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
     border-radius: 0;
-    box-shadow: inset 0 1px 0 var(--chrome-line);
     transform: none;
     transition: none;
+  }
+  .topbar,
+  .topbar::before {
+    box-shadow: inset 0 1px 0 var(--chrome-line);
   }
   .row {
     gap: var(--sp-2);
@@ -193,6 +280,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .topbar,
+  .topbar::before,
   .row,
   .topbar[data-hidden] .row,
   .strip,

@@ -77,7 +77,6 @@ function PlainChatButton(props: ButtonArgs): JSX.Element {
       onToggle={() => {
         props.onToggle();
       }}
-      panel={() => undefined}
     />
   );
 }

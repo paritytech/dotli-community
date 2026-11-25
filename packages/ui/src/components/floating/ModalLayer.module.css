@@ -32,9 +32,16 @@
 .layer[data-layout='sheet'] .scrim {
   bottom: var(--content-bottom);
 }
-/* The frame insets itself, so its slide out can clear the inset. */
+/* Beside the page on the right, with no scrim, under the floating layers and over the bar. It passes presses through
+   to the page around its frame. The frame insets itself, so its slide out can clear the inset. */
 .layer[data-layout='side'] {
+  left: auto;
+  z-index: 1100;
   place-items: stretch end;
+  pointer-events: none;
+}
+.layer[data-layout='side'] .scrim {
+  display: none;
 }
 .layer[data-layout='topbar-end'][data-open] {
   display: block;

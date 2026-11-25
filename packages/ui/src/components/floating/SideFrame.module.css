@@ -1,14 +1,16 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Inset from the top, right and bottom edges. Closed, it slides past its right inset off the screen. */
+/* Inset from the page's content edges and the right edge. Closed, it slides past its right inset off the screen. Its
+   top follows the content edge as that moves. */
 .panel {
   --inset-end: calc(var(--sp-2) + var(--safe-right));
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   width: var(--w-pop-lg);
-  margin: calc(var(--sp-2) + var(--safe-top)) var(--inset-end) calc(var(--sp-2) + var(--safe-bottom)) 0;
+  margin: calc(var(--sp-2) + var(--content-top)) var(--inset-end) calc(var(--sp-2) + var(--content-bottom)) 0;
+  position: relative;
   overflow: hidden;
   border-radius: var(--r-pop);
   background: var(--chrome-surface);
@@ -18,7 +20,21 @@
   color: var(--chrome-text);
   font-family: var(--font-sans);
   transform: translateX(calc(100% + var(--inset-end)));
-  transition: transform var(--dur-morph) var(--ease-out);
+  /* Takes the pointer, which the layer does not. */
+  pointer-events: auto;
+  transition:
+    transform var(--dur-morph) var(--ease-out),
+    margin-top var(--dur-morph) var(--ease-out);
+}
+/* The ring rides over the content, which fills the panel and would cover an inset ring of the panel's own. It lands on
+   the same edge pixels as the surface's inset ring and highlight, so the edge stays one line. */
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--chrome-line);
+  pointer-events: none;
 }
 .panel[data-state='open'] {
   transform: translateX(0);

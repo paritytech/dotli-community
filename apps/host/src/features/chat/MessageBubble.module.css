@@ -26,7 +26,7 @@
   border-radius: var(--r-md);
   background: var(--chat-bg-surface-main);
   color: var(--chat-fg-primary);
-  font-size: var(--fs-title);
+  font-size: var(--fs-body);
   line-height: var(--lh-tight);
   --bubble-muted: var(--chat-fg-tertiary);
 }

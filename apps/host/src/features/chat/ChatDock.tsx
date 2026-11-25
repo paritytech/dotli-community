@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { type Accessor, createEffect, lazy, Loading, onSettled, Show, untrack } from 'solid-js';
+import { type Accessor, createEffect, lazy, Loading, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { Drawer, preloadWhenIdle, RootBoundary } from '@dotli/ui';
 import type { ChatConversation } from './chat.js';
@@ -19,13 +19,13 @@ export type ChatDockProps = {
   open: Accessor<boolean>;
   /** Whether the chat button shows, which loads the panel's code while the page is idle. */
   available: Accessor<boolean>;
-  /** Escape, a press outside, the close button, a swipe or a broken panel closes it. */
+  /** Escape inside it, the close button, a swipe, a press on the phone sheet's scrim or a broken panel closes it. */
   onOpenChange: (open: boolean) => void;
   conversation: ChatConversation;
   /** The room the open panel shows, named in the drawer's head. Null, as while the drawer is closed, shows "Chat". */
   shown: Accessor<ShownContact | null>;
-  /** Hands the panel's dialog over once it is on the page. Returns the hand back. */
-  handOver?: ((panel: HTMLElement) => () => void) | undefined;
+  /** The chat button, or what stands in for it, which a keyboard close returns focus to. */
+  restoreFocus?: (() => HTMLElement | undefined) | undefined;
   /** Read once. Without one, the panel's own chunk. */
   loadPanel?: (() => Promise<ChatPanelModule>) | undefined;
 };
@@ -41,13 +41,6 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
     () => props.available(),
     visible => (visible ? preloadWhenIdle(ChatPanel) : undefined),
   );
-  // Lets the chat button take focus back on close unless the user moved it off the panel. The whole dialog, so focus
-  // on the drawer's own head counts as inside. Found by its id, as the drawer holds no content while closed.
-  onSettled(() => {
-    const dialog = document.getElementById(CHAT_PANEL_ID);
-    return dialog === null ? undefined : props.handOver?.(dialog);
-  });
-
   return (
     <Drawer
       open={props.open()}
@@ -60,6 +53,9 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
       }
       id={CHAT_PANEL_ID}
       testId="chat-panel"
+      restoreFocus={props.restoreFocus}
+      // A pointer close leaves focus out of the bar, which would unfold on it.
+      pointerCloseFocus="document"
     >
       <div class={s['panel']}>
         {/* A broken panel closes, and the drawer renders it afresh at the next opening. */}

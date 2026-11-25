@@ -7,6 +7,7 @@ import { createDrags } from '../createDrags.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { getCloseLabel } from './closeLabel.js';
+import { getClickInput, type CloseInput } from './closeReason.js';
 import { dragSheet } from './dragSheet.js';
 import s from './SideFrame.module.css';
 
@@ -15,8 +16,8 @@ export type SideFrameProps = {
   title: JSX.Element;
   /** On the heading, so the layer can be named by it. */
   titleId?: string | undefined;
-  /** On the close button or a swipe. */
-  onDismiss: () => void;
+  /** On the close button or a swipe, with what made it. */
+  onDismiss: (input: CloseInput) => void;
   /** Prefix for `-side-head`, `-side-title`, `-side-close`. */
   testId: string;
   /** Whether its layer is open. The panel slides on this. */
@@ -40,7 +41,7 @@ export function SideFrame(props: SideFrameProps): JSX.Element {
     if (down.target instanceof Element && down.target.closest('button') !== null) {
       return;
     }
-    dragSheet({ drags, head, surface: panel, down, close: props.onDismiss, edge: 'right' });
+    dragSheet({ drags, head, surface: panel, down, close: () => props.onDismiss('pointer'), edge: 'right' });
   }
 
   return (
@@ -69,8 +70,8 @@ export function SideFrame(props: SideFrameProps): JSX.Element {
           size="sm"
           testId={`${props.testId}-side-close`}
           aria-label={getCloseLabel(title())}
-          onClick={() => {
-            props.onDismiss();
+          onClick={event => {
+            props.onDismiss(getClickInput(event));
           }}
         >
           <CloseIcon />

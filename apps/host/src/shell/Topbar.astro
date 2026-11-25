@@ -19,7 +19,9 @@ import s from './Topbar.module.css';
     <span class={s['bar']}></span>
   </span>
   <div class={s['row']}>
-    <TopbarLogo />
+    <div class={s['start']}>
+      <TopbarLogo />
+    </div>
     <ProductButtonIsland client:media="(max-width: 560px)" />
     <UrlPill />
     <TopbarActionsIsland client:load />

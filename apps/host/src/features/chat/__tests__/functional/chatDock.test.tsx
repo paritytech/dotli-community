@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The ChatDock island against the page's real chat state: the panel element the dock hands over, which a chat button
-// needs to take focus back, the close it reports and the chat it reads. A missing binding would fail silently, so
-// these pin the wiring. The views are tested by the chat story plays.
+// The ChatDock island against the page's real chat state: the close it reports and the chat it reads. A missing
+// binding would fail silently, so these pin the wiring. The views are tested by the chat story plays.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { asProductId } from '@parity/truapi';
@@ -72,9 +71,6 @@ describe('ChatDock island', () => {
   it('As a user, Escape in the panel closes it on the page', async () => {
     // Given
     mountIsland();
-
-    // Then the dock handed its panel to the page, so the button can tell whether focus was inside
-    expect(chatPanelState.getElement()).toBe(byId('chat-panel'));
 
     // When
     chatPanelState.setOpen(true);

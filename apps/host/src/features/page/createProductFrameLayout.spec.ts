@@ -2,18 +2,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createProductFrameLayout, type FrameBox, type ProductFrameLayout } from './createProductFrameLayout.js';
 import { createStandInFrame } from '../../testing/createStandInFrame.js';
 
 type Params = {
   /** Whether the page has the host's topbar, as the host's page does unless told otherwise. */
   present?: boolean;
+  /** Whether the viewport starts phone sized, as it does not unless told otherwise. */
+  phone?: boolean;
 };
 
 type RecordingLayout = {
   layout: ProductFrameLayout;
   /** Every box written onto `frame`, oldest first. */
   getBoxes: (frame: HTMLIFrameElement) => FrameBox[];
+  /** Every stage marked on the page, oldest first. */
+  getStages: () => boolean[];
+  /** Moves the viewport across the phone breakpoint. */
+  setPhone: (phone: boolean) => void;
 };
 
 describe('product frame layout', () => {
@@ -26,7 +33,7 @@ describe('product frame layout', () => {
     layout.attach(frame);
 
     // Then
-    expect(getBoxes(frame)).toEqual([{ belowBar: true, right: 0, bottom: 0 }]);
+    expect(getBoxes(frame)).toEqual([{ placement: 'belowBar', morph: false, right: 0, bottom: 0 }]);
   });
 
   it('As a dApp user, I arm the bar and pin it again and the frame takes the full height and then sits below it', () => {
@@ -41,9 +48,9 @@ describe('product frame layout', () => {
 
     // Then
     expect(getBoxes(frame)).toEqual([
-      { belowBar: true, right: 0, bottom: 0 },
-      { belowBar: false, right: 0, bottom: 0 },
-      { belowBar: true, right: 0, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 0 },
+      { placement: 'full', morph: false, right: 0, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 0 },
     ]);
   });
 
@@ -59,7 +66,7 @@ describe('product frame layout', () => {
     layout.attach(reloaded);
 
     // Then the new frame gets the whole layout
-    expect(getBoxes(reloaded)).toEqual([{ belowBar: false, right: 360, bottom: 0 }]);
+    expect(getBoxes(reloaded)).toEqual([{ placement: 'full', morph: false, right: 360, bottom: 0 }]);
   });
 
   it('As a dotli developer, I close a docked panel after a product reload and only the new frame resizes', () => {
@@ -92,7 +99,7 @@ describe('product frame layout', () => {
     layout.attach(frame);
 
     // Then
-    expect(getBoxes(frame)).toEqual([{ belowBar: false, right: 360, bottom: 0 }]);
+    expect(getBoxes(frame)).toEqual([{ placement: 'full', morph: false, right: 360, bottom: 0 }]);
   });
 
   it('As a dotli integrator, I attach a frame on a page without a bar and it gets the full safe height', () => {
@@ -104,7 +111,7 @@ describe('product frame layout', () => {
     layout.attach(frame);
 
     // Then
-    expect(getBoxes(frame)).toEqual([{ belowBar: false, right: 0, bottom: 0 }]);
+    expect(getBoxes(frame)).toEqual([{ placement: 'full', morph: false, right: 0, bottom: 0 }]);
   });
 });
 
@@ -121,9 +128,9 @@ describe('product frame layout: docked panels', () => {
 
     // Then
     expect(getBoxes(frame)).toEqual([
-      { belowBar: true, right: 0, bottom: 0 },
-      { belowBar: true, right: 400, bottom: 0 },
-      { belowBar: true, right: 0, bottom: 300 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 400, bottom: 0 },
+      { placement: 'belowBar', morph: false, right: 0, bottom: 300 },
     ]);
   });
 
@@ -175,14 +182,211 @@ describe('product frame layout: the frame on the page', () => {
   });
 });
 
-/** Builds a layout that records the boxes it writes onto each frame. */
-function createRecordingLayout({ present = true }: Params = {}): RecordingLayout {
+describe('product frame layout: the stage', () => {
+  it('As a dApp user, I open a side panel on a wide screen and the page stages with the frame as a card beside it', () => {
+    // Given
+    const { layout, getBoxes, getStages } = createRecordingLayout();
+    const { frame } = createStandInFrame();
+    layout.attach(frame);
+
+    // When
+    layout.setSidePanel({ docked: true });
+
+    // Then
+    expect({ box: getBoxes(frame).at(-1), stages: getStages() }).toEqual({
+      box: { placement: 'staged', morph: true, right: 0, bottom: 0 },
+      stages: [true],
+    });
+  });
+
+  it('As a dApp user, I report the side panel docked twice and the page stages once', () => {
+    // Given
+    const { layout, getBoxes, getStages } = createRecordingLayout();
+    const { frame } = createStandInFrame();
+    layout.attach(frame);
+
+    // When
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: true });
+
+    // Then
+    expect({ boxes: getBoxes(frame).length, stages: getStages() }).toEqual({ boxes: 2, stages: [true] });
+  });
+
+  it('As a dApp user on a phone, I open a side panel and the page is not staged', () => {
+    // Given
+    const { layout, getBoxes, getStages } = createRecordingLayout({ phone: true });
+    const { frame } = createStandInFrame();
+    layout.attach(frame);
+
+    // When
+    layout.setSidePanel({ docked: true });
+
+    // Then
+    expect({ boxes: getBoxes(frame).length, stages: getStages() }).toEqual({ boxes: 1, stages: [] });
+  });
+
+  it('As a dApp user, I narrow the window to a phone with the side panel open and the frame morphs out of the stage', () => {
+    // Given
+    const { layout, getBoxes, getStages, setPhone } = createRecordingLayout();
+    const { frame } = createStandInFrame({ transitions: true });
+    layout.attach(frame);
+    layout.setSidePanel({ docked: true });
+
+    // When
+    setPhone(true);
+
+    // Then
+    expect({ box: getBoxes(frame).at(-1), stages: getStages() }).toEqual({
+      box: { placement: 'belowBar', morph: true, right: 0, bottom: 0 },
+      stages: [true, false],
+    });
+  });
+
+  it('As a dApp user, I close the side panel and widening the window no longer stages the page', () => {
+    // Given
+    const { layout, getStages, setPhone } = createRecordingLayout({ phone: true });
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: false });
+
+    // When
+    setPhone(false);
+
+    // Then
+    expect(getStages()).toEqual([]);
+  });
+
+  it('As a dApp user, I close the side panel and the frame morphs back and then changes at once', () => {
+    // Given
+    const { layout, getBoxes, getStages } = createRecordingLayout();
+    const stand = createStandInFrame({ transitions: true });
+    layout.attach(stand.frame);
+    layout.setSidePanel({ docked: true });
+
+    // When
+    layout.setSidePanel({ docked: false });
+    stand.endTransition();
+
+    // Then
+    expect({
+      boxes: getBoxes(stand.frame).map(({ placement, morph }) => ({ placement, morph })),
+      stages: getStages(),
+    }).toEqual({
+      boxes: [
+        { placement: 'belowBar', morph: false },
+        { placement: 'staged', morph: true },
+        { placement: 'belowBar', morph: true },
+        { placement: 'belowBar', morph: false },
+      ],
+      stages: [true, false],
+    });
+  });
+
+  it('As a dApp user who prefers reduced motion, I close the side panel and the next change of the frame lands at once', () => {
+    // Given a frame that runs no transition
+    const { layout, getBoxes } = createRecordingLayout();
+    const { frame } = createStandInFrame();
+    layout.attach(frame);
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: false });
+
+    // When
+    layout.setDockInset({ right: 360, bottom: 0 }, 'debug');
+
+    // Then
+    expect(getBoxes(frame).at(-1)?.morph).toBe(false);
+  });
+
+  it('As a dApp user, I change the frame mid-morph back, which replaces its transition, and its next change still morphs', () => {
+    // Given
+    const { layout, getBoxes } = createRecordingLayout();
+    const stand = createStandInFrame({ transitions: true });
+    layout.attach(stand.frame);
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: false });
+
+    // When the change replaces the running transition
+    stand.replaceTransition();
+    layout.setDockInset({ right: 360, bottom: 0 }, 'debug');
+
+    // Then
+    expect(getBoxes(stand.frame).at(-1)?.morph).toBe(true);
+  });
+
+  it('As a dotli developer, I reset the stores while the page is staged and the page is no longer marked staged', () => {
+    // Given
+    const { layout, getStages } = createRecordingLayout();
+    layout.attach(createStandInFrame().frame);
+    layout.setSidePanel({ docked: true });
+
+    // When
+    resetAllStoresForTests();
+
+    // Then
+    expect(getStages()).toEqual([true, false]);
+  });
+
+  it('As a dApp user, I open another product while the frame morphs back and the new frame changes at once', () => {
+    // Given
+    const { layout, getBoxes } = createRecordingLayout();
+    layout.attach(createStandInFrame({ transitions: true }).frame);
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: false });
+    const { frame: next } = createStandInFrame();
+
+    // When
+    layout.attach(next);
+
+    // Then
+    expect(getBoxes(next).at(-1)?.morph).toBe(false);
+  });
+
+  it('As a dApp user, I open and close the side panel before any product frame and the first frame changes at once', () => {
+    // Given
+    const { layout, getBoxes } = createRecordingLayout();
+    layout.setSidePanel({ docked: true });
+    layout.setSidePanel({ docked: false });
+    const { frame } = createStandInFrame();
+
+    // When
+    layout.attach(frame);
+
+    // Then
+    expect(getBoxes(frame)).toEqual([{ placement: 'belowBar', morph: false, right: 0, bottom: 0 }]);
+  });
+});
+
+/** Builds a layout that records the boxes it writes onto each frame and the stages it marks on the page. */
+function createRecordingLayout({ present = true, phone = false }: Params = {}): RecordingLayout {
   const boxes = new Map<HTMLIFrameElement, FrameBox[]>();
+  const stages: boolean[] = [];
+  const phoneWatchers = new Set<() => void>();
+  let isPhone = phone;
   const layout = createProductFrameLayout({
     apply(frame, box) {
       boxes.set(frame, [...(boxes.get(frame) ?? []), box]);
     },
+    applyStage(staged) {
+      stages.push(staged);
+    },
     topbar: { get: () => ({ present }) },
+    isPhone: () => isPhone,
+    watchPhone(onChange) {
+      phoneWatchers.add(onChange);
+      return () => {
+        phoneWatchers.delete(onChange);
+      };
+    },
   });
-  return { layout, getBoxes: frame => boxes.get(frame) ?? [] };
+  return {
+    layout,
+    getBoxes: frame => boxes.get(frame) ?? [],
+    getStages: () => stages,
+    setPhone(next) {
+      isPhone = next;
+      for (const onChange of phoneWatchers) {
+        onChange();
+      }
+    },
+  };
 }

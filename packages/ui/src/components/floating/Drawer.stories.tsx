@@ -1,13 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { ChevronLeftIcon } from '../icons/ChevronLeftIcon.js';
 import { Button } from '../primitives/Button.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { Drawer, type DrawerProps } from './Drawer.js';
+import { Modal } from './Modal.js';
 
 // The drawer is portalled into the body, outside the story's canvas.
 const body = within(document.body);
@@ -25,8 +26,52 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a dotli user, I see the drawer as a modal panel on the right edge, its content under a head with its title. */
+/** As a dotli user, I see the drawer as a panel on the right edge beside the page, its content under a head with its title. */
 export const Default: Story = {};
+
+/** As a dotli user, I press a control on the page beside the open side panel, and it takes the press while the drawer stays open. */
+export const PageBesideAnswers: Story = {
+  globals: DESKTOP,
+  play: async ({ args, canvas, userEvent, step }) => {
+    const opener = canvas.getByRole('button', { name: 'Open chat' });
+    await step('Given the open side panel', async () => {
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).toHaveAttribute('data-open'));
+    });
+    await step('When I press the button on the page beside it', async () => {
+      await userEvent.click(opener);
+    });
+    await step('Then the button takes focus and the drawer reports no close', async () => {
+      await expect(opener).toHaveFocus();
+      await expect(args.onOpenChange).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a dotli user, I open a modal from the side panel, and the panel is inert under it, then answers again with focus back on my button. */
+export const ModalOverPanel: Story = {
+  globals: DESKTOP,
+  args: { withConfirm: true },
+  play: async ({ userEvent, step }) => {
+    const panel = body.getByRole('dialog', { name: 'Market' });
+    await step('Given the open side panel', async () => {
+      await waitFor(() => expect(panel).toHaveAttribute('data-open'));
+    });
+    await step('When I open a modal from a button in it', async () => {
+      await userEvent.click(body.getByRole('button', { name: 'Clear chat' }));
+    });
+    await step('Then the panel is inert under the open modal', async () => {
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Clear chat' })).toHaveAttribute('data-open'));
+      await expect(panel).toHaveAttribute('inert');
+    });
+    await step('When I cancel the modal', async () => {
+      await userEvent.click(body.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the panel answers again with focus on the button that opened the modal', async () => {
+      await waitFor(() => expect(panel).not.toHaveAttribute('inert'));
+      await waitFor(() => expect(body.getByRole('button', { name: 'Clear chat' })).toHaveFocus());
+    });
+  },
+};
 
 /** As a phone user, I see the drawer as a bottom sheet, and its close button closes it. */
 export const PhoneSheet: Story = {
@@ -87,6 +132,67 @@ export const EscapeClosesAndRestoresFocus: Story = {
       await expect(args.onOpenChange).toHaveBeenCalledOnce();
       await expect(args.onOpenChange).toHaveBeenCalledWith(false);
       await waitFor(() => expect(opener).toHaveFocus());
+    });
+  },
+};
+
+/** As a pointer user of a drawer that lets focus go on a pointer close, I press its close button and no control takes focus. */
+export const PointerCloseReleasesFocus: Story = {
+  globals: DESKTOP,
+  args: { open: false, pointerCloseFocus: 'document' },
+  play: async ({ canvas, userEvent, step }) => {
+    const opener = canvas.getByRole('button', { name: 'Open chat' });
+    await step('Given the drawer opened from its button', async () => {
+      await userEvent.click(opener);
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).toHaveAttribute('data-open'));
+    });
+    await step('When I press its close button', async () => {
+      await userEvent.click(body.getByRole('button', { name: 'Close Market' }));
+    });
+    await step('Then focus is on the document, not the button', async () => {
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).not.toHaveAttribute('data-open'));
+      await expect(document.body).toHaveFocus();
+    });
+  },
+};
+
+/** As a keyboard user of a drawer that lets focus go on a pointer close, I press Enter on its close button and focus returns to the button that opened it. */
+export const KeyboardCloseReturnsFocus: Story = {
+  globals: DESKTOP,
+  args: { ...PointerCloseReleasesFocus.args },
+  play: async ({ canvas, userEvent, step }) => {
+    const opener = canvas.getByRole('button', { name: 'Open chat' });
+    await step('Given the drawer opened from its button, with focus on its close button', async () => {
+      await userEvent.click(opener);
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).toHaveAttribute('data-open'));
+      body.getByRole('button', { name: 'Close Market' }).focus();
+    });
+    await step('When I press Enter', async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Then focus is back on the button', async () => {
+      await waitFor(() => expect(opener).toHaveFocus());
+    });
+  },
+};
+
+/** As a phone user of a drawer that lets focus go on a pointer close, I press the sheet's close button and the page answers with no control focused. */
+export const PhonePointerCloseReleasesFocus: Story = {
+  globals: PHONE,
+  args: { ...PointerCloseReleasesFocus.args },
+  play: async ({ canvas, userEvent, step }) => {
+    const opener = canvas.getByRole('button', { name: 'Open chat' });
+    await step('Given the sheet opened from its button', async () => {
+      await userEvent.click(opener);
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).toHaveAttribute('data-open'));
+    });
+    await step('When I press its close button', async () => {
+      await userEvent.click(body.getByRole('button', { name: 'Close Market' }));
+    });
+    await step('Then focus is on the document and the page is no longer inert', async () => {
+      await waitFor(() => expect(body.getByRole('dialog', { name: 'Market' })).not.toHaveAttribute('data-open'));
+      await expect(document.body).toHaveFocus();
+      await expect(opener.closest('[inert]')).toBeNull();
     });
   },
 };
@@ -185,10 +291,13 @@ export const SwitchesFormKeepingContent: Story = {
 
 /**
  * The drawer with the button that opens it, owning its open state and passing each change on. With `onBack` its title
- * is markup, a back button before the text.
+ * is markup, a back button before the text. With `withConfirm` its content has a button that opens a modal.
  */
-function OwnedDrawer(props: Omit<DrawerProps, 'children' | 'title'> & { title: string; onBack?: () => void }) {
+function OwnedDrawer(
+  props: Omit<DrawerProps, 'children' | 'title'> & { title: string; onBack?: () => void; withConfirm?: boolean },
+) {
   const [open, setOpen] = createSignal(() => props.open);
+  const [confirming, setConfirming] = createSignal(false);
   return (
     <>
       <Button onClick={() => setOpen(true)}>Open chat</Button>
@@ -229,8 +338,23 @@ function OwnedDrawer(props: Omit<DrawerProps, 'children' | 'title'> & { title: s
               font: 'inherit',
             }}
           />
+          <Show when={props.withConfirm}>
+            <Button onClick={() => setConfirming(true)}>Clear chat</Button>
+          </Show>
         </div>
       </Drawer>
+      <Modal
+        open={confirming()}
+        onOpenChange={setConfirming}
+        title="Clear chat"
+        labelledBy="story-confirm-title"
+        testId="story-confirm"
+      >
+        <Modal.Head titleId="story-confirm-title" title="Clear chat" />
+        <Modal.Actions>
+          <Button onClick={() => setConfirming(false)}>Cancel</Button>
+        </Modal.Actions>
+      </Modal>
     </>
   );
 }

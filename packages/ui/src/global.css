@@ -14,7 +14,7 @@
   --text-secondary: #d4d5db;
   --text-muted: #d4d5db;
   --text-faint: #80838a;
-  --bg-page: #0b0c0f;
+  --bg-page: var(--chrome-bottom);
   --surface: #1a1b20;
   --fill-subtle: rgba(255, 255, 255, 0.04);
   --fill: rgba(255, 255, 255, 0.07);

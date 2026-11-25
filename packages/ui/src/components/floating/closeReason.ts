@@ -7,3 +7,11 @@
  */
 export type CloseReason =
   'outside' | 'escape' | 'trigger' | 'blur' | 'focus-out' | 'programmatic' | 'sheet' | 'released';
+
+/** What closed a modal layer, which decides where focus goes after. */
+export type CloseInput = 'pointer' | 'keyboard';
+
+/** Returns what made `click`. Enter or Space on a button clicks it with no press count. Never throws. */
+export function getClickInput(click: Pick<MouseEvent, 'detail'>): CloseInput {
+  return click.detail === 0 ? 'keyboard' : 'pointer';
+}

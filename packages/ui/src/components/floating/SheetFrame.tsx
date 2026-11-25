@@ -9,6 +9,7 @@ import type { IconProps } from '../icons/iconProps.js';
 import { IconTile } from '../primitives/IconTile.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { getCloseLabel } from './closeLabel.js';
+import { getClickInput, type CloseInput } from './closeReason.js';
 import { InSheet, type Sheet } from './inSheet.js';
 import { dragSheet } from './dragSheet.js';
 import s from './SheetFrame.module.css';
@@ -20,7 +21,8 @@ export type SheetFrameProps = {
   titleId?: string | undefined;
   /** Drawn bare before the title. */
   icon?: Component<IconProps> | undefined;
-  onDismiss: () => void;
+  /** On the close button or a swipe, with what made it. */
+  onDismiss: (input: CloseInput) => void;
   closeLabel?: string;
   /** False draws no close button, and a swipe still calls `onDismiss`. Default true. */
   closable?: boolean | undefined;
@@ -66,7 +68,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
     if (down.target instanceof Element && down.target.closest('button') !== null) {
       return;
     }
-    dragSheet({ drags, head, surface: sheet, down, close: props.onDismiss });
+    dragSheet({ drags, head, surface: sheet, down, close: () => props.onDismiss('pointer') });
   }
 
   return (
@@ -98,8 +100,8 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
             size="sm"
             testId={`${props.testId}-sheet-close`}
             aria-label={props.closeLabel ?? getCloseLabel(title())}
-            onClick={() => {
-              props.onDismiss();
+            onClick={event => {
+              props.onDismiss(getClickInput(event));
             }}
           >
             <CloseIcon />

@@ -16,7 +16,27 @@
   min-height: var(--content-height);
   margin: var(--content-top) 0 0;
   padding: 0;
-  background: var(--bg-page);
   color: var(--text);
   text-align: center;
+}
+
+/* Staged, the content starts below a band of its own, which shrinks to a strip while the bar is folded. A phone is
+   never staged. */
+@media (min-width: 561px) {
+  .page[data-staged] {
+    --content-top: calc(var(--h-bar) + var(--safe-top));
+  }
+  /* Global, since a module scopes ids as it does classes. */
+  .page[data-staged]:has(:global(#topbar[data-hidden])) {
+    --content-top: calc(var(--sp-1) + var(--safe-top));
+  }
+}
+
+/* The product frame's box morphs only while marked, so any other change of it lands at once. */
+@media (prefers-reduced-motion: no-preference) {
+  .app [data-morph] {
+    transition-property: top, left, width, height, border-radius;
+    transition-duration: var(--dur-morph);
+    transition-timing-function: var(--ease-out);
+  }
 }

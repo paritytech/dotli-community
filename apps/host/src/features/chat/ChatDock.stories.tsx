@@ -69,7 +69,7 @@ export const EscapeClosesAndRefocusesButton: Story = {
   play: async ({ canvas, userEvent, step }) => {
     const button = chatButton(canvas);
     await step('Given the chat opened from its button, with focus on the drawer', async () => {
-      // Opened without focusing the button, so focus comes back through the panel the dock hands over.
+      // Opened without focusing the button, so focus comes back through the trigger the button hands over.
       button.click();
       const close = await body.findByRole('button', { name: /^Close/ });
       await waitFor(() => expect(close).toBeVisible());
@@ -80,6 +80,24 @@ export const EscapeClosesAndRefocusesButton: Story = {
     });
     await step('Then focus is on the chat button', async () => {
       await waitFor(() => expect(button).toHaveFocus());
+    });
+  },
+};
+
+/** As a pointer user, I press the drawer's close button and focus stays off the chat button. */
+export const PointerCloseLeavesButtonUnfocused: Story = {
+  play: async ({ canvas, userEvent, step }) => {
+    const button = chatButton(canvas);
+    await step('Given the chat opened from its button', async () => {
+      await userEvent.click(button);
+      await waitFor(() => expect(body.getByRole('dialog')).toHaveAttribute('data-open'));
+    });
+    await step('When I press its close button', async () => {
+      await userEvent.click(await body.findByRole('button', { name: /^Close/ }));
+    });
+    await step('Then focus is on the document, not the chat button', async () => {
+      await waitFor(() => expect(body.getByRole('dialog')).not.toHaveAttribute('data-open'));
+      await expect(document.body).toHaveFocus();
     });
   },
 };
