@@ -127,6 +127,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md): a story file's axe check costs time
   or fails where it has nothing to find, such as stories that drive a component at capacity near the test timeout, or
   the contrast rule on text inside a decorative, `aria-hidden` background graphic.
+- [check-scores-an-input-it-cannot-fully-read](check-scores-an-input-it-cannot-fully-read.md): a check that scores a
+  measured value, such as text contrast, meets an input it cannot fully read, such as what shows through a translucent
+  blurred layer, and the question is when it gives up and when it still scores.
 - [play-asserts-a-number-shown-as-plain-text](play-asserts-a-number-shown-as-plain-text.md): a kept story play is the
   only guard of an edge case about a number the component shows as plain text, with no role, accessible name or `data-*`
   state, and lint refuses `toHaveTextContent` in story files.

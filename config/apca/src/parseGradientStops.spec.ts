@@ -18,9 +18,9 @@ describe('parseGradientStops', () => {
       stops: [['rgb(88, 91, 98)', 'rgb(44, 46, 52)']],
     },
     {
-      shape: 'several gradients with color functions, hints and two positions on a stop',
+      shape: 'several gradients with color functions, hints, a calc() center and two positions on a stop',
       backgroundImage:
-        'radial-gradient(circle at 50% 50%, color(srgb 1 0 0 / 0.5) 0%, 40%, rgb(0, 0, 255) 100%), ' +
+        'radial-gradient(circle at calc(50% + 2px) 50%, color(srgb 1 0 0 / 0.5) 0%, 40%, rgb(0, 0, 255) 100%), ' +
         'repeating-conic-gradient(from 90deg at 50% 50%, rgb(1, 2, 3) 0% 25%, rgb(4, 5, 6) calc(25% + 2px) 50%)',
       stops: [
         ['color(srgb 1 0 0 / 0.5)', 'rgb(0, 0, 255)'],
@@ -40,6 +40,11 @@ describe('parseGradientStops', () => {
     {
       shape: 'a stop whose color it cannot read',
       backgroundImage: 'linear-gradient(rgb(255, 255, 255) 0%, currentcolor 100%)',
+      stops: null,
+    },
+    {
+      shape: 'a first stop whose color it cannot read',
+      backgroundImage: 'linear-gradient(color-mix(in srgb, rgb(255, 0, 0) 50%, rgb(0, 0, 255)), rgb(0, 0, 0))',
       stops: null,
     },
   ])(

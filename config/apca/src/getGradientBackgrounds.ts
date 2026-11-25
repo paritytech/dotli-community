@@ -8,8 +8,8 @@ import { isColorValue, parseGradientStops } from './parseGradientStops.js';
 /** A box in viewport px. */
 export type Box = Pick<DOMRect, 'top' | 'bottom' | 'left' | 'right'>;
 
-/** The opacity and blending an element applies to all it paints. */
-export type Compositing = Pick<CSSStyleDeclaration, 'opacity' | 'mixBlendMode'>;
+/** The opacity, blending and filter an element applies to all it paints. */
+export type Compositing = Pick<CSSStyleDeclaration, 'opacity' | 'mixBlendMode' | 'filter'>;
 
 /** The text element as it paints its glyphs. */
 export type TextSnapshot = {
@@ -32,10 +32,15 @@ export type LayerSnapshot = {
       | 'backgroundSize'
       | 'backgroundBlendMode'
       | 'backgroundClip'
+      | 'backgroundOrigin'
       | 'backgroundRepeat'
       | 'backgroundPosition'
+      | 'backdropFilter'
       | 'display'
-    >;
+    > & {
+      /** WebKit before 18 names its backdrop filter only with this prefix. */
+      webkitBackdropFilter?: string;
+    };
   /** Each ancestor's compositing, the parent first. */
   ancestors: readonly Compositing[];
 };
@@ -52,57 +57,69 @@ const PERCENTAGE = /^-?[\d.]+%$/;
 
 /**
  * Lists the backgrounds text may sit on where a gradient paints under it: each color stop, flattened over the layers
- * beneath it. Returns an empty list when a gradient paints none of them, or when the walk cannot tell them.
+ * beneath it, or over opaque black and white where a backdrop filter hides them. Returns an empty list when a gradient
+ * paints none of them, or when the walk cannot tell them.
  */
 export function getGradientBackgrounds({ text, stack }: Params): Color[] {
   const { color } = axe.commons;
   // axe folds text shadows, translucent text and the opacity and blending of stacking contexts into its colors. This
-  // walk does not, so it gives up on them.
+  // walk does not, so it gives up on them. A filter may move any color anywhere.
   if (!hasPlainText(text.style) || [text.style, ...text.ancestors].some(isComposited)) {
     return [];
   }
-  // Each layer lists the colors it may paint under the text, the topmost layer first.
-  const layers: Color[][] = [];
-  const read: LayerSnapshot[] = [];
-  const painters: LayerSnapshot[] = [];
-  for (const element of stack) {
-    const own = getOwnLayers(element, text.rects);
-    if (!own) {
-      return [];
-    }
-    read.push(element);
-    if (own.length > 0) {
-      painters.push(element);
-    }
-    layers.push(...own);
-    if (own.some(isOpaque)) {
-      break;
-    }
+  const walked = walkStack(stack, text.rects);
+  if (!walked) {
+    return [];
   }
   // Only a gradient is resolved here. Where the walk meets none, axe gave up for another reason, and its outcome
   // stands.
-  if (!read.some(element => element.style.backgroundImage !== 'none')) {
+  if (!walked.read.some(element => element.style.backgroundImage !== 'none')) {
     return [];
   }
-  // Opacity or blending on an element that paints under the text, or on its ancestors, changes the colors it paints.
-  if (painters.some(element => [element.style, ...element.ancestors].some(isComposited))) {
-    return [];
-  }
+  const { layers, isBackdropUnknown } = walked;
   const bottom = layers.findIndex(isOpaque);
   // Under a stack without the body, axe adds the page's own background, which this walk does not.
-  if (bottom === -1 && !stack.some(element => element.isBody)) {
+  if (bottom === -1 && !isBackdropUnknown && !stack.some(element => element.isBody)) {
     return [];
   }
   const visible = bottom === -1 ? layers : layers.slice(0, bottom + 1);
-  // White shows beneath the lowest layer, as axe takes it.
+  const white = new color.Color(255, 255, 255, 1);
+  // White shows beneath the lowest layer, as axe takes it. Beneath a backdrop filter, black and white bound what shows.
+  const beneath = isBackdropUnknown ? [new color.Color(0, 0, 0, 1), white] : [white];
   return visible.reduceRight(
     (backdrops, layer) => layer.flatMap(source => backdrops.map(backdrop => color.flattenColors(source, backdrop))),
-    [new color.Color(255, 255, 255, 1)],
+    beneath,
   );
 }
 
+/**
+ * Reads the stack from the top down to the first opaque layer or backdrop filter, and returns the elements it read and
+ * the layers they paint under the text, or null when it cannot tell them.
+ */
+function walkStack(stack: readonly LayerSnapshot[], textRects: readonly Box[]) {
+  // Each layer lists the colors it may paint under the text, the topmost layer first.
+  const layers: Color[][] = [];
+  const read: LayerSnapshot[] = [];
+  for (const element of stack) {
+    const own = getOwnLayers(element, textRects);
+    if (!own) {
+      return null;
+    }
+    read.push(element);
+    layers.push(...own);
+    if (own.some(isOpaque)) {
+      return { layers, read, isBackdropUnknown: false };
+    }
+    // A backdrop filter shows the layers beneath it blurred and recolored, so the walk cannot read past it.
+    if (hasBackdropFilter(element.style)) {
+      return { layers, read, isBackdropUnknown: true };
+    }
+  }
+  return { layers, read, isBackdropUnknown: false };
+}
+
 /** The layers an element paints under the text, the topmost first, or null when they cannot be told. */
-function getOwnLayers({ nodeName, box, style }: LayerSnapshot, textRects: readonly Box[]): Color[][] | null {
+function getOwnLayers({ nodeName, box, style, ancestors }: LayerSnapshot, textRects: readonly Box[]): Color[][] | null {
   const gradients = parseGradientStops(style.backgroundImage);
   if (!gradients || GRAPHIC_NODES.has(nodeName.toUpperCase()) || !isColorValue(style.backgroundColor)) {
     return null;
@@ -117,11 +134,15 @@ function getOwnLayers({ nodeName, box, style }: LayerSnapshot, textRects: readon
   if (own.length === 0) {
     return own;
   }
-  // A background clipped to text paints only inside the glyphs, never around the text.
-  if (!isEvery(style.backgroundClip, value => value !== 'text')) {
+  // A background clipped to text, or to a box inside the border, paints only part of the element.
+  if (!isEvery(style.backgroundClip, value => value === 'border-box')) {
     return null;
   }
   if (style.display !== 'inline' && !coversText(box, textRects)) {
+    return null;
+  }
+  // Opacity, blending or a filter on the element or its ancestors changes the colors it paints.
+  if ([style, ...ancestors].some(isComposited)) {
     return null;
   }
   return own;
@@ -135,15 +156,20 @@ function hasPlainText(style: TextSnapshot['style']) {
 }
 
 function isComposited(style: Compositing) {
-  return style.opacity !== '1' || style.mixBlendMode !== 'normal';
+  return style.opacity !== '1' || style.mixBlendMode !== 'normal' || style.filter !== 'none';
 }
 
-// A gradient paints only its stops' colors, blended as one layer, over all of its element where its one tile, at the
-// element's size, repeats or sits at no offset. A percentage offsets nothing at that size.
+function hasBackdropFilter(style: LayerSnapshot['style']) {
+  return [style.backdropFilter, style.webkitBackdropFilter].some(value => value !== undefined && value !== 'none');
+}
+
+// A gradient paints only its stops' colors, blended as one layer, over all of its element where its one tile repeats,
+// or sits at no offset in the element's border box. A percentage offsets nothing in the box the tile fills.
 function isWholeGradient(style: LayerSnapshot['style']) {
   const covers =
     isEvery(style.backgroundRepeat, value => value === 'repeat') ||
-    isEvery(style.backgroundPosition, value => PERCENTAGE.test(value));
+    (isEvery(style.backgroundPosition, value => PERCENTAGE.test(value)) &&
+      isEvery(style.backgroundOrigin, value => value === 'border-box'));
   return (
     covers &&
     isEvery(style.backgroundSize, value => value === 'auto') &&

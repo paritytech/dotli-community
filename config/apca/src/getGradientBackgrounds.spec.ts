@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import axe from 'axe-core';
 import { getGradientBackgrounds, type LayerSnapshot, type TextSnapshot } from './getGradientBackgrounds.js';
+import { scoreText } from './scoreText.js';
 
-const PLAIN = { opacity: '1', mixBlendMode: 'normal' };
-const HALF_OPAQUE = { opacity: '0.5', mixBlendMode: 'normal' };
+const PLAIN = { opacity: '1', mixBlendMode: 'normal', filter: 'none' };
+const HALF_OPAQUE = { ...PLAIN, opacity: '0.5' };
 const BLACK_TO_GRAY = 'linear-gradient(rgb(0, 0, 0), rgb(51, 51, 51))';
+const HALF_BLACK_TO_HALF_RED = 'linear-gradient(rgba(0, 0, 0, 0.5), rgba(255, 0, 0, 0.5))';
+const BLUR = 'blur(32px) saturate(150%)';
 
 describe('getGradientBackgrounds', () => {
   it.each([
@@ -34,7 +38,12 @@ describe('getGradientBackgrounds', () => {
     {
       shape: 'a gradient drawn once at a percentage position',
       stack: [
-        layer({ backgroundImage: BLACK_TO_GRAY, backgroundRepeat: 'no-repeat', backgroundPosition: '50% 0%' }),
+        layer({
+          backgroundImage: BLACK_TO_GRAY,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: '50% 0%',
+          backgroundOrigin: 'border-box',
+        }),
         body(),
       ],
       backgrounds: ['#000000', '#333333'],
@@ -46,6 +55,21 @@ describe('getGradientBackgrounds', () => {
         layer({ backgroundColor: 'rgb(255, 0, 0)', ...HALF_OPAQUE }),
         body(),
       ],
+      backgrounds: ['#000000', '#333333'],
+    },
+    {
+      shape: 'translucent glass with a backdrop filter, bounded by black and white in place of what lies beneath',
+      stack: [layer({ backgroundImage: HALF_BLACK_TO_HALF_RED, backdropFilter: BLUR }), solid(), body()],
+      backgrounds: ['#000000', '#808080', '#800000', '#ff8080'],
+    },
+    {
+      shape: 'translucent glass with a prefixed backdrop filter, bounded by black and white',
+      stack: [layer({ backgroundImage: HALF_BLACK_TO_HALF_RED, webkitBackdropFilter: BLUR }), solid(), body()],
+      backgrounds: ['#000000', '#808080', '#800000', '#ff8080'],
+    },
+    {
+      shape: 'an opaque gradient with a backdrop filter, which hides what lies beneath',
+      stack: [layer({ backgroundImage: BLACK_TO_GRAY, backdropFilter: BLUR }), body()],
       backgrounds: ['#000000', '#333333'],
     },
   ])('As a story author, I check text over $shape and get its colors', ({ stack, backgrounds }) => {
@@ -125,6 +149,44 @@ describe('getGradientBackgrounds', () => {
       text: text(),
       stack: [layer({ backgroundImage: BLACK_TO_GRAY }, { ancestors: [HALF_OPAQUE] }), body()],
     },
+    {
+      shape: 'a gradient, in text with its own opacity',
+      text: text({ opacity: '0.5' }),
+      stack: cardStack(),
+    },
+    {
+      shape: 'a gradient, in text under a filtered ancestor',
+      text: text({}, [{ ...PLAIN, filter: 'invert(1)' }]),
+      stack: cardStack(),
+    },
+    {
+      shape: 'a translucent gradient card',
+      text: text(),
+      stack: [layer({ backgroundImage: BLACK_TO_GRAY, ...HALF_OPAQUE }), body()],
+    },
+    {
+      shape: 'a gradient card blended with what lies beneath',
+      text: text(),
+      stack: [layer({ backgroundImage: BLACK_TO_GRAY, mixBlendMode: 'multiply' }), body()],
+    },
+    {
+      shape: 'a gradient card under a filter',
+      text: text(),
+      stack: [layer({ backgroundImage: BLACK_TO_GRAY, filter: 'brightness(1)' }), body()],
+    },
+    {
+      shape: 'a gradient clipped to its padding box',
+      text: text(),
+      stack: [layer({ backgroundImage: BLACK_TO_GRAY, backgroundClip: 'padding-box' }), body()],
+    },
+    {
+      shape: 'a gradient drawn once from its padding box',
+      text: text(),
+      stack: [
+        layer({ backgroundImage: BLACK_TO_GRAY, backgroundRepeat: 'no-repeat', backgroundPosition: '50% 0%' }),
+        body(),
+      ],
+    },
   ])('As a story author, I check text over $shape and get no colors', ({ text, stack }) => {
     // Given
     const params = { text, stack };
@@ -134,6 +196,22 @@ describe('getGradientBackgrounds', () => {
 
     // Then
     expect(colors).toEqual([]);
+  });
+
+  it('As a story author, I check light text on glass with a backdrop filter and get it scored over white', () => {
+    // Given
+    const glass = layer({
+      backgroundImage: 'linear-gradient(rgba(44, 46, 52, 0.97), rgba(18, 19, 23, 0.98))',
+      backdropFilter: BLUR,
+    });
+    const foreground = new axe.commons.color.Color(212, 213, 219, 1);
+
+    // When
+    const colors = getGradientBackgrounds({ text: text(), stack: [glass] });
+    const score = scoreText({ pairs: colors.map(background => ({ foreground, background })), fontSize: 13 });
+
+    // Then
+    expect(score?.pair.background.toHexString()).toBe('#32343a');
   });
 });
 
@@ -157,8 +235,10 @@ function layer(style: Partial<LayerSnapshot['style']> = {}, snapshot: Partial<Om
       backgroundSize: 'auto',
       backgroundBlendMode: 'normal',
       backgroundClip: 'border-box',
+      backgroundOrigin: 'padding-box',
       backgroundRepeat: 'repeat',
       backgroundPosition: '0% 0%',
+      backdropFilter: 'none',
       display: 'block',
       ...PLAIN,
       ...style,
@@ -173,4 +253,8 @@ function body() {
 
 function cardStack() {
   return [layer({ backgroundImage: BLACK_TO_GRAY }), body()];
+}
+
+function solid() {
+  return layer({ backgroundColor: 'rgb(0, 0, 255)' });
 }

@@ -44,16 +44,23 @@ axe `config` of the story's own would replace the addon's rules and drop the rul
   is the verdict. Rather than guess, the walk leaves the element in "Incomplete" when it meets:
   - an image or a graphic element under the text
   - a gradient sized or blended apart from its element
-  - a gradient drawn once at a length offset, which may not reach the text
-  - a background clipped to text, which paints only inside the glyphs
+  - a gradient drawn once at a length offset, or from a box inside its border, which may not reach the text
+  - a background clipped to text or to a box inside its border, which paints only part of its element
   - a gradient interpolated in a color space or along a hue path of its own, which may paint colors far from its stops
   - a layer that covers only part of the text
   - a color axe cannot read
-  - opacity or blending on the text, on a layer it scores or on their ancestors
+  - opacity, blending or a filter on the text, on a layer it scores or on their ancestors
   - a text shadow or translucent text
   - a stack that misses the page's body, where axe adds the page's own background
 
   Between two stops, a gradient in sRGB can be darker than both. Dark text is still scored by the stops alone.
+
+- **Backdrop filters:** a translucent layer with a backdrop filter shows what lies beneath it blurred and recolored, so
+  the walk stops there. It flattens that layer's colors over opaque black and over opaque white in place of the layers
+  beneath, and keeps the lower Lc. That bounds the contrast while the text is lighter or darker than both. An opaque
+  layer hides its backdrop and needs no bound.
+- **Masks:** a `mask-image` is ignored, as axe ignores it. A mask fades only a container's edge, and text outside the
+  fade paints as scored.
 
 - **Public axe API only:** the check travels in the settings as a function. A rerun from Storybook's panel, whose
   channel drops functions, reports the rule as incomplete until the view reloads. Tests and normal renders always run

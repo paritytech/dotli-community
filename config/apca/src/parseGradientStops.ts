@@ -5,6 +5,7 @@ const GRADIENT = /^((?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient
 // The forms of a computed color that axe reads. A computed style never gives a color as a keyword.
 const COLOR = /^(?:#|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\()/i;
 const POSITION = /^(?:-?[\d.]+[a-z%]*|calc\(.*\))$/i;
+const NOT_GEOMETRY = /^(?!calc\()[a-z-]+\(/i;
 
 /**
  * Splits a computed `background-image` into the color stops of each gradient, the topmost gradient first. Returns an
@@ -44,11 +45,12 @@ function parseStops(body: string) {
       stops.push(color);
       continue;
     }
-    // Interpolated in a color space or along a hue path of its own, a gradient may paint colors far from its stops.
-    if (index === 0 && tokens.includes('in')) {
+    // The first argument may set the direction or shape, which holds no function but calc(). Interpolated in a color
+    // space or along a hue path of its own, a gradient may paint colors far from its stops.
+    if (index === 0 && (tokens.includes('in') || tokens.some(token => NOT_GEOMETRY.test(token)))) {
       return null;
     }
-    // The first argument may set the direction or shape. A later one without a color is a bare hint.
+    // A later argument without a color is a bare hint.
     if (index > 0 && !tokens.every(token => POSITION.test(token))) {
       return null;
     }
