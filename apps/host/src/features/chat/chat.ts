@@ -61,6 +61,8 @@ export type ChatContacts = {
 
 /** The product's rooms and the shown room's messages, as the open panel reads them. */
 export type ChatFeed = {
+  /** The product the feed follows, which draws the shown room's footer card. Null while it follows none. */
+  productId: Accessor<string | null>;
   /** Null until the first room list read lands. */
   contacts: Accessor<ChatContacts | null>;
   /** The last room list read failed. The rooms read before it stay. */

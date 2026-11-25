@@ -22,7 +22,7 @@ import type { ChatRenderSink } from '../../features/chat/chat.js';
 import type { ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../features/chat/chat.js';
 import type { ChatButtonProps } from '../../features/chat/ChatButton.js';
 import { contactEntries, getShownContact, type ShownContact } from '../../features/chat/contacts.js';
-import { DELIVERY_TIME_PICKER, PAYMENT_REQUEST } from './customMessageTrees.js';
+import { DELIVERY_TIME_PICKER, ORDER_STATUS, PAYMENT_REQUEST } from './customMessageTrees.js';
 
 const PRODUCT = 'market.dot';
 const MINUTE = 60_000;
@@ -206,6 +206,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
   };
 
   const openFeed = (): ChatFeed => ({
+    productId: () => PRODUCT,
     contacts: useStore(feed, s => s.contacts),
     contactsFailed: useStore(feed, s => s.contactsFailed),
     messages: useStore(feed, s => s.messages),
@@ -268,9 +269,12 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
     actions: {
       renderCustomMessage: ({ request, sink }) => {
         stage.renders.push({ request, sink });
-        // Only a chat message's render reaches the chat.
+        // Only a chat message's or a room footer's render reaches the chat.
+        const { context } = request;
         const tree =
-          request.context.tag === 'ChatMessage' ? stage.customTrees[request.context.value.messageType] : undefined;
+          context.tag === 'ChatMessage' || context.tag === 'ChatRoomFooter'
+            ? stage.customTrees[context.value.messageType]
+            : undefined;
         if (tree !== undefined) {
           sink.onUpdate(tree);
         }
@@ -300,7 +304,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
     messagesFail,
     sendError,
     refuseError,
-    customTrees: { 'delivery-time': DELIVERY_TIME_PICKER, payment: PAYMENT_REQUEST },
+    customTrees: { 'delivery-time': DELIVERY_TIME_PICKER, payment: PAYMENT_REQUEST, 'order-status': ORDER_STATUS },
     published: [],
     actions: [],
     rendererActions: [],

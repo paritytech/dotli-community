@@ -12,11 +12,12 @@ import { contactEntries, getShownContact } from './contacts.js';
 
 /** The open panel's view of `chat`, read only while the panel body lives. */
 function openFeed(chat: ChatStore): ChatFeed {
-  const productId = useStore(chatPanelState.store, state => state.runtimeProductId);
+  const runtimeProductId = useStore(chatPanelState.store, state => state.runtimeProductId);
   const loadId = useStore(productState.store, state => state.loadId);
   onCleanup(chatPanelState.markFollowedRoomSeen(chat.view));
   const initial = chat.view.get();
   return {
+    productId: useStore(chat.view, state => state.productId, { initial }),
     contacts: useStore(chat.view, state => state.contacts, { initial }),
     contactsFailed: useStore(chat.view, state => state.contactsFailed, { initial }),
     messages: useStore(chat.view, state => state.messages, { initial }),
@@ -25,7 +26,7 @@ function openFeed(chat: ChatStore): ChatFeed {
     follow: shown => {
       createEffect(
         () => {
-          const id = productId();
+          const id = runtimeProductId();
           return id === null ? null : { productId: id, roomId: shown(), loadId: loadId() };
         },
         target => {

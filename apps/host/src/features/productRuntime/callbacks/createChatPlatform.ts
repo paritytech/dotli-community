@@ -63,11 +63,14 @@ export function createChatPlatform({ chat = chatStore }: Params = {}): Required<
   };
 }
 
-/** The footer a room stores for the one a product sets. Throws for a card, since this host draws no card footer. */
+/** The footer a room stores for the one a product sets. A card is copied, so the room holds no wire object. */
 function toStoredFooter(footer: ChatRoomFooter): StoredFooter {
-  const kind = typeof footer === 'string' ? footer : footer.tag;
-  if (kind === 'Card') {
-    throw new Error('A card footer is not supported');
+  if (typeof footer === 'string') {
+    return footer;
   }
-  return kind;
+  if (footer.tag === 'Card') {
+    const { messageType, payload } = footer.value;
+    return { tag: 'Card', value: { messageType, payload } };
+  }
+  return footer.tag;
 }

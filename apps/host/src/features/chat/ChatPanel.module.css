@@ -123,16 +123,6 @@
   line-height: var(--lh-tight);
 }
 
-.note {
-  margin: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-sm);
-  background: var(--fill-subtle);
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  text-align: center;
-}
-
 .error {
   margin: 0;
   color: var(--chat-fg-error);
@@ -153,6 +143,30 @@
 /* The hint above already spaces it from the messages. */
 .hint[data-place='foot'] + .composer {
   padding-top: 0;
+}
+
+/* The product's card stands bare in the composer's place, as on the phones. */
+.footer-card {
+  position: relative;
+  grid-area: foot;
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+}
+/* The messages fade into the card. The fade lets taps through to the messages under it. */
+.footer-card::before {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  height: 24px;
+  background: linear-gradient(to bottom, transparent, var(--chat-bg-panel));
+  content: '';
+  pointer-events: none;
+}
+/* A hint at the foot already parts the card from the messages, and the fade would cover it. */
+.hint[data-place='foot'] ~ .footer-card::before {
+  content: none;
 }
 
 /* The field and Send share one pill, which takes the focus ring the borderless field leaves out. The field fills the

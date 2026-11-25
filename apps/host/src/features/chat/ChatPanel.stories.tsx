@@ -123,14 +123,41 @@ export const SendFailed: Story = {
   args: { activeRoomId: 'courier', composerError: 'Message not sent. Try again.' },
 };
 
-/** As a user, I find a room the app keeps read only shows no message box. */
-export const ReadOnlyRoom: Story = {
+/** As a user, I find no message box in a room the app gives an empty footer. */
+export const EmptyFooterRoom: Story = {
   args: { activeRoomId: 'promos' },
   play: async ({ step }) => {
-    await step('Given the read-only room is open', async () => {
+    await step('Given a room the app gives an empty footer is open', async () => {
       await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
     });
     await step('Then I find no message box', async () => {
+      await expect(body.queryByRole('textbox')).toBeNull();
+    });
+  },
+};
+
+/** As a user of a room the app docks a card in, I see the card under the messages and no message box. */
+export const FooterCard: Story = {
+  args: {
+    rooms: [
+      {
+        roomId: 'tracking',
+        name: 'Order tracking',
+        icon: '',
+        createdAt: 0,
+        footer: { tag: 'Card', value: { messageType: 'order-status', payload: '0x03' } },
+      },
+    ],
+    messages: [say('tracking', 'The courier picked up your order.', 6), say('tracking', 'They are on the way.', 2)],
+    unreadByRoom: {},
+  },
+  play: async ({ step }) => {
+    await step('Given the room is open', async () => {
+      await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
+    });
+    await step('Then its card is drawn under the messages, with no message box', async () => {
+      const card = await body.findByTestId('chat-footer-card');
+      await expect(await within(card).findByRole('button', { name: 'Track' })).toBeVisible();
       await expect(body.queryByRole('textbox')).toBeNull();
     });
   },

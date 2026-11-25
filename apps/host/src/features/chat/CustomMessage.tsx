@@ -23,15 +23,15 @@ export type CustomMessageProps = {
   /** Without one, the browser's IntersectionObserver. */
   watchVisibility?: WatchVisibility | undefined;
   productId: string;
-  roomId: string;
-  messageId: string;
-  messageType: string;
+  /** What the body is drawn for. Goes verbatim on the render request and on every action fired inside it. */
+  context: RenderContext;
   /** Stored product-defined payload, hex-encoded. */
   payload: HexString;
 };
 
+/** Draws a product's custom body from props it reads once, so a caller remounts it, keyed, to draw another body. */
 export function CustomMessage(props: CustomMessageProps): JSX.Element {
-  // A message's identity never changes for its row, so read it once.
+  // A body's identity never changes, so read it once.
   const mount = untrack(() => ({ ...props }));
   const [tree, setTree] = createSignal<RendererNode>();
   const [placeholder, setPlaceholder] = createSignal<string | undefined>(LOADING);
@@ -39,16 +39,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
   const [actionFailed, setActionFailed] = createSignal(false);
   let root: HTMLDivElement | undefined;
 
-  // The same context names the body on the render request and on every
-  // action fired inside it, so the product can pair the two.
-  const context: RenderContext = {
-    tag: 'ChatMessage',
-    value: {
-      roomId: mount.roomId,
-      messageId: mount.messageId,
-      messageType: mount.messageType,
-    },
-  };
+  const { context } = mount;
 
   const onAction = (actionId: string, payload?: Uint8Array): void => {
     setActionFailed(false);
