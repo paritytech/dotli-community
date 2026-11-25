@@ -90,6 +90,9 @@
   .option:hover {
     background: var(--chrome-fill);
   }
+  .option:hover .detail {
+    color: var(--chrome-text);
+  }
 }
 .text {
   flex: 1;
@@ -103,7 +106,8 @@
 .detail {
   color: var(--chrome-text-muted);
 }
-/* The fill lowers the muted text's contrast, so the active row reads its detail at full strength. */
+/* The fill lowers the muted text's contrast, so a filled row, active or under the pointer, reads its detail at full
+   strength. */
 .option[aria-selected='true'] .detail {
   color: var(--chrome-text);
 }

@@ -39,6 +39,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [build-feature-the-framework-lacks](build-feature-the-framework-lacks.md): a build step would fill a gap in the
   framework, such as post-processing its emitted pages, and the question is whether to write custom code and how it
   reacts when the framework's output stops matching.
+- [dependency-declares-an-unreviewed-license](dependency-declares-an-unreviewed-license.md): the third-party notices
+  generator fails on a dependency's license string, an informal spelling of a known license or a custom license with no
+  SPDX id, and the question is how the notices list it.
 - [source-an-embedded-interpreter-evaluates](source-an-embedded-interpreter-evaluates.md): a package hands source to an
   embedded interpreter VM, such as code defining the VM's own globals, and the question is whether the rule against
   shipping JavaScript as a string covers it.
@@ -124,6 +127,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [a11y-check-a-story-file-does-not-need](a11y-check-a-story-file-does-not-need.md): a story file's axe check costs time
   or fails where it has nothing to find, such as stories that drive a component at capacity near the test timeout, or
   the contrast rule on text inside a decorative, `aria-hidden` background graphic.
+- [check-scores-an-input-it-cannot-fully-read](check-scores-an-input-it-cannot-fully-read.md): a check that scores a
+  measured value, such as text contrast, meets an input it cannot fully read, such as what shows through a translucent
+  blurred layer, and the question is when it gives up and when it still scores.
 - [play-asserts-a-number-shown-as-plain-text](play-asserts-a-number-shown-as-plain-text.md): a kept story play is the
   only guard of an edge case about a number the component shows as plain text, with no role, accessible name or `data-*`
   state, and lint refuses `toHaveTextContent` in story files.
@@ -131,9 +137,15 @@ The owner may change or remove any rule. A change here lands in the same commit 
   state prop, such as `disabled`, lands as an ARIA attribute that is the only way assistive technology learns the state,
   and the question is whether the stories contract drops it as a prop passed through or keeps it as a behaviour a user
   sees.
+- [public-api-misses-a-dev-only-path](public-api-misses-a-dev-only-path.md): custom behaviour, such as a check plugged
+  into a third-party test tool, reaches tests and automatic runs through the public API but is lost on a dev-only rerun,
+  and the tool's internals would close the gap.
 - [test-for-where-a-view-keeps-its-scroll](test-for-where-a-view-keeps-its-scroll.md): a scrolled view keeps the reader
   at a place, such as the newest message, as its content or size changes, and the only story test needs heavy browser
   setup, so the question is whether to keep the plays, move the logic behind a unit spec or test it not at all.
+- [tooling-package-extends-storybook](tooling-package-extends-storybook.md): a local tooling package adds behaviour to
+  the repo's one Storybook, such as a custom rule an addon runs, and the question is how the Storybook takes it in and
+  where else it may be imported.
 
 ## UI
 

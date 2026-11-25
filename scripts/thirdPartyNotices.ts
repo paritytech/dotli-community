@@ -41,6 +41,8 @@ const SECTIONS = [
   'CC-BY-4.0',
   'OFL-1.1',
   'GPL-3.0-or-later WITH Classpath-exception-2.0',
+  'AGPL-3.0-only',
+  'Limited W3 License',
   'LGPL-3.0-or-later',
   'MPL-2.0',
   'FSL-1.1-MIT',
@@ -53,6 +55,7 @@ const ALIASES: Record<string, string> = {
   'MIT OR Apache-2.0': 'Apache-2.0 OR MIT',
   '(Apache-2.0 OR MIT)': 'Apache-2.0 OR MIT',
   'MIT AND Apache-2.0': 'Apache-2.0 AND MIT',
+  'AGPL v3': 'AGPL-3.0-only',
 };
 
 const INTRO = `# Third-Party Notices
@@ -65,6 +68,9 @@ each package are retained in its distribution under \`node_modules\`.
 GPL-family components (GPL-3.0 with the Classpath linking exception) are compatible with this project's AGPL-3.0
 outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0) or source-available (FSL-1.1-MIT,
 FSL-1.1-Apache-2.0) terms is used to build the application and is not redistributed as part of it.
+
+The \`AGPL-3.0-only\` and \`Limited W3 License\` packages are build-time tooling for the Storybook contrast check. apca-w3
+is used unmodified under the AGPL terms its license grants outside the W3 agreement.
 
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
 License 2.0 (\`MPL-2.0\`), unmodified and with its license header.

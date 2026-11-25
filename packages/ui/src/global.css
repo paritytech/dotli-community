@@ -49,7 +49,7 @@
   /* The user's own messages, light on the dark panel. */
   --chat-bg-own: #ffffff;
   --chat-fg-own: #0b0c0f;
-  --chat-fg-own-muted: #6f727a;
+  --chat-fg-own-muted: #6b6e76;
   /* The send button and the unread counts, dark marks on a light fill. */
   --chat-bg-send: #e0e0e0;
   --chat-bg-send-hover: #ffffff;

@@ -65,7 +65,7 @@
   align-items: center;
   gap: var(--sp-3);
   margin: var(--sp-2) 0;
-  color: var(--chat-fg-tertiary);
+  color: var(--chat-fg-secondary);
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);
   line-height: var(--lh-tight);

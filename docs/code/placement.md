@@ -75,12 +75,14 @@ Imports of the tooling packages. The ui package restricts its stories, the rest 
 ```mermaid
 flowchart TD
   host[host]
+  storybookConfig[root Storybook config]
   viteUsers["protocol app, sandbox, bitswap, chains, config, content, protocol, resolver, sandbox-wire, truapi-debug-ui"]
   eslintOnly["metrics, quickjs-runtime, shared, storage, stores-persistent, stores-solid, transport, truapi-debug"]
   uiRest["ui outside src/"]
   uiStories[ui stories]
   uiSrc["ui src/, no tooling package"]
   subgraph tooling [config]
+    apca[apca]
     astroSolid[astro-solid]
     eslint[eslint]
     storybook[storybook]
@@ -88,11 +90,12 @@ flowchart TD
     vite[vite]
   end
   host -->|every package| tooling
+  storybookConfig -->|addon| apca
   viteUsers --> eslint & vite
   eslintOnly --> eslint
   uiRest --> eslint & storybook & vite
   uiStories --> storybook
-  astroSolid & storybook & vite --> eslint
+  apca & astroSolid & storybook & vite --> eslint
 ```
 
 ## Which package or app
@@ -119,6 +122,7 @@ flowchart TD
 | The debug event bus and debug mode, with no UI                                                                                 | `packages/truapi-debug` (`@dotli/truapi-debug`)           |
 | The TrUAPI debug panel, which loads only in debug mode                                                                         | `packages/truapi-debug-ui` (`@dotli/truapi-debug-ui`)     |
 | UI more than one app shows, with no domain and no data source: primitives, floating layers, stores, icons, tokens, brand marks | `packages/ui` (`@dotli/ui`)                               |
+| The APCA text contrast rule for the Storybook a11y check                                                                       | `config/apca` (`@config/apca`)                            |
 | The Astro integration for Solid 2                                                                                              | `config/astro-solid` (`@config/astro-solid`)              |
 | Shared ESLint flat configs and the import-layer helpers                                                                        | `config/eslint` (`@config/eslint`)                        |
 | Tooling for the one Storybook at the repo root                                                                                 | `config/storybook` (`@config/storybook`)                  |
