@@ -392,8 +392,8 @@ export function createScheduledNotifications({
     cancel,
     /**
      * Holds the product's one game reminder for `scheduledAt`, a time in the future the caller has checked, and
-     * replaces the one it held. It persists also before `init` and after `dispose`, as `schedule` does a later push,
-     * and starts a poller only on a started scheduler. Rejects when the store cannot write it.
+     * replaces the one it held. It persists also before `init` and after `dispose`, and starts a poller only on a
+     * started scheduler. Rejects when the store cannot write it.
      */
     holdGameReminder,
     /**

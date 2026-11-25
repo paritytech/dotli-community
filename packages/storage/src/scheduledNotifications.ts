@@ -44,7 +44,7 @@ export type ScheduledNotificationRecord = ScheduledPushRecord | GameReminderReco
 /** How many ms past its `scheduledAt` a record of each kind is still shown, before `removeStale` drops it. */
 const MAX_AGE_MS = {
   push: 24 * 60 * 60 * 1000,
-  // The host fires a record on time within a minute of it, and a later reminder would announce a game under way.
+  // A later reminder would announce a game already under way.
   gameReminder: 60 * 1000,
 } satisfies Record<ScheduledNotificationRecord['kind'], number>;
 
@@ -246,9 +246,15 @@ export function createScheduledNotifications({ idb = pageIdb }: Params = {}) {
   return {
     /** Queues the push, or resolves `ScheduleLimitReached` when the product already has its cap of pushes pending. */
     schedule,
-    /** Holds the product's game reminder in place of the one it held. Its pushes and other products' stay. */
+    /**
+     * Holds the product's game reminder in place of the one it held. Its pushes and other products' stay. Rejects when
+     * the database cannot be opened or the write fails.
+     */
     holdGameReminder,
-    /** Drops the product's game reminder. Idempotent, so it resolves when none is held. */
+    /**
+     * Drops the product's game reminder. Idempotent, so it resolves when none is held. Rejects when the database cannot
+     * be opened or the write fails.
+     */
     cancelGameReminder,
     /** Bump the counter without a record, so an immediate notification still gets a monotonic id. */
     allocateId,

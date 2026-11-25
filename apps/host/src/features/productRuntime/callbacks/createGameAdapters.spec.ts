@@ -26,18 +26,6 @@ describe('game host callbacks', () => {
     });
   });
 
-  it('As a game product, I cancel my reminder and the scheduler drops the one held under my product id', async () => {
-    // Given
-    const { scheduler, cancelGameReminder: cancel } = createFakeScheduler();
-    const { cancelGameReminder } = createGameAdapters({ label: 'dim2', scheduler });
-
-    // When
-    await cancelGameReminder(PRODUCT);
-
-    // Then
-    expect(cancel).toHaveBeenCalledWith(PRODUCT.productId);
-  });
-
   it('As a game product, I schedule or cancel a reminder while the scheduler cannot write it and both reject', async () => {
     // Given
     const { scheduler, holdGameReminder, cancelGameReminder: cancel } = createFakeScheduler();

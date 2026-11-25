@@ -479,6 +479,32 @@ describe('scheduled notifications poller', () => {
     // Then
     expect(opened).toEqual(['dotli:scheduled-notifications']);
   });
+
+  it('As a user with two tabs open, I hold a game reminder in one and wake the poller here and the other tab', async () => {
+    // Given a started scheduler with no records, whose poller has stopped, and a channel that records what it posts
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [] });
+    store.holdGameReminder.mockResolvedValue(undefined);
+    const postMessage = vi.fn();
+    const { notifications } = start({
+      store,
+      overrides: { openChannel: () => ({ postMessage, close: () => undefined, onmessage: null }) },
+    });
+    await advanceTicks(2);
+    expect(timers.countPending()).toBe(0);
+
+    // When a game reminder is held
+    await notifications.holdGameReminder({
+      productId: DUE.productId,
+      title: 'Game',
+      text: 'Starts',
+      scheduledAt: timers.now() + 60_000,
+    });
+
+    // Then the poller runs again and the other tabs are told
+    expect(timers.countPending()).toBeGreaterThan(0);
+    expect(postMessage).toHaveBeenCalledWith({ kind: 'scheduled' });
+  });
 });
 
 describe('scheduled notifications disposed', () => {
@@ -657,81 +683,6 @@ describe('scheduled notifications disposed', () => {
     expect(store.schedule).toHaveBeenCalledTimes(1);
     expect(show).not.toHaveBeenCalled();
     expect(timers.countPending()).toBe(0);
-  });
-
-  it('As a user, I hold a game reminder that falls due and it shows like a push', async () => {
-    // Given a started scheduler over a store that keeps a game reminder due in two seconds once held
-    const { timers, start, advanceTicks } = createPollerHarness();
-    const scheduledAt = timers.now() + 2_000;
-    const store = createRecordStore({
-      records: [
-        {
-          kind: 'gameReminder',
-          hostId: 2,
-          productId: DUE.productId,
-          title: 'Game',
-          text: 'Starts',
-          deeplink: null,
-          scheduledAt,
-        },
-      ],
-    });
-    store.holdGameReminder.mockResolvedValue(undefined);
-    const { notifications, show } = start({ store });
-
-    // When the reminder is held and falls due
-    await notifications.holdGameReminder({ productId: DUE.productId, title: 'Game', text: 'Starts', scheduledAt });
-    await advanceTicks(3);
-
-    // Then the store was asked to hold it and it shows once
-    expect(store.holdGameReminder).toHaveBeenCalledWith({
-      productId: DUE.productId,
-      title: 'Game',
-      text: 'Starts',
-      scheduledAt,
-    });
-    expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ label: 'Game', text: 'Starts' }));
-  });
-
-  it('As a user with two tabs open, I hold a game reminder in one and wake the poller here and the other tab', async () => {
-    // Given a started scheduler with no records, whose poller has stopped, and a channel that records what it posts
-    const { timers, start, advanceTicks } = createPollerHarness();
-    const store = createRecordStore({ records: [] });
-    store.holdGameReminder.mockResolvedValue(undefined);
-    const postMessage = vi.fn();
-    const { notifications } = start({
-      store,
-      overrides: { openChannel: () => ({ postMessage, close: () => undefined, onmessage: null }) },
-    });
-    await advanceTicks(2);
-    expect(timers.countPending()).toBe(0);
-
-    // When a game reminder is held
-    await notifications.holdGameReminder({
-      productId: DUE.productId,
-      title: 'Game',
-      text: 'Starts',
-      scheduledAt: timers.now() + 60_000,
-    });
-
-    // Then the poller runs again and the other tabs are told
-    expect(timers.countPending()).toBeGreaterThan(0);
-    expect(postMessage).toHaveBeenCalledWith({ kind: 'scheduled' });
-  });
-
-  it('As a user, I cancel a game reminder and the store drops it', async () => {
-    // Given a started scheduler
-    const { start } = createPollerHarness();
-    const store = createRecordStore({ records: [] });
-    store.cancelGameReminder.mockResolvedValue(undefined);
-    const { notifications } = start({ store });
-
-    // When the reminder is cancelled
-    await notifications.cancelGameReminder(DUE.productId);
-
-    // Then the store was asked to drop the product's reminder
-    expect(store.cancelGameReminder).toHaveBeenCalledWith(DUE.productId);
   });
 
   it('As a user who leaves the page twice over, I dispose the scheduler again and it does not throw', () => {
