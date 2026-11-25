@@ -244,8 +244,9 @@ request in session storage, so a reload answers the same round.
 ### Network
 
 - The network monitor opens no chain. The bridge and the load progress report to it.
-- A hidden page pauses its network after a grace, through `createNetworkPause`, unless a load or a phone request holds
-  it awake.
+- A hidden page pauses its network after a grace, through `createNetworkPause`, unless something holds it awake. A load
+  holds it, and so does a phone request. A product worker's open operation holds it too, until the operation ends or its
+  core is gone.
 - Recently visited names live in the store every subdomain shares, with a per-origin mirror.
 
 ### Loading and failures

@@ -79,12 +79,12 @@ export function createBridge({
     }
     const blockingModalScope = requireInitialised().modals.createScope();
     const phoneRequests = createPhoneRequestTracker();
-    let live = true;
+    const ended = new AbortController();
     const context: CoreContext = {
       product: LANDING_PRODUCT,
       blockingModalScope,
       phoneRequests,
-      isLive: () => live,
+      ended: ended.signal,
       isInService: () => false,
       sessionInMemory: true,
     };
@@ -95,7 +95,7 @@ export function createBridge({
         if (endingCore === ending) {
           endingCore = null;
         }
-        live = false;
+        ended.abort();
         booted.then(
           ({ runtime }) => {
             runtime.dispose();

@@ -861,7 +861,7 @@ describe('page core', () => {
     expect(unsubscribe).toBeTypeOf('function');
     expect(nth(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
     expect(contexts).toHaveLength(1);
-    expect(contexts[0]?.isLive()).toBe(false);
+    expect(contexts[0]?.ended.aborted).toBe(true);
     expect(outcomes).toEqual(['ok']);
   });
 
@@ -985,7 +985,7 @@ describe('page core', () => {
 
     // Then the late core is dropped and the other product's core serves
     expect(late.dispose).toHaveBeenCalledTimes(1);
-    expect(contexts[1]?.isLive()).toBe(false);
+    expect(contexts[1]?.ended.aborted).toBe(true);
     expect(contexts[2]?.product.label).toBe('other');
     expect(next.runtime).toBe(nth(runtimes, 1).runtime);
     expect(contexts).toHaveLength(3);
@@ -1009,7 +1009,7 @@ describe('page core', () => {
 
     // Then its redial boots while the dropped one is still held
     expect(contexts.map(context => context.product.label)).toEqual(['dotli', 'dotli', 'other', 'other']);
-    expect(contexts[1]?.isLive()).toBe(false);
+    expect(contexts[1]?.ended.aborted).toBe(true);
   });
 
   it("As a dApp user whose core goes down while another product's redial still boots for a request, I see my redial boot once that one is up", async () => {
@@ -1053,7 +1053,7 @@ describe('page core', () => {
 
     // Then the redial's core serves
     expect(next.runtime).toBe(replacement.runtime);
-    expect(contexts[1]?.isLive()).toBe(true);
+    expect(contexts[1]?.ended.aborted).toBe(false);
     expect(replacement.dispose).not.toHaveBeenCalled();
   });
 
@@ -1554,11 +1554,11 @@ describe('page core retirement', () => {
 
     // When the core goes down and the redial ends
     nth(runtimes, 0).providers[0]?.goDown();
-    const downCore = { live: contexts[0]?.isLive(), inService: contexts[0]?.isInService() };
+    const downCore = { ended: contexts[0]?.ended.aborted, inService: contexts[0]?.isInService() };
     await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
 
     // Then the old core stayed live out of service, and the new one serves
-    expect(downCore).toEqual({ live: true, inService: false });
+    expect(downCore).toEqual({ ended: false, inService: false });
     expect(contexts[1]?.isInService()).toBe(true);
   });
 
@@ -1577,7 +1577,7 @@ describe('page core retirement', () => {
 
     // Then it spoke for the session until now, and the page dials nothing for the product it left
     expect(inServiceBefore).toBe(true);
-    expect(contexts[0]?.isLive()).toBe(true);
+    expect(contexts[0]?.ended.aborted).toBe(false);
     expect(contexts[0]?.isInService()).toBe(false);
     expect(contexts[1]?.isInService()).toBe(true);
     expect(contexts).toHaveLength(2);
@@ -1652,7 +1652,7 @@ describe('page core with nobody holding it', () => {
     // Then it goes, and nothing is booted in its place
     expect(nth(runtimes, 1).dispose).toHaveBeenCalledTimes(1);
     expect(contexts).toHaveLength(2);
-    expect(contexts[1]?.isLive()).toBe(false);
+    expect(contexts[1]?.ended.aborted).toBe(true);
     expect(storeListeners.size).toBe(0);
     expect(counted('wallet.core_redial')).toEqual([{ outcome: 'ok', reason: 'closed' }]);
   });

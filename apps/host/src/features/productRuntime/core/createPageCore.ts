@@ -63,8 +63,8 @@ export type CoreContext = {
   blockingModalScope: BlockingModalScope;
   /** What the core's frames report phone requests to, and its confirmations claim from. */
   phoneRequests: PhoneRequestTracker;
-  /** False once the core is gone, so a late step of its boot stands down. Never throws. */
-  isLive: () => boolean;
+  /** Aborts once the core is gone, so a late step of its boot stands down. */
+  ended: AbortSignal;
   /**
    * False once the core went down or turned stale. Leases can keep a retired core running, and only the core in
    * service speaks for the session. Never throws.
@@ -760,7 +760,7 @@ function createCoreContext({ product, blockingModalScope, phoneRequests, left, r
     product,
     blockingModalScope,
     phoneRequests,
-    isLive: () => !left.signal.aborted,
+    ended: left.signal,
     isInService: () => !retired.signal.aborted,
     sessionInMemory: false,
   };
