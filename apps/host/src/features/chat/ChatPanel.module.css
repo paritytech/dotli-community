@@ -123,16 +123,6 @@
   line-height: var(--lh-tight);
 }
 
-.note {
-  margin: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-sm);
-  background: var(--fill-subtle);
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  text-align: center;
-}
-
 .error {
   margin: 0;
   color: var(--chat-fg-error);

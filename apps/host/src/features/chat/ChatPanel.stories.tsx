@@ -123,11 +123,11 @@ export const SendFailed: Story = {
   args: { activeRoomId: 'courier', composerError: 'Message not sent. Try again.' },
 };
 
-/** As a user, I find a room the app keeps read only shows no message box. */
-export const ReadOnlyRoom: Story = {
+/** As a user, I find a room the app gives no footer shows nothing below its messages. */
+export const EmptyFooterRoom: Story = {
   args: { activeRoomId: 'promos' },
   play: async ({ step }) => {
-    await step('Given the read-only room is open', async () => {
+    await step('Given the room with no footer is open', async () => {
       await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
     });
     await step('Then I find no message box', async () => {

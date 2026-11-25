@@ -36,9 +36,7 @@ const TIME_REFRESH_MS = 60_000;
 type View = 'loading' | 'empty' | 'list' | 'conversation';
 
 /** What the panel tells the user in place of, or below, its rooms and messages. */
-type Hint =
-  | { kind: 'loading' | 'loggedOut' | 'noRooms' | 'failed' | 'noMessages' | 'readOnly' }
-  | { kind: 'error'; text: string };
+type Hint = { kind: 'loading' | 'loggedOut' | 'noRooms' | 'failed' | 'noMessages' } | { kind: 'error'; text: string };
 
 /** A hint either fills the space the rooms or messages would take, or sits at the foot above the composer. */
 const HINT_PLACES = {
@@ -47,7 +45,6 @@ const HINT_PLACES = {
   noRooms: 'center',
   failed: 'center',
   noMessages: 'center',
-  readOnly: 'foot',
   error: 'foot',
 } satisfies Record<Hint['kind'], 'center' | 'foot'>;
 
@@ -216,9 +213,6 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
     const composerError = chat.composerError();
     if (composerError !== null) {
       return { kind: 'error', text: composerError };
-    }
-    if (footer() === 'Empty') {
-      return { kind: 'readOnly' };
     }
     return feed.messages()?.length === 0 ? { kind: 'noMessages' } : null;
   };
@@ -389,9 +383,6 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
           </Match>
           <Match when={hint()?.kind === 'noMessages'}>
             <p class={s['line']}>No messages yet.</p>
-          </Match>
-          <Match when={hint()?.kind === 'readOnly'}>
-            <p class={s['note']}>This chat is read only.</p>
           </Match>
           <Match when={errorText()}>{text => <p class={s['error']}>{text()}</p>}</Match>
         </Switch>
