@@ -13,8 +13,12 @@ import {
 import { unsafe_readStoredRecord } from './unsafe_readStoredRecord.js';
 import { waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
 
-/** What a room shows below its messages. Matches TrUAPI `ChatRoomFooter`. */
-export type ChatRoomFooter = 'TextInput' | 'Empty';
+/**
+ * What a room shows below its messages. Matches TrUAPI `ChatRoomFooter`, where an unset footer shows the text input.
+ * A card carries the message type and hex payload the product draws it from.
+ */
+export type ChatRoomFooter =
+  'TextInput' | 'Empty' | { tag: 'Card'; value: { messageType: string; payload: `0x${string}` } };
 
 export type ChatRoomRecord = {
   productId: string;
