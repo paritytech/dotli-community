@@ -22,7 +22,7 @@ import type { ChatRenderSink } from '../../features/chat/chat.js';
 import type { ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../features/chat/chat.js';
 import type { ChatButtonProps } from '../../features/chat/ChatButton.js';
 import { contactEntries, getShownContact, type ShownContact } from '../../features/chat/contacts.js';
-import { DELIVERY_TIME_PICKER, PAYMENT_REQUEST } from './customMessageTrees.js';
+import { DELIVERY_TIME_PICKER, ORDER_STATUS, PAYMENT_REQUEST } from './customMessageTrees.js';
 
 const PRODUCT = 'market.dot';
 const MINUTE = 60_000;
@@ -123,9 +123,13 @@ export type StoryMessage = {
   author?: ChatMessageRecord['author'];
 };
 
+/** A room a story's chat holds as it starts, of the story's product. */
+export type StoryRoom = Omit<ChatRoom, 'productId'>;
+
 /** What a story's chat holds as it starts: the page's chat state, the product's rooms and messages, and its faults. */
 export type ChatSeed = Partial<StageState> &
-  Partial<Pick<ChatStage, 'rooms' | 'contactsFail' | 'readsHeld' | 'messagesFail' | 'sendError' | 'refuseError'>> & {
+  Partial<Pick<ChatStage, 'contactsFail' | 'readsHeld' | 'messagesFail' | 'sendError' | 'refuseError'>> & {
+    rooms?: readonly StoryRoom[];
     messages?: readonly StoryMessage[];
   };
 
@@ -268,9 +272,12 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
     actions: {
       renderCustomMessage: ({ request, sink }) => {
         stage.renders.push({ request, sink });
-        // Only a chat message's render reaches the chat.
+        // Only a chat message's or a room footer's render reaches the chat.
+        const { context } = request;
         const tree =
-          request.context.tag === 'ChatMessage' ? stage.customTrees[request.context.value.messageType] : undefined;
+          context.tag === 'ChatMessage' || context.tag === 'ChatRoomFooter'
+            ? stage.customTrees[context.value.messageType]
+            : undefined;
         if (tree !== undefined) {
           sink.onUpdate(tree);
         }
@@ -293,21 +300,21 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
   const stage: ChatStage = {
     state,
     update,
-    rooms: [...rooms],
+    rooms: rooms.map(room => ({ ...room, productId: PRODUCT })),
     messages: [],
     contactsFail,
     readsHeld,
     messagesFail,
     sendError,
     refuseError,
-    customTrees: { 'delivery-time': DELIVERY_TIME_PICKER, payment: PAYMENT_REQUEST },
+    customTrees: { 'delivery-time': DELIVERY_TIME_PICKER, payment: PAYMENT_REQUEST, 'order-status': ORDER_STATUS },
     published: [],
     actions: [],
     rendererActions: [],
     renders: [],
     disposedRenders: () => disposed,
     createRoom: (roomId, name, icon = '') => {
-      stage.rooms.push({ roomId, name, icon, createdAt: stamp() });
+      stage.rooms.push({ productId: PRODUCT, roomId, name, icon, createdAt: stamp() });
       readSoon();
     },
     productSays: (roomId, content) => {

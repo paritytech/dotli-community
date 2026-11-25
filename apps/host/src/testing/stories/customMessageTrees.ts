@@ -32,6 +32,16 @@ export const PAYMENT_REQUEST: RendererNode = column(4, [
   ]),
 ]);
 
+/** The order on its way, docked under a room's messages, with a way to track it. */
+export const ORDER_STATUS: RendererNode = column(4, [
+  text('Order #4821', { style: 'BodyMediumRegular', color: 'FgSecondary' }),
+  row([
+    text('Arrives in 12 min', { style: 'BodyLargeRegular' }),
+    { tag: 'Spacer', value: { modifiers: [] } },
+    button('Track', 'Primary', 'track'),
+  ]),
+]);
+
 function text(value: string, props: { style?: TypographyStyle; color?: ColorToken } = {}): RendererNode {
   return { tag: 'Text', value: { modifiers: [], props, children: [{ tag: 'String', value: { text: value } }] } };
 }

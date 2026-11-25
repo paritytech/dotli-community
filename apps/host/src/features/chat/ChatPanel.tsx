@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The chat panel's contents: the room list or the shown room's messages and composer, and a hint about either.
+// The chat panel's contents: the room list or the shown room's messages and what the product docks under them, the
+// composer or a card, and a hint about either.
 
 import {
   createEffect,
@@ -16,12 +17,15 @@ import {
   untrack,
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { isShallowEqual } from '@dotli/shared';
 import { Spinner } from '@dotli/ui';
 import { ArrowUpIcon, ChatIcon, CircleAlertIcon, LockIcon } from '@dotli/ui/icons';
 import { ContactRow } from './ContactRow.js';
+import { CustomMessage } from './CustomMessage.js';
 import { MessageRow } from './MessageRow.js';
 import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
+import type { ChatRoomFooter } from './createChatStore.js';
 import { contactEntries, type ContactEntry, getShownContact } from './contacts.js';
 import { getDayLabel, isDayStart } from './messageDays.js';
 import s from './ChatPanel.module.css';
@@ -192,14 +196,28 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
   });
 
   // The product chose what its room shows below the messages.
-  const composing = (): boolean => view() === 'conversation' && shown()?.contact.footer !== 'Empty';
+  const footer = (): ChatRoomFooter | null => (view() === 'conversation' ? (shown()?.contact.footer ?? null) : null);
+  const composing = (): boolean => footer() === 'TextInput';
+
+  // Equal cards are one card, so a re-read room keeps its render and only a new card starts another.
+  const footerCard = createMemo(
+    () => {
+      const card = footer();
+      const contact = shown()?.contact;
+      if (card === null || typeof card === 'string' || contact === undefined) {
+        return null;
+      }
+      return { productId: contact.productId, roomId: contact.id, ...card.value };
+    },
+    { equals: isShallowEqual },
+  );
 
   const conversationHint = (): Hint | null => {
     const composerError = chat.composerError();
     if (composerError !== null) {
       return { kind: 'error', text: composerError };
     }
-    if (!composing()) {
+    if (footer() === 'Empty') {
       return { kind: 'readOnly' };
     }
     return feed.messages()?.length === 0 ? { kind: 'noMessages' } : null;
@@ -414,6 +432,18 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
           </button>
         </div>
       </form>
+      <Show when={footerCard()} keyed>
+        {card => (
+          <div class={s['footerCard']} data-testid="chat-footer-card">
+            <CustomMessage
+              chat={chat.actions}
+              productId={card.productId}
+              context={{ tag: 'ChatRoomFooter', value: { roomId: card.roomId, messageType: card.messageType } }}
+              payload={card.payload}
+            />
+          </div>
+        )}
+      </Show>
     </div>
   );
 }

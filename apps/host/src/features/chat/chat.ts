@@ -45,6 +45,8 @@ export type ChatMessageActions = {
 };
 
 export type ChatRoom = {
+  /** The product the room belongs to, which draws its footer card. */
+  productId: string;
   roomId: string;
   name: string;
   /** URL or base64 image, as supplied by the product. */

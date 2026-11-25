@@ -15,8 +15,8 @@ import {
   everyKindIn,
   SHOP_CHAT,
   type StoryMessage,
+  type StoryRoom,
 } from '../../testing/stories/chatFixtures.js';
-import type { ChatRoom } from './chat.js';
 import { ChatPanel } from './ChatPanel.js';
 
 /** The chat of the story on show, which its panel built from the args. */
@@ -131,6 +131,33 @@ export const ReadOnlyRoom: Story = {
       await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
     });
     await step('Then I find no message box', async () => {
+      await expect(body.queryByRole('textbox')).toBeNull();
+    });
+  },
+};
+
+/** As a user of a room the app docks a card in, I see the card under the messages and no message box. */
+export const FooterCard: Story = {
+  args: {
+    rooms: [
+      {
+        roomId: 'tracking',
+        name: 'Order tracking',
+        icon: '',
+        createdAt: 0,
+        footer: { tag: 'Card', value: { messageType: 'order-status', payload: '0x03' } },
+      },
+    ],
+    messages: [say('tracking', 'The courier picked up your order.', 6), say('tracking', 'They are on the way.', 2)],
+    unreadByRoom: {},
+  },
+  play: async ({ step }) => {
+    await step('Given the room is open', async () => {
+      await waitFor(() => expect(body.getByRole('log', { name: 'Messages' })).toBeVisible());
+    });
+    await step('Then its card is drawn under the messages, with no message box', async () => {
+      const card = await body.findByTestId('chat-footer-card');
+      await expect(await within(card).findByRole('button', { name: 'Track' })).toBeVisible();
       await expect(body.queryByRole('textbox')).toBeNull();
     });
   },
@@ -267,7 +294,7 @@ function say(roomId: string, text: string, minutesAgo: number): StoryMessage {
 }
 
 /** Rooms r0 to r(count - 1), the newest last. */
-function rooms(count: number): ChatRoom[] {
+function rooms(count: number): StoryRoom[] {
   return Array.from({ length: count }, (_, i) => ({
     roomId: `r${String(i)}`,
     name: `Room ${String(i)}`,
