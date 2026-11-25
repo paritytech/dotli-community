@@ -29,8 +29,9 @@ export type CustomMessageProps = {
   payload: HexString;
 };
 
+/** Draws a product's custom body from props it reads once, so a caller remounts it, keyed, to draw another body. */
 export function CustomMessage(props: CustomMessageProps): JSX.Element {
-  // A body's identity never changes for its row, so read it once.
+  // A body's identity never changes, so read it once.
   const mount = untrack(() => ({ ...props }));
   const [tree, setTree] = createSignal<RendererNode>();
   const [placeholder, setPlaceholder] = createSignal<string | undefined>(LOADING);

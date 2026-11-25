@@ -20,7 +20,7 @@ describe('contacts', () => {
     expect(entries.map(e => e.id)).toEqual(['old', 'new']);
   });
 
-  it('As a user, a room shows the footer its product set, and a room without one takes text', () => {
+  it('As a user, I open a room and find the footer its product set, or text when it set none', () => {
     // When
     const entries = contactEntries(
       [
