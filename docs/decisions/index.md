@@ -140,6 +140,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [test-for-where-a-view-keeps-its-scroll](test-for-where-a-view-keeps-its-scroll.md): a scrolled view keeps the reader
   at a place, such as the newest message, as its content or size changes, and the only story test needs heavy browser
   setup, so the question is whether to keep the plays, move the logic behind a unit spec or test it not at all.
+- [tooling-package-extends-storybook](tooling-package-extends-storybook.md): a local tooling package adds behaviour to
+  the repo's one Storybook, such as a custom rule an addon runs, and the question is how the Storybook takes it in and
+  where else it may be imported.
 
 ## UI
 

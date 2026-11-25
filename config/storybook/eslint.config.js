@@ -15,7 +15,7 @@ export default defineConfig([
       },
     },
   },
-  ...importBans([onlyAllowedScopes(['@config/apca', '@config/eslint'], 'Tooling imports only tooling.')]),
+  ...importBans([onlyAllowedScopes(['@config/eslint'], 'Tooling imports only tooling.')]),
   {
     // Storybook loads this package's entries by their default export.
     rules: {

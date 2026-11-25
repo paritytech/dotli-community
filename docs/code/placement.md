@@ -94,7 +94,6 @@ flowchart TD
   uiRest --> eslint & storybook & vite
   uiStories --> storybook
   apca & astroSolid & storybook & vite --> eslint
-  storybook --> apca
 ```
 
 ## Which package or app

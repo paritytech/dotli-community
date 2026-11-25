@@ -1,11 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A package that imports this one compiles it in its own program, which sees the untyped package's declaration only
-// through this reference.
-// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- no import can bring in an ambient module declaration
-/// <reference path="./apcaW3.d.ts" />
-
 import { APCAcontrast, sRGBtoY } from 'apca-w3';
 
 /** An sRGB color as 0 to 255 channels. */

@@ -25,7 +25,7 @@ function plugins() {
 const config: StorybookConfig = {
   framework: 'storybook-solidjs-vite',
   stories: ['../apps/*/src/**/*.stories.tsx', '../packages/*/src/**/*.stories.tsx'],
-  addons: ['@storybook/addon-docs', '@storybook/addon-a11y', '@storybook/addon-vitest'],
+  addons: ['@storybook/addon-docs', '@storybook/addon-a11y', '@config/apca', '@storybook/addon-vitest'],
   // Before this folder's preview, which Storybook applies last.
   previewAnnotations: (entries: string[] = []) => [...entries, shared('preview'), shared('page-frame')],
   core: { disableTelemetry: true },

@@ -24,9 +24,8 @@ Tooling for the one Storybook at the repo root. Internal.
 
 ## Design
 
-- **Preview:** dark docs and two viewports. An a11y failure is an error. The a11y check judges text contrast by APCA in
-  place of the WCAG ratio. A story turns that rule off in its a11y run options, keyed by the rule's id, since its own
-  axe config would replace the preview's rules. It commits a story's args before render, so first effects see them.
+- **Preview:** dark docs and two viewports. An a11y failure is an error. It commits a story's args before render, so
+  first effects see them.
 - **Page frame:** sets each story on the dotli page. A story that draws its own page sets `parameters.pageFrame` to
   `false`.
 - **Browser tests:** kept apart from unit test configs, so `npm test` needs no browser. Stories run in Chromium.

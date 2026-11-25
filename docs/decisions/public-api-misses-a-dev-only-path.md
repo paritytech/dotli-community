@@ -36,7 +36,8 @@ const parameters = {
 ```
 
 Related: [build-feature-the-framework-lacks](build-feature-the-framework-lacks.md) builds custom build code only on the
-framework's own hooks, never its internals.
+framework's own hooks, never its internals. [tooling-package-extends-storybook](tooling-package-extends-storybook.md)
+says how a local package that adds such a check comes into the Storybook.
 
 ## Cases
 

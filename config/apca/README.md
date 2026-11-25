@@ -2,21 +2,27 @@
 
 ## Overview
 
-Judges text contrast by APCA lightness contrast (Lc) in the Storybook a11y check, in place of the WCAG contrast ratio.
-Internal tooling, never shipped.
+A Storybook addon that judges text contrast by APCA lightness contrast (Lc) in the a11y check, in place of the WCAG
+contrast ratio. The Storybook config lists it among its addons, and nothing else imports it. Internal tooling, never
+shipped.
 
 ## Responsibilities
 
 - **Owns:**
   - the axe rule and check that score each text element against the APCA Bronze minimum for its font size
   - turning off axe's WCAG `color-contrast` rule
-- **Does not own:** where the settings apply. The Storybook preview sets them, and a story opts out there.
+  - setting both in every story's a11y parameters
+- **Does not own:** which stories opt out. A story file does that in its own parameters.
 
 ## Public API
 
-| Entry          | Use                                                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `@config/apca` | `axeConfig`, the axe settings for the a11y check, and `APCA_RULE_ID`, the APCA rule's id, by which a story turns the rule off. |
+| Entry                  | Use                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `@config/apca/preview` | The addon's preview entry, which Storybook loads when the config lists `@config/apca`. |
+
+A story file turns the rule off by its id, `apca-contrast`, in its meta parameters:
+`a11y: { options: { rules: { 'apca-contrast': { enabled: false } } } }`. That merges with the addon's settings, where an
+axe `config` of the story's own would replace the addon's rules and drop the rule's definition.
 
 ## Design
 

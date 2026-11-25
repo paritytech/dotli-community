@@ -11,7 +11,7 @@ import s from './debugPanelStory.module.css';
 /** The a11y addon's settings for the panel's stories. */
 export const debugPanelA11y = {
   // Contrast is off because the panel's palette is kept as designed, and its contrast is the owner's call.
-  config: { rules: [{ id: 'color-contrast', enabled: false }] },
+  options: { rules: { 'apca-contrast': { enabled: false } } },
 };
 
 /** The panel's page under a story, in place of the page frame every other story gets. */
