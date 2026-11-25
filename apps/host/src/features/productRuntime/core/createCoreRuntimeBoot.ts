@@ -88,7 +88,7 @@ export function createCoreRuntimeBoot({
         callbacks: createCoreCallbacks(true),
         hostConfig,
         wallet,
-        isLive: core.isLive,
+        isLive: () => !core.ended.aborted,
       });
       productId = await parseProductId(runtime, core.product);
       report.log.event('wallet core booted', { local: true });

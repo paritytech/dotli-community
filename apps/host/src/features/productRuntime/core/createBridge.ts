@@ -84,7 +84,6 @@ export function createBridge({
       product: LANDING_PRODUCT,
       blockingModalScope,
       phoneRequests,
-      isLive: () => !ended.signal.aborted,
       ended: ended.signal,
       isInService: () => false,
       sessionInMemory: true,

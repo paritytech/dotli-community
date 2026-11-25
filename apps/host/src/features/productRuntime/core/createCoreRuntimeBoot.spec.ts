@@ -36,7 +36,6 @@ const context: CoreContext = {
   product: { label: 'doom' },
   blockingModalScope: createBlockingModalCoordinator().createScope(),
   phoneRequests: createPhoneRequestTracker(),
-  isLive: () => true,
   ended: new AbortController().signal,
   isInService: () => true,
   sessionInMemory: false,
@@ -149,7 +148,7 @@ describe('core runtime boot', () => {
     expect(localBoot?.create).toBe(create);
     expect(localBoot?.hostConfig).not.toHaveProperty('productId');
     expect(localBoot?.wallet).toBe(WALLET);
-    expect(localBoot?.isLive).toBe(context.isLive);
+    expect(localBoot?.isLive()).toBe(true);
     expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
     expect(callbackOptions[0]?.core).toBe(context);
     expect(create).not.toHaveBeenCalled();

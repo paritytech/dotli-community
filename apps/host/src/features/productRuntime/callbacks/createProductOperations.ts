@@ -17,40 +17,33 @@ type Params = {
 
 /**
  * Hands out operation ids, each unique among the open operations, and keeps the network awake while one is open and the
- * core lives. Ending an id that is not open does nothing. Neither member rejects.
+ * core lives. Ending an id that is not open does nothing.
  */
 export function createProductOperations({
   core,
   holdNetwork = networkPause.hold,
 }: Params): Required<ProductOperations> {
   let nextId = 0;
-  const open = new Set<number>();
-  let release: (() => void) | null = null;
+  const open = new Map<number, () => void>();
   core.ended.addEventListener('abort', () => {
+    for (const release of open.values()) {
+      release();
+    }
     open.clear();
-    letGo();
   });
 
   return {
     beginOperation() {
       const id = nextId++;
       if (!core.ended.aborted) {
-        open.add(id);
-        release ??= holdNetwork();
+        open.set(id, holdNetwork());
       }
       return Promise.resolve({ id });
     },
     endOperation(_product, id) {
+      open.get(id)?.();
       open.delete(id);
-      if (open.size === 0) {
-        letGo();
-      }
       return Promise.resolve();
     },
   };
-
-  function letGo(): void {
-    release?.();
-    release = null;
-  }
 }

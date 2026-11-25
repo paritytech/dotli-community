@@ -39,7 +39,6 @@ describe('one core asks', () => {
       product: { label: 'localhost:3000' },
       blockingModalScope: scope,
       phoneRequests: createPhoneRequestTracker(),
-      isLive: () => true,
       ended: new AbortController().signal,
       isInService: () => true,
       sessionInMemory: false,
