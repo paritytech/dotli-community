@@ -9,13 +9,16 @@ GPL-family components (GPL-3.0 with the Classpath linking exception) are compati
 outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0) or source-available (FSL-1.1-MIT,
 FSL-1.1-Apache-2.0) terms is used to build the application and is not redistributed as part of it.
 
+The `AGPL-3.0-only` and `Limited W3 License` packages are build-time tooling for the Storybook contrast check. apca-w3
+is used unmodified under the AGPL terms its license grants outside the W3 agreement.
+
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
 License 2.0 (`MPL-2.0`), unmodified and with its license header.
 
 The application bundles font files under the SIL Open Font License 1.1 (`OFL-1.1`), which permits bundling fonts with
 software under any license. They are served unmodified and are not sold on their own.
 
-> Generated from the resolved dependency tree (908 distinct third-party packages) by `scripts/thirdPartyNotices.ts`.
+> Generated from the resolved dependency tree (914 distinct third-party packages) by `scripts/thirdPartyNotices.ts`.
 > Platform-specific binary packages (for example `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;
 > other platforms resolve their own equivalents under the same licenses. Regenerate after dependency changes.
 
@@ -66,9 +69,10 @@ software under any license. They are served unmodified and are not sold on their
 @commander-js/extra-typings, @emmetio/abbreviation, @emmetio/css-abbreviation, @emmetio/css-parser, @emmetio/scanner,
 @emmetio/stream-reader, @emmetio/stream-reader-utils, @emnapi/core, @emnapi/runtime, @emnapi/wasi-threads,
 @ensdomains/content-hash, @esbuild/darwin-arm64, @eslint-community/eslint-utils, @eslint-community/regexpp, @eslint/js,
-@floating-ui/core, @floating-ui/dom, @floating-ui/utils, @img/colour, @jridgewell/gen-mapping, @jridgewell/remapping,
-@jridgewell/resolve-uri, @jridgewell/source-map, @jridgewell/sourcemap-codec, @jridgewell/trace-mapping, @keyv/bigmap,
-@keyv/serialize, @mdx-js/react, @napi-rs/wasm-runtime, @noble/ciphers, @noble/curves, @noble/hashes, @oslojs/encoding,
+@floating-ui/core, @floating-ui/dom, @floating-ui/utils, @img/colour, @jitl/quickjs-ffi-types,
+@jitl/quickjs-wasmfile-release-asyncify, @jridgewell/gen-mapping, @jridgewell/remapping, @jridgewell/resolve-uri,
+@jridgewell/source-map, @jridgewell/sourcemap-codec, @jridgewell/trace-mapping, @keyv/bigmap, @keyv/serialize,
+@mdx-js/react, @napi-rs/wasm-runtime, @noble/ciphers, @noble/curves, @noble/hashes, @oslojs/encoding,
 @oxc-parser/binding-darwin-arm64, @oxc-project/types, @oxc-resolver/binding-darwin-arm64, @parity/trinity-stack,
 @parity/truapi, @parity/truapi-host, @pkgr/core, @polka/url, @polkadot-api/cli, @polkadot-api/codegen,
 @polkadot-api/ink-contracts, @polkadot-api/json-rpc-provider, @polkadot-api/json-rpc-provider-proxy,
@@ -108,8 +112,8 @@ data-view-byte-offset, debug, decamelize, deep-eql, deep-is, deepmerge, default-
 define-data-property, define-lazy-prop, define-properties, defu, dequal, destr, detect-indent, devalue, devlop,
 dijkstrajs, dom-accessibility-api, dom-serializer, dset, dunder-proto, emmet, emoji-regex, es-abstract, es-abstract-get,
 es-define-property, es-errors, es-module-lexer, es-object-atoms, es-set-tostringtag, es-to-primitive, esbuild, escalade,
-escape-string-regexp, eslint, eslint-config-prettier, eslint-plugin-astro, eslint-plugin-solid, eslint-plugin-turbo,
-estree-walker, eta, execa, extend, fast-deep-equal, fast-json-stable-stringify, fast-levenshtein,
+escape-string-regexp, eslint, eslint-config-prettier, eslint-plugin-astro, eslint-plugin-solid, eslint-plugin-storybook,
+eslint-plugin-turbo, estree-walker, eta, execa, extend, fast-deep-equal, fast-json-stable-stringify, fast-levenshtein,
 fast-string-truncated-width, fast-string-width, fast-wrap-ansi, fd-package-json, fdir, fflate, figures,
 file-entry-cache, find-up, flat-cache, flattie, fnv1a-64, fontace, fontkitten, for-each, formatly, fs-extra,
 fs.promises.exists, fsevents, function-bind, function.prototype.name, functions-have-names, generator-function, gensync,
@@ -132,37 +136,38 @@ object-keys, object.assign, obug, ofetch, onetime, oniguruma-parser, oniguruma-t
 oxc-parser, oxc-resolver, p-limit, p-locate, p-queue, p-try, package-manager-detector, parse-json, parse-ms, parse5,
 path-browserify, path-exists, path-key, path-parse, pathe, pathval, picomatch, pngjs, polkadot-api,
 possible-typed-array-names, postcss, postcss-selector-parser, prelude-ls, prettier, prettier-plugin-astro, pretty-bytes,
-pretty-format, pretty-ms, prismjs, process-ancestry, property-information, punycode, qified, qrcode, radix3, react,
-react-dom, react-is, read-pkg, readdirp, recast, redent, reflect.getprototypeof, regenerate,
-regenerate-unicode-properties, regex, regex-recursion, regex-utilities, regexp.prototype.flags, regexpu-core, regjsgen,
-request-light, require-directory, require-from-string, resolve, resolve-pkg-maps, restore-cursor, retext-smartypants,
-rolldown, rollup, rollup-plugin-esbuild, run-applescript, s.color, safe-array-concat, safe-push-apply, safe-regex-test,
-sass-formatter, satteri, scale-ts, scheduler, seroval, seroval-plugins, set-function-length, set-function-name,
-set-proto, shebang-command, shebang-regex, shiki, side-channel, side-channel-list, side-channel-map,
-side-channel-weakmap, sirv, sisteransi, smob, solid-js, sort-keys, source-map-support, space-separated-tokens,
-spdx-expression-parse, std-env, stdin-discarder, stop-iteration-iterator, storybook, storybook-solidjs-vite,
-string-argv, string-width, string.prototype.matchall, string.prototype.trim, string.prototype.trimend,
-string.prototype.trimstart, stringify-entities, strip-ansi, strip-comments, strip-final-newline, strip-indent,
-strip-json-comments, style-to-object, suf-log, supports-color, supports-preserve-symlinks-flag, svgo, synckit,
-tagged-tag, temp-dir, tempy, tiny-inflate, tiny-invariant, tinybench, tinyclip, tinyexec, tinyglobby, tinyps,
-tinyrainbow, tinyspy, totalist, trim-lines, trough, ts-api-utils, ts-dedent, tsc-prog, turbo, type-check,
-typed-array-buffer, typed-array-byte-length, typed-array-byte-offset, typed-array-length, typesafe-path,
-typescript-auto-import-cache, typescript-eslint, ufo, ultrahtml, unbox-primitive, uncrypto, undici, undici-types,
-unicode-canonical-property-names-ecmascript, unicode-match-property-ecmascript, unicode-match-property-value-ecmascript,
-unicode-property-aliases-ecmascript, unicorn-magic, unified, unifont, unique-string, unist-util-is, unist-util-position,
-unist-util-stringify-position, unist-util-visit, unist-util-visit-parents, universalify, unplugin, unplugin-utils,
-unstorage, upath, update-browserslist-db, use-sync-external-store, util-deprecate, varint, verkit, vfile, vfile-message,
-vite, vite-plugin-mkcert, vite-plugin-pwa, vite-plugin-solid, vite-plugin-wasm, vitefu, vitest, volar-service-css,
-volar-service-emmet, volar-service-html, volar-service-prettier, volar-service-typescript,
-volar-service-typescript-twoslash-queries, volar-service-yaml, vscode-css-languageservice, vscode-html-languageservice,
-vscode-json-languageservice, vscode-jsonrpc, vscode-languageserver, vscode-languageserver-protocol,
-vscode-languageserver-textdocument, vscode-languageserver-types, vscode-nls, vscode-uri, webpack-virtual-modules,
-whatwg-mimetype, which-boxed-primitive, which-builtin-type, which-collection, which-command, which-typed-array,
-why-is-node-running, word-wrap, workbox-background-sync, workbox-broadcast-update, workbox-build,
-workbox-cacheable-response, workbox-core, workbox-expiration, workbox-google-analytics, workbox-navigation-preload,
-workbox-precaching, workbox-range-requests, workbox-recipes, workbox-routing, workbox-strategies, workbox-streams,
-workbox-sw, workbox-window, wrap-ansi, write-json-file, write-package, ws, wsl-utils, xxhash-wasm, yaml-language-server,
-yargs, yocto-queue, yoctocolors, zod, zwitch
+pretty-format, pretty-ms, prismjs, process-ancestry, property-information, punycode, qified, qrcode,
+quickjs-emscripten-core, radix3, react, react-dom, react-is, read-pkg, readdirp, recast, redent, reflect.getprototypeof,
+regenerate, regenerate-unicode-properties, regex, regex-recursion, regex-utilities, regexp.prototype.flags,
+regexpu-core, regjsgen, request-light, require-directory, require-from-string, resolve, resolve-pkg-maps,
+restore-cursor, retext-smartypants, rolldown, rollup, rollup-plugin-esbuild, run-applescript, s.color,
+safe-array-concat, safe-push-apply, safe-regex-test, sass-formatter, satteri, scale-ts, scheduler, seroval,
+seroval-plugins, set-function-length, set-function-name, set-proto, shebang-command, shebang-regex, shiki, side-channel,
+side-channel-list, side-channel-map, side-channel-weakmap, sirv, sisteransi, smob, solid-js, sort-keys,
+source-map-support, space-separated-tokens, spdx-expression-parse, std-env, stdin-discarder, stop-iteration-iterator,
+storybook, storybook-solidjs-vite, string-argv, string-width, string.prototype.matchall, string.prototype.trim,
+string.prototype.trimend, string.prototype.trimstart, stringify-entities, strip-ansi, strip-comments,
+strip-final-newline, strip-indent, strip-json-comments, style-to-object, suf-log, supports-color,
+supports-preserve-symlinks-flag, svgo, synckit, tagged-tag, temp-dir, tempy, tiny-inflate, tiny-invariant, tinybench,
+tinyclip, tinyexec, tinyglobby, tinyps, tinyrainbow, tinyspy, totalist, trim-lines, trough, ts-api-utils, ts-dedent,
+tsc-prog, turbo, type-check, typed-array-buffer, typed-array-byte-length, typed-array-byte-offset, typed-array-length,
+typesafe-path, typescript-auto-import-cache, typescript-eslint, ufo, ultrahtml, unbox-primitive, uncrypto, undici,
+undici-types, unicode-canonical-property-names-ecmascript, unicode-match-property-ecmascript,
+unicode-match-property-value-ecmascript, unicode-property-aliases-ecmascript, unicorn-magic, unified, unifont,
+unique-string, unist-util-is, unist-util-position, unist-util-stringify-position, unist-util-visit,
+unist-util-visit-parents, universalify, unplugin, unplugin-utils, unstorage, upath, update-browserslist-db,
+use-sync-external-store, util-deprecate, varint, verkit, vfile, vfile-message, vite, vite-plugin-mkcert,
+vite-plugin-pwa, vite-plugin-solid, vite-plugin-wasm, vitefu, vitest, volar-service-css, volar-service-emmet,
+volar-service-html, volar-service-prettier, volar-service-typescript, volar-service-typescript-twoslash-queries,
+volar-service-yaml, vscode-css-languageservice, vscode-html-languageservice, vscode-json-languageservice,
+vscode-jsonrpc, vscode-languageserver, vscode-languageserver-protocol, vscode-languageserver-textdocument,
+vscode-languageserver-types, vscode-nls, vscode-uri, webpack-virtual-modules, whatwg-mimetype, which-boxed-primitive,
+which-builtin-type, which-collection, which-command, which-typed-array, why-is-node-running, word-wrap,
+workbox-background-sync, workbox-broadcast-update, workbox-build, workbox-cacheable-response, workbox-core,
+workbox-expiration, workbox-google-analytics, workbox-navigation-preload, workbox-precaching, workbox-range-requests,
+workbox-recipes, workbox-routing, workbox-strategies, workbox-streams, workbox-sw, workbox-window, wrap-ansi,
+write-json-file, write-package, ws, wsl-utils, xxhash-wasm, yaml-language-server, yargs, yocto-queue, yoctocolors, zod,
+zwitch
 
 ## Apache-2.0
 
@@ -233,6 +238,14 @@ caniuse-lite
 ## GPL-3.0-or-later WITH Classpath-exception-2.0
 
 smoldot
+
+## AGPL-3.0-only
+
+colorparsley
+
+## Limited W3 License
+
+apca-w3
 
 ## LGPL-3.0-or-later
 

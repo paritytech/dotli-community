@@ -81,6 +81,7 @@ flowchart TD
   uiStories[ui stories]
   uiSrc["ui src/, no tooling package"]
   subgraph tooling [config]
+    apca[apca]
     astroSolid[astro-solid]
     eslint[eslint]
     storybook[storybook]
@@ -92,7 +93,7 @@ flowchart TD
   eslintOnly --> eslint
   uiRest --> eslint & storybook & vite
   uiStories --> storybook
-  astroSolid & storybook & vite --> eslint
+  apca & astroSolid & storybook & vite --> eslint
 ```
 
 ## Which package or app
@@ -119,6 +120,7 @@ flowchart TD
 | The debug event bus and debug mode, with no UI                                                                                 | `packages/truapi-debug` (`@dotli/truapi-debug`)           |
 | The TrUAPI debug panel, which loads only in debug mode                                                                         | `packages/truapi-debug-ui` (`@dotli/truapi-debug-ui`)     |
 | UI more than one app shows, with no domain and no data source: primitives, floating layers, stores, icons, tokens, brand marks | `packages/ui` (`@dotli/ui`)                               |
+| The APCA text contrast rule for the Storybook a11y check                                                                       | `config/apca` (`@config/apca`)                            |
 | The Astro integration for Solid 2                                                                                              | `config/astro-solid` (`@config/astro-solid`)              |
 | Shared ESLint flat configs and the import-layer helpers                                                                        | `config/eslint` (`@config/eslint`)                        |
 | Tooling for the one Storybook at the repo root                                                                                 | `config/storybook` (`@config/storybook`)                  |
