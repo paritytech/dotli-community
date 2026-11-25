@@ -28,6 +28,7 @@ type CreateRecordStoreParams = {
 };
 
 const DUE = {
+  kind: 'push',
   hostId: 1,
   perProductId: 1,
   productId: asProductId('acme.dot'),
@@ -104,6 +105,8 @@ function createRecordStore({ records }: CreateRecordStoreParams) {
   const held = new Map(records.map(record => [record.hostId, record]));
   return {
     schedule: vi.fn<ScheduledNotificationStore['schedule']>(),
+    holdGameReminder: vi.fn<ScheduledNotificationStore['holdGameReminder']>(),
+    cancelGameReminder: vi.fn<ScheduledNotificationStore['cancelGameReminder']>(),
     cancel: vi.fn<ScheduledNotificationStore['cancel']>(),
     allocateId: vi.fn<ScheduledNotificationStore['allocateId']>(),
     listAll: vi.fn<ScheduledNotificationStore['listAll']>(() => Promise.resolve([...held.values()])),
@@ -475,6 +478,32 @@ describe('scheduled notifications poller', () => {
 
     // Then
     expect(opened).toEqual(['dotli:scheduled-notifications']);
+  });
+
+  it('As a user with two tabs open, I hold a game reminder in one and wake the poller here and the other tab', async () => {
+    // Given a started scheduler with no records, whose poller has stopped, and a channel that records what it posts
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [] });
+    store.holdGameReminder.mockResolvedValue(undefined);
+    const postMessage = vi.fn();
+    const { notifications } = start({
+      store,
+      overrides: { openChannel: () => ({ postMessage, close: () => undefined, onmessage: null }) },
+    });
+    await advanceTicks(2);
+    expect(timers.countPending()).toBe(0);
+
+    // When a game reminder is held
+    await notifications.holdGameReminder({
+      productId: DUE.productId,
+      title: 'Game',
+      text: 'Starts',
+      scheduledAt: timers.now() + 60_000,
+    });
+
+    // Then the poller runs again and the other tabs are told
+    expect(timers.countPending()).toBeGreaterThan(0);
+    expect(postMessage).toHaveBeenCalledWith({ kind: 'scheduled' });
   });
 });
 

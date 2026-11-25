@@ -8,6 +8,7 @@ import type { ProductId } from '@parity/truapi';
 import type { Permissions, RequiredHostCallbacks, UserConfirmation } from '@parity/truapi-host';
 import { createNavigateTo } from './createNavigateTo.js';
 import { createNotificationAdapters, type NotificationScheduler } from './createNotificationAdapters.js';
+import { createGameAdapters, type GameReminderScheduler } from './createGameAdapters.js';
 import { localStorageCallbacks } from './createLocalStorageCallbacks.js';
 import { createProductOperations } from './createProductOperations.js';
 import { createPreimageAdapters } from './createPreimageAdapters.js';
@@ -44,8 +45,8 @@ export type HostAsks = (core: CoreContext) => {
 
 /** One core's params, plus what the callbacks ask the page for. */
 type Params = CoreCallbacksParams & {
-  /** Where push notifications wait until due. */
-  notifications: NotificationScheduler;
+  /** Where push notifications and game reminders wait until due. */
+  notifications: NotificationScheduler & GameReminderScheduler;
   /** Builds the callbacks that answer the core's permission and confirmation asks. */
   createAsks: HostAsks;
 };
@@ -87,6 +88,8 @@ export function createHostCallbacks({
     locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
+    // Always served, since the core serves game calls to the game product alone.
+    game: createGameAdapters({ label, scheduler: notifications }),
     // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),
   };

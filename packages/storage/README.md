@@ -75,3 +75,6 @@ In-memory databases (fake-indexeddb) for tests:
   and host. They are the page's own data, so they live in its database, which a reset of the page empties.
 - **Own databases:** the wallet and site grants survive a wipe of the origin the windows share with the landing page.
 - **Chat** lives on the product origin.
+- **Scheduled notifications:** a product's scheduled pushes, at most 20 pending, and its one game reminder, which the
+  next one replaces and which the cap does not count. A push is dropped a day past its time, and a game reminder a
+  minute past the game's start. A record stored before records had a kind reads as a push.
