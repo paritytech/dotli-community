@@ -3,6 +3,7 @@
 
 // The preview every story gets. The Storybook's own preview adds the stylesheet and the sidebar order.
 
+import { axeConfig } from '@config/apca';
 import { flush, merge } from 'solid-js';
 import type { Preview } from 'storybook-solidjs-vite';
 import { renderToCanvas as solidRenderToCanvas } from 'storybook-solidjs-vite/renderer/solid-next';
@@ -15,7 +16,7 @@ const preview: Preview = {
     layout: 'fullscreen',
     docs: { theme: themes.dark },
     // The addon's default, 'todo', only warns, so a violation would pass CI.
-    a11y: { test: 'error' },
+    a11y: { test: 'error', config: axeConfig },
     viewport: {
       options: {
         // Phone sits below the 560 px PHONE_QUERY breakpoint, so the phone layouts apply.

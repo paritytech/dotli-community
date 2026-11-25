@@ -14,9 +14,9 @@ Internal tooling, never shipped.
 
 ## Public API
 
-| Entry          | Use                                                                                   |
-| -------------- | ------------------------------------------------------------------------------------- |
-| `@config/apca` | `axeConfig`, the axe settings for the a11y check, with the APCA rule `apca-contrast`. |
+| Entry          | Use                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `@config/apca` | `axeConfig`, the axe settings for the a11y check, and `APCA_RULE_ID`, the APCA rule's id, by which a story turns the rule off. |
 
 ## Design
 

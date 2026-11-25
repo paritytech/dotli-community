@@ -22,6 +22,9 @@ type Color = {
   toHexString(): string;
 };
 
+/** The id of the APCA text contrast rule, the key that turns it off in axe's run options. */
+export const APCA_RULE_ID = 'apca-contrast';
+
 const CHECK_ID = 'apca-bronze';
 
 /** axe settings that replace the WCAG `color-contrast` rule with an APCA Bronze text contrast rule. */
@@ -29,7 +32,7 @@ export const axeConfig: axe.Spec = {
   rules: [
     { id: 'color-contrast', enabled: false },
     {
-      id: 'apca-contrast',
+      id: APCA_RULE_ID,
       // axe's own selection of text for its contrast rule.
       matches: 'color-contrast-matches',
       all: [CHECK_ID],

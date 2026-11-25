@@ -17,6 +17,7 @@
     "lint": "eslint ."
   },
   "devDependencies": {
+    "@config/apca": "*",
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@solidjs/web": "2.0.3",

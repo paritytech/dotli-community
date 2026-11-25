@@ -56,10 +56,6 @@ const meta = {
     shiftX: { control: { type: 'range', min: -1, max: 1, step: 0.1 } },
     shiftY: { control: { type: 'range', min: -1, max: 1, step: 0.1 } },
   },
-  parameters: {
-    // Contrast is unnecessary for background graphics: the orbit is decorative and hidden from assistive technology.
-    a11y: { config: { rules: [{ id: 'color-contrast', enabled: false }] } },
-  },
 } satisfies Meta<typeof Frame>;
 
 export default meta;
