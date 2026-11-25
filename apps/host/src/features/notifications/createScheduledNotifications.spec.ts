@@ -28,6 +28,7 @@ type CreateRecordStoreParams = {
 };
 
 const DUE = {
+  kind: 'push',
   hostId: 1,
   perProductId: 1,
   productId: asProductId('acme.dot'),
@@ -104,6 +105,8 @@ function createRecordStore({ records }: CreateRecordStoreParams) {
   const held = new Map(records.map(record => [record.hostId, record]));
   return {
     schedule: vi.fn<ScheduledNotificationStore['schedule']>(),
+    holdGameReminder: vi.fn<ScheduledNotificationStore['holdGameReminder']>(),
+    cancelGameReminder: vi.fn<ScheduledNotificationStore['cancelGameReminder']>(),
     cancel: vi.fn<ScheduledNotificationStore['cancel']>(),
     allocateId: vi.fn<ScheduledNotificationStore['allocateId']>(),
     listAll: vi.fn<ScheduledNotificationStore['listAll']>(() => Promise.resolve([...held.values()])),

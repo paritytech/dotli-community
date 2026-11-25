@@ -1,12 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { runIdbTransaction } from '@dotli/shared';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createScheduledNotifications,
   type ScheduledNotificationRecord,
   type ScheduledNotifications,
 } from './scheduledNotifications.js';
+import { NOTIFICATION_STORE } from './schema.js';
 import { createMemoryIdb, type MemoryIdb } from './testing/index.js';
 
 // Each test gets a fresh database, so no test sees another's records.
@@ -28,6 +30,18 @@ function getTimeFromNow(ms: number): number {
 
 function getTimeAgo(ms: number): number {
   return Date.now() - ms;
+}
+
+async function schedulePush(productId: string, text: string): Promise<void> {
+  await queue.schedule({ productId, title: 'Acme', text, deeplink: null, scheduledAt: getTimeFromNow(60_000) });
+}
+
+async function holdGameReminder(productId: string, text: string, scheduledAt = getTimeFromNow(60_000)): Promise<void> {
+  await queue.holdGameReminder({ productId, title: 'Jollity', text, scheduledAt });
+}
+
+function describeRecords(records: ScheduledNotificationRecord[]): string[] {
+  return records.map(record => `${record.kind}:${record.text}`);
 }
 
 describe('schedule', () => {
@@ -127,6 +141,72 @@ describe('schedule', () => {
 
     // Then the new id is 2, not the reclaimed 1
     expect(second).toEqual({ ok: true, id: 2 });
+  });
+});
+
+describe('the cap of pending pushes', () => {
+  it('As a dapp, I schedule my 20th push while I hold a game reminder and it is queued', async () => {
+    // Given a product holding a game reminder and 19 pushes
+    await holdGameReminder('acme.dot', 'game');
+    for (let index = 0; index < 19; index += 1) {
+      await schedulePush('acme.dot', `n=${String(index)}`);
+    }
+
+    // When it schedules its 20th push
+    const twentieth = await queue.schedule({
+      productId: 'acme.dot',
+      title: 'Acme',
+      text: 'twentieth',
+      deeplink: null,
+      scheduledAt: getTimeFromNow(120_000),
+    });
+
+    // Then the push is queued
+    expect(twentieth).toEqual({ ok: true, id: 20 });
+  });
+
+  it('As a game product at the cap of pushes, I hold a game reminder and it is queued', async () => {
+    // Given a product already at the cap of 20 pushes
+    for (let index = 0; index < 20; index += 1) {
+      await schedulePush('acme.dot', `n=${String(index)}`);
+    }
+
+    // When it holds a game reminder
+    await holdGameReminder('acme.dot', 'game');
+
+    // Then the reminder is queued
+    expect(describeRecords(await listRecordsOf('acme.dot'))).toContain('gameReminder:game');
+  });
+});
+
+describe('holdGameReminder', () => {
+  it('As a game product, I hold a second game reminder and it replaces only my first', async () => {
+    // Given acme holds a game reminder and a push, and bravo holds a game reminder
+    await holdGameReminder('acme.dot', 'first');
+    await schedulePush('acme.dot', 'push');
+    await holdGameReminder('bravo.dot', 'bravo');
+
+    // When acme holds another game reminder
+    await holdGameReminder('acme.dot', 'second');
+
+    // Then acme keeps its push and only the second reminder, and bravo's reminder stays
+    expect(describeRecords(await listRecordsOf('acme.dot'))).toEqual(['push:push', 'gameReminder:second']);
+    expect(describeRecords(await listRecordsOf('bravo.dot'))).toEqual(['gameReminder:bravo']);
+  });
+});
+
+describe('cancelGameReminder', () => {
+  it('As a game product, I cancel my game reminder twice and both resolve, leaving my push', async () => {
+    // Given acme holds a game reminder and a push
+    await holdGameReminder('acme.dot', 'game');
+    await schedulePush('acme.dot', 'push');
+
+    // When it cancels the game reminder twice
+    await queue.cancelGameReminder('acme.dot');
+    await queue.cancelGameReminder('acme.dot');
+
+    // Then only the push remains
+    expect(describeRecords(await listRecordsOf('acme.dot'))).toEqual(['push:push']);
   });
 });
 
@@ -272,6 +352,65 @@ describe('removeStale', () => {
     expect(removed).toBe(1);
     const remaining = await listRecordsOf('acme.dot');
     expect(remaining.map(record => record.text)).toEqual(['fresh']);
+  });
+
+  it('As the scheduler, I drop a game reminder a minute past its start and keep pushes and newer reminders', async () => {
+    // Given acme's reminder started over a minute ago, bravo's started 30s ago, and a push fell due 2 minutes ago
+    const now = Date.now();
+    await holdGameReminder('acme.dot', 'started', now - 61_000);
+    await holdGameReminder('bravo.dot', 'starting', now - 30_000);
+    await queue.schedule({
+      productId: 'acme.dot',
+      title: 'Acme',
+      text: 'push',
+      deeplink: null,
+      scheduledAt: now - 120_000,
+    });
+
+    // When pruning stale records
+    const removed = await queue.removeStale(now);
+
+    // Then only acme's started reminder is gone
+    expect(removed).toBe(1);
+    expect(describeRecords(await queue.listAll())).toEqual(['gameReminder:starting', 'push:push']);
+  });
+});
+
+describe('a record stored before records had a kind', () => {
+  it('As the scheduler, I list a record stored without a kind and read it as a push', async () => {
+    // Given a push stored before records had a kind
+    await runIdbTransaction({
+      db: await idb.connect(),
+      stores: NOTIFICATION_STORE,
+      mode: 'readwrite',
+      body: transaction => {
+        transaction.objectStore(NOTIFICATION_STORE).add({
+          perProductId: 1,
+          productId: 'acme.dot',
+          title: 'Acme',
+          text: 'legacy',
+          deeplink: null,
+          scheduledAt: 1_000,
+        });
+      },
+    });
+
+    // When the scheduler lists the queue
+    const records = await queue.listAll();
+
+    // Then the record reads as a push
+    expect(records).toEqual([
+      {
+        kind: 'push',
+        hostId: 1,
+        perProductId: 1,
+        productId: 'acme.dot',
+        title: 'Acme',
+        text: 'legacy',
+        deeplink: null,
+        scheduledAt: 1_000,
+      },
+    ]);
   });
 });
 
