@@ -9,8 +9,9 @@ itself.
 
 ## How to resolve
 
-1. Let the adapter keep the open work itself and hold while any of it is open. It takes the hold on the first open piece
-   and releases it when the last one ends.
+1. Let the adapter keep the open work itself, as one release per open piece. Each piece takes its own hold when it
+   begins and calls its own release when it ends. The page-wide hold already counts its callers and its release acts
+   once, so the adapter puts no count of open work in front of it.
 2. Release the hold when the core ends too. Take the core's end from an event the core's owner already fires when a core
    leaves, such as the abort signal it already aborts, carried on the per-core context the adapter receives. After it
    fires, a late begin takes no hold.
@@ -25,31 +26,33 @@ again after a restore, is enough. A tracker in the core's owner is overengineeri
 
 ```ts
 function createTaskCallbacks(holdPage: () => () => void, coreEnded: AbortSignal) {
-  const open = new Set<TaskId>();
-  let release: (() => void) | null = null;
-  const letGo = () => {
-    release?.();
-    release = null;
-  };
+  const open = new Map<TaskId, () => void>();
   coreEnded.addEventListener('abort', () => {
+    for (const release of open.values()) release();
     open.clear();
-    letGo();
   });
   return {
     begin(id: TaskId) {
-      if (coreEnded.aborted) return;
-      open.add(id);
-      release ??= holdPage();
+      if (!coreEnded.aborted) open.set(id, holdPage());
     },
     end(id: TaskId) {
+      open.get(id)?.();
       open.delete(id);
-      if (open.size === 0) letGo();
     },
   };
 }
 ```
 
-Not this:
+Not this, which counts open work in front of a hold that already counts its callers:
+
+```ts
+const open = new Set<TaskId>();
+let release: (() => void) | null = null;
+// begin: open.add(id); release ??= holdPage();
+// end: open.delete(id); if (open.size === 0) { release?.(); release = null; }
+```
+
+Nor this:
 
 ```ts
 // The core's owner builds, carries and disposes a tracker only so the adapter can pass begin and end to it.
