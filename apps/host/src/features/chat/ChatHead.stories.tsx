@@ -11,7 +11,6 @@ import type { ContactEntry } from './contacts.js';
 const COURIER: ContactEntry = {
   ...contactIconStories.args,
   id: 'courier',
-  productId: 'market.dot',
   createdAt: 0,
   lastMessageAt: null,
   footer: 'TextInput',

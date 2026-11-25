@@ -7,7 +7,6 @@ import type { ChatRoom } from './chat.js';
 /** A room of the product's contact list. */
 export type ContactEntry = {
   id: string;
-  productId: string;
   name: string;
   icon: string;
   createdAt: number;
@@ -24,7 +23,6 @@ export function contactEntries(
   const entries: ContactEntry[] = [
     ...rooms.map(room => ({
       id: room.roomId,
-      productId: room.productId,
       name: room.name,
       icon: room.icon,
       createdAt: room.createdAt,

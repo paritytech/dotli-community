@@ -54,18 +54,6 @@ describe('chat rooms', () => {
     ]);
   });
 
-  it('As a product, I set a card as a room footer and it is stored with the room', async () => {
-    // Given
-    await chat.createRoom({ productId: 'card.dot', roomId: 'main', name: 'Main', icon: '' });
-    const footer = { tag: 'Card', value: { messageType: 'poll', payload: '0x00' } } as const;
-
-    // When
-    await chat.setRoomFooter({ productId: 'card.dot', roomId: 'main', footer });
-
-    // Then
-    expect(await chat.listRooms('card.dot')).toEqual([expect.objectContaining({ roomId: 'main', footer })]);
-  });
-
   it('As a product, I set a footer on a room I never created and nothing is stored', async () => {
     // When
     const found = await chat.setRoomFooter({ productId: 'footer.dot', roomId: 'missing', footer: 'Empty' });

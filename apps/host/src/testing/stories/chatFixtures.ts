@@ -123,13 +123,9 @@ export type StoryMessage = {
   author?: ChatMessageRecord['author'];
 };
 
-/** A room a story's chat holds as it starts, of the story's product. */
-export type StoryRoom = Omit<ChatRoom, 'productId'>;
-
 /** What a story's chat holds as it starts: the page's chat state, the product's rooms and messages, and its faults. */
 export type ChatSeed = Partial<StageState> &
-  Partial<Pick<ChatStage, 'contactsFail' | 'readsHeld' | 'messagesFail' | 'sendError' | 'refuseError'>> & {
-    rooms?: readonly StoryRoom[];
+  Partial<Pick<ChatStage, 'rooms' | 'contactsFail' | 'readsHeld' | 'messagesFail' | 'sendError' | 'refuseError'>> & {
     messages?: readonly StoryMessage[];
   };
 
@@ -210,6 +206,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
   };
 
   const openFeed = (): ChatFeed => ({
+    productId: () => PRODUCT,
     contacts: useStore(feed, s => s.contacts),
     contactsFailed: useStore(feed, s => s.contactsFailed),
     messages: useStore(feed, s => s.messages),
@@ -300,7 +297,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
   const stage: ChatStage = {
     state,
     update,
-    rooms: rooms.map(room => ({ ...room, productId: PRODUCT })),
+    rooms: [...rooms],
     messages: [],
     contactsFail,
     readsHeld,
@@ -314,7 +311,7 @@ export function chatStage(seed: ChatSeed = {}): ChatStage {
     renders: [],
     disposedRenders: () => disposed,
     createRoom: (roomId, name, icon = '') => {
-      stage.rooms.push({ productId: PRODUCT, roomId, name, icon, createdAt: stamp() });
+      stage.rooms.push({ roomId, name, icon, createdAt: stamp() });
       readSoon();
     },
     productSays: (roomId, content) => {

@@ -15,8 +15,8 @@ import {
   everyKindIn,
   SHOP_CHAT,
   type StoryMessage,
-  type StoryRoom,
 } from '../../testing/stories/chatFixtures.js';
+import type { ChatRoom } from './chat.js';
 import { ChatPanel } from './ChatPanel.js';
 
 /** The chat of the story on show, which its panel built from the args. */
@@ -294,7 +294,7 @@ function say(roomId: string, text: string, minutesAgo: number): StoryMessage {
 }
 
 /** Rooms r0 to r(count - 1), the newest last. */
-function rooms(count: number): StoryRoom[] {
+function rooms(count: number): ChatRoom[] {
   return Array.from({ length: count }, (_, i) => ({
     roomId: `r${String(i)}`,
     name: `Room ${String(i)}`,

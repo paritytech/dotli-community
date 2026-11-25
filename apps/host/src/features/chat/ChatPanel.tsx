@@ -201,10 +201,11 @@ export function ChatPanel(props: ChatPanelProps): JSX.Element {
     () => {
       const card = footer();
       const contact = shown()?.contact;
-      if (card === null || typeof card === 'string' || contact === undefined) {
+      const productId = feed.productId();
+      if (card === null || typeof card === 'string' || contact === undefined || productId === null) {
         return null;
       }
-      return { productId: contact.productId, roomId: contact.id, ...card.value };
+      return { productId, roomId: contact.id, ...card.value };
     },
     { equals: isShallowEqual },
   );
