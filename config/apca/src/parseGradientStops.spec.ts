@@ -28,6 +28,11 @@ describe('parseGradientStops', () => {
       ],
     },
     {
+      shape: 'a gradient interpolated around the hue wheel',
+      backgroundImage: 'linear-gradient(in hsl longer hue, rgb(255, 0, 0), rgb(0, 0, 255))',
+      stops: null,
+    },
+    {
       shape: 'a gradient over an image',
       backgroundImage: 'linear-gradient(rgb(0, 0, 0), rgb(255, 255, 255)), url("https://example.com/a.png")',
       stops: null,
@@ -37,11 +42,17 @@ describe('parseGradientStops', () => {
       backgroundImage: 'linear-gradient(rgb(255, 255, 255) 0%, currentcolor 100%)',
       stops: null,
     },
-  ])('As a story author, I read the color stops of $shape', ({ backgroundImage, stops }) => {
-    // When
-    const parsed = parseGradientStops(backgroundImage);
+  ])(
+    'As a story author, I read the color stops of $shape and get its stops, or none where I cannot read them',
+    ({ backgroundImage, stops }) => {
+      // Given
+      const image = backgroundImage;
 
-    // Then
-    expect(parsed).toEqual(stops);
-  });
+      // When
+      const parsed = parseGradientStops(image);
+
+      // Then
+      expect(parsed).toEqual(stops);
+    },
+  );
 });

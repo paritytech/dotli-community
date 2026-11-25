@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 const GRADIENT = /^((?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient)\((.*)\)$/s;
-// A computed style gives every color as a function or a hex value, never as a keyword.
-const COLOR = /^(?:#|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\()/i;
+// The forms of a computed color that axe reads. A computed style never gives a color as a keyword.
+const COLOR = /^(?:#|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\()/i;
 const POSITION = /^(?:-?[\d.]+[a-z%]*|calc\(.*\))$/i;
 
 /**
  * Splits a computed `background-image` into the color stops of each gradient, the topmost gradient first. Returns an
- * empty list for `none`, and null when a layer is not a gradient or a stop holds no color it can read.
+ * empty list for `none`, and null when a layer is not a gradient, sets a color space or hue path of its own, or holds a
+ * stop with no color it can read.
  */
 export function parseGradientStops(backgroundImage: string): string[][] | null {
   if (backgroundImage.trim() === 'none') {
@@ -29,16 +30,25 @@ export function parseGradientStops(backgroundImage: string): string[][] | null {
   return gradients;
 }
 
+/** Tells whether a computed color is in a form axe reads. */
+export function isColorValue(value: string): boolean {
+  return COLOR.test(value);
+}
+
 function parseStops(body: string) {
   const stops: string[] = [];
   for (const [index, argument] of splitOutsideParentheses(body, /,/).entries()) {
     const tokens = splitOutsideParentheses(argument, /\s/);
-    const color = tokens.find(token => COLOR.test(token));
+    const color = tokens.find(token => isColorValue(token));
     if (color !== undefined) {
       stops.push(color);
       continue;
     }
-    // The first argument may set the direction, shape or color space. A later one without a color is a bare hint.
+    // Interpolated in a color space or along a hue path of its own, a gradient may paint colors far from its stops.
+    if (index === 0 && tokens.includes('in')) {
+      return null;
+    }
+    // The first argument may set the direction or shape. A later one without a color is a bare hint.
     if (index > 0 && !tokens.every(token => POSITION.test(token))) {
       return null;
     }

@@ -44,14 +44,22 @@ axe `config` of the story's own would replace the addon's rules and drop the rul
   is the verdict. Rather than guess, the walk leaves the element in "Incomplete" when it meets:
   - an image or a graphic element under the text
   - a gradient sized or blended apart from its element
+  - a gradient drawn once at a length offset, which may not reach the text
+  - a background clipped to text, which paints only inside the glyphs
+  - a gradient interpolated in a color space or along a hue path of its own, which may paint colors far from its stops
   - a layer that covers only part of the text
-  - opacity or blending of an element on the way down
+  - a color axe cannot read
+  - opacity or blending on the text, on a layer it scores or on their ancestors
   - a text shadow or translucent text
   - a stack that misses the page's body, where axe adds the page's own background
+
+  Between two stops, a gradient in sRGB can be darker than both. Dark text is still scored by the stops alone.
+
 - **Public axe API only:** the check travels in the settings as a function. A rerun from Storybook's panel, whose
   channel drops functions, reports the rule as incomplete until the view reloads. Tests and normal renders always run
   it.
 - **One axe:** the check must import the same axe the a11y check runs, since axe's color helpers read that run's state.
   So axe is a peer dependency, and the package never brings a copy of its own.
-- **Unit tests:** the scoring and the reading of gradient stops run under Node. The color lookup and the walk run in the
-  stories' own a11y check.
+- **Unit tests:** the scoring, the reading of gradient stops and the walk's decisions run under Node, the walk over
+  plain snapshots of each element's computed style and box. The reads from the page and axe's own color lookup run in
+  the stories' own a11y check.

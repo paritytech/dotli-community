@@ -40,8 +40,11 @@ describe('scoreText', () => {
   });
 
   it('As a story author, I score text with no known background and get no verdict', () => {
+    // Given
+    const pairs: [] = [];
+
     // When
-    const score = scoreText({ pairs: [], fontSize: 13 });
+    const score = scoreText({ pairs, fontSize: 13 });
 
     // Then
     expect(score).toBeNull();

@@ -28,10 +28,6 @@ declare module 'axe-core' {
       /** The elements under the text, the text's own element first. */
       getBackgroundStack(node: Element): Element[] | null;
       getForegroundColor(node: Element, noScroll: boolean, background: Color): Color | null;
-      /** Throws an `Error` when the background color is no color axe can read. */
-      getOwnBackgroundColor(style: CSSStyleDeclaration): Color;
-      /** Why the last color lookup gave up, by the kind of color it was after. */
-      incompleteData: { get(key: 'bgColor' | 'colorParse'): string | undefined };
     };
   }
 
