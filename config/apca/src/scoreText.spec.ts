@@ -14,8 +14,11 @@ describe('scoreText', () => {
   ])(
     'As a story author, I score $foreground text on $background at $fontSize px and it $verdict Bronze with Lc $lc',
     ({ foreground, background, fontSize, lc, passes }) => {
+      // Given
+      const colors = { foreground: toRgb(foreground), background: toRgb(background) };
+
       // When
-      const score = scoreText({ foreground: toRgb(foreground), background: toRgb(background), fontSize });
+      const score = scoreText({ ...colors, fontSize });
 
       // Then
       expect(score.lc).toBeCloseTo(lc, 1);

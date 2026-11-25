@@ -14,7 +14,11 @@ type Params = {
 };
 
 /** Scores text by its APCA lightness contrast (Lc) against the Bronze minimum for its font size. */
-export function scoreText({ foreground, background, fontSize }: Params) {
+export function scoreText({ foreground, background, fontSize }: Params): {
+  lc: number;
+  minimum: number;
+  passes: boolean;
+} {
   // The sign gives only the polarity, which the Bronze minimum ignores.
   const lc = Math.abs(APCAcontrast(sRGBtoY(foreground), sRGBtoY(background)));
   const minimum = getBronzeMinimum(fontSize);

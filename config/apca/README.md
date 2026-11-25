@@ -42,5 +42,6 @@ axe `config` of the story's own would replace the addon's rules and drop the rul
 - **Public axe API only:** the check travels in the settings as a function. A rerun from Storybook's panel, whose
   channel drops functions, reports the rule as incomplete until the view reloads. Tests and normal renders always run
   it.
-- **One axe:** the check imports the same axe the a11y check runs, since axe's color helpers read that run's state.
+- **One axe:** the check must import the same axe the a11y check runs, since axe's color helpers read that run's state.
+  So axe is a peer dependency, with the range the a11y check accepts, and the package never brings a copy of its own.
 - **Unit tests:** the scoring runs under Node. The color lookup runs in the stories' own a11y check.

@@ -75,6 +75,7 @@ Imports of the tooling packages. The ui package restricts its stories, the rest 
 ```mermaid
 flowchart TD
   host[host]
+  storybookConfig[root Storybook config]
   viteUsers["protocol app, sandbox, bitswap, chains, config, content, protocol, resolver, sandbox-wire, truapi-debug-ui"]
   eslintOnly["metrics, quickjs-runtime, shared, storage, stores-persistent, stores-solid, transport, truapi-debug"]
   uiRest["ui outside src/"]
@@ -88,7 +89,8 @@ flowchart TD
     typescript["typescript, no eslint config"]
     vite[vite]
   end
-  host -->|every package| tooling
+  host --> astroSolid & eslint & storybook & typescript & vite
+  storybookConfig -->|addon| apca
   viteUsers --> eslint & vite
   eslintOnly --> eslint
   uiRest --> eslint & storybook & vite

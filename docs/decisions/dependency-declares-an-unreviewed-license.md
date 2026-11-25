@@ -4,8 +4,8 @@ A developer adds a dependency, and the generator of the third-party notices fail
 declares a license string it has not reviewed. The notices' intro speaks for every license family listed, so the string
 cannot pass unread. The string is either an informal spelling of a known license that leaves a detail open, such as a
 version without "only" or "or later", or a custom license with no SPDX id whose text falls back to a known license
-outside some agreement. The question is whether to list the strings as they are, fold them into one known license or
-map each in its own way.
+outside some agreement. The question is how to list the strings. They could stay as they are. They could fold into one
+known license. Or each could map in its own way.
 
 ## How to resolve
 

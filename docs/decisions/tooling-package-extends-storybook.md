@@ -8,7 +8,8 @@ the package in, and where else it may be imported.
 
 ## How to resolve
 
-1. Make the package a Storybook addon. Its own preview entry sets the parameters, decorators or settings it adds.
+1. Make the package a Storybook addon. Its own preview entry sets everything it adds to the Storybook, such as
+   parameters or decorators.
 2. Name it in one place only: the `addons` list of the Storybook config.
 3. Import it nowhere else. The shared preview does not import it, and no story or other package does.
 4. A story that refers to something the addon defines, such as a rule id, names it as a plain string, the same way it
