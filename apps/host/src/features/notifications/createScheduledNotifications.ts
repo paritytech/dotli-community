@@ -39,6 +39,8 @@ type ScheduleRequest = {
   scheduledAt: number | null;
 };
 
+type GameReminderRequest = Pick<ScheduleRequest, 'productId' | 'title' | 'text'> & { scheduledAt: number };
+
 export type ScheduledNotificationStore = typeof scheduledNotifications;
 
 export type ScheduledNotificationsParams = {
@@ -389,6 +391,17 @@ export function createScheduledNotifications({
      */
     cancel,
     /**
+     * Holds the product's one game reminder for `scheduledAt`, a time in the future the caller has checked, and
+     * replaces the one it held. It persists also before `init` and after `dispose`, as `schedule` does a later push,
+     * and starts a poller only on a started scheduler. Rejects when the store cannot write it.
+     */
+    holdGameReminder,
+    /**
+     * Drops the product's game reminder. Idempotent, also after `dispose`, and settles when the product held none.
+     * Rejects when the store cannot remove it.
+     */
+    cancelGameReminder,
+    /**
      * Stops the poller, closes the channel and stops hearing the page, so a round in flight claims nothing more, while
      * a claim whose delete is already running still shows the notification it removed. An `init` or a restore after it
      * starts nothing, a `schedule` or `cancel` still settles as the store answers, and it is safe to call twice or
@@ -426,6 +439,15 @@ export function createScheduledNotifications({
 
   function cancel(productId: ProductId, perProductId: number): Promise<boolean> {
     return store.cancel(productId, perProductId);
+  }
+
+  async function holdGameReminder(request: GameReminderRequest): Promise<void> {
+    await store.holdGameReminder(request);
+    machine.update({ kind: 'scheduled' });
+  }
+
+  function cancelGameReminder(productId: ProductId): Promise<void> {
+    return store.cancelGameReminder(productId);
   }
 
   function dispose(): void {
