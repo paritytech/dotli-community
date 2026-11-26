@@ -20,13 +20,9 @@ type Params = {
  */
 export function createChatPlatform({ chat = chatStore }: Params = {}): Required<ChatPlatform> {
   return {
-    async createChatRoom(product, request) {
-      const status = await chat.createRoom(product.productId, {
-        roomId: request.roomId,
-        name: request.name,
-        icon: request.icon,
-      });
-      return { status };
+    // The host serves every part of a room, so a room's config, which hands parts to the product, is not kept.
+    async createChatRoom(product, roomId, request) {
+      return await chat.createRoom(product.productId, { roomId, name: request.name, icon: request.icon });
     },
 
     async setChatRoomFooter(product, request) {

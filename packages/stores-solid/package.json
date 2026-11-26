@@ -21,6 +21,6 @@
   },
   "dependencies": {
     "nanostores": "1.5.5",
-    "solid-js": "2.0.3"
+    "solid-js": "2.0.4"
   }
 }

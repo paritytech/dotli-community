@@ -133,18 +133,15 @@ function createConfigEnvironmentPlugin(solidNoExternal: string[], manifestSource
         `}\n`
       );
     },
-    writeBundle: {
-      sequential: true,
-      async handler() {
-        // Before Astro deletes the .vite folder. The client build always writes the manifest, as its environment asks
-        // for one, so a missing one fails the build.
-        if (this.environment.name !== 'client') {
-          return;
-        }
-        const raw = await readFile(join(manifestSource.clientDir, '.vite/manifest.json'), 'utf-8');
-        // globalThis declares no symbol keys, and the registry entry is read back untyped.
-        (globalThis as Record<symbol, unknown>)[Symbol.for(getManifestRegistryKey(manifestSource))] = JSON.parse(raw);
-      },
+    async writeBundle() {
+      // Before Astro deletes the .vite folder. The client build always writes the manifest, as its environment asks
+      // for one, so a missing one fails the build.
+      if (this.environment.name !== 'client') {
+        return;
+      }
+      const raw = await readFile(join(manifestSource.clientDir, '.vite/manifest.json'), 'utf-8');
+      // globalThis declares no symbol keys, and the registry entry is read back untyped.
+      (globalThis as Record<symbol, unknown>)[Symbol.for(getManifestRegistryKey(manifestSource))] = JSON.parse(raw);
     },
   };
 }
