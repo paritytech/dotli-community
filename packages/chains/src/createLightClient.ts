@@ -20,6 +20,7 @@ import { pageChainSyncReporter, type ChainSyncReporter } from './createChainSync
 import { createChainSyncTaps } from './createChainSyncTaps.js';
 import { createPrefetchingStore, type SmoldotDbChain, type SmoldotDbOutcome } from './createPrefetchingStore.js';
 import type { SmoldotDb } from './createSmoldotDb.js';
+import type { LightClientStack } from './createStackBuilder.js';
 import { LIGHT_CLIENT_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
 import {
   LightClientCapError,
@@ -47,6 +48,8 @@ export { createLightClientDeps } from './createLightClientDeps.js';
 export type LightClientDeps = {
   /** Each chain's stored database, or `null` where IndexedDB is missing and every chain starts cold. */
   db: SmoldotDb | null;
+  /** Loads the active network's signed stack, whose chains the engine runs. A rejection fails the engine's start. */
+  loadStack: () => Promise<LightClientStack>;
   /** truapi-provider's log level, `off` for none. */
   logLevel: string;
   /** Counts this light client as live. `null` where metrics go nowhere, so no timer keeps an idle SharedWorker up. */
@@ -168,11 +171,13 @@ type ConnectionMachine = MachineTypes<ChainConnection, ClientEvent, ClientEffect
  * opened after a fatal halts without starting the engine.
  *
  * @example
- * const lightClient = createLightClient(createLightClientDeps(null, false)); // no session store, not local
+ * // no session store, not local, and the stack of the network the entry runs
+ * const lightClient = createLightClient(createLightClientDeps(null, false, () => loadStack(network)));
  * const transport = lightClient.createChainTransport(genesisHash); // null for a genesis the network does not define
  */
 export function createLightClient({
   db,
+  loadStack,
   logLevel,
   gauge,
   heartbeatMs = HEARTBEAT_DEFAULT_MS,
@@ -360,13 +365,15 @@ export function createLightClient({
           });
           emitSideEffect({ kind: 'prefetch', genesis: chain.genesis });
           update(
-            // A start that throws before it returns a promise rejects this one, so it fails the light client too.
-            new Promise<LightClientEngine>(resolve => {
-              resolve(start({ logLevel, store: prefetching?.store ?? null, debug }));
-            }).then(
-              (engine): ClientEvent => ({ kind: 'engineStarted', engine }),
-              (error: unknown): ClientEvent => ({ kind: 'engineFailed', error }),
-            ),
+            // A load or start that throws before it returns a promise rejects this one, so it fails the light client.
+            new Promise<LightClientStack>(resolve => {
+              resolve(loadStack());
+            })
+              .then(stack => start({ logLevel, store: prefetching?.store ?? null, debug, stack }))
+              .then(
+                (engine): ClientEvent => ({ kind: 'engineStarted', engine }),
+                (error: unknown): ClientEvent => ({ kind: 'engineFailed', error }),
+              ),
           );
         },
       },

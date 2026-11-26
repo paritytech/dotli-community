@@ -14,7 +14,7 @@ Build-time and runtime configuration:
 
 - **Owns** the network table (dotNS contracts, chain services, TLD, whether it is a test network) and the active
   network.
-- **Owns** each network's signed Trinity stack, which the TrUAPI core boots from.
+- **Owns** each network's signed Trinity stack, which the TrUAPI core and the light client boot from.
 - **Owns** the local roots, read by pages and the local servers.
 - **Owns** the backend and cache settings with their storage keys. It also owns the settings' URL form.
 - **Does not own**:
@@ -86,6 +86,8 @@ The network table for Node tooling. Reads no page state.
 - **URL form:** settings travel between origins as URL params. Defaults are stripped, so a clean URL means defaults.
 - **Fixed entry:** a worker never receives the runtime config, so it imports `./fixed`, never the bare entry.
 - **Stacks:** each network's link and signed descriptor are build copies that the `trinity-stack` CLI keeps and
-  verifies. `npm run stacks:update` fetches newer copies, and a chain wipe needs one, since the core dials only the
-  genesis hashes the descriptor names. The network table must name the same hashes, since the chain pool serves only
-  those. A page loads one network's copy as served, since the core checks its signature.
+  verifies. The core and the light client both start from them. `npm run stacks:update` fetches newer copies, and a
+  chain wipe needs one, since the core dials only the genesis hashes the descriptor names. A descriptor the operator
+  re-publishes with new light specs needs none, since the light client fetches the live copy itself when it refuses a
+  spec. The network table must name the same hashes, since the chain pool serves only those. A page loads one network's
+  copy as served, since the core checks its signature.
