@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { asProductId } from '@parity/truapi';
+import { asProductId, type HostChatCreateRoomRequest } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createChatPlatform } from './createChatPlatform.js';
@@ -25,8 +25,8 @@ describe('chat platform', () => {
     const initial = await stream.next();
 
     // When
-    await platform.createChatRoom(OTHER, buildRoom('elsewhere'));
-    await platform.createChatRoom(PRODUCT, buildRoom('main'));
+    await platform.createChatRoom(OTHER, 'elsewhere', buildRoom('elsewhere'));
+    await platform.createChatRoom(PRODUCT, 'main', buildRoom('main'));
     const changed = await stream.next();
 
     // Then
@@ -40,7 +40,7 @@ describe('chat platform', () => {
     // Given
     const repo = createMemoryChatRepo();
     const platform = createChatPlatform({ chat: createChatStore({ repo, connections: createChatConnections() }) });
-    await platform.createChatRoom(PRODUCT, buildRoom('main'));
+    await platform.createChatRoom(PRODUCT, 'main', buildRoom('main'));
 
     // When
     await platform.setChatRoomFooter(PRODUCT, { roomId: 'main', footer: { tag: 'Empty' } });
@@ -53,7 +53,7 @@ describe('chat platform', () => {
     // Given
     const repo = createMemoryChatRepo();
     const platform = createChatPlatform({ chat: createChatStore({ repo, connections: createChatConnections() }) });
-    await platform.createChatRoom(PRODUCT, buildRoom('main'));
+    await platform.createChatRoom(PRODUCT, 'main', buildRoom('main'));
 
     // When
     await platform.setChatRoomFooter(PRODUCT, {
@@ -69,7 +69,7 @@ describe('chat platform', () => {
     // Given
     const repo = createMemoryChatRepo();
     const platform = createChatPlatform({ chat: createChatStore({ repo, connections: createChatConnections() }) });
-    await platform.createChatRoom(OTHER, buildRoom('main'));
+    await platform.createChatRoom(OTHER, 'main', buildRoom('main'));
 
     // When
     const set = platform.setChatRoomFooter(PRODUCT, { roomId: 'main', footer: 'Empty' });
@@ -92,8 +92,8 @@ describe('chat platform', () => {
     const first = stream.next();
 
     // When two rooms are created while the first read waits, and the reads then land
-    await platform.createChatRoom(PRODUCT, buildRoom('a'));
-    await platform.createChatRoom(PRODUCT, buildRoom('b'));
+    await platform.createChatRoom(PRODUCT, 'a', buildRoom('a'));
+    await platform.createChatRoom(PRODUCT, 'b', buildRoom('b'));
     repo.reads.releaseOne();
     const firstList = await first;
     const second = stream.next();
@@ -122,7 +122,7 @@ describe('chat platform', () => {
     const platform = createChatPlatform({ chat });
     const stream = platform.subscribeChatRooms(PRODUCT)[Symbol.asyncIterator]();
     await repo.reads.holding(1);
-    await platform.createChatRoom(PRODUCT, buildRoom('a'));
+    await platform.createChatRoom(PRODUCT, 'a', buildRoom('a'));
 
     // When the product stops listening, then the running read lands, with any later read let through at once, and a
     // second subscription's first list arrives after that landing was handled
@@ -155,7 +155,7 @@ describe('chat platform', () => {
     // When the first read fails, then a room is created
     const failed = await stream.next();
     const end = await stream.next();
-    await platform.createChatRoom(PRODUCT, buildRoom('a'));
+    await platform.createChatRoom(PRODUCT, 'a', buildRoom('a'));
 
     // Then
     expect(yielded(failed)._unsafeUnwrapErr()).toEqual({ reason: 'rooms unreadable' });
@@ -181,6 +181,11 @@ describe('chat platform', () => {
   });
 });
 
-function buildRoom(roomId: string): { roomId: string; name: string; icon: string } {
-  return { roomId, name: roomId, icon: '' };
+function buildRoom(source: string): HostChatCreateRoomRequest {
+  return {
+    roomIdSource: source,
+    name: source,
+    icon: '',
+    config: { productSource: false, reactionDetails: false, reportSeen: false },
+  };
 }
