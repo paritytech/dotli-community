@@ -365,15 +365,13 @@ export function createLightClient({
           });
           emitSideEffect({ kind: 'prefetch', genesis: chain.genesis });
           update(
-            // A load or start that throws before it returns a promise rejects this one, so it fails the light client.
-            new Promise<LightClientStack>(resolve => {
-              resolve(loadStack());
-            })
-              .then(stack => start({ logLevel, store: prefetching?.store ?? null, debug, stack }))
-              .then(
-                (engine): ClientEvent => ({ kind: 'engineStarted', engine }),
-                (error: unknown): ClientEvent => ({ kind: 'engineFailed', error }),
-              ),
+            // A start that throws before it returns a promise rejects this one, so it fails the light client too.
+            new Promise<LightClientEngine>(resolve => {
+              resolve(start({ logLevel, store: prefetching?.store ?? null, debug, loadStack }));
+            }).then(
+              (engine): ClientEvent => ({ kind: 'engineStarted', engine }),
+              (error: unknown): ClientEvent => ({ kind: 'engineFailed', error }),
+            ),
           );
         },
       },

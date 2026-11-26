@@ -36,8 +36,8 @@ export type StartEngineParams = {
   store: SmoldotDb | null;
   /** Lets the debug console change the log level. */
   debug: boolean;
-  /** The network's signed stack, whose chains the engine runs. */
-  stack: LightClientStack;
+  /** Loads the network's signed stack, whose chains the engine runs. Rejects when it cannot be loaded. */
+  loadStack: () => Promise<LightClientStack>;
 };
 
 export type StartEngine = (params: StartEngineParams) => Promise<LightClientEngine>;
@@ -55,16 +55,17 @@ export class LightClientCapError extends Error {
 }
 
 /**
- * truapi-provider's wasm, loaded and built once per light client for `stack`. Rejects when the wasm fails to load,
- * and as `createStackBuilder` does when the stack or its light specs cannot be had.
+ * truapi-provider's wasm, loaded and built once per light client for the stack `loadStack` gives, which loads beside the
+ * wasm. Rejects when the wasm or the stack fails to load, when the engine refuses the stack, the live descriptor or one
+ * of its light specs, or when a light spec or the live descriptor still cannot be fetched after its retries.
  */
 export async function startTruapiProvider({
   logLevel,
   store,
   debug,
-  stack,
+  loadStack,
 }: StartEngineParams): Promise<LightClientEngine> {
-  await init({ module_or_path: wasmUrl });
+  const [, stack] = await Promise.all([init({ module_or_path: wasmUrl }), loadStack()]);
   setLogLevel(logLevel);
   if (debug) {
     Reflect.set(globalThis, '__truapiProvider', { setLogLevel });

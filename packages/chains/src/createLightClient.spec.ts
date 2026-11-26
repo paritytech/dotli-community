@@ -771,21 +771,6 @@ describe('createLightClient', () => {
     expect(second.onHalt).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli user on a light client, I see a stack that fails to load halt my chain with its cause and the engine never start', async () => {
-    // Given
-    const failure = new Error('stack chunk failed to load');
-    client = createLightClient(createDeps(engine, { loadStack: () => Promise.reject(failure) }));
-    const chainHooks = createMockHooks();
-
-    // When
-    open(chainHooks);
-    await chainHooks.halted();
-
-    // Then
-    expect(chainHooks.onHalt).toHaveBeenCalledWith(failure);
-    expect(engine.start).not.toHaveBeenCalled();
-  });
-
   it('As a dotli user on a light client, I see a failed start mark the light client fatal exactly once', async () => {
     // Given a start that fails, with two chains queued behind it
     const changes: LightClientChange[] = [];
