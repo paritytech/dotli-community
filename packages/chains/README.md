@@ -53,8 +53,13 @@ flowchart LR
   lc -. lifecycle snapshots .-> sync[sync reporting]
 ```
 
-- **Light client:** one per context. Its database is saved per genesis hash, so a repeat visit skips the checkpoint
+- **Light client:** one per context. It runs the chains of the active network's signed stack, which its deps load, and
+  never the engine's bundled catalog. Its database is saved per genesis hash, so a repeat visit skips the checkpoint
   sync.
+- **Engine start:** fetches every light spec the stack's descriptor names, each retried, before the engine is built. A
+  spec the engine refuses means the build copy went stale, so the start fetches the live descriptor once from the
+  stack's link and runs again from it. A spec or descriptor that still cannot be had fails the start, and the light
+  client turns fatal.
 - **Gateway providers:** reconnect and replay subscriptions. They never import smoldot.
 - **Pool:** each lease is a consumer. A chain closes after its last lease, or at once when it halts. Watchers hear each
   change once the call that made it has returned, so one that asks the pool for a chain finds the pool settled.

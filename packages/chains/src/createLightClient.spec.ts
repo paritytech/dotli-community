@@ -242,8 +242,21 @@ function createRecordingAttach(): { attachChainSync: ChainSyncReporter['attachCh
   };
 }
 
+// The fake engine never reads the stack.
+const STACK = {
+  pointer: 'polkadotapp://stack?url=https%3A%2F%2Fstacks.test%2Fnetwork.json',
+  descriptor: new Uint8Array(),
+};
+
 function createDeps(engine: FakeEngine, extra: Partial<LightClientDeps> = {}): LightClientDeps {
-  return { db: null, logLevel: 'off', gauge: null, start: engine.start, ...extra };
+  return {
+    db: null,
+    loadStack: () => Promise.resolve(STACK),
+    logLevel: 'off',
+    gauge: null,
+    start: engine.start,
+    ...extra,
+  };
 }
 
 const BLOB = 'x'.repeat(200_000);
@@ -1111,6 +1124,7 @@ describe('isChainSupported', () => {
   // Support is decided before anything starts, so this light client never needs an engine.
   const lightClient = createLightClient({
     db: null,
+    loadStack: () => Promise.reject(new Error('no stack in this test')),
     logLevel: 'off',
     gauge: null,
     start: () => Promise.reject(new Error('no engine in this test')),

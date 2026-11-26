@@ -7,6 +7,11 @@ import type { LightClientDeps } from './createLightClient.js';
 import { createLightClientDeps } from './createLightClientDeps.js';
 
 describe('createLightClientDeps', () => {
+  // No case starts the light client, so none loads the stack.
+  function loadStack(): Promise<never> {
+    return Promise.reject(new Error('no stack in this test'));
+  }
+
   function createSession(entries: Record<string, string>): Pick<Storage, 'getItem'> {
     return { getItem: key => entries[key] ?? null };
   }
@@ -27,7 +32,7 @@ describe('createLightClientDeps', () => {
     },
   ])('As $role, I see the light client log at level $level', ({ session, local, level }) => {
     // When
-    const { logLevel } = createLightClientDeps(session, local);
+    const { logLevel } = createLightClientDeps(session, local, loadStack);
 
     // Then
     expect(logLevel).toBe(level);
@@ -35,8 +40,8 @@ describe('createLightClientDeps', () => {
 
   it('As a tester, I set a heartbeat interval in my session and it slows the heartbeat, and a bad one is ignored', () => {
     // When
-    const slowed = createLightClientDeps(createSession({ 'dotli:smoldot-heartbeat-ms': '3600000' }), false);
-    const bad = createLightClientDeps(createSession({ 'dotli:smoldot-heartbeat-ms': 'soon' }), false);
+    const slowed = createLightClientDeps(createSession({ 'dotli:smoldot-heartbeat-ms': '3600000' }), false, loadStack);
+    const bad = createLightClientDeps(createSession({ 'dotli:smoldot-heartbeat-ms': 'soon' }), false, loadStack);
 
     // Then
     expect(slowed.heartbeatMs).toBe(3_600_000);
@@ -46,7 +51,7 @@ describe('createLightClientDeps', () => {
   it('As a dotli operator on a build with metrics, I see my gauge report the running light client', () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const { gauge } = createLightClientDeps(null, false);
+    const { gauge } = createLightClientDeps(null, false, loadStack);
 
     // When
     gauge?.(1);

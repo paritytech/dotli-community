@@ -7,7 +7,7 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import { isLocalhost, setActiveNetwork } from '@dotli/config';
+import { isLocalhost, loadStack, setActiveNetwork } from '@dotli/config';
 import { createReporter, flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { byteMeter, chainSync, createLightClient, createLightClientDeps } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
@@ -39,8 +39,12 @@ startProtocolWorker({
   network,
   flush: () => flushTelemetry(2_000, report),
   netBytes: { read: byteMeter.readBytesReceived },
-  // A worker has no session to tune it from.
-  lightClient: createLightClient(createLightClientDeps(null, isLocalhost)),
+  // A worker has no session to tune it from. A worker with no network serves nothing, so its light client never starts.
+  lightClient: createLightClient(
+    createLightClientDeps(null, isLocalhost, () =>
+      network.success ? loadStack(network.value) : Promise.reject(new Error(network.value)),
+    ),
+  ),
   // The resolver's factory by name, not its namespace, so the worker bundle keeps only what it calls of the resolver.
   resolver: {
     createDotnsResolver,

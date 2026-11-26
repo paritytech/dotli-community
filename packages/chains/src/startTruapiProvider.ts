@@ -1,13 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The engine under the light client: truapi-provider's embedded smoldot. Each chain comes from its genesis hash through
-// truapi-provider's bundled catalog.
+// The engine under the light client: truapi-provider's embedded smoldot. It runs the chains of the network's signed
+// Trinity stack, from the light specs its descriptor names, never from truapi-provider's bundled catalog.
 
 import { getErrorMessage } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import type { ChainLifecycleWatch } from './createChainSyncReporter.js';
+import { createStackBuilder, type LightClientStack } from './createStackBuilder.js';
 import type { SmoldotDb } from './createSmoldotDb.js';
 
 /** What the light client uses of a started truapi-provider. */
@@ -35,6 +36,8 @@ export type StartEngineParams = {
   store: SmoldotDb | null;
   /** Lets the debug console change the log level. */
   debug: boolean;
+  /** Loads the network's signed stack, whose chains the engine runs. Rejects when it cannot be loaded. */
+  loadStack: () => Promise<LightClientStack>;
 };
 
 export type StartEngine = (params: StartEngineParams) => Promise<LightClientEngine>;
@@ -51,14 +54,23 @@ export class LightClientCapError extends Error {
   }
 }
 
-/** truapi-provider's wasm, loaded and built once per light client. */
-export async function startTruapiProvider({ logLevel, store, debug }: StartEngineParams): Promise<LightClientEngine> {
-  await init({ module_or_path: wasmUrl });
+/**
+ * truapi-provider's wasm, loaded and built once per light client for the stack `loadStack` gives, which loads beside the
+ * wasm. Rejects when the wasm or the stack fails to load, when the engine refuses the stack, the live descriptor or one
+ * of its light specs, or when a light spec or the live descriptor still cannot be fetched after its retries.
+ */
+export async function startTruapiProvider({
+  logLevel,
+  store,
+  debug,
+  loadStack,
+}: StartEngineParams): Promise<LightClientEngine> {
+  const [, stack] = await Promise.all([init({ module_or_path: wasmUrl }), loadStack()]);
   setLogLevel(logLevel);
   if (debug) {
     Reflect.set(globalThis, '__truapiProvider', { setLogLevel });
   }
-  const builder = new ChainProviderBuilder();
+  const builder = await createStackBuilder({ stack, createBuilder: () => new ChainProviderBuilder() });
   // Over https the browser blocks `ws://` to non-localhost peers as mixed content.
   builder.setConnectionTypes({ unsecure: false });
   if (store !== null) {

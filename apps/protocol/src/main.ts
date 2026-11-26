@@ -22,6 +22,7 @@ import {
   TIMEOUTS,
   getActiveServicesConfig,
   isLocalhost,
+  loadStack,
   parseSettingsFromSearch,
   setActiveNetwork,
   type Backend,
@@ -220,7 +221,7 @@ async function startMode(backend: Backend, network: Network): Promise<boolean> {
       return true;
     case 'smoldot-direct':
       m.setDefaults({ protocol_mode: 'direct' });
-      await initDirectMode();
+      await initDirectMode(network);
       protocolModeMetric.count({ mode: 'direct' });
       return true;
   }
@@ -258,7 +259,7 @@ function serveEngine(engine: ProtocolEngine, pool: ChainPool): void {
   boot.markReady();
 }
 
-async function initDirectMode(): Promise<void> {
+async function initDirectMode(network: Network): Promise<void> {
   // Dynamic so the other modes pay for neither smoldot nor the chain pool.
   const [provider, resolve, lightClientService] = await Promise.all([
     loadProvider(),
@@ -266,7 +267,9 @@ async function initDirectMode(): Promise<void> {
     loadLightClientService(),
   ]);
   const session = readSessionTuning(() => sessionStorage);
-  const lightClient = provider.createLightClient(provider.createLightClientDeps(session, isLocalhost));
+  const lightClient = provider.createLightClient(
+    provider.createLightClientDeps(session, isLocalhost, () => loadStack(network)),
+  );
   const service = lightClientService.startLightClientService({
     lightClient,
     resolver: {
