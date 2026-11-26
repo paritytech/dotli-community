@@ -54,6 +54,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [author-metadata-the-rfc-does-not-name](author-metadata-the-rfc-does-not-name.md): a product page adds a piece of the
   author's metadata the product-manifest RFC does not name, and the question is whether it is read while the product
   resolves or when the author card opens, and where it is kept.
+- [build-copy-of-signed-data-the-network-republishes](build-copy-of-signed-data-the-network-republishes.md): a
+  component starts from signed data the network re-publishes, such as a light client's descriptor, the build keeps a
+  copy that can go stale and the consumer refuses a stale part, so the question is when it fetches the live data.
 - [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
   finds a style or skill rule that matches the code's shape, or a rater lists it, and the rewrite it describes would
   read no better than the code it replaces, or would drop a guard that keeps idle work from running. Also how to correct
@@ -94,6 +97,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
   page `<script>` starts it.
 - [parameters-only-valid-together](parameters-only-valid-together.md): a function takes a nullable parameter and a
   second one, often a callback, used only when the first is set, so a caller without the first passes a stand-in.
+- [per-network-input-a-low-level-package-may-not-load](per-network-input-a-low-level-package-may-not-load.md): a
+  low-level package's component needs a per-network input at start, the config package's loader sits in an entry some
+  of its files may not import, and the app's entries that build its deps know the active network.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
   callbacks each serve a different feature.
 - [security-critical-config-to-a-sandboxed-child](security-critical-config-to-a-sandboxed-child.md): a sandboxed child
@@ -101,6 +107,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [read-serves-sources-of-different-trust](read-serves-sources-of-different-trust.md): one read checks what a caller's
   source returns, such as hashing blocks against their ids, and its callers' sources differ in trust, so the question is
   whether the read picks the check or each caller wraps its own source.
+- [start-input-the-network-fails-to-serve](start-input-the-network-fails-to-serve.md): a component that starts lazily
+  needs a small input per item fetched from the network, it already turns a failed start fatal for the layer above to
+  rebuild, and the question is whether a failed input fails the start, degrades it or halts one item.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds
   a value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
