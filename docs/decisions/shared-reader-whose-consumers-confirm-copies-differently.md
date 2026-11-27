@@ -36,6 +36,8 @@ first and the copy only once their write committed, through a separate store eac
    files alone, for a start from the stored or build copy, which carries no store call. The app entries then pass the reader alone,
    with no adapter of their own over the files' store.
 7. Add no parameter that names who confirms the copy, and do not make every caller store the copy.
+8. Where both readers write on one device, keep one copy for both and coordinate their writes, as
+   [stored-data-with-several-writers](stored-data-with-several-writers.md) says.
 
 The owner chose the two named readers without stating a reason. The consumer that confirms a copy is the only one that
 knows when the copy and its files are safe to start from, and the consumer that cannot confirm keeps its reader as it
@@ -90,7 +92,7 @@ if (await fileStore.set(engine.files())) await next.save(); // two writes, the c
 ## Cases
 
 - One reader in the storage package starts a core runtime the host boots and a light-client engine in the chains
-  package, on different origins, from a stored signed descriptor and fetches the live one behind each start. The core
+  package, which can share one origin and so one database, from a stored signed descriptor and fetches the live one behind each start. The core
   has only the reader's WebCrypto Ed25519 check, while the engine checks every descriptor and needs the spec files it
   names stored separately. A review found that storing a descriptor before the engine accepted it and its files broke a
   later start during an outage, and that on a platform without Ed25519 the engine lost its recovery from the live copy.

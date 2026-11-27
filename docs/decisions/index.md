@@ -118,8 +118,12 @@ The owner may change or remove any rule. A change here lands in the same commit 
   needs a small input per item fetched from the network, it already turns a failed start fatal for the layer above to
   rebuild, and the question is whether a failed input fails the start, degrades it or halts one item.
 - [stored-copy-read-by-consumers-in-two-layers](stored-copy-read-by-consumers-in-two-layers.md): consumers in two
-  layers and on different origins start from an input by one read policy over a stored copy, one of them in a low-level
-  package that may not import the storage package, and the question is where the policy and each stored copy live.
+  layers, on one origin or on different origins, start from an input by one read policy over a stored copy, one of them
+  in a low-level package that may not import the storage package, and the question is where the policy and the stored
+  copy live.
+- [stored-data-with-several-writers](stored-data-with-several-writers.md): one set of stored data has several writers,
+  which may accept what they write by different rules and share one database, and the question is whether each writer
+  gets a copy of its own or the writers are coordinated over one copy.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds
   a value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end

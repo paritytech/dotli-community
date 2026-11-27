@@ -4,8 +4,8 @@ A developer adds a policy for reading an input that consumers start from, such a
 copy to start from and when to fetch and store the live one. Two consumers follow the same policy, and they sit in
 different layers. One is in a low-level package that may not import the storage package and gets its inputs through
 deps the app's entries build. It may already keep an IndexedDB database of its own. The other is booted by a top-level
-app that may import the storage package. They run on different origins, so each keeps its own stored copy. The question
-is where the policy lives and where each consumer's stored copy lives:
+app that may import the storage package. They may run on different origins, each with its own database, or share one
+origin and so one database. The question is where the policy lives and where the stored copy lives:
 
 - the policy in the package that owns the input, taking a store as a parameter, with each consumer's copy in a database
   that consumer's layer already has
@@ -18,7 +18,9 @@ is where the policy lives and where each consumer's stored copy lives:
 2. Do not split the policy from the store into the package that owns the input, and do not give each consumer its own
    reader and store.
 3. Keep the low-level consumer's copy out of its own database, even when it has one.
-4. Let the top-level app use the storage package's store directly. It writes its own copy on its own origin.
+4. Let the top-level app use the storage package's store directly. Where it shares an origin with the low-level
+   consumer, both write the one copy in one database, and their writes are coordinated as
+   [stored-data-with-several-writers](stored-data-with-several-writers.md) says.
 5. For the low-level consumer, have each app entry that builds its deps build the reader from the storage package's
    store and pass it in, as
    [per-network-input-a-low-level-package-may-not-load](per-network-input-a-low-level-package-may-not-load.md) passes a
@@ -47,7 +49,7 @@ export function createManifestReader(sources: ManifestSources) {
 const manifests = createManifestReader(manifestSources);
 const engine = createEngine({ readManifest: () => manifests.read(activeNetwork) });
 
-// the top-level app, on its own origin
+// the top-level app, writing the same store
 const runtime = bootRuntime({ manifest: await createManifestReader(manifestSources).read(activeNetwork) });
 ```
 
@@ -68,7 +70,7 @@ const engine = createEngine({ readManifest, keptFiles: { get: () => fileStore.ge
 
 - A per-network signed descriptor the config package bundles and the network re-publishes is the start of a light-client
   engine in the chains package, which has its own IndexedDB database for engine snapshots, and of the core runtime the
-  host boots, on another origin. Offered the policy in the config package with a store parameter, one store with the
+  host boots, which can share the engine's origin and so its database. Offered the policy in the config package with a store parameter, one store with the
   policy in the storage package, or a reader per consumer, the owner chose the store and the policy in the storage
   package. (docs/\_plans/stack-reader-cache-design.md)
 - The light-client engine's spec files, kept beside the descriptor, were read and written through a spec store both
