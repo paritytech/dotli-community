@@ -44,7 +44,7 @@ dotli's persistent browser data in IndexedDB:
 | `blockCache`                                                                                    | Bitswap block cache.                                          |
 | `cidCache`, `CachedCid`, `CachedManifests`                                                      | Label to CID cache.                                           |
 | `nameList`, `NameList`, `NameListRecord`                                                        | The landing page's dotNS name list, which it can also clear.  |
-| `createStackStore`, `stackStore`, `StackStore`, `StoredStack`, `StoredLightSpecs`               | Each network's stored stack and accepted light specs.         |
+| `StoredLightSpecs`                                                                              | The light specs a consumer accepted a copy with.              |
 | `createStackReader`, `StackReader`, `StackRead`                                                 | A network's stack to start from, and a newer live copy.       |
 | `createStackOfferReader`, `StackOfferReader`, `StackOfferRead`, `StackOfferStart`, `StackOffer` | The same, plus the kept specs. A copy is kept with its specs. |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`                           | The local wallet.                                             |

@@ -26,7 +26,6 @@ export type {
   StackReader,
 } from './stackReader.js';
 export { createStackOfferReader, createStackReader } from './stackReader.js';
-export type { StackStore, StoredLightSpecs, StoredStack } from './stackStore.js';
-export { createStackStore, stackStore } from './stackStore.js';
+export type { StoredLightSpecs } from './stackStore.js';
 export type { SiteGrant, SiteGrantStore } from './siteGrants.js';
 export { createSiteGrantStore, siteGrants } from './siteGrants.js';
