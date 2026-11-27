@@ -82,9 +82,9 @@ In-memory databases (fake-indexeddb) for tests:
   sequence, with no wait on the network. It fetches the live descriptor behind the start, and hands it on as the newer
   copy when it is newer than the one started from. With no stored copy the start waits for that fetch, and falls back to
   the bundled copy when it fails. A stored copy kept under another link is ignored.
-- **Check before storing:** a live copy is taken only when its envelope parses and its sequence is higher than the
-  stored one's, or at least the bundled one's with none stored. Its Ed25519 signature must verify against the link's key
-  through WebCrypto too. A refused copy or a failed fetch is reported as expected and never fails the start. Only a
+- **Check before storing:** a live copy is taken only when its envelope parses and its sequence is higher than the copy
+  the start opened, or at least the bundled one's with none stored. Its Ed25519 signature must verify against the link's
+  key through WebCrypto too. A refused copy or a failed fetch is reported as expected and never fails the start. Only a
   failed bundled load does.
 - **Two readers, one policy:** the stack reader serves a consumer that fails its whole start on a copy it refuses, so it
   cannot be asked. It stores a live copy once its signature verifies, whether the start takes it or it is handed on as
@@ -93,9 +93,9 @@ In-memory databases (fake-indexeddb) for tests:
   newer one, carries a `keep` the consumer calls once it accepted the copy. A stored or bundled copy to start from
   carries none. Where the platform cannot check Ed25519 the start takes the stored or bundled copy, and the live one is
   handed on as the newer copy all the same.
-- **One fetch per page:** reads of one network on one reader share its live fetch for the page's life. A failed fetch is
-  not kept, so the next read fetches again. Each read reads the stored copy again, so a later read starts from a copy an
-  earlier one stored.
+- **One fetch per page:** reads of one network on one reader share its live fetch and its check for the page's life. A
+  failed fetch is not kept, so the next read fetches again. Each read reads the stored copy again, so a later read
+  starts from a copy an earlier one stored.
 - **Local wallet:** root entropy encrypted under a key this origin cannot export. `forgetIf` never deletes a wallet
   saved since the load.
 - **Site grants:** what a session window keeps of each site the user signed in to. One grant per token, or per group and
