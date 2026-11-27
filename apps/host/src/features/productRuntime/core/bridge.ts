@@ -5,11 +5,11 @@
 // dialogs, showing its notifications and drawing around the frame with its layout.
 
 import type { ProductAccountId } from '@parity/truapi';
-import { getActiveServicesConfig, getNetwork, loadStack } from '@dotli/config';
+import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { m } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn, markHandled } from '@dotli/shared';
-import { siteGrants } from '@dotli/storage';
+import { createStackReader, siteGrants } from '@dotli/storage';
 import { hostPrompts } from '../../permissions/index.js';
 import { loadHostRuntimeChunk, loadPolkadotApi, loadTxFillers } from '../../../kit/lazy.js';
 import { pageNotifications } from '../../notifications/index.js';
@@ -77,13 +77,14 @@ void markHandled(hostRuntime());
 
 // Each core boots on the wallet read from the shared store and the published host runtime, with callbacks that ask
 // the page.
+const stackReader = createStackReader();
 const bootRuntime = createCoreRuntimeBoot({
   readWallet: pageWalletBoot.read,
   async loadHostRuntime() {
     const { web, HostWorker } = await hostRuntime();
     return { createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime, HostWorker };
   },
-  loadStack: () => loadStack(getNetwork()),
+  loadStack: async () => (await stackReader.read(getNetwork())).stack,
   createCallbacks: options =>
     createHostCallbacks({
       ...options,
