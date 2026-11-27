@@ -22,7 +22,8 @@ is where the policy lives and where each consumer's stored copy lives:
 5. For the low-level consumer, have each app entry that builds its deps build the reader from the storage package's
    store and pass it in, as
    [per-network-input-a-low-level-package-may-not-load](per-network-input-a-low-level-package-may-not-load.md) passes a
-   bound loader.
+   loader for the active network. When that consumer also keeps records beside the copy, such as files the copy names,
+   read and write them through the same reader, so the entry passes the reader alone and adapts no second store.
 
 The owner chose this without stating a reason. The storage package is where the app's other IndexedDB databases and
 stores already live, and the policy stays with the store it reads and writes rather than with either consumer. The owner
@@ -31,7 +32,7 @@ itself does is [build-copy-of-signed-data-the-network-republishes](build-copy-of
 When the two consumers differ in whether they can confirm a fetched copy themselves, the storage package exports a named
 reader for each, as
 [shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md)
-says.
+says. That rule also says how the records kept beside the copy come through the reader.
 
 ## Example
 
@@ -39,14 +40,15 @@ says.
 // storage package: one store and the policy that reads it
 export function createManifestReader(sources: ManifestSources) {
   const store = manifestCopies();
-  return { read: () => readWithPolicy(store, sources) };
+  return { read: (network: Network) => readWithPolicy(store, sources, network) };
 }
 
 // each app entry that builds the low-level package's deps
-const engine = createEngine({ readManifest: createManifestReader(sourcesFor(activeNetwork)).read });
+const manifests = createManifestReader(manifestSources);
+const engine = createEngine({ readManifest: () => manifests.read(activeNetwork) });
 
 // the top-level app, on its own origin
-const runtime = bootRuntime({ manifest: await createManifestReader(sourcesFor(activeNetwork)).read() });
+const runtime = bootRuntime({ manifest: await createManifestReader(manifestSources).read(activeNetwork) });
 ```
 
 Not this:
@@ -57,6 +59,9 @@ export function readManifest(store: CopyStore) { /* ... */ }
 
 // low-level package: its copy in its own database
 const engine = createEngine({ readManifest: () => readManifest(engineDbCopies()) });
+
+// each entry adapts a second store for what is kept beside the copy
+const engine = createEngine({ readManifest, keptFiles: { get: () => fileStore.get(activeNetwork) } });
 ```
 
 ## Cases
@@ -66,5 +71,9 @@ const engine = createEngine({ readManifest: () => readManifest(engineDbCopies())
   host boots, on another origin. Offered the policy in the config package with a store parameter, one store with the
   policy in the storage package, or a reader per consumer, the owner chose the store and the policy in the storage
   package. (docs/\_plans/stack-reader-cache-design.md)
+- The light-client engine's spec files, kept beside the descriptor, were read and written through a spec store both
+  protocol entries adapted. The owner chose one write for the descriptor and its specs, with the offer reader handing
+  over the held specs, so the entries pass the reader alone. (reduce/stack-reader-stored-copy, reduce-complexity round,
+  proposal O1)
 
 Status: active

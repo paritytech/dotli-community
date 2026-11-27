@@ -91,7 +91,7 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
     }
   }
 
-  async function setLightSpecs(network: Network, specs: StoredLightSpecs): Promise<boolean> {
+  async function setLightSpecs(network: Network, specs: StoredLightSpecs): Promise<void> {
     const record: LightSpecRecord = { network, specs };
     try {
       const db = await idb.connect();
@@ -103,10 +103,26 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
           transaction.objectStore(LIGHT_SPEC_STORE).put(record);
         },
       });
-      return true;
     } catch (error) {
       reportLightSpecFailure('write', error);
-      return false;
+    }
+  }
+
+  async function setStackAndLightSpecs(stack: StoredStack, specs: StoredLightSpecs): Promise<void> {
+    const record: LightSpecRecord = { network: stack.network, specs };
+    try {
+      const db = await idb.connect();
+      await runIdbTransaction({
+        db,
+        stores: [STACK_STORE, LIGHT_SPEC_STORE],
+        mode: 'readwrite',
+        body: transaction => {
+          transaction.objectStore(STACK_STORE).put(stack);
+          transaction.objectStore(LIGHT_SPEC_STORE).put(record);
+        },
+      });
+    } catch (error) {
+      reportStackFailure('write', error);
     }
   }
 
@@ -121,10 +137,14 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
     /** Empty covers both a miss and a storage error, which is reported here. */
     getLightSpecs,
     /**
-     * Replaces the network's whole set, so a spec left out is dropped, and resolves whether the write committed. A
-     * failure keeps the old set and is reported here.
+     * Replaces the network's whole set, so a spec left out is dropped. A failure keeps the old set and is reported here.
      */
     setLightSpecs,
+    /**
+     * Replaces the network's copy and its light specs in one write, and resolves once it commits. A failure keeps both
+     * old records and is reported here.
+     */
+    setStackAndLightSpecs,
   };
 }
 

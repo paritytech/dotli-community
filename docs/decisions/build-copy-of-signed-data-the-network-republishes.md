@@ -14,8 +14,8 @@ and when it fetches the live copy:
 
 1. Start from the copy the context stored on an earlier start, with no wait on the network.
 2. Fetch the live data alongside that start, on every start.
-3. Store the fetched copy for the next start only once the consumer accepts it and the files it names are stored. When
-   one reader serves a consumer that confirms a copy and one that cannot, see
+3. Store the fetched copy for the next start only once the consumer accepts it, together with the files it names.
+   When one reader serves a consumer that confirms a copy and one that cannot, see
    [shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md).
 4. When the consumer cannot say whether it accepts a copy without starting from it, such as a third-party runtime whose
    start fails on a copy it refuses, check the fetched copy before storing it:

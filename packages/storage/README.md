@@ -46,7 +46,7 @@ dotli's persistent browser data in IndexedDB:
 | `nameList`, `NameList`, `NameListRecord`                                                        | The landing page's dotNS name list, which it can also clear.  |
 | `createStackStore`, `stackStore`, `StackStore`, `StoredStack`, `StoredLightSpecs`               | Each network's stored stack and accepted light specs.         |
 | `createStackReader`, `StackReader`, `StackRead`                                                 | A network's stack to start from, and a newer live copy.       |
-| `createStackOfferReader`, `StackOfferReader`, `StackOfferRead`, `StackOfferStart`, `StackOffer` | The same, with a live copy stored once its consumer keeps it. |
+| `createStackOfferReader`, `StackOfferReader`, `StackOfferRead`, `StackOfferStart`, `StackOffer` | The same, plus the kept specs. A copy is kept with its specs. |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`                           | The local wallet.                                             |
 | `LocalWalletStore`                                                                              | Local wallet type.                                            |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`                             | Site grants.                                                  |
@@ -76,8 +76,8 @@ In-memory databases (fake-indexeddb) for tests:
 - **Name list:** one record per network, which the landing page replaces after each sync step and can clear for every
   network.
 - **Stack store:** one stored stack per network, with its sequence, and one set of light specs per network by SHA-256. A
-  new set replaces the old one, so specs a newer descriptor no longer names are dropped. A spec write resolves whether
-  it committed, so a caller stores what needs the set only once the set is held.
+  new set replaces the old one, so specs a newer descriptor no longer names are dropped. A copy and the light specs it
+  was accepted with are written in one transaction, so a failed write keeps both old records.
 - **Stack reader:** a start reads the stored copy and the bundled copy at once and starts from the one with the higher
   sequence, with no wait on the network. It fetches the live descriptor behind the start, and hands it on as the newer
   copy when it is newer than the one started from. With no stored copy the start waits for that fetch, and falls back to
@@ -90,9 +90,10 @@ In-memory databases (fake-indexeddb) for tests:
   cannot be asked. It stores a live copy once its signature verifies, whether the start takes it or it is handed on as
   the newer copy once stored. A platform without Ed25519 stores nothing there. The offer reader serves a consumer that
   checks a copy itself, and stores nothing on its own. A live copy it hands on, as the copy to start from or as the
-  newer one, carries a `keep` the consumer calls once it accepted the copy. A stored or bundled copy to start from
-  carries none. Where the platform cannot check Ed25519 the start takes the stored or bundled copy, and the live one is
-  handed on as the newer copy all the same.
+  newer one, carries a `keep` the consumer calls once it accepted the copy, with the light specs it accepted it with. A
+  stored or bundled copy to start from carries none. The offer reader also hands on the network's kept light specs, with
+  a write of the specs alone for a start from a stored or bundled copy. Where the platform cannot check Ed25519 the
+  start takes the stored or bundled copy, and the live one is handed on as the newer copy all the same.
 - **One fetch per page:** reads of one network on one reader share its live fetch and its check for the page's life. A
   failed fetch is not kept, so the next read fetches again. Each read reads the stored copy again, so a later read
   starts from a copy an earlier one stored.

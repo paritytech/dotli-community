@@ -84,7 +84,7 @@ describe('stored light specs', () => {
     expect(specs).toEqual(new Map());
   });
 
-  it('As a light client, I store a newer set, learn it committed, and a spec it no longer names is gone', async () => {
+  it('As a light client, I store a newer set and a spec it no longer names is gone', async () => {
     // Given
     await store.setLightSpecs(
       PASEO,
@@ -95,11 +95,26 @@ describe('stored light specs', () => {
     );
 
     // When
-    const committed = await store.setLightSpecs(PASEO, new Map([[SPEC_B, new Uint8Array([2])]]));
+    await store.setLightSpecs(PASEO, new Map([[SPEC_B, new Uint8Array([2])]]));
 
     // Then
-    expect(committed).toBe(true);
     expect(await store.getLightSpecs(PASEO)).toEqual(new Map([[SPEC_B, new Uint8Array([2])]]));
+  });
+});
+
+describe('stored stack with its light specs', () => {
+  it('As a light client, I store a stack with the specs I accepted it with and read both back', async () => {
+    // Given
+    const specs = new Map([[SPEC_A, new Uint8Array([1])]]);
+
+    // When
+    await store.setStackAndLightSpecs(STACK, specs);
+
+    // Then
+    expect({ stack: await store.getStack(PASEO), specs: await store.getLightSpecs(PASEO) }).toEqual({
+      stack: STACK,
+      specs,
+    });
   });
 });
 
@@ -152,7 +167,7 @@ describe('stack store failures', () => {
     ]);
   });
 
-  it('As a light client, I store specs whose commit aborts, learn it did not commit, the old set stays and the failure is reported', async () => {
+  it('As a light client, I store specs whose commit aborts, the old set stays and the failure is reported', async () => {
     // Given a stored set, then a database that refuses every commit
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const { idb: refusable, refuse } = createRefusableIdb();
@@ -162,13 +177,34 @@ describe('stack store failures', () => {
     refuse();
 
     // When
-    const committed = await refusing.setLightSpecs(PASEO, new Map([[SPEC_B, new Uint8Array([2])]]));
+    await refusing.setLightSpecs(PASEO, new Map([[SPEC_B, new Uint8Array([2])]]));
 
     // Then
-    expect(committed).toBe(false);
     expect(await refusing.getLightSpecs(PASEO)).toEqual(stored);
     expect(sentry.counted('cache.storage')).toEqual([
       expect.objectContaining({ outcome: 'error', surface: 'light_specs', step: 'write' }),
+    ]);
+  });
+
+  it('As a light client, I store a stack with its specs whose commit aborts, both old records stay and one stack write failure is reported', async () => {
+    // Given a stored stack and set, then a database that refuses every commit
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const { idb: refusable, refuse } = createRefusableIdb();
+    const refusing = createStackStore({ idb: refusable });
+    const stored = new Map([[SPEC_A, new Uint8Array([1])]]);
+    await refusing.setStackAndLightSpecs(STACK, stored);
+    refuse();
+
+    // When
+    await refusing.setStackAndLightSpecs({ ...STACK, sequence: 5 }, new Map([[SPEC_B, new Uint8Array([2])]]));
+
+    // Then
+    expect({ stack: await refusing.getStack(PASEO), specs: await refusing.getLightSpecs(PASEO) }).toEqual({
+      stack: STACK,
+      specs: stored,
+    });
+    expect(sentry.counted('cache.storage')).toEqual([
+      expect.objectContaining({ outcome: 'error', surface: 'stack', step: 'write' }),
     ]);
   });
 });

@@ -13,6 +13,7 @@ import { createMemoryIdb } from './testing/index.js';
 const PASEO = 'paseo-next-v2';
 const DESCRIPTOR_URL = 'https://stack.example/.well-known/trinity-stack.json';
 const SIGNING_PREFIX = new TextEncoder().encode('trinity-stack/descriptor/v1');
+const SPECS = new Map([[`0x${'aa'.repeat(32)}`, new Uint8Array([1])]]);
 // WebCrypto on a platform whose Ed25519 is missing.
 const NO_ED25519: Pick<SubtleCrypto, 'importKey' | 'verify'> = {
   importKey: () => Promise.reject(new DOMException('Unrecognized algorithm name', 'NotSupportedError')),
@@ -329,7 +330,7 @@ describe('repeated reads', () => {
 });
 
 describe('a reader for a consumer that confirms copies itself', () => {
-  it('As a light client with no stored copy, I start from the verified live copy, stored only once I keep it', async () => {
+  it('As a light client with no stored copy, I start from the verified live copy, stored with my specs only once I keep it', async () => {
     // Given a start from the live copy with nothing stored
     const live = await signDescriptor(5);
     const reader = createStackOfferReader({
@@ -342,12 +343,13 @@ describe('a reader for a consumer that confirms copies itself', () => {
     const unkept = await store.getStack(PASEO);
 
     // When
-    await stack.keep?.();
+    await stack.keep?.(SPECS);
 
     // Then
     expect(stack.descriptor).toEqual(live);
     expect(unkept).toBeNull();
     expect(await store.getStack(PASEO)).toMatchObject({ sequence: 5 });
+    expect(await store.getLightSpecs(PASEO)).toEqual(SPECS);
   });
 
   it('As a light client on a platform without Ed25519, I start from the bundled copy and am offered the live one unstored', async () => {
@@ -371,7 +373,7 @@ describe('a reader for a consumer that confirms copies itself', () => {
     expect(await store.getStack(PASEO)).toBeNull();
   });
 
-  it('As a light client starting from a stored copy, I am offered the newer live copy, stored only once I keep it', async () => {
+  it('As a light client starting from a stored copy, I am offered the newer live copy, stored with my specs only once I keep it', async () => {
     // Given a newer live copy offered on a start from the stored one
     await storeCopy(5);
     const reader = createStackOfferReader({
@@ -384,10 +386,29 @@ describe('a reader for a consumer that confirms copies itself', () => {
     const unkept = await store.getStack(PASEO);
 
     // When
-    await offered?.keep();
+    await offered?.keep(SPECS);
 
     // Then
     expect(unkept).toMatchObject({ sequence: 5 });
     expect(await store.getStack(PASEO)).toMatchObject({ sequence: 6 });
+    expect(await store.getLightSpecs(PASEO)).toEqual(SPECS);
+  });
+
+  it('As a light client with specs kept for my network, I read them with the copy to start from', async () => {
+    // Given
+    await store.setLightSpecs(PASEO, SPECS);
+    const bundled = await signDescriptor(4);
+    const reader = createStackOfferReader({
+      store,
+      loadBundled: loadBundledOf(bundled),
+      fetch: serve(bundled),
+      timers,
+    });
+
+    // When
+    const { lightSpecs } = await reader.read(PASEO);
+
+    // Then
+    expect(lightSpecs.held).toEqual(SPECS);
   });
 });

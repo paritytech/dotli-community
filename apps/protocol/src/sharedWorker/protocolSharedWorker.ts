@@ -11,7 +11,7 @@ import { isLocalhost, setActiveNetwork } from '@dotli/config';
 import { createReporter, flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { byteMeter, chainSync, createLightClient, createLightClientDeps } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
-import { createStackOfferReader, stackStore } from '@dotli/storage';
+import { createStackOfferReader } from '@dotli/storage';
 
 import { parseWorkerNetwork } from './parseWorkerNetwork.js';
 import { SHARED_WORKER_MODE } from '../kit/sharedWorkerMode.js';
@@ -48,9 +48,7 @@ startProtocolWorker({
       if (!network.success) {
         throw new Error(network.value);
       }
-      const active = network.value;
-      const [read, held] = await Promise.all([stackReader.read(active), stackStore.getLightSpecs(active)]);
-      return { ...read, lightSpecs: { held, set: specs => stackStore.setLightSpecs(active, specs) } };
+      return stackReader.read(network.value);
     }),
   ),
   // The resolver's factory by name, not its namespace, so the worker bundle keeps only what it calls of the resolver.

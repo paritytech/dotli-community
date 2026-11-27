@@ -101,7 +101,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   second one, often a callback, used only when the first is set, so a caller without the first passes a stand-in.
 - [per-network-input-a-low-level-package-may-not-load](per-network-input-a-low-level-package-may-not-load.md): a
   low-level package's component needs a per-network input at start, the config package's loader sits in an entry some
-  of its files may not import, and the app's entries that build its deps know the active network.
+  of its files may not import, and the app's entries that build its deps know the active network. A second question is
+  whether a reader the entries build is bound to one network or takes it on each read.
 - [protocol-callbacks-serve-several-features](protocol-callbacks-serve-several-features.md): an external protocol's
   callbacks each serve a different feature.
 - [security-critical-config-to-a-sandboxed-child](security-critical-config-to-a-sandboxed-child.md): a sandboxed child
@@ -112,7 +113,7 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md):
   one reader starts consumers from a stored signed copy and fetches a newer one behind, one consumer can confirm a copy
   and the files it names while the other has only the reader's signature check, and the question is who decides when
-  the copy is stored and which starting copies carry a call that stores them.
+  the copy is stored, which starting copies carry a call that stores them and how the copy and its files are written.
 - [start-input-the-network-fails-to-serve](start-input-the-network-fails-to-serve.md): a component that starts lazily
   needs a small input per item fetched from the network, it already turns a failed start fatal for the layer above to
   rebuild, and the question is whether a failed input fails the start, degrades it or halts one item.

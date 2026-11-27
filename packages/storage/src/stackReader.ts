@@ -18,7 +18,7 @@ import {
   withTimeout,
   type Timers,
 } from '@dotli/shared';
-import { stackStore, type StackStore, type StoredStack } from './stackStore.js';
+import { stackStore, type StackStore, type StoredLightSpecs, type StoredStack } from './stackStore.js';
 
 /** What a read of a network's stack resolves with. */
 export type StackRead = {
@@ -30,8 +30,11 @@ export type StackRead = {
 
 /** A live copy newer than the one a start opened, not stored until its consumer keeps it. */
 export type StackOffer = BundledStack & {
-  /** Stores this copy for the next start. A failed write keeps the old copy and is reported. */
-  keep: () => Promise<void>;
+  /**
+   * Stores this copy with the light specs its consumer accepted it with, in one write, for the next start. A failed
+   * write keeps the old copy and specs and is reported.
+   */
+  keep: (lightSpecs: StoredLightSpecs) => Promise<void>;
 };
 
 /** A copy to start from. A fetched copy carries the `keep` that stores it, and a stored or bundled one `null`. */
@@ -42,6 +45,12 @@ export type StackOfferRead = {
   stack: StackOfferStart;
   /** A live copy newer than `stack`, or `null` when none arrived. */
   newer: Promise<StackOffer | null>;
+  lightSpecs: {
+    /** The light specs kept for the network, empty when none. */
+    held: StoredLightSpecs;
+    /** Replaces the kept set, for a start from a stored or bundled copy. */
+    set: (specs: StoredLightSpecs) => Promise<void>;
+  };
 };
 
 type Params = {
@@ -53,6 +62,10 @@ type Params = {
   subtle?: Pick<SubtleCrypto, 'importKey' | 'verify'>;
   /** The fetch's timeout and retry waits run on them. */
   timers?: Timers;
+};
+
+type CreateStackOfferReaderParams = Params & {
+  store?: Pick<StackStore, 'getLightSpecs' | 'setLightSpecs' | 'setStackAndLightSpecs'>;
 };
 
 /** A descriptor that parsed, with what its signature covers. */
@@ -143,26 +156,30 @@ export type StackReader = ReturnType<typeof createStackReader>;
 /**
  * The stack reader for a consumer that confirms a copy itself, such as an engine that checks the descriptor's
  * signature and its parts. It stores nothing on its own: a live copy, whether started from or newer, is handed on
- * unstored and stored once the consumer keeps it. Where the platform cannot check Ed25519 a newer copy is handed on all
- * the same, since the consumer checks it. `store` is the page's own stack store by default.
+ * unstored and stored with its light specs once the consumer keeps it. Where the platform cannot check Ed25519 a newer
+ * copy is handed on all the same, since the consumer checks it. `store` is the page's own stack store by default.
  */
-export function createStackOfferReader(params: Params = {}) {
-  const source = createStackSource(params);
+export function createStackOfferReader({ store = stackStore, ...params }: CreateStackOfferReaderParams = {}) {
+  const source = createStackSource({ ...params, store });
 
   /**
    * Resolves with the copy to start from and the newer live copy to come. Each read starts from the copy stored by
    * then, and reads of one network share one live fetch. Rejects when the bundled copy fails to load or its descriptor or link is malformed.
    */
   async function read(network: Network): Promise<StackOfferRead> {
-    const { start, fetched, newer } = await source.open(network);
+    const [{ start, fetched, newer }, held] = await Promise.all([source.open(network), store.getLightSpecs(network)]);
 
     function offer(copy: LiveCopy): StackOffer {
-      return { ...copy.stack, keep: () => source.keep(network, copy) };
+      return {
+        ...copy.stack,
+        keep: lightSpecs => store.setStackAndLightSpecs(toStoredStack(network, copy), lightSpecs),
+      };
     }
 
     return {
       stack: fetched === null ? { ...start, keep: null } : offer(fetched),
       newer: newer.then(copy => (copy === null ? null : offer(copy))),
+      lightSpecs: { held, set: specs => store.setLightSpecs(network, specs) },
     };
   }
 
@@ -226,8 +243,8 @@ function createStackSource({
     return { start: copy.stack, fetched: copy, newer: Promise.resolve(null) };
   }
 
-  function keep(network: Network, { stack: { pointer, descriptor }, sequence }: LiveCopy): Promise<void> {
-    return store.setStack({ network, pointer, descriptor, sequence });
+  function keep(network: Network, copy: LiveCopy): Promise<void> {
+    return store.setStack(toStoredStack(network, copy));
   }
 
   /**
@@ -345,6 +362,10 @@ function pickStart(
   return stored.sequence > bundledSequence
     ? { stack: toStack(bundled, stored.descriptor), sequence: stored.sequence }
     : { stack: bundled, sequence: bundledSequence };
+}
+
+function toStoredStack(network: Network, { stack: { pointer, descriptor }, sequence }: LiveCopy): StoredStack {
+  return { network, pointer, descriptor, sequence };
 }
 
 function toStack(bundled: BundledStack, descriptor: Uint8Array): BundledStack {
