@@ -146,9 +146,9 @@ export async function createStackBuilder<Builder extends StackBuilder>({
     }
   }
 
-  /** Keeps `specs` unless they are the set `stored` already holds, and resolves whether the store holds them. */
-  function keepSpecs(specs: LightSpecs, stored: LightSpecs): Promise<boolean> {
-    if (specs.size === stored.size && [...specs.keys()].every(sha256 => stored.has(sha256))) {
+  /** Keeps a start's accepted set unless it is the one the start read, and resolves whether the store holds it. */
+  function keepSpecs(specs: LightSpecs): Promise<boolean> {
+    if (specs.size === held.size && [...specs.keys()].every(sha256 => held.has(sha256))) {
       return Promise.resolve(true);
     }
     return lightSpecs.set(specs);
@@ -156,13 +156,13 @@ export async function createStackBuilder<Builder extends StackBuilder>({
 
   /**
    * Checks the newer copy's specs on a builder of its own, with the spec bytes in `known`, then keeps them and, once
-   * the store holds them, the copy. `stored` is the set the store holds. Reports a failure.
+   * the store holds them, the copy. Reports a failure.
    */
-  async function refreshSpecs(copy: NewerLightClientStack, known: LightSpecs, stored: LightSpecs): Promise<void> {
+  async function refreshSpecs(copy: NewerLightClientStack, known: LightSpecs): Promise<void> {
     try {
       const { builder, specs } = await openStack(copy, known, 'newer');
       builder.free();
-      if (await keepSpecs(specs, stored)) {
+      if (await lightSpecs.set(specs)) {
         await copy.keep();
       }
     } catch (error) {
@@ -187,19 +187,18 @@ export async function createStackBuilder<Builder extends StackBuilder>({
       throw new Error(`No copy of stack ${stack.pointer} newer than the refused one could be had`, { cause: error });
     }
     const fresh = await openStack(live, held, 'newer');
-    void keepSpecs(fresh.specs, held).then(isStored => (isStored ? live.keep() : undefined));
+    void keepSpecs(fresh.specs).then(isStored => (isStored ? live.keep() : undefined));
     return fresh.builder;
   }
   const { specs } = opened;
   // After the keep, so the newer set replaces this one.
-  void keepSpecs(specs, held).then(async isStored => {
+  void keepSpecs(specs).then(async isStored => {
     if (isStored) {
       await stack.keep?.();
     }
     const copy = await newer;
     if (copy !== null) {
-      // A failed write keeps the set the start read.
-      await refreshSpecs(copy, specs, isStored ? specs : held);
+      await refreshSpecs(copy, specs);
     }
   });
   return opened.builder;
