@@ -22,7 +22,6 @@ import {
   TIMEOUTS,
   getActiveServicesConfig,
   isLocalhost,
-  loadStack,
   parseSettingsFromSearch,
   setActiveNetwork,
   type Backend,
@@ -37,6 +36,7 @@ import {
   ProtocolInitFailedError,
   protocolSchema,
 } from '@dotli/protocol';
+import { createStackOfferReader } from '@dotli/storage';
 import { createTransport, createWindowProvider, ok } from '@dotli/transport';
 
 import { connectSharedWorker } from './frame/connectSharedWorker.js';
@@ -267,8 +267,9 @@ async function initDirectMode(network: Network): Promise<void> {
     loadLightClientService(),
   ]);
   const session = readSessionTuning(() => sessionStorage);
+  const stackReader = createStackOfferReader();
   const lightClient = provider.createLightClient(
-    provider.createLightClientDeps(session, isLocalhost, () => loadStack(network)),
+    provider.createLightClientDeps(session, isLocalhost, () => stackReader.read(network)),
   );
   const service = lightClientService.startLightClientService({
     lightClient,

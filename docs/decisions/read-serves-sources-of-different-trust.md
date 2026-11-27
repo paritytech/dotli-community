@@ -37,6 +37,14 @@ await readGraph(source, rootId, { trust: 'relay' }); // the read picks the check
 await readGraph(source, rootId); // always checks every item, the relay's caller checks twice
 ```
 
+## Not when
+
+The shared read also stores a newer copy of what it fetches, and its consumers differ in whether they can confirm that
+copy themselves. The store decision then stays with the storage package in a named reader per consumer rather than
+moving to every caller, as
+[shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md)
+says. The two rules agree that no parameter names the difference.
+
 ## Cases
 
 - A domain-free content package walked a content graph from a caller's block source. An isolated app's page load got

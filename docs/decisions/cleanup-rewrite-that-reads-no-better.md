@@ -169,5 +169,10 @@ four times a second with nothing to update. Leave the guard.
   one guard and the effect keyed on it, for four idle wake-ups a second with no DOM writes. The owner kept the gate,
   choosing the recommended option without a stated reason, over dropping it or measuring idle CPU first.
   (feat/network-chain-indicators)
+- A simplification round proposed binding a shared reader to one network at construction instead of taking it per
+  read. One entry would have needed a placeholder reader for a network that failed to parse, and another a module-scope
+  getter for a network not yet settled. The owner kept the network per read. The rule it rests on is
+  [per-network-input-a-low-level-package-may-not-load](per-network-input-a-low-level-package-may-not-load.md).
+  (reduce/stack-reader-stored-copy, reduce-complexity round, proposal O2)
 
 Status: active

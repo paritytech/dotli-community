@@ -1,33 +1,67 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The engine checks each light spec against the digest its descriptor names. The descriptor's operator re-publishes it
-// whenever a spec changes, so a refused spec means the build copy went stale, and the start runs again once from the
-// live copy the stack's link points at. The engine checks the live copy's signature against the key in the same link.
+// The engine checks each light spec against the SHA-256 its descriptor names, so a spec kept from an earlier start is
+// as good as a fetched one, and a refused spec means the copy the start opened went stale. The descriptor's operator
+// re-publishes it whenever a spec changes, so a refused start runs again once from the newer copy.
 
-import { createReporter } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool, getErrorMessage, realTimers, type Timers } from '@dotli/shared';
 import type { ChainProviderBuilder, LightSpecSource } from '@parity/truapi-provider';
 
 const report = createReporter({ flow: 'protocol' });
 
+/**
+ * The light specs of a newer stack copy that could not be stored for the next start. Counted only on failure, tagged
+ * `outcome` (error) and `reason` (the error's name).
+ */
+const lightSpecRefreshMetric = defineCount<'error'>('light_spec.refresh');
+
 /** A network's signed Trinity stack, which the light client runs the chains of. */
 export type LightClientStack = {
-  /** The stack's link, which carries the key the descriptor is signed with and the URL the live copy is served at. */
+  /** The stack's link, which carries the key the descriptor is signed with. */
   pointer: string;
   /** The signed descriptor's bytes, as served. */
   descriptor: Uint8Array;
 };
 
+/** Light spec bytes as served, by their `0x` SHA-256. */
+export type LightSpecs = ReadonlyMap<string, Uint8Array>;
+
+/** The network's light specs, kept from an earlier start. */
+export type LightSpecStore = {
+  /** The kept set, empty when there is none. */
+  held: LightSpecs;
+  /** Replaces the kept set, so a spec left out is dropped. */
+  set: (specs: LightSpecs) => Promise<void>;
+};
+
+/** A copy newer than the one a start opened, not stored for the next start until it is kept. */
+export type NewerLightClientStack = LightClientStack & {
+  /** Stores this copy with the light specs the engine accepted it with, in one write. */
+  keep: (specs: LightSpecs) => Promise<void>;
+};
+
+/** The copy a start opens. A fetched copy carries the `keep` that stores it, and a stored or bundled one `null`. */
+export type StartingLightClientStack = LightClientStack & { keep: NewerLightClientStack['keep'] | null };
+
+/** What a light client's start reads of its network's stack. */
+export type LightClientStackSource = {
+  stack: StartingLightClientStack;
+  /** A copy newer than `stack`, which the engine has yet to check, or `null` when none arrived. */
+  newer: Promise<NewerLightClientStack | null>;
+  lightSpecs: LightSpecStore;
+};
+
 /** What a stack's start uses of truapi-provider's builder. */
-export type StackBuilder = Pick<ChainProviderBuilder, 'setStack' | 'addLightSpec'> & {
+export type StackBuilder = Pick<ChainProviderBuilder, 'setStack' | 'addLightSpec' | 'free'> & {
   lightSpecs(): readonly SpecSource[];
 };
 
-type SpecSource = Pick<LightSpecSource, 'genesisHash' | 'role' | 'url'>;
+type SpecSource = Pick<LightSpecSource, 'genesisHash' | 'role' | 'url' | 'sha256'>;
 
 type Params<Builder extends StackBuilder> = {
-  stack: LightClientStack;
+  source: LightClientStackSource;
   /** A fresh builder, since one that took a stack takes no other. */
   createBuilder: () => Builder;
   fetch?: typeof fetch;
@@ -35,17 +69,27 @@ type Params<Builder extends StackBuilder> = {
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
+/** A builder that took a copy and every spec it names, with those specs. */
+type OpenedStack<Builder> = {
+  builder: Builder;
+  specs: LightSpecs;
+};
+
 const FETCH_RETRY_COUNT = 3;
 const FETCH_RETRY_BASE_MS = 500;
 
 /**
- * Resolves with a builder that holds `stack` and every light spec its descriptor names, ready to build. A spec the
- * engine refuses against the build copy starts it again from the live descriptor, fetched once. Each fetch is retried.
- * Rejects when the engine refuses the stack, the live descriptor or one of its specs, or when a fetch still fails after
- * its retries, with the failure as `cause`.
+ * Resolves with a builder that holds the source's stack and every light spec its descriptor names, ready to build.
+ * Each spec comes from the kept set by its SHA-256, else from the network, retried. The accepted set is kept for the
+ * next start. A spec the engine refuses starts it again from the newer copy. When the newer copy arrives after a start
+ * from an older one, its specs are checked on a builder freed afterwards and kept for the next start, which never
+ * affects the builder this resolves with. A copy that is not stored yet, the one started from or a newer one, is kept
+ * with its specs in one write once the engine took it.
+ * Rejects when the engine refuses a descriptor or a spec, when a spec is refused and no newer copy arrives, or when a
+ * fetch still fails after its retries, with the failure as `cause`.
  */
 export async function createStackBuilder<Builder extends StackBuilder>({
-  stack: { pointer, descriptor },
+  source: { stack, newer, lightSpecs },
   createBuilder,
   fetch: fetchResource = fetch,
   timers = realTimers,
@@ -57,63 +101,102 @@ export async function createStackBuilder<Builder extends StackBuilder>({
     retryDelay: retry => FETCH_RETRY_BASE_MS * 2 ** retry,
     timers,
   });
+  const { held } = lightSpecs;
 
-  function fetchBytes(url: string): Promise<Uint8Array> {
-    return pool.call(() => readBytes(fetchResource, url));
+  function getSpec(source: SpecSource, known: LightSpecs): Promise<Uint8Array> {
+    const kept = known.get(source.sha256);
+    if (kept !== undefined) {
+      return Promise.resolve(kept);
+    }
+    return pool
+      .call(() => readBytes(fetchResource, source.url))
+      .catch((error: unknown) => {
+        throw new Error(`${describeSpec(source)} could not be fetched: ${getErrorMessage(error)}`, { cause: error });
+      });
   }
 
-  async function openStack(signed: Uint8Array, copy: string): Promise<Builder> {
+  /** Opens `copy` on a fresh builder with every spec it names. Frees the builder and rejects when that fails. */
+  async function openStack(copy: LightClientStack, known: LightSpecs, label: string): Promise<OpenedStack<Builder>> {
     const builder = createBuilder();
     try {
-      builder.setStack(pointer, signed);
-    } catch (error) {
-      throw new Error(
-        `The light client refused the ${copy} descriptor of stack ${pointer}: ${getErrorMessage(error)}`,
-        {
-          cause: error,
-        },
-      );
-    }
-    const specs = await Promise.all(
-      builder.lightSpecs().map(source =>
-        fetchBytes(source.url).then(
-          bytes => ({ source, bytes }),
-          (error: unknown) => {
-            throw new Error(`${describeSpec(source)} could not be fetched: ${getErrorMessage(error)}`, {
-              cause: error,
-            });
-          },
-        ),
-      ),
-    );
-    for (const { source, bytes } of specs) {
       try {
-        builder.addLightSpec(source.genesisHash, bytes);
+        builder.setStack(copy.pointer, copy.descriptor);
       } catch (error) {
-        throw new SpecRefusedError(`${describeSpec(source)} was refused: ${getErrorMessage(error)}`, { cause: error });
+        throw new Error(
+          `The light client refused the ${label} descriptor of stack ${copy.pointer}: ${getErrorMessage(error)}`,
+          { cause: error },
+        );
       }
+      const specs = await Promise.all(
+        builder.lightSpecs().map(source => getSpec(source, known).then(bytes => ({ source, bytes }))),
+      );
+      for (const { source, bytes } of specs) {
+        try {
+          builder.addLightSpec(source.genesisHash, bytes);
+        } catch (error) {
+          throw new SpecRefusedError(`${describeSpec(source)} was refused: ${getErrorMessage(error)}`, {
+            cause: error,
+          });
+        }
+      }
+      return { builder, specs: new Map(specs.map(({ source, bytes }) => [source.sha256, bytes])) };
+    } catch (error) {
+      builder.free();
+      throw error;
     }
-    return builder;
   }
 
+  /** Keeps the accepted set of a start from a stored or bundled copy, unless it is the set the start read. */
+  function keepSpecs(specs: LightSpecs): Promise<void> {
+    if (specs.size === held.size && [...specs.keys()].every(sha256 => held.has(sha256))) {
+      return Promise.resolve();
+    }
+    return lightSpecs.set(specs);
+  }
+
+  /**
+   * Checks the newer copy's specs on a builder of its own, with the spec bytes in `known`, then keeps the copy with
+   * them. Reports a failure.
+   */
+  async function refreshSpecs(copy: NewerLightClientStack, known: LightSpecs): Promise<void> {
+    try {
+      const { builder, specs } = await openStack(copy, known, 'newer');
+      builder.free();
+      await copy.keep(specs);
+    } catch (error) {
+      report.expected(error, {
+        step: 'light_spec_refresh',
+        metric: lightSpecRefreshMetric,
+        message: `[dot.li provider] the light specs of a newer copy of stack ${copy.pointer} were not kept: ${getErrorMessage(error)}`,
+      });
+    }
+  }
+
+  let opened: OpenedStack<Builder>;
   try {
-    return await openStack(descriptor, 'bundled');
+    opened = await openStack(stack, held, 'starting');
   } catch (error) {
     if (!(error instanceof SpecRefusedError)) {
       throw error;
     }
-    report.log.event('Stack descriptor refetched', { stack: pointer, reason: error.message });
+    report.log.event('Newer stack descriptor awaited', { stack: stack.pointer, reason: error.message });
+    const live = await newer;
+    if (live === null) {
+      throw new Error(`No copy of stack ${stack.pointer} newer than the refused one could be had`, { cause: error });
+    }
+    const fresh = await openStack(live, held, 'newer');
+    void live.keep(fresh.specs);
+    return fresh.builder;
   }
-  const url = getDescriptorUrl(pointer);
-  let live: Uint8Array;
-  try {
-    live = await fetchBytes(url);
-  } catch (error) {
-    throw new Error(`The live descriptor of stack ${pointer} could not be fetched: ${getErrorMessage(error)}`, {
-      cause: error,
-    });
-  }
-  return openStack(live, 'live');
+  const { specs } = opened;
+  // After the keep, so the newer set replaces this one.
+  void (stack.keep === null ? keepSpecs(specs) : stack.keep(specs)).then(async () => {
+    const copy = await newer;
+    if (copy !== null) {
+      await refreshSpecs(copy, specs);
+    }
+  });
+  return opened.builder;
 }
 
 /** A spec the engine refused, which a stale descriptor explains. */
@@ -135,13 +218,4 @@ async function readBytes(fetchResource: typeof fetch, url: string): Promise<Uint
 
 function describeSpec({ role, genesisHash, url }: SpecSource): string {
   return `The light spec of ${role} (${genesisHash}) from ${url}`;
-}
-
-/** The URL the live descriptor is served at, from the stack's link. Throws when the link names none. */
-function getDescriptorUrl(pointer: string): string {
-  const url = new URL(pointer).searchParams.get('url');
-  if (url === null) {
-    throw new Error(`Stack link ${pointer} names no descriptor URL`);
-  }
-  return url;
 }

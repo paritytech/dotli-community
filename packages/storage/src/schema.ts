@@ -4,7 +4,7 @@
 // The "dotli" database's one schema, and the frame's wallet and the session windows' grants databases.
 
 export const DB_NAME = 'dotli';
-export const DB_VERSION = 8;
+export const DB_VERSION = 9;
 
 export const CID_STORE = 'cids';
 export const NAME_LIST_STORE = 'name_lists';
@@ -20,60 +20,64 @@ export const BLOCK_STORE = 'blocks';
 export const BLOCK_META_STORE = 'block_meta';
 export const BLOCK_META_BY_LAST_USED = 'byLastUsed';
 export const FETCH_GRANT_STORE = 'fetch_grants';
+export const STACK_STORE = 'stacks';
+export const LIGHT_SPEC_STORE = 'light_specs';
+
+type StoreSchema = {
+  name: string;
+  key: IDBObjectStoreParameters;
+  /** Created with the store, never on a store an older version made. */
+  indexes?: readonly { name: string; keyPath: string | string[] }[];
+};
+
+// One row per store, so a version that adds stores adds rows and no branch.
+const DOTLI_STORES: readonly StoreSchema[] = [
+  { name: CID_STORE, key: { keyPath: 'label' } },
+  // v2: scheduled notifications + per-product id counters.
+  {
+    name: NOTIFICATION_STORE,
+    key: { keyPath: 'hostId', autoIncrement: true },
+    indexes: [
+      { name: NOTIFICATION_BY_PRODUCT_ID, keyPath: 'productId' },
+      { name: NOTIFICATION_BY_SCHEDULED_AT, keyPath: 'scheduledAt' },
+    ],
+  },
+  { name: NOTIFICATION_COUNTER_STORE, key: { keyPath: 'productId' } },
+  // v3: product chat rooms and messages.
+  { name: CHAT_ROOM_STORE, key: { keyPath: ['productId', 'roomId'] } },
+  {
+    name: CHAT_MESSAGE_STORE,
+    key: { keyPath: 'seq', autoIncrement: true },
+    indexes: [{ name: CHAT_MESSAGE_BY_ROOM, keyPath: ['productId', 'roomId'] }],
+  },
+  // v4: product chat bot identities.
+  { name: CHAT_BOT_STORE, key: { keyPath: ['productId', 'botId'] } },
+  // v5: relayed content blocks, with sizes and last use apart so pruning never loads the bytes.
+  { name: BLOCK_STORE, key: { keyPath: 'cid' } },
+  {
+    name: BLOCK_META_STORE,
+    key: { keyPath: 'cid' },
+    indexes: [{ name: BLOCK_META_BY_LAST_USED, keyPath: 'lastUsed' }],
+  },
+  // v7: the landing page's dotNS name lists.
+  { name: NAME_LIST_STORE, key: { keyPath: 'network' } },
+  // v8: the user's lasting answers to a product fetching a host.
+  { name: FETCH_GRANT_STORE, key: { keyPath: ['label', 'host'] } },
+  // v9: each network's stored stack and the light specs the light client accepted.
+  { name: STACK_STORE, key: { keyPath: 'network' } },
+  { name: LIGHT_SPEC_STORE, key: { keyPath: 'network' } },
+];
 
 /** Creates the stores and indexes an older version lacks. */
 export function upgradeDotliDb(db: IDBDatabase): void {
-  if (!db.objectStoreNames.contains(CID_STORE)) {
-    db.createObjectStore(CID_STORE, { keyPath: 'label' });
-  }
-  // v2: scheduled notifications + per-product id counters.
-  if (!db.objectStoreNames.contains(NOTIFICATION_STORE)) {
-    const store = db.createObjectStore(NOTIFICATION_STORE, {
-      keyPath: 'hostId',
-      autoIncrement: true,
-    });
-    store.createIndex(NOTIFICATION_BY_PRODUCT_ID, 'productId', { unique: false });
-    store.createIndex(NOTIFICATION_BY_SCHEDULED_AT, 'scheduledAt', { unique: false });
-  }
-  if (!db.objectStoreNames.contains(NOTIFICATION_COUNTER_STORE)) {
-    db.createObjectStore(NOTIFICATION_COUNTER_STORE, { keyPath: 'productId' });
-  }
-  // v3: product chat rooms and messages.
-  if (!db.objectStoreNames.contains(CHAT_ROOM_STORE)) {
-    db.createObjectStore(CHAT_ROOM_STORE, {
-      keyPath: ['productId', 'roomId'],
-    });
-  }
-  if (!db.objectStoreNames.contains(CHAT_MESSAGE_STORE)) {
-    const store = db.createObjectStore(CHAT_MESSAGE_STORE, {
-      keyPath: 'seq',
-      autoIncrement: true,
-    });
-    store.createIndex(CHAT_MESSAGE_BY_ROOM, ['productId', 'roomId'], {
-      unique: false,
-    });
-  }
-  // v4: product chat bot identities.
-  if (!db.objectStoreNames.contains(CHAT_BOT_STORE)) {
-    db.createObjectStore(CHAT_BOT_STORE, {
-      keyPath: ['productId', 'botId'],
-    });
-  }
-  // v5: relayed content blocks, with sizes and last use apart so pruning never loads the bytes.
-  if (!db.objectStoreNames.contains(BLOCK_STORE)) {
-    db.createObjectStore(BLOCK_STORE, { keyPath: 'cid' });
-  }
-  if (!db.objectStoreNames.contains(BLOCK_META_STORE)) {
-    const store = db.createObjectStore(BLOCK_META_STORE, { keyPath: 'cid' });
-    store.createIndex(BLOCK_META_BY_LAST_USED, 'lastUsed', { unique: false });
-  }
-  // v7: the landing page's dotNS name lists.
-  if (!db.objectStoreNames.contains(NAME_LIST_STORE)) {
-    db.createObjectStore(NAME_LIST_STORE, { keyPath: 'network' });
-  }
-  // v8: the user's lasting answers to a product fetching a host.
-  if (!db.objectStoreNames.contains(FETCH_GRANT_STORE)) {
-    db.createObjectStore(FETCH_GRANT_STORE, { keyPath: ['label', 'host'] });
+  for (const { name, key, indexes = [] } of DOTLI_STORES) {
+    if (db.objectStoreNames.contains(name)) {
+      continue;
+    }
+    const store = db.createObjectStore(name, key);
+    for (const index of indexes) {
+      store.createIndex(index.name, index.keyPath, { unique: false });
+    }
   }
 }
 

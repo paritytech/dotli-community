@@ -17,5 +17,15 @@ export { nameList } from './nameList.js';
 export type { ScheduledNotificationRecord } from './scheduledNotifications.js';
 export { scheduledNotifications } from './scheduledNotifications.js';
 export { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from './schema.js';
+export type {
+  StackOffer,
+  StackOfferRead,
+  StackOfferReader,
+  StackOfferStart,
+  StackRead,
+  StackReader,
+} from './stackReader.js';
+export { createStackOfferReader, createStackReader } from './stackReader.js';
+export type { StoredLightSpecs } from './stackStore.js';
 export type { SiteGrant, SiteGrantStore } from './siteGrants.js';
 export { createSiteGrantStore, siteGrants } from './siteGrants.js';
