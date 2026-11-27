@@ -30,7 +30,7 @@ export type LightSpecs = ReadonlyMap<string, Uint8Array>;
 
 /** The network's light specs, kept from an earlier start. */
 export type LightSpecStore = {
-  /** The kept set, empty when there is none. Read with the stack, so it costs no wait of its own. */
+  /** The kept set, empty when there is none. */
   held: LightSpecs;
   /** Replaces the kept set, so a spec left out is dropped. */
   set: (specs: LightSpecs) => Promise<void>;
