@@ -54,7 +54,6 @@ export type StackOfferRead = {
 };
 
 type Params = {
-  store?: Pick<StackStore, 'getStack' | 'setStack'>;
   /** Loads a network's bundled copy. */
   loadBundled?: (network: Network) => Promise<BundledStack>;
   fetch?: typeof fetch;
@@ -64,8 +63,12 @@ type Params = {
   timers?: Timers;
 };
 
+type CreateStackReaderParams = Params & {
+  store?: Pick<StackStore, 'getStack' | 'setStack'>;
+};
+
 type CreateStackOfferReaderParams = Params & {
-  store?: Pick<StackStore, 'getLightSpecs' | 'setLightSpecs' | 'setStackAndLightSpecs'>;
+  store?: Pick<StackStore, 'getStack' | 'getLightSpecs' | 'setLightSpecs' | 'setStackAndLightSpecs'>;
 };
 
 /** A descriptor that parsed, with what its signature covers. */
@@ -124,8 +127,8 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
  * is stored once its signature verifies, so a platform without Ed25519 stores nothing. `store` is the page's own stack
  * store by default.
  */
-export function createStackReader(params: Params = {}) {
-  const source = createStackSource(params);
+export function createStackReader({ store = stackStore, ...params }: CreateStackReaderParams = {}) {
+  const source = createStackSource({ ...params, store });
 
   /**
    * Resolves with the copy to start from and the newer live copy to come. Each read starts from the copy stored by
@@ -134,7 +137,7 @@ export function createStackReader(params: Params = {}) {
   async function read(network: Network): Promise<StackRead> {
     const { start, fetched, newer } = await source.open(network);
     if (fetched !== null) {
-      await source.keep(network, fetched);
+      await store.setStack(toStoredStack(network, fetched));
     }
     return {
       stack: start,
@@ -142,7 +145,7 @@ export function createStackReader(params: Params = {}) {
         if (copy?.verified !== true) {
           return null;
         }
-        await source.keep(network, copy);
+        await store.setStack(toStoredStack(network, copy));
         return copy.stack;
       }),
     };
@@ -189,16 +192,16 @@ export function createStackOfferReader({ store = stackStore, ...params }: Create
 export type StackOfferReader = ReturnType<typeof createStackOfferReader>;
 
 /**
- * What both readers share: the policy that picks the copy to start from, the live copy fetched and checked once per
- * network, and its store.
+ * What both readers share: the policy that picks the copy to start from, and the live copy fetched and checked once per
+ * network.
  */
 function createStackSource({
-  store = stackStore,
+  store,
   loadBundled = loadStack,
   fetch: fetchResource = fetch,
   subtle = globalThis.crypto.subtle,
   timers = realTimers,
-}: Params) {
+}: Params & { store: Pick<StackStore, 'getStack'> }) {
   // Unbounded, since each network fetches once. The pool only retries.
   const pool = createAsyncTaskPool({
     poolSize: Number.POSITIVE_INFINITY,
@@ -241,10 +244,6 @@ function createStackSource({
       return { start: bundled, fetched: null, newer: Promise.resolve(copy.sequence > bundledSequence ? copy : null) };
     }
     return { start: copy.stack, fetched: copy, newer: Promise.resolve(null) };
-  }
-
-  function keep(network: Network, copy: LiveCopy): Promise<void> {
-    return store.setStack(toStoredStack(network, copy));
   }
 
   /**
@@ -331,7 +330,7 @@ function createStackSource({
     }
   }
 
-  return { open, keep };
+  return { open };
 }
 
 /** A live copy that is not a signed descriptor of this stack, such as an error page answered with success. */
