@@ -17,5 +17,7 @@ export { nameList } from './nameList.js';
 export type { ScheduledNotificationRecord } from './scheduledNotifications.js';
 export { scheduledNotifications } from './scheduledNotifications.js';
 export { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from './schema.js';
+export type { StackStore, StoredLightSpecs, StoredStack } from './stackStore.js';
+export { createStackStore, stackStore } from './stackStore.js';
 export type { SiteGrant, SiteGrantStore } from './siteGrants.js';
 export { createSiteGrantStore, siteGrants } from './siteGrants.js';

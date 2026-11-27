@@ -15,7 +15,8 @@ entries create, and each entry already knows the active network. The question is
 1. Leave the loader where it is in the config package, and leave the lint restriction on the low-level package.
 2. Add a function to the component's deps that returns the input for the active network, with no network parameter.
 3. In each app entry that builds the deps, bind the config package's existing loader to the active network the entry
-   already knows, and pass the bound function.
+   already knows, and pass the bound function. When the input is read through a stored copy that a package the
+   low-level one may not import holds, the entry builds that reader for the active network and passes it the same way.
 4. Do not move or re-export the loader into the fixed entry, and do not have the low-level package's deps factory pick
    the network.
 
@@ -54,5 +55,8 @@ const manifest = await loadNetworkManifest(currentNetwork());
   never receives the runtime config. The deps were built by the app's two entries, an iframe page and that SharedWorker.
   Offered a loader in the deps, the loader moved into the fixed entry, or the package's deps factory building it, the
   owner chose the loader in the deps. (Sentry DOTLI-N5, docs/\_plans/truapi-provider-stack-design.md)
+- The same descriptor came to be read through a stored copy whose store and policy the owner put in the storage
+  package, which the low-level package may not import. The app's entries build that reader and pass it in the deps.
+  (docs/\_plans/stack-reader-cache-design.md)
 
 Status: active

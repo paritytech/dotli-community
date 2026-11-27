@@ -21,6 +21,7 @@ dotli's persistent browser data in IndexedDB:
   - block cache
   - label to CID cache
   - landing name list
+  - each network's stored stack and accepted light specs
   - chat
   - local wallet
   - site grants
@@ -39,6 +40,7 @@ dotli's persistent browser data in IndexedDB:
 | `blockCache`                                                                             | Bitswap block cache.                                         |
 | `cidCache`, `CachedCid`, `CachedManifests`                                               | Label to CID cache.                                          |
 | `nameList`, `NameList`, `NameListRecord`                                                 | The landing page's dotNS name list, which it can also clear. |
+| `createStackStore`, `stackStore`, `StackStore`, `StoredStack`, `StoredLightSpecs`        | Each network's stored stack and accepted light specs.        |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`                    | The local wallet.                                            |
 | `LocalWalletStore`                                                                       | Local wallet type.                                           |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`                      | Site grants.                                                 |
@@ -67,6 +69,8 @@ In-memory databases (fake-indexeddb) for tests:
 - **CID cache:** maps a label to its CID, manifests and owner for instant repeat visits. A hit is still validated.
 - **Name list:** one record per network, which the landing page replaces after each sync step and can clear for every
   network.
+- **Stack store:** one stored stack per network, with its sequence, and one set of light specs per network by SHA-256. A
+  new set replaces the old one, so specs a newer descriptor no longer names are dropped.
 - **Local wallet:** root entropy encrypted under a key this origin cannot export. `forgetIf` never deletes a wallet
   saved since the load.
 - **Site grants:** what a session window keeps of each site the user signed in to. One grant per token, or per group and

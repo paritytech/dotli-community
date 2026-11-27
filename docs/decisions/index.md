@@ -56,7 +56,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
   resolves or when the author card opens, and where it is kept.
 - [build-copy-of-signed-data-the-network-republishes](build-copy-of-signed-data-the-network-republishes.md): a
   component starts from signed data the network re-publishes, such as a light client's descriptor, the build keeps a
-  copy that can go stale and the consumer refuses a stale part, so the question is when it fetches the live data.
+  copy that can go stale, the consumer refuses a stale part and the publisher's servers can be down, so the question is
+  where the start gets its data, when it fetches the live copy and what is checked before a fetched copy is stored.
 - [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
   finds a style or skill rule that matches the code's shape, or a rater lists it, and the rewrite it describes would
   read no better than the code it replaces, or would drop a guard that keeps idle work from running. Also how to correct
@@ -110,6 +111,9 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [start-input-the-network-fails-to-serve](start-input-the-network-fails-to-serve.md): a component that starts lazily
   needs a small input per item fetched from the network, it already turns a failed start fatal for the layer above to
   rebuild, and the question is whether a failed input fails the start, degrades it or halts one item.
+- [stored-copy-read-by-consumers-in-two-layers](stored-copy-read-by-consumers-in-two-layers.md): consumers in two
+  layers and on different origins start from an input by one read policy over a stored copy, one of them in a low-level
+  package that may not import the storage package, and the question is where the policy and each stored copy live.
 - [stored-value-an-older-version-wrote](stored-value-an-older-version-wrote.md): a store the page does not migrate holds
   a value an older version wrote that the UI no longer offers.
 - [two-kinds-of-module-share-a-name](two-kinds-of-module-share-a-name.md): a view and its island, or a similar pair, end
