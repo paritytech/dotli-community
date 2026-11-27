@@ -150,9 +150,9 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
     /** `null` covers both a miss and a storage error, which is reported here. */
     getStack,
     /**
-     * Replaces the network's copy and resolves once the write commits. Writes nothing when light specs are held for the
-     * network or the stored copy under the same link has a higher sequence. A failure keeps the old copy and is
-     * reported here.
+     * Replaces the network's copy and resolves once the write commits. Writes nothing once the light client has written
+     * specs for the network, or when the stored copy under the same link has a higher sequence. A failure keeps the old
+     * copy and is reported here.
      */
     setStackUnlessLightSpecs,
     /** Empty covers both a miss and a storage error, which is reported here. */

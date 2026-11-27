@@ -8,8 +8,10 @@ agree on it.
 
 ## How to resolve
 
-1. Treat it as one set of data, so the device keeps one copy of it. Do not add a second store, a writer key on the
-   records or a database of its own for one writer.
+1. Treat it as one set of data, so the device keeps one copy of it. For one writer, do not add any of these:
+   - a second store
+   - a writer key on the records
+   - a database of its own
 2. Name the fault as several writers with no coordination, not as a shared copy.
 3. Coordinate the writers, with a lock or another technique, so each write follows one rule that keeps the copy right for
    every writer.

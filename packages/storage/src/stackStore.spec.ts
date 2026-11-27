@@ -119,7 +119,7 @@ describe('stored stack with its light specs', () => {
 });
 
 describe('writers of one copy', () => {
-  it("As a core's stack reader on a device whose light client keeps specs for my network, I store a newer copy and the light client's copy stays", async () => {
+  it("As a core's stack reader on a device whose light client has written specs for my network, my write of a newer copy leaves the light client's copy", async () => {
     // Given
     await store.setStackAndLightSpecs(STACK, new Map([[SPEC_A, new Uint8Array([1])]]));
 

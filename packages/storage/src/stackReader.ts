@@ -128,8 +128,8 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 /**
  * The stack reader for a consumer that cannot be asked whether it accepts a copy without starting from it. A live copy
  * is written once its signature verifies, so a platform without Ed25519 writes nothing. The write keeps the stored copy
- * where light specs are held for the network, since there only the light client replaces it, or where the stored copy
- * is newer. `store` is the page's own stack store by default.
+ * once the light client has written specs for the network, since from then on only the light client replaces it, or
+ * where the stored copy is newer. `store` is the page's own stack store by default.
  */
 export function createStackReader({ store = stackStore, ...params }: CreateStackReaderParams = {}) {
   const source = createStackSource({ ...params, store });

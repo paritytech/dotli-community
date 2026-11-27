@@ -79,9 +79,9 @@ In-memory databases (fake-indexeddb) for tests:
   SHA-256. A new set replaces the old one, so specs a newer descriptor no longer names are dropped. A copy and the light
   specs it was accepted with are written in one transaction, so a failed write keeps both old records.
 - **Coordinated writers:** both readers write the one copy, and each write decides inside its own transaction, so a
-  writer in another page or worker cannot slip in between. Where light specs are held for the network, only the light
-  client's keep replaces the copy, since a copy the light client accepted passes the core's check too, but not the
-  reverse. No write replaces a newer copy under the same link.
+  writer in another page or worker cannot slip in between. Once the light client has written specs for the network, only
+  the light client's keep replaces the copy, since a copy the light client accepted passes the core's check too, but not
+  the reverse. No write replaces a newer copy under the same link.
 - **Stack reader:** a start reads the stored copy and the bundled copy at once and starts from the one with the higher
   sequence, with no wait on the network. It fetches the live descriptor behind the start, and hands it on as the newer
   copy when it is newer than the one started from. With no stored copy the start waits for that fetch, and falls back to
