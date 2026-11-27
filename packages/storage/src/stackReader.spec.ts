@@ -6,13 +6,18 @@ import type { BundledStack } from '@dotli/config';
 import { recordReports } from '@dotli/metrics/testing';
 import { toHex } from '@dotli/shared';
 import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { createStackReader } from './stackReader.js';
+import { createStackOfferReader, createStackReader } from './stackReader.js';
 import { createStackStore, type StackStore } from './stackStore.js';
 import { createMemoryIdb } from './testing/index.js';
 
 const PASEO = 'paseo-next-v2';
 const DESCRIPTOR_URL = 'https://stack.example/.well-known/trinity-stack.json';
 const SIGNING_PREFIX = new TextEncoder().encode('trinity-stack/descriptor/v1');
+// WebCrypto on a platform whose Ed25519 is missing.
+const NO_ED25519: Pick<SubtleCrypto, 'importKey' | 'verify'> = {
+  importKey: () => Promise.reject(new DOMException('Unrecognized algorithm name', 'NotSupportedError')),
+  verify: () => Promise.resolve(true),
+};
 
 // The publisher's key pair, made once, so each test signs its own descriptors.
 let keys: CryptoKeyPair;
@@ -67,7 +72,7 @@ async function storeCopy(sequence: number, link = pointer): Promise<Uint8Array> 
 }
 
 describe('the copy to start from', () => {
-  it('As a light client with a stored copy newer than the bundled one, I start from it without waiting on the fetch', async () => {
+  it('As a page booting a core with a stored copy newer than the bundled one, I start from it without waiting on the fetch', async () => {
     // Given a live fetch that never answers
     const stored = await storeCopy(5);
     const reader = createStackReader({
@@ -84,7 +89,7 @@ describe('the copy to start from', () => {
     expect(stack).toEqual({ pointer, descriptor: stored, allowsReservedValues: true });
   });
 
-  it('As a light client with a bundled copy newer than the stored one, I start from the bundled copy', async () => {
+  it('As a page booting a core with a bundled copy newer than the stored one, I start from the bundled copy', async () => {
     // Given
     await storeCopy(3);
     const bundled = await signDescriptor(5);
@@ -97,7 +102,7 @@ describe('the copy to start from', () => {
     expect(stack.descriptor).toBe(bundled);
   });
 
-  it('As a light client with no stored copy, I wait for the live copy, start from it and store it', async () => {
+  it('As a page booting a core with no stored copy, I wait for the live copy, start from it and store it', async () => {
     // Given
     const live = await signDescriptor(5);
     const reader = createStackReader({
@@ -116,7 +121,7 @@ describe('the copy to start from', () => {
     expect(await store.getStack(PASEO)).toMatchObject({ pointer, sequence: 5 });
   });
 
-  it('As a light client whose stored copy is under another link, I ignore it and wait for the live copy', async () => {
+  it('As a page booting a core whose stored copy is under another link, I ignore it and wait for the live copy', async () => {
     // Given a newer copy kept under the stack's former link
     await storeCopy(9, 'polkadotapp://stack?key=0x00&url=https%3A%2F%2Fformer.example%2F');
     const live = await signDescriptor(5);
@@ -139,7 +144,7 @@ describe('the copy to start from', () => {
     ['the server answers 502', serve(null, { status: 502 })],
     ['the body is over the cap', serve(new Uint8Array(1024 * 1024 + 1))],
   ])(
-    'As a light client with no stored copy, I start from the bundled copy when %s, and the failure is reported',
+    'As a page booting a core with no stored copy, I start from the bundled copy when %s, and the failure is reported',
     async (_case, fetchResource: typeof fetch) => {
       // Given
       const reports = recordReports({ onFinished: onTestFinished });
@@ -160,7 +165,7 @@ describe('the copy to start from', () => {
 });
 
 describe('the live copy behind a start', () => {
-  it('As a light client starting from a stored copy, I get the newer live copy once it is stored', async () => {
+  it('As a page booting a core from a stored copy, I get the newer live copy once it is stored', async () => {
     // Given
     const stored = await storeCopy(5);
     const live = await signDescriptor(6);
@@ -180,7 +185,7 @@ describe('the live copy behind a start', () => {
     expect(await store.getStack(PASEO)).toMatchObject({ sequence: 6 });
   });
 
-  it('As a light client, I get no newer copy and keep the stored one when the live copy is older', async () => {
+  it('As a page booting a core, I get no newer copy and keep the stored one when the live copy is older', async () => {
     // Given
     await storeCopy(5);
     const reader = createStackReader({
@@ -206,7 +211,7 @@ describe('the live copy behind a start', () => {
     ['it is an HTML page answered with success', () => Promise.resolve('<html><body>Bad gateway</body></html>')],
     ['its payload names another version', () => sign({ $v: 2, sequence: 6, chains: [] })],
   ])(
-    'As a light client, I refuse a live copy when %s, keep the stored one, and the refusal is reported',
+    'As a page booting a core, I refuse a live copy when %s, keep the stored one, and the refusal is reported',
     async (_case, makeBody: () => Promise<BodyInit>) => {
       // Given
       const reports = recordReports({ onFinished: onTestFinished });
@@ -228,7 +233,7 @@ describe('the live copy behind a start', () => {
     },
   );
 
-  it('As a light client on a platform without Ed25519, I store no live copy, and the gap is reported', async () => {
+  it('As a page booting a core on a platform without Ed25519, I store no live copy, and the gap is reported', async () => {
     // Given
     const reports = recordReports({ onFinished: onTestFinished });
     const bundled = await signDescriptor(4);
@@ -236,10 +241,7 @@ describe('the live copy behind a start', () => {
       store,
       loadBundled: loadBundledOf(bundled),
       fetch: serve(await signDescriptor(5)),
-      subtle: {
-        importKey: () => Promise.reject(new DOMException('Unrecognized algorithm name', 'NotSupportedError')),
-        verify: () => Promise.resolve(true),
-      },
+      subtle: NO_ED25519,
       timers,
     });
 
@@ -269,10 +271,35 @@ describe('repeated reads', () => {
     });
 
     // When
-    const [first, second] = await Promise.all([reader.read(PASEO), reader.read(PASEO)]);
+    await Promise.all([reader.read(PASEO), reader.read(PASEO)]);
 
     // Then
-    expect(second).toBe(first);
+    expect(fetches).toBe(1);
+  });
+
+  it('As a page booting a second core after the first stored a newer copy, I start from it and fetch nothing again', async () => {
+    // Given a first boot that stored the live copy behind its start
+    await storeCopy(5);
+    let fetches = 0;
+    const live = await signDescriptor(6);
+    const reader = createStackReader({
+      store,
+      loadBundled: loadBundledOf(await signDescriptor(4)),
+      fetch: () => {
+        fetches += 1;
+        return Promise.resolve(new Response(live));
+      },
+      timers,
+    });
+    await (
+      await reader.read(PASEO)
+    ).newer;
+
+    // When
+    const { stack } = await reader.read(PASEO);
+
+    // Then
+    expect(stack.descriptor).toEqual(live);
     expect(fetches).toBe(1);
   });
 
@@ -298,5 +325,69 @@ describe('repeated reads', () => {
 
     // Then
     expect(stack.descriptor).toEqual(bundled);
+  });
+});
+
+describe('a reader for a consumer that confirms copies itself', () => {
+  it('As a light client with no stored copy, I start from the verified live copy, stored only once I keep it', async () => {
+    // Given a start from the live copy with nothing stored
+    const live = await signDescriptor(5);
+    const reader = createStackOfferReader({
+      store,
+      loadBundled: loadBundledOf(await signDescriptor(4)),
+      fetch: serve(live),
+      timers,
+    });
+    const { stack } = await reader.read(PASEO);
+    const unkept = await store.getStack(PASEO);
+
+    // When
+    await stack.keep?.();
+
+    // Then
+    expect(stack.descriptor).toEqual(live);
+    expect(unkept).toBeNull();
+    expect(await store.getStack(PASEO)).toMatchObject({ sequence: 5 });
+  });
+
+  it('As a light client on a platform without Ed25519, I start from the bundled copy and am offered the live one unstored', async () => {
+    // Given no stored copy and a live one the platform cannot check
+    const bundled = await signDescriptor(4);
+    const live = await signDescriptor(5);
+    const reader = createStackOfferReader({
+      store,
+      loadBundled: loadBundledOf(bundled),
+      fetch: serve(live),
+      subtle: NO_ED25519,
+      timers,
+    });
+
+    // When
+    const { stack, newer } = await reader.read(PASEO);
+
+    // Then
+    expect(stack.descriptor).toBe(bundled);
+    expect((await newer)?.descriptor).toEqual(live);
+    expect(await store.getStack(PASEO)).toBeNull();
+  });
+
+  it('As a light client starting from a stored copy, I am offered the newer live copy, stored only once I keep it', async () => {
+    // Given a newer live copy offered on a start from the stored one
+    await storeCopy(5);
+    const reader = createStackOfferReader({
+      store,
+      loadBundled: loadBundledOf(await signDescriptor(4)),
+      fetch: serve(await signDescriptor(6)),
+      timers,
+    });
+    const offered = await (await reader.read(PASEO)).newer;
+    const unkept = await store.getStack(PASEO);
+
+    // When
+    await offered?.keep();
+
+    // Then
+    expect(unkept).toMatchObject({ sequence: 5 });
+    expect(await store.getStack(PASEO)).toMatchObject({ sequence: 6 });
   });
 });

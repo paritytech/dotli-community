@@ -36,12 +36,20 @@ export type LightSpecStore = {
   set: (specs: LightSpecs) => Promise<void>;
 };
 
+/** A copy newer than the one a start opened, not stored for the next start until it is kept. */
+export type NewerLightClientStack = LightClientStack & {
+  /** Stores this copy for the next start. */
+  keep: () => Promise<void>;
+};
+
+/** The copy a start opens. A fetched copy carries the `keep` that stores it, and a stored or bundled one `null`. */
+export type StartingLightClientStack = LightClientStack & { keep: NewerLightClientStack['keep'] | null };
+
 /** What a light client's start reads of its network's stack. */
 export type LightClientStackSource = {
-  /** The copy to start from. */
-  stack: LightClientStack;
-  /** A verified copy newer than `stack`, or `null` when none arrived. Never rejects. */
-  newer: Promise<LightClientStack | null>;
+  stack: StartingLightClientStack;
+  /** A copy newer than `stack`, which the engine has yet to check, or `null` when none arrived. Never rejects. */
+  newer: Promise<NewerLightClientStack | null>;
   lightSpecs: LightSpecStore;
 };
 
@@ -75,8 +83,10 @@ const FETCH_RETRY_BASE_MS = 500;
  * Each spec comes from the kept set by its SHA-256, else from the network, retried. The accepted set is kept for the
  * next start. A spec the engine refuses starts it again from the newer copy. When the newer copy arrives after a start
  * from an older one, its specs are checked on a builder freed afterwards and kept for the next start, which never
- * affects the builder this resolves with. Rejects when the engine refuses a descriptor or a spec, when a spec is
- * refused and no newer copy arrives, or when a fetch still fails after its retries, with the failure as `cause`.
+ * affects the builder this resolves with. A copy that is not stored yet, the one started from or a newer one, is kept
+ * only once the engine took it and its specs are kept.
+ * Rejects when the engine refuses a descriptor or a spec, when a spec is refused and no newer copy arrives, or when a
+ * fetch still fails after its retries, with the failure as `cause`.
  */
 export async function createStackBuilder<Builder extends StackBuilder>({
   source: { stack, newer, lightSpecs },
@@ -144,12 +154,16 @@ export async function createStackBuilder<Builder extends StackBuilder>({
     return lightSpecs.set(specs);
   }
 
-  /** Checks the newer copy's specs on a builder of its own and keeps them. Never rejects, reporting a failure. */
-  async function refreshSpecs(copy: LightClientStack, known: LightSpecs): Promise<void> {
+  /**
+   * Checks the newer copy's specs on a builder of its own, then keeps them and the copy. Never rejects, reporting a
+   * failure.
+   */
+  async function refreshSpecs(copy: NewerLightClientStack, known: LightSpecs): Promise<void> {
     try {
       const { builder, specs } = await openStack(copy, known, 'newer');
       builder.free();
       await keepSpecs(specs, known);
+      await copy.keep();
     } catch (error) {
       report.expected(error, {
         step: 'light_spec_refresh',
@@ -172,12 +186,13 @@ export async function createStackBuilder<Builder extends StackBuilder>({
       throw new Error(`No copy of stack ${stack.pointer} newer than the refused one could be had`, { cause: error });
     }
     const fresh = await openStack(live, held, 'newer');
-    void keepSpecs(fresh.specs, held);
+    void keepSpecs(fresh.specs, held).then(() => live.keep());
     return fresh.builder;
   }
   const { specs } = opened;
   // After the keep, so the newer set replaces this one.
   void keepSpecs(specs, held)
+    .then(() => stack.keep?.())
     .then(() => newer)
     .then(copy => (copy === null ? undefined : refreshSpecs(copy, specs)));
   return opened.builder;

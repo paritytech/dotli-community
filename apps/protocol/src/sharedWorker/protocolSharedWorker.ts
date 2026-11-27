@@ -11,7 +11,7 @@ import { isLocalhost, setActiveNetwork } from '@dotli/config';
 import { createReporter, flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { byteMeter, chainSync, createLightClient, createLightClientDeps } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
-import { createStackReader, stackStore } from '@dotli/storage';
+import { createStackOfferReader, stackStore } from '@dotli/storage';
 
 import { parseWorkerNetwork } from './parseWorkerNetwork.js';
 import { SHARED_WORKER_MODE } from '../kit/sharedWorkerMode.js';
@@ -34,7 +34,7 @@ if (network.success) {
 // Before the light client starts, or its first sockets go uncounted.
 byteMeter.install();
 
-const stackReader = createStackReader();
+const stackReader = createStackOfferReader();
 
 // The worker lives as long as its global, so the `dispose` it returns goes unused.
 startProtocolWorker({

@@ -36,7 +36,7 @@ import {
   ProtocolInitFailedError,
   protocolSchema,
 } from '@dotli/protocol';
-import { createStackReader, stackStore } from '@dotli/storage';
+import { createStackOfferReader, stackStore } from '@dotli/storage';
 import { createTransport, createWindowProvider, ok } from '@dotli/transport';
 
 import { connectSharedWorker } from './frame/connectSharedWorker.js';
@@ -267,7 +267,7 @@ async function initDirectMode(network: Network): Promise<void> {
     loadLightClientService(),
   ]);
   const session = readSessionTuning(() => sessionStorage);
-  const stackReader = createStackReader();
+  const stackReader = createStackOfferReader();
   const lightClient = provider.createLightClient(
     provider.createLightClientDeps(session, isLocalhost, async () => ({
       ...(await stackReader.read(network)),

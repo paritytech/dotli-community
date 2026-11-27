@@ -3,12 +3,14 @@
 
 // A network's signed stack for a start: the stored copy when there is one, so the start waits on no fetch, and the live
 // copy fetched behind it and stored for the next start. The bundled copy is the floor. A copy is stored only once its
-// signature verifies, since a consumer refuses a copy it cannot verify and fails its whole start on it.
+// consumer accepts it. A consumer that cannot be asked, since it fails its whole start on a copy it refuses, has the
+// copy's signature checked in its place.
 
 import { loadStack, type BundledStack, type Network } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
+  createLazyLoad,
   fromHex,
   getErrorMessage,
   isRecord,
@@ -28,12 +30,28 @@ export type StackRead = {
   newer: Promise<BundledStack | null>;
 };
 
+/** A live copy newer than the one a start opened, not stored until its consumer keeps it. */
+export type StackOffer = BundledStack & {
+  /** Stores this copy for the next start. A failed write keeps the old copy and is reported. */
+  keep: () => Promise<void>;
+};
+
+/** A copy to start from. A fetched copy carries the `keep` that stores it, and a stored or bundled one `null`. */
+export type StackOfferStart = BundledStack & { keep: StackOffer['keep'] | null };
+
+/** What a read of a network's stack resolves with, for a consumer that confirms a copy itself. */
+export type StackOfferRead = {
+  stack: StackOfferStart;
+  /** A live copy newer than `stack`, or `null` when none arrived. */
+  newer: Promise<StackOffer | null>;
+};
+
 type Params = {
   store?: Pick<StackStore, 'getStack' | 'setStack'>;
   /** Loads a network's bundled copy. */
   loadBundled?: (network: Network) => Promise<BundledStack>;
   fetch?: typeof fetch;
-  /** Checks a live copy's signature. Without Ed25519 in it, nothing is stored. */
+  /** Checks a live copy's signature. */
   subtle?: Pick<SubtleCrypto, 'importKey' | 'verify'>;
   /** The fetch's timeout and retry waits run on them. */
   timers?: Timers;
@@ -46,10 +64,22 @@ type ParsedDescriptor = {
   sequence: number;
 };
 
-/** A live copy that verified. */
+/** A live copy that passed its check. */
 type LiveCopy = {
   descriptor: Uint8Array;
   sequence: number;
+  /** `false` where the platform cannot check an Ed25519 signature. */
+  verified: boolean;
+};
+
+/** What a read starts from, with the live fetch running behind it. */
+type OpenedStack = {
+  bundled: BundledStack;
+  bundledSequence: number;
+  /** The copy stored under the bundled copy's link, or `null` when there is none. */
+  stored: StoredStack | null;
+  /** The live descriptor's bytes, or `null` once the fetch still fails after its retries, which is reported. */
+  served: Promise<Uint8Array | null>;
 };
 
 const report = createReporter({ flow: 'storage' });
@@ -72,14 +102,101 @@ const SIGNATURE_PATTERN = /^0x[0-9a-f]{128}$/;
 const KEY_PATTERN = /^0x[0-9a-f]{64}$/;
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
-/** The stack reader over `store`, the page's own stack store by default. */
-export function createStackReader({
+/**
+ * The stack reader for a consumer that cannot be asked whether it accepts a copy without starting from it. A live copy
+ * is stored once its signature verifies, so a platform without Ed25519 stores nothing. `store` is the page's own stack
+ * store by default.
+ */
+export function createStackReader(params: Params = {}) {
+  const source = createStackSource(params);
+
+  /**
+   * Resolves with the copy to start from and the newer live copy to come. Each read starts from the copy stored by
+   * then, and reads of one network share one live fetch. Rejects when the bundled copy fails to load or is malformed.
+   */
+  async function read(network: Network): Promise<StackRead> {
+    const { bundled, bundledSequence, stored, served } = await source.open(network);
+    if (stored !== null) {
+      const start = pickStart(bundled, bundledSequence, stored);
+      const newer = served.then(async bytes => {
+        const copy = await source.check(bytes, { pointer: bundled.pointer, minimum: stored.sequence + 1 });
+        if (copy?.verified !== true) {
+          return null;
+        }
+        await source.keep(network, bundled, copy);
+        return copy.sequence > start.sequence ? toStack(bundled, copy.descriptor) : null;
+      });
+      return { stack: start.stack, newer };
+    }
+    const copy = await source.check(await served, { pointer: bundled.pointer, minimum: bundledSequence });
+    if (copy?.verified !== true) {
+      return { stack: bundled, newer: Promise.resolve(null) };
+    }
+    await source.keep(network, bundled, copy);
+    return { stack: toStack(bundled, copy.descriptor), newer: Promise.resolve(null) };
+  }
+
+  return { read };
+}
+
+export type StackReader = ReturnType<typeof createStackReader>;
+
+/**
+ * The stack reader for a consumer that confirms a copy itself, such as an engine that checks the descriptor's
+ * signature and its parts. It stores nothing on its own: a live copy, whether started from or newer, is handed on
+ * unstored and stored once the consumer keeps it. Where the platform cannot check Ed25519 a newer copy is handed on all
+ * the same, since the consumer checks it. `store` is the page's own stack store by default.
+ */
+export function createStackOfferReader(params: Params = {}) {
+  const source = createStackSource(params);
+
+  /**
+   * Resolves with the copy to start from and the newer live copy to come. Each read starts from the copy stored by
+   * then, and reads of one network share one live fetch. Rejects when the bundled copy fails to load or is malformed.
+   */
+  async function read(network: Network): Promise<StackOfferRead> {
+    const { bundled, bundledSequence, stored, served } = await source.open(network);
+
+    function offer(copy: LiveCopy): StackOffer {
+      return { ...toStack(bundled, copy.descriptor), keep: () => source.keep(network, bundled, copy) };
+    }
+
+    if (stored !== null) {
+      const start = pickStart(bundled, bundledSequence, stored);
+      const newer = served.then(async bytes => {
+        const copy = await source.check(bytes, { pointer: bundled.pointer, minimum: start.sequence + 1 });
+        return copy === null ? null : offer(copy);
+      });
+      return { stack: { ...start.stack, keep: null }, newer };
+    }
+    const copy = await source.check(await served, { pointer: bundled.pointer, minimum: bundledSequence });
+    if (copy === null) {
+      return { stack: { ...bundled, keep: null }, newer: Promise.resolve(null) };
+    }
+    if (!copy.verified) {
+      // A copy the platform could not check may still fail the consumer's own check, so it is offered, not started
+      // from.
+      return {
+        stack: { ...bundled, keep: null },
+        newer: Promise.resolve(copy.sequence > bundledSequence ? offer(copy) : null),
+      };
+    }
+    return { stack: offer(copy), newer: Promise.resolve(null) };
+  }
+
+  return { read };
+}
+
+export type StackOfferReader = ReturnType<typeof createStackOfferReader>;
+
+/** What both readers share: the start's copies, the live fetch, the check of a live copy and its store. */
+function createStackSource({
   store = stackStore,
   loadBundled = loadStack,
   fetch: fetchResource = fetch,
   subtle = globalThis.crypto.subtle,
   timers = realTimers,
-}: Params = {}) {
+}: Params) {
   // Unbounded, since each network fetches once. The pool only retries.
   const pool = createAsyncTaskPool({
     poolSize: Number.POSITIVE_INFINITY,
@@ -87,70 +204,39 @@ export function createStackReader({
     retryDelay: retry => FETCH_RETRY_BASE_MS * 2 ** retry,
     timers,
   });
-  const reads = new Map<Network, Promise<StackRead>>();
+  // One live fetch per network for the page's life. A failed one is not kept, so the next read fetches again.
+  const liveFetches = new Map<Network, () => Promise<Uint8Array>>();
 
-  /**
-   * Resolves with the copy to start from and the newer live copy to come. A repeated read of a network returns the
-   * first one's work, so a page fetches once. Rejects when the bundled copy fails to load or is malformed, and a read
-   * after that loads again.
-   */
-  function read(network: Network): Promise<StackRead> {
-    const pending = reads.get(network);
-    if (pending !== undefined) {
-      return pending;
-    }
-    const started = readStack(network);
-    reads.set(network, started);
-    // The caller gets the rejection. Only the memo drops it here, so a later read loads again.
-    started.catch(() => {
-      reads.delete(network);
-    });
-    return started;
-  }
-
-  async function readStack(network: Network): Promise<StackRead> {
+  /** The bundled and the stored copy, read at once, and the live fetch started behind them. Rejects as `read` does. */
+  async function open(network: Network): Promise<OpenedStack> {
     const storedRead = store.getStack(network);
     const bundled = await loadBundled(network);
     const bundledSequence = readBundledSequence(bundled);
-    const served = fetchServed(bundled.pointer);
+    const served = fetchServed(network, bundled.pointer);
     const storedRecord = await storedRead;
     // A copy kept under another link is signed by another key, so it is not this stack's.
     const stored = storedRecord?.pointer === bundled.pointer ? storedRecord : null;
+    return { bundled, bundledSequence, stored, served };
+  }
 
-    function toStack(descriptor: Uint8Array): BundledStack {
-      return { ...bundled, descriptor };
-    }
-
-    async function keep(copy: LiveCopy): Promise<void> {
-      const record: StoredStack = { network, pointer: bundled.pointer, ...copy };
-      await store.setStack(record);
-    }
-
-    if (stored !== null) {
-      const startSequence = Math.max(stored.sequence, bundledSequence);
-      const newer = served.then(async bytes => {
-        const copy = await checkCopy(bytes, { pointer: bundled.pointer, minimum: stored.sequence + 1 });
-        if (copy === null) {
-          return null;
-        }
-        await keep(copy);
-        return copy.sequence > startSequence ? toStack(copy.descriptor) : null;
-      });
-      return { stack: stored.sequence > bundledSequence ? toStack(stored.descriptor) : bundled, newer };
-    }
-    const copy = await checkCopy(await served, { pointer: bundled.pointer, minimum: bundledSequence });
-    if (copy === null) {
-      return { stack: bundled, newer: Promise.resolve(null) };
-    }
-    await keep(copy);
-    return { stack: toStack(copy.descriptor), newer: Promise.resolve(null) };
+  function keep(network: Network, { pointer }: BundledStack, { descriptor, sequence }: LiveCopy): Promise<void> {
+    return store.setStack({ network, pointer, descriptor, sequence });
   }
 
   /** The live descriptor's bytes, or `null` once the fetch still fails after its retries, which is reported. */
-  async function fetchServed(pointer: string): Promise<Uint8Array | null> {
+  async function fetchServed(network: Network, pointer: string): Promise<Uint8Array | null> {
+    let load = liveFetches.get(network);
+    if (load === undefined) {
+      load = createLazyLoad({
+        load: () => {
+          const url = getDescriptorUrl(pointer);
+          return pool.call(() => fetchDescriptor(url));
+        },
+      });
+      liveFetches.set(network, load);
+    }
     try {
-      const url = getDescriptorUrl(pointer);
-      return await pool.call(() => fetchDescriptor(url));
+      return await load();
     } catch (error) {
       report.expected(error, {
         step: 'stack_live_fetch',
@@ -181,31 +267,35 @@ export function createStackReader({
   }
 
   /**
-   * The copy in `bytes` once it parses, its sequence is at least `minimum` and its signature verifies against the key in
-   * `pointer`, else `null`. A copy below `minimum` is skipped quietly. A refused or unverifiable one is reported.
+   * The copy in `bytes` once it parses and its sequence is at least `minimum`, verified against the key in `pointer`
+   * where the platform can check Ed25519, else `null`. A copy below `minimum` is skipped quietly. A refused one, and a
+   * gap in the platform's check, is reported.
    */
-  async function checkCopy(
+  async function check(
     bytes: Uint8Array | null,
     { pointer, minimum }: { pointer: string; minimum: number },
   ): Promise<LiveCopy | null> {
     if (bytes === null) {
       return null;
     }
+    let parsed: ParsedDescriptor;
     try {
-      const parsed = parseDescriptor(bytes);
-      if (parsed.sequence < minimum) {
-        return null;
-      }
-      await verifySignature(parsed, pointer);
-      return { descriptor: bytes, sequence: parsed.sequence };
+      parsed = parseDescriptor(bytes);
     } catch (error) {
-      report.expected(error, {
-        step: 'stack_live_check',
-        metric: stackLiveCopyMetric,
-        attributes: { step: 'check' },
-        message: `[dot.li stack] the live descriptor of ${pointer} was not stored: ${getErrorMessage(error)}`,
-      });
+      reportCheck(error, pointer);
       return null;
+    }
+    if (parsed.sequence < minimum) {
+      return null;
+    }
+    try {
+      await verifySignature(parsed, pointer);
+      return { descriptor: bytes, sequence: parsed.sequence, verified: true };
+    } catch (error) {
+      reportCheck(error, pointer);
+      return error instanceof Ed25519UnsupportedError
+        ? { descriptor: bytes, sequence: parsed.sequence, verified: false }
+        : null;
     }
   }
 
@@ -232,10 +322,8 @@ export function createStackReader({
     }
   }
 
-  return { read };
+  return { open, keep, check };
 }
-
-export type StackReader = ReturnType<typeof createStackReader>;
 
 /** A live copy that is not a signed descriptor of this stack, such as an error page answered with success. */
 class StackCopyRefusedError extends Error {
@@ -245,6 +333,30 @@ class StackCopyRefusedError extends Error {
 /** A platform whose WebCrypto lacks Ed25519, so no live copy can be checked. */
 class Ed25519UnsupportedError extends Error {
   override readonly name = 'Ed25519UnsupportedError';
+}
+
+function reportCheck(error: unknown, pointer: string): void {
+  report.expected(error, {
+    step: 'stack_live_check',
+    metric: stackLiveCopyMetric,
+    attributes: { step: 'check' },
+    message: `[dot.li stack] the live descriptor of ${pointer} was not stored: ${getErrorMessage(error)}`,
+  });
+}
+
+/** With a stored copy, the copy to start from: the stored one, or the bundled one when its sequence is higher. */
+function pickStart(
+  bundled: BundledStack,
+  bundledSequence: number,
+  stored: StoredStack,
+): { stack: BundledStack; sequence: number } {
+  return stored.sequence > bundledSequence
+    ? { stack: toStack(bundled, stored.descriptor), sequence: stored.sequence }
+    : { stack: bundled, sequence: bundledSequence };
+}
+
+function toStack(bundled: BundledStack, descriptor: Uint8Array): BundledStack {
+  return { ...bundled, descriptor };
 }
 
 /** The bundled copy's sequence. Throws when the copy is malformed, which its build check rules out. */
