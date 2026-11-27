@@ -102,7 +102,7 @@ function createSpecStore(kept: string[]): LightSpecStore & { kept: () => string[
   let specs: LightSpecs = new Map(kept.map(text => [text, new TextEncoder().encode(text)]));
   return {
     kept: () => [...specs.keys()].sort(),
-    get: () => Promise.resolve(specs),
+    held: specs,
     set: next => {
       specs = next;
       return Promise.resolve();

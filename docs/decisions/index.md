@@ -57,7 +57,8 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [build-copy-of-signed-data-the-network-republishes](build-copy-of-signed-data-the-network-republishes.md): a
   component starts from signed data the network re-publishes, such as a light client's descriptor, the build keeps a
   copy that can go stale, the consumer refuses a stale part and the publisher's servers can be down, so the question is
-  where the start gets its data, when it fetches the live copy and what is checked before a fetched copy is stored.
+  where the start gets its data and when it fetches the live copy. A second question is what is checked before a
+  fetched copy is stored.
 - [cleanup-rewrite-that-reads-no-better](cleanup-rewrite-that-reads-no-better.md): a simplification pass or a review fix
   finds a style or skill rule that matches the code's shape, or a rater lists it, and the rewrite it describes would
   read no better than the code it replaces, or would drop a guard that keeps idle work from running. Also how to correct
@@ -108,6 +109,10 @@ The owner may change or remove any rule. A change here lands in the same commit 
 - [read-serves-sources-of-different-trust](read-serves-sources-of-different-trust.md): one read checks what a caller's
   source returns, such as hashing blocks against their ids, and its callers' sources differ in trust, so the question is
   whether the read picks the check or each caller wraps its own source.
+- [shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md):
+  one reader starts consumers from a stored signed copy and fetches a newer one behind, one consumer can confirm a copy
+  and the files it names while the other has only the reader's signature check, and the question is who decides when
+  the copy is stored and which starting copies carry a call that stores them.
 - [start-input-the-network-fails-to-serve](start-input-the-network-fails-to-serve.md): a component that starts lazily
   needs a small input per item fetched from the network, it already turns a failed start fatal for the layer above to
   rebuild, and the question is whether a failed input fails the start, degrades it or halts one item.

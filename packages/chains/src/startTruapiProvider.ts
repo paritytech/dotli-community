@@ -40,7 +40,7 @@ export type StartEngineParams = {
    * Reads the network's signed stack, whose chains the engine runs, with its kept light specs. Rejects when it cannot be
    * read.
    */
-  loadStack: () => Promise<LightClientStackSource>;
+  readStack: () => Promise<LightClientStackSource>;
 };
 
 export type StartEngine = (params: StartEngineParams) => Promise<LightClientEngine>;
@@ -58,7 +58,7 @@ export class LightClientCapError extends Error {
 }
 
 /**
- * truapi-provider's wasm, loaded and built once per light client for the stack `loadStack` gives, which loads beside the
+ * truapi-provider's wasm, loaded and built once per light client for the stack `readStack` gives, which loads beside the
  * wasm. Rejects when the wasm or the stack fails to load, when the engine refuses a descriptor or a light spec, when a
  * refused spec has no newer copy to start again from, or when a light spec still cannot be fetched after its retries.
  */
@@ -66,9 +66,9 @@ export async function startTruapiProvider({
   logLevel,
   store,
   debug,
-  loadStack,
+  readStack,
 }: StartEngineParams): Promise<LightClientEngine> {
-  const [, source] = await Promise.all([init({ module_or_path: wasmUrl }), loadStack()]);
+  const [, source] = await Promise.all([init({ module_or_path: wasmUrl }), readStack()]);
   setLogLevel(logLevel);
   if (debug) {
     Reflect.set(globalThis, '__truapiProvider', { setLogLevel });

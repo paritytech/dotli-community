@@ -86,9 +86,8 @@ The network table for Node tooling. Reads no page state.
 - **URL form:** settings travel between origins as URL params. Defaults are stripped, so a clean URL means defaults.
 - **Fixed entry:** a worker never receives the runtime config, so it imports `./fixed`, never the bare entry.
 - **Stacks:** each network's link and signed descriptor are build copies that the `trinity-stack` CLI keeps and
-  verifies. The core and the light client start from the stored copy the storage reader keeps on their origin, which it
-  refreshes behind each start, so a re-published descriptor reaches them without a new build. The bundled copy is the
-  worst case, for a start with no stored copy whose live fetch fails. `npm run stacks:update` still fetches newer copies
-  for first visits. A chain wipe needs one too, since the network table must name the genesis hashes the descriptor
-  names and the chain pool serves only those. A page loads one network's copy as served, since the core checks its
-  signature.
+  verifies. The core and the light client start from the stored copy kept on their origin, refreshed behind each start,
+  so a re-published descriptor reaches them without a new build. The bundled copy is the worst case, for a start with no
+  stored copy whose live fetch fails. `npm run stacks:update` still fetches newer copies for first visits. A chain wipe
+  needs one too, since the network table must name the genesis hashes the descriptor names and the chain pool serves
+  only those. A page loads one network's copy as served, since the core checks its signature.

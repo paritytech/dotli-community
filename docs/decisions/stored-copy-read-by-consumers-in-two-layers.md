@@ -28,6 +28,10 @@ The owner chose this without stating a reason. The storage package is where the 
 stores already live, and the policy stays with the store it reads and writes rather than with either consumer. The owner
 put the policy there although the storage package otherwise leaves what to cache to its callers. What the policy
 itself does is [build-copy-of-signed-data-the-network-republishes](build-copy-of-signed-data-the-network-republishes.md).
+When the two consumers differ in whether they can confirm a fetched copy themselves, the storage package exports a named
+reader for each, as
+[shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md)
+says.
 
 ## Example
 

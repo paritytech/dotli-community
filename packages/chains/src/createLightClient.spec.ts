@@ -246,7 +246,7 @@ function createDeps(engine: FakeEngine, extra: Partial<LightClientDeps> = {}): L
   return {
     db: null,
     // The fake engine never reads the stack.
-    loadStack: () => Promise.reject(new Error('no stack in this test')),
+    readStack: () => Promise.reject(new Error('no stack in this test')),
     logLevel: 'off',
     gauge: null,
     start: engine.start,
@@ -1119,7 +1119,7 @@ describe('isChainSupported', () => {
   // Support is decided before anything starts, so this light client never needs an engine.
   const lightClient = createLightClient({
     db: null,
-    loadStack: () => Promise.reject(new Error('no stack in this test')),
+    readStack: () => Promise.reject(new Error('no stack in this test')),
     logLevel: 'off',
     gauge: null,
     start: () => Promise.reject(new Error('no engine in this test')),

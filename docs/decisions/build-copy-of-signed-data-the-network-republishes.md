@@ -14,7 +14,9 @@ and when it fetches the live copy:
 
 1. Start from the copy the context stored on an earlier start, with no wait on the network.
 2. Fetch the live data alongside that start, on every start.
-3. Store the fetched copy for the next start only once the consumer accepts it.
+3. Store the fetched copy for the next start only once the consumer accepts it and the files it names are stored. When
+   one reader serves a consumer that confirms a copy and one that cannot, see
+   [shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md).
 4. When the consumer cannot say whether it accepts a copy without starting from it, such as a third-party runtime whose
    start fails on a copy it refuses, check the fetched copy before storing it:
    - its shape
@@ -27,8 +29,8 @@ and when it fetches the live copy:
 6. With no stored copy, wait for the live fetch.
 7. Use the build copy only as the worst case, when the live fetch fails.
 
-The owner asked for this order: the stored copy first, then the live data stored for next time, then the build copy as
-the last fallback. The case shows what it removes: with the publisher's servers failing, a start that needed the network
+The owner asked for this order. The stored copy comes first. The live data is then stored for next time. The build copy
+is the last fallback. The case shows what it removes: with the publisher's servers failing, a start that needed the network
 could not start at all. Where the consumer could not be asked, the owner chose to check a copy before storing it over a
 shape check alone, whether a refused start then retried from the build copy or failed as any start does, without stating
 a reason. The case weighed that a fetched copy can be wrong with no attacker, such as an error page answered with

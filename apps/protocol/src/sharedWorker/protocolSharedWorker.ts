@@ -49,13 +49,8 @@ startProtocolWorker({
         throw new Error(network.value);
       }
       const active = network.value;
-      return {
-        ...(await stackReader.read(active)),
-        lightSpecs: {
-          get: () => stackStore.getLightSpecs(active),
-          set: specs => stackStore.setLightSpecs(active, specs),
-        },
-      };
+      const [read, held] = await Promise.all([stackReader.read(active), stackStore.getLightSpecs(active)]);
+      return { ...read, lightSpecs: { held, set: specs => stackStore.setLightSpecs(active, specs) } };
     }),
   ),
   // The resolver's factory by name, not its namespace, so the worker bundle keeps only what it calls of the resolver.

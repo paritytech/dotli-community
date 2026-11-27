@@ -269,13 +269,10 @@ async function initDirectMode(network: Network): Promise<void> {
   const session = readSessionTuning(() => sessionStorage);
   const stackReader = createStackOfferReader();
   const lightClient = provider.createLightClient(
-    provider.createLightClientDeps(session, isLocalhost, async () => ({
-      ...(await stackReader.read(network)),
-      lightSpecs: {
-        get: () => stackStore.getLightSpecs(network),
-        set: specs => stackStore.setLightSpecs(network, specs),
-      },
-    })),
+    provider.createLightClientDeps(session, isLocalhost, async () => {
+      const [read, held] = await Promise.all([stackReader.read(network), stackStore.getLightSpecs(network)]);
+      return { ...read, lightSpecs: { held, set: specs => stackStore.setLightSpecs(network, specs) } };
+    }),
   );
   const service = lightClientService.startLightClientService({
     lightClient,

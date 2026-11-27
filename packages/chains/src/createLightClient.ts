@@ -52,7 +52,7 @@ export type LightClientDeps = {
    * Reads the active network's signed stack, whose chains the engine runs: the copy to start from, a newer copy to come,
    * and the light specs kept from an earlier start. A rejection fails the engine's start.
    */
-  loadStack: () => Promise<LightClientStackSource>;
+  readStack: () => Promise<LightClientStackSource>;
   /** truapi-provider's log level, `off` for none. */
   logLevel: string;
   /** Counts this light client as live. `null` where metrics go nowhere, so no timer keeps an idle SharedWorker up. */
@@ -180,7 +180,7 @@ type ConnectionMachine = MachineTypes<ChainConnection, ClientEvent, ClientEffect
  */
 export function createLightClient({
   db,
-  loadStack,
+  readStack,
   logLevel,
   gauge,
   heartbeatMs = HEARTBEAT_DEFAULT_MS,
@@ -370,7 +370,7 @@ export function createLightClient({
           update(
             // A start that throws before it returns a promise rejects this one, so it fails the light client too.
             new Promise<LightClientEngine>(resolve => {
-              resolve(start({ logLevel, store: prefetching?.store ?? null, debug, loadStack }));
+              resolve(start({ logLevel, store: prefetching?.store ?? null, debug, readStack }));
             }).then(
               (engine): ClientEvent => ({ kind: 'engineStarted', engine }),
               (error: unknown): ClientEvent => ({ kind: 'engineFailed', error }),

@@ -30,9 +30,9 @@ export type LightSpecs = ReadonlyMap<string, Uint8Array>;
 
 /** The network's light specs, kept from an earlier start. */
 export type LightSpecStore = {
-  /** The kept set, empty when there is none. Never rejects. */
-  get: () => Promise<LightSpecs>;
-  /** Replaces the kept set, so a spec left out is dropped. Never rejects. */
+  /** The kept set, empty when there is none. Read with the stack, so it costs no wait of its own. */
+  held: LightSpecs;
+  /** Replaces the kept set, so a spec left out is dropped. */
   set: (specs: LightSpecs) => Promise<void>;
 };
 
@@ -48,7 +48,7 @@ export type StartingLightClientStack = LightClientStack & { keep: NewerLightClie
 /** What a light client's start reads of its network's stack. */
 export type LightClientStackSource = {
   stack: StartingLightClientStack;
-  /** A copy newer than `stack`, which the engine has yet to check, or `null` when none arrived. Never rejects. */
+  /** A copy newer than `stack`, which the engine has yet to check, or `null` when none arrived. */
   newer: Promise<NewerLightClientStack | null>;
   lightSpecs: LightSpecStore;
 };
@@ -101,7 +101,7 @@ export async function createStackBuilder<Builder extends StackBuilder>({
     retryDelay: retry => FETCH_RETRY_BASE_MS * 2 ** retry,
     timers,
   });
-  const held = await lightSpecs.get();
+  const { held } = lightSpecs;
 
   function getSpec(source: SpecSource, known: LightSpecs): Promise<Uint8Array> {
     const kept = known.get(source.sha256);
@@ -155,8 +155,7 @@ export async function createStackBuilder<Builder extends StackBuilder>({
   }
 
   /**
-   * Checks the newer copy's specs on a builder of its own, then keeps them and the copy. Never rejects, reporting a
-   * failure.
+   * Checks the newer copy's specs on a builder of its own, then keeps them and the copy, reporting a failure.
    */
   async function refreshSpecs(copy: NewerLightClientStack, known: LightSpecs): Promise<void> {
     try {
