@@ -15,18 +15,30 @@ agree on it.
 2. Name the fault as several writers with no coordination, not as a shared copy.
 3. Coordinate the writers, with a lock or another technique, so each write follows one rule that keeps the copy right for
    every writer.
+4. Give each writer a named write of its own on the one store, and have each decide inside its own transaction or lock.
+   Do not make one write that takes the writer as a parameter.
 
 The owner said that one set of data has one copy per device, and that several writers of it are coordinated, such as
-with locks, rather than given copies of their own.
+with locks, rather than given copies of their own. The owner had the example show one named write per writer, as the
+code and [shared-reader-whose-consumers-confirm-copies-differently](shared-reader-whose-consumers-confirm-copies-differently.md)
+do, once a review found it showing one write with a writer parameter.
 
 ## Example
 
 ```ts
-// one store of the copy, every writer goes through one coordinated write
-export async function keepCopy(copy: SignedCopy, writer: Writer) {
+// one store of the copy, one named write per writer, each deciding under the same lock
+export async function keepCheckedCopy(copy: SignedCopy) {
   await navigator.locks.request('copies', async () => {
-    const held = await copies.get(copy.network);
-    if (acceptsReplacing(held, copy, writer)) await copies.put(copy);
+    if (await confirmedCopyHeld(copy.network)) return; // the confirming writer's copy stays
+    if (await newerCopyHeld(copy)) return;
+    await copies.put(copy);
+  });
+}
+
+export async function keepConfirmedCopy(copy: SignedCopy) {
+  await navigator.locks.request('copies', async () => {
+    if (await newerCopyHeld(copy)) return;
+    await copies.put(copy);
   });
 }
 ```
@@ -38,6 +50,7 @@ Not this:
 const checkedCopies = openStore('copies-checked');
 const confirmedCopies = openStore('copies-confirmed');
 await copies.put({ key: [network, writer], copy }); // or a writer key on one store
+await keepCopy(copy, writer); // or one write that takes the writer
 ```
 
 ## Cases
@@ -48,5 +61,9 @@ await copies.put({ key: [network, writer], copy }); // or a writer key on one st
   well as network, or a database of the engine's own, the owner chose none of them: one copy per device, with the
   writers coordinated. (docs/\_plans/stack-store-writers-design.md, from reduce/stack-reader-stored-copy round 3 finding
   P1)
+- A review of the same change found this rule's example coordinating through one write that took the writer as a
+  parameter, while the code kept one named write per writer and the related reader rule adds no parameter naming who
+  confirms. The owner had the example fixed to one named write per writer. (feat/stack-reader-stored-copy,
+  docs/\_reviews/stack-store-writers-review.md, doc-update proposals)
 
 Status: active
