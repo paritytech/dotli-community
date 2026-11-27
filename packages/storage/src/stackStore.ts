@@ -3,7 +3,7 @@
 
 // Each network's stored copy of its signed stack and the light specs the light client accepted, so a start reads them
 // without waiting on the network. A device keeps one copy per network, which the core's reader and the light client's
-// reader both write. Where light specs are held for the network, only the light client's keep replaces the copy, since
+// reader both write. Once the light client has written specs for the network, only the light client's keep replaces the copy, since
 // a copy the light client accepted passes the core's check too but not the reverse. No write replaces a newer copy
 // under the same link. Each write decides inside its own transaction, so a writer in another page or worker cannot slip
 // in between.
