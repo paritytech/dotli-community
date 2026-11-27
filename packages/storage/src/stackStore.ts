@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Each network's stored copy of its signed stack and the light specs the light client accepted, so a start reads them
-// without waiting on the network.
+// without waiting on the network. A device keeps one copy per network, which the core's reader and the light client's
+// reader both write. Where light specs are held for the network, only the light client's keep replaces the copy, since
+// a copy the light client accepted passes the core's check too but not the reverse. No write replaces a newer copy
+// under the same link. Each write decides inside its own transaction, so a writer in another page or worker cannot slip
+// in between.
 
 import type { Network } from '@dotli/config';
 import { createCacheReporter } from './createCacheReporter.js';
@@ -60,15 +64,24 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
     }
   }
 
-  async function setStack(stack: StoredStack): Promise<void> {
+  async function setStackUnlessLightSpecs(stack: StoredStack): Promise<void> {
     try {
       const db = await idb.connect();
       await runIdbTransaction({
         db,
-        stores: STACK_STORE,
+        stores: [STACK_STORE, LIGHT_SPEC_STORE],
         mode: 'readwrite',
         body: transaction => {
-          transaction.objectStore(STACK_STORE).put(stack);
+          const stacks = transaction.objectStore(STACK_STORE);
+          const storedRead = stacks.get(stack.network);
+          const specsRead = transaction.objectStore(LIGHT_SPEC_STORE).count(stack.network);
+          // Requests in one transaction succeed in the order they were made, so the stored copy is read by now.
+          specsRead.onsuccess = () => {
+            if (specsRead.result > 0 || isNewerCopy(storedRead.result, stack)) {
+              return;
+            }
+            stacks.put(stack);
+          };
         },
       });
     } catch (error) {
@@ -117,8 +130,15 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
         stores: [STACK_STORE, LIGHT_SPEC_STORE],
         mode: 'readwrite',
         body: transaction => {
-          transaction.objectStore(STACK_STORE).put(stack);
-          transaction.objectStore(LIGHT_SPEC_STORE).put(record);
+          const stacks = transaction.objectStore(STACK_STORE);
+          const storedRead = stacks.get(stack.network);
+          storedRead.onsuccess = () => {
+            if (isNewerCopy(storedRead.result, stack)) {
+              return;
+            }
+            stacks.put(stack);
+            transaction.objectStore(LIGHT_SPEC_STORE).put(record);
+          };
         },
       });
     } catch (error) {
@@ -130,10 +150,11 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
     /** `null` covers both a miss and a storage error, which is reported here. */
     getStack,
     /**
-     * Replaces the network's copy and resolves once the write commits. A failure keeps the old copy and is reported
-     * here.
+     * Replaces the network's copy and resolves once the write commits. Writes nothing when light specs are held for the
+     * network or the stored copy under the same link has a higher sequence. A failure keeps the old copy and is
+     * reported here.
      */
-    setStack,
+    setStackUnlessLightSpecs,
     /** Empty covers both a miss and a storage error, which is reported here. */
     getLightSpecs,
     /**
@@ -141,8 +162,8 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
      */
     setLightSpecs,
     /**
-     * Replaces the network's copy and its light specs in one write, and resolves once it commits. A failure keeps both
-     * old records and is reported here.
+     * Replaces the network's copy and its light specs in one write, and resolves once it commits. Writes neither when the
+     * stored copy under the same link has a higher sequence. A failure keeps both old records and is reported here.
      */
     setStackAndLightSpecs,
   };
@@ -152,3 +173,9 @@ export type StackStore = ReturnType<typeof createStackStore>;
 
 /** The page's stack store. */
 export const stackStore = createStackStore();
+
+/** Whether `stored` is a newer copy of `stack`. A copy under another link is signed by another key, so it is not. */
+function isNewerCopy(stored: unknown, stack: StoredStack): boolean {
+  const record = unsafe_readStoredRecord<StoredStack | undefined>(stored);
+  return record?.pointer === stack.pointer && record.sequence > stack.sequence;
+}

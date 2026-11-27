@@ -68,7 +68,7 @@ function serve(body: BodyInit | null, init?: ResponseInit): typeof fetch {
 
 async function storeCopy(sequence: number, link = pointer): Promise<Uint8Array> {
   const descriptor = await signDescriptor(sequence);
-  await store.setStack({ network: PASEO, pointer: link, descriptor, sequence });
+  await store.setStackUnlessLightSpecs({ network: PASEO, pointer: link, descriptor, sequence });
   return descriptor;
 }
 
@@ -392,6 +392,29 @@ describe('a reader for a consumer that confirms copies itself', () => {
     expect(unkept).toMatchObject({ sequence: 5 });
     expect(await store.getStack(PASEO)).toMatchObject({ sequence: 6 });
     expect(await store.getLightSpecs(PASEO)).toEqual(SPECS);
+  });
+
+  it('As a light client on the origin of a page whose core stored a newer copy, I start from the copy I kept', async () => {
+    // Given a light client that kept copy 5 with its specs, then a core on the same origin that read copy 6
+    const kept = await signDescriptor(5);
+    const loadBundled = loadBundledOf(await signDescriptor(4));
+    const lightClient = createStackOfferReader({ store, loadBundled, fetch: serve(kept), timers });
+    await (await lightClient.read(PASEO)).stack.keep?.(SPECS);
+    const core = createStackReader({ store, loadBundled, fetch: serve(await signDescriptor(6)), timers });
+    const { newer } = await core.read(PASEO);
+    await newer;
+    const restarted = createStackOfferReader({
+      store,
+      loadBundled,
+      fetch: () => new Promise<Response>(() => undefined),
+      timers,
+    });
+
+    // When
+    const { stack } = await restarted.read(PASEO);
+
+    // Then
+    expect(stack.descriptor).toEqual(kept);
   });
 
   it('As a light client with specs kept for my network, I read them with the copy to start from', async () => {

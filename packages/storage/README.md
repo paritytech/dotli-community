@@ -75,9 +75,13 @@ In-memory databases (fake-indexeddb) for tests:
 - **CID cache:** maps a label to its CID, manifests and owner for instant repeat visits. A hit is still validated.
 - **Name list:** one record per network, which the landing page replaces after each sync step and can clear for every
   network.
-- **Stack store:** one stored stack per network, with its sequence, and one set of light specs per network by SHA-256. A
-  new set replaces the old one, so specs a newer descriptor no longer names are dropped. A copy and the light specs it
-  was accepted with are written in one transaction, so a failed write keeps both old records.
+- **Stack store:** one stored stack per network per device, with its sequence, and one set of light specs per network by
+  SHA-256. A new set replaces the old one, so specs a newer descriptor no longer names are dropped. A copy and the light
+  specs it was accepted with are written in one transaction, so a failed write keeps both old records.
+- **Coordinated writers:** both readers write the one copy, and each write decides inside its own transaction, so a
+  writer in another page or worker cannot slip in between. Where light specs are held for the network, only the light
+  client's keep replaces the copy, since a copy the light client accepted passes the core's check too, but not the
+  reverse. No write replaces a newer copy under the same link.
 - **Stack reader:** a start reads the stored copy and the bundled copy at once and starts from the one with the higher
   sequence, with no wait on the network. It fetches the live descriptor behind the start, and hands it on as the newer
   copy when it is newer than the one started from. With no stored copy the start waits for that fetch, and falls back to
@@ -87,13 +91,13 @@ In-memory databases (fake-indexeddb) for tests:
   key through WebCrypto too. A refused copy or a failed fetch is reported as expected and never fails the start. Only a
   failed bundled load does.
 - **Two readers, one policy:** the stack reader serves a consumer that fails its whole start on a copy it refuses, so it
-  cannot be asked. It stores a live copy once its signature verifies, whether the start takes it or it is handed on as
-  the newer copy once stored. A platform without Ed25519 stores nothing there. The offer reader serves a consumer that
-  checks a copy itself, and stores nothing on its own. A live copy it hands on, as the copy to start from or as the
-  newer one, carries a `keep` the consumer calls once it accepted the copy, with the light specs it accepted it with. A
-  stored or bundled copy to start from carries none. The offer reader also hands on the network's kept light specs, with
-  a write of the specs alone for a start from a stored or bundled copy. Where the platform cannot check Ed25519 the
-  start takes the stored or bundled copy, and the live one is handed on as the newer copy all the same.
+  cannot be asked. It writes a live copy once its signature verifies, whether the start takes it or it is handed on as
+  the newer copy once the write settles. A platform without Ed25519 writes nothing there. The offer reader serves a
+  consumer that checks a copy itself, and stores nothing on its own. A live copy it hands on, as the copy to start from
+  or as the newer one, carries a `keep` the consumer calls once it accepted the copy, with the light specs it accepted
+  it with. A stored or bundled copy to start from carries none. The offer reader also hands on the network's kept light
+  specs, with a write of the specs alone for a start from a stored or bundled copy. Where the platform cannot check
+  Ed25519 the start takes the stored or bundled copy, and the live one is handed on as the newer copy all the same.
 - **One fetch per page:** reads of one network on one reader share its live fetch and its check for the page's life. A
   failed fetch is not kept, so the next read fetches again. Each read reads the stored copy again, so a later read
   starts from a copy an earlier one stored.

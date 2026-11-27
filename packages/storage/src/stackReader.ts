@@ -24,15 +24,18 @@ import { stackStore, type StackStore, type StoredLightSpecs, type StoredStack } 
 export type StackRead = {
   /** The copy to start from. */
   stack: BundledStack;
-  /** A verified live copy newer than `stack`, resolved once it is stored, or `null` when none arrived. */
+  /**
+   * A verified live copy newer than `stack`, resolved once its write settles, whether or not the store kept it, or
+   * `null` when none arrived.
+   */
   newer: Promise<BundledStack | null>;
 };
 
 /** A live copy newer than the one a start opened, not stored until its consumer keeps it. */
 export type StackOffer = BundledStack & {
   /**
-   * Stores this copy with the light specs its consumer accepted it with, in one write, for the next start. A failed
-   * write keeps the old copy and specs and is reported.
+   * Stores this copy with the light specs its consumer accepted it with, in one write, for the next start. Writes
+   * nothing when a newer copy is stored by then. A failed write keeps the old copy and specs and is reported.
    */
   keep: (lightSpecs: StoredLightSpecs) => Promise<void>;
 };
@@ -64,7 +67,7 @@ type Params = {
 };
 
 type CreateStackReaderParams = Params & {
-  store?: Pick<StackStore, 'getStack' | 'setStack'>;
+  store?: Pick<StackStore, 'getStack' | 'setStackUnlessLightSpecs'>;
 };
 
 type CreateStackOfferReaderParams = Params & {
@@ -124,8 +127,9 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
 /**
  * The stack reader for a consumer that cannot be asked whether it accepts a copy without starting from it. A live copy
- * is stored once its signature verifies, so a platform without Ed25519 stores nothing. `store` is the page's own stack
- * store by default.
+ * is written once its signature verifies, so a platform without Ed25519 writes nothing. The write keeps the stored copy
+ * where light specs are held for the network, since there only the light client replaces it, or where the stored copy
+ * is newer. `store` is the page's own stack store by default.
  */
 export function createStackReader({ store = stackStore, ...params }: CreateStackReaderParams = {}) {
   const source = createStackSource({ ...params, store });
@@ -137,7 +141,7 @@ export function createStackReader({ store = stackStore, ...params }: CreateStack
   async function read(network: Network): Promise<StackRead> {
     const { start, fetched, newer } = await source.open(network);
     if (fetched !== null) {
-      await store.setStack(toStoredStack(network, fetched));
+      await store.setStackUnlessLightSpecs(toStoredStack(network, fetched));
     }
     return {
       stack: start,
@@ -145,7 +149,7 @@ export function createStackReader({ store = stackStore, ...params }: CreateStack
         if (copy?.verified !== true) {
           return null;
         }
-        await store.setStack(toStoredStack(network, copy));
+        await store.setStackUnlessLightSpecs(toStoredStack(network, copy));
         return copy.stack;
       }),
     };

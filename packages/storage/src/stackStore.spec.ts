@@ -54,7 +54,7 @@ function createRefusableIdb(): { idb: MemoryIdb; refuse: () => void } {
 describe('stored stack', () => {
   it('As a stack reader, I read back the stack I stored for my network', async () => {
     // Given
-    await store.setStack(STACK);
+    await store.setStackUnlessLightSpecs(STACK);
 
     // When
     const read = await store.getStack(PASEO);
@@ -65,7 +65,7 @@ describe('stored stack', () => {
 
   it('As a stack reader, I find no stack for a network I never stored', async () => {
     // Given
-    await store.setStack(STACK);
+    await store.setStackUnlessLightSpecs(STACK);
 
     // When
     const read = await store.getStack('previewnet');
@@ -118,6 +118,51 @@ describe('stored stack with its light specs', () => {
   });
 });
 
+describe('writers of one copy', () => {
+  it("As a core's stack reader on a device whose light client keeps specs for my network, I store a newer copy and the light client's copy stays", async () => {
+    // Given
+    await store.setStackAndLightSpecs(STACK, new Map([[SPEC_A, new Uint8Array([1])]]));
+
+    // When
+    await store.setStackUnlessLightSpecs({ ...STACK, sequence: 5 });
+
+    // Then
+    expect(await store.getStack(PASEO)).toEqual(STACK);
+  });
+
+  it.each([
+    ["core's stack reader", (stack: StoredStack) => store.setStackUnlessLightSpecs(stack)],
+    [
+      'light client',
+      (stack: StoredStack) => store.setStackAndLightSpecs(stack, new Map([[SPEC_A, new Uint8Array([1])]])),
+    ],
+  ])('As a %s, I store a copy older than the stored one and nothing changes', async (_writer, write) => {
+    // Given
+    const newer = { ...STACK, sequence: 5 };
+    await store.setStackUnlessLightSpecs(newer);
+
+    // When
+    await write(STACK);
+
+    // Then
+    expect({ stack: await store.getStack(PASEO), specs: await store.getLightSpecs(PASEO) }).toEqual({
+      stack: newer,
+      specs: new Map(),
+    });
+  });
+
+  it("As a light client, I keep a copy over a newer one stored under the stack's former link, and mine replaces it", async () => {
+    // Given
+    await store.setStackUnlessLightSpecs({ ...STACK, pointer: 'trinity://former', sequence: 9 });
+
+    // When
+    await store.setStackAndLightSpecs(STACK, new Map());
+
+    // Then
+    expect(await store.getStack(PASEO)).toEqual(STACK);
+  });
+});
+
 describe('stack store failures', () => {
   it('As a stack reader, I read from a database that refuses me and get null and the failure is reported', async () => {
     // Given
@@ -139,11 +184,11 @@ describe('stack store failures', () => {
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const { idb: refusable, refuse } = createRefusableIdb();
     const refusing = createStackStore({ idb: refusable });
-    await refusing.setStack(STACK);
+    await refusing.setStackUnlessLightSpecs(STACK);
     refuse();
 
     // When
-    await refusing.setStack({ ...STACK, sequence: 5 });
+    await refusing.setStackUnlessLightSpecs({ ...STACK, sequence: 5 });
 
     // Then
     expect(await refusing.getStack(PASEO)).toEqual(STACK);
