@@ -215,7 +215,7 @@ function createStackSource({
   /**
    * The copy to start from and the live copy behind it. The stored and the bundled copy are read at once. With one
    * stored, the start opens the higher of the two and waits on no fetch. Without, it waits on the live copy and opens it
-   * once it verified and is at least the bundled one. Rejects as `read` does, and on a malformed bundled link.
+   * once it verified and is at least the bundled one. Rejects as `read` does.
    */
   async function open(network: Network): Promise<OpenedStack> {
     const storedRead = store.getStack(network);
@@ -312,7 +312,7 @@ function createStackSource({
   }
 
   /**
-   * Resolves once the signature over the payload verifies against the key in `pointer`. Rejects with an
+   * Resolves once the signature over the payload verifies against `key`. Rejects with an
    * `Ed25519UnsupportedError` when the platform cannot check it, and with a `StackCopyRefusedError` otherwise.
    */
   async function verifySignature({ payload, signature }: ParsedDescriptor, key: string): Promise<void> {
