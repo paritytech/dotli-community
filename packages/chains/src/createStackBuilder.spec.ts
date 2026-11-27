@@ -33,6 +33,8 @@ type StartParams = {
   newer?: string | null;
   /** The specs kept from an earlier start, by text. */
   kept?: string[];
+  /** Whether every spec write fails, as under a full quota. */
+  failingWrites?: boolean;
   routes?: Record<string, Served[]>;
 };
 
@@ -97,15 +99,24 @@ function createFakeFetch(routes: Record<string, Served[]>): { fetch: typeof fetc
   };
 }
 
-/** A spec store in memory, whose kept set the test reads by text. */
-function createSpecStore(kept: string[]): LightSpecStore & { kept: () => string[] } {
+/** A spec store in memory, whose kept set the test reads by text, and whose writes fail when `failing`. */
+function createSpecStore(
+  kept: string[],
+  failing: boolean,
+): LightSpecStore & { kept: () => string[]; writes: Promise<boolean>[] } {
   let specs: LightSpecs = new Map(kept.map(text => [text, new TextEncoder().encode(text)]));
+  const writes: Promise<boolean>[] = [];
   return {
     kept: () => [...specs.keys()].sort(),
+    writes,
     held: specs,
     set: next => {
-      specs = next;
-      return Promise.resolve();
+      if (!failing) {
+        specs = next;
+      }
+      const write = Promise.resolve(!failing);
+      writes.push(write);
+      return write;
     },
   };
 }
@@ -114,10 +125,10 @@ function toStack(descriptor: string): LightClientStack {
   return { pointer: POINTER, descriptor: new TextEncoder().encode(descriptor) };
 }
 
-function start({ stack, fetched = false, newer = null, kept = [], routes = {} }: StartParams) {
+function start({ stack, fetched = false, newer = null, kept = [], failingWrites = false, routes = {} }: StartParams) {
   const timers = createManualTimers();
   const { fetch, requested } = createFakeFetch(routes);
-  const lightSpecs = createSpecStore(kept);
+  const lightSpecs = createSpecStore(kept, failingWrites);
   const builders: FakeBuilder[] = [];
   // Whether the starting and the newer copy were kept for the next start.
   let startKept = false;
@@ -216,6 +227,49 @@ describe('createStackBuilder', () => {
 
     // Then
     expect(isStartKept()).toBe(false);
+  });
+
+  it.each<{ copy: string; params: StartParams; writes: number }>([
+    {
+      copy: 'the fetched copy it started from, nor a newer one naming the same specs',
+      params: {
+        stack: describeStack('relay-v1'),
+        fetched: true,
+        newer: describeStack('relay-v1'),
+        routes: { [RELAY_URL]: ['relay-v1'], [PEOPLE_URL]: ['people-v1'] },
+      },
+      writes: 2,
+    },
+    {
+      copy: 'a newer copy whose specs a refresh checked',
+      params: {
+        stack: describeStack('relay-v1'),
+        newer: describeStack('relay-v2'),
+        kept: ['people-v1', 'relay-v1'],
+        routes: { [RELAY_URL]: ['relay-v2'] },
+      },
+      writes: 1,
+    },
+    {
+      copy: 'a newer copy it started again from',
+      params: {
+        stack: describeStack('relay-v1'),
+        newer: describeStack('relay-v2'),
+        routes: { [RELAY_URL]: ['relay-v2'], [PEOPLE_URL]: ['people-v1'] },
+      },
+      writes: 1,
+    },
+  ])('As the light client, I keep no copy whose specs could not be stored: $copy', async ({ params, writes }) => {
+    // Given a store whose every spec write fails
+    const { builder, lightSpecs, isStartKept, isNewerKept } = start({ ...params, failingWrites: true });
+
+    // When
+    await builder;
+    await until(() => lightSpecs.writes.length === writes);
+    await Promise.all(lightSpecs.writes);
+
+    // Then
+    expect({ start: isStartKept(), newer: isNewerKept() }).toEqual({ start: false, newer: false });
   });
 
   it('As the light client, I start with specs I do not hold and keep the set the engine accepted for the next start', async () => {

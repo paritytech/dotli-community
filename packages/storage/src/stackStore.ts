@@ -91,7 +91,7 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
     }
   }
 
-  async function setLightSpecs(network: Network, specs: StoredLightSpecs): Promise<void> {
+  async function setLightSpecs(network: Network, specs: StoredLightSpecs): Promise<boolean> {
     const record: LightSpecRecord = { network, specs };
     try {
       const db = await idb.connect();
@@ -103,8 +103,10 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
           transaction.objectStore(LIGHT_SPEC_STORE).put(record);
         },
       });
+      return true;
     } catch (error) {
       reportLightSpecFailure('write', error);
+      return false;
     }
   }
 
@@ -119,8 +121,8 @@ export function createStackStore({ idb = pageIdb }: Params = {}) {
     /** Empty covers both a miss and a storage error, which is reported here. */
     getLightSpecs,
     /**
-     * Replaces the network's whole set, so a spec left out is dropped, and resolves once the write commits. A failure
-     * keeps the old set and is reported here.
+     * Replaces the network's whole set, so a spec left out is dropped, and resolves whether the write committed. A
+     * failure keeps the old set and is reported here.
      */
     setLightSpecs,
   };

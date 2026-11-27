@@ -76,7 +76,8 @@ In-memory databases (fake-indexeddb) for tests:
 - **Name list:** one record per network, which the landing page replaces after each sync step and can clear for every
   network.
 - **Stack store:** one stored stack per network, with its sequence, and one set of light specs per network by SHA-256. A
-  new set replaces the old one, so specs a newer descriptor no longer names are dropped.
+  new set replaces the old one, so specs a newer descriptor no longer names are dropped. A spec write resolves whether
+  it committed, so a caller stores what needs the set only once the set is held.
 - **Stack reader:** a start reads the stored copy and the bundled copy at once and starts from the one with the higher
   sequence, with no wait on the network. It fetches the live descriptor behind the start, and hands it on as the newer
   copy when it is newer than the one started from. With no stored copy the start waits for that fetch, and falls back to

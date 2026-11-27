@@ -65,9 +65,9 @@ flowchart LR
   engine builder that is freed afterwards. They are kept for the next start, while the running engine keeps its copy. A
   failure here is reported and fails nothing.
 - **Copy kept on acceptance:** the deps store a fetched copy only when the start keeps it, whether the start opened it
-  or it is the newer copy. The start keeps it once the engine took it and its specs are kept. A refused copy and a
-  refresh that fails keep nothing, so the next start opens the copy whose specs it holds. The start keeps a copy at one
-  of these points:
+  or it is the newer copy. The start keeps it once the engine took it and the store holds its specs. A refused copy, a
+  refresh that fails and a spec write that fails keep nothing, so the next start opens the copy whose specs it holds.
+  The start keeps a copy at one of these points:
   - once it started from the copy
   - once a spec refresh stored the copy's specs
   - once it started again from the copy after a refusal

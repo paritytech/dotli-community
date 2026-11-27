@@ -32,8 +32,8 @@ export type LightSpecs = ReadonlyMap<string, Uint8Array>;
 export type LightSpecStore = {
   /** The kept set, empty when there is none. */
   held: LightSpecs;
-  /** Replaces the kept set, so a spec left out is dropped. */
-  set: (specs: LightSpecs) => Promise<void>;
+  /** Replaces the kept set, so a spec left out is dropped, and resolves whether the write committed. */
+  set: (specs: LightSpecs) => Promise<boolean>;
 };
 
 /** A copy newer than the one a start opened, not stored for the next start until it is kept. */
@@ -84,7 +84,7 @@ const FETCH_RETRY_BASE_MS = 500;
  * next start. A spec the engine refuses starts it again from the newer copy. When the newer copy arrives after a start
  * from an older one, its specs are checked on a builder freed afterwards and kept for the next start, which never
  * affects the builder this resolves with. A copy that is not stored yet, the one started from or a newer one, is kept
- * only once the engine took it and its specs are kept.
+ * only once the engine took it and the store holds its specs.
  * Rejects when the engine refuses a descriptor or a spec, when a spec is refused and no newer copy arrives, or when a
  * fetch still fails after its retries, with the failure as `cause`.
  */
@@ -146,23 +146,25 @@ export async function createStackBuilder<Builder extends StackBuilder>({
     }
   }
 
-  /** Keeps `specs` unless they are the set `stored` already holds. */
-  function keepSpecs(specs: LightSpecs, stored: LightSpecs): Promise<void> {
+  /** Keeps `specs` unless they are the set `stored` already holds, and resolves whether the store holds them. */
+  function keepSpecs(specs: LightSpecs, stored: LightSpecs): Promise<boolean> {
     if (specs.size === stored.size && [...specs.keys()].every(sha256 => stored.has(sha256))) {
-      return Promise.resolve();
+      return Promise.resolve(true);
     }
     return lightSpecs.set(specs);
   }
 
   /**
-   * Checks the newer copy's specs on a builder of its own, then keeps them and the copy, reporting a failure.
+   * Checks the newer copy's specs on a builder of its own, with the spec bytes in `known`, then keeps them and, once
+   * the store holds them, the copy. `stored` is the set the store holds. Reports a failure.
    */
-  async function refreshSpecs(copy: NewerLightClientStack, known: LightSpecs): Promise<void> {
+  async function refreshSpecs(copy: NewerLightClientStack, known: LightSpecs, stored: LightSpecs): Promise<void> {
     try {
       const { builder, specs } = await openStack(copy, known, 'newer');
       builder.free();
-      await keepSpecs(specs, known);
-      await copy.keep();
+      if (await keepSpecs(specs, stored)) {
+        await copy.keep();
+      }
     } catch (error) {
       report.expected(error, {
         step: 'light_spec_refresh',
@@ -185,15 +187,21 @@ export async function createStackBuilder<Builder extends StackBuilder>({
       throw new Error(`No copy of stack ${stack.pointer} newer than the refused one could be had`, { cause: error });
     }
     const fresh = await openStack(live, held, 'newer');
-    void keepSpecs(fresh.specs, held).then(() => live.keep());
+    void keepSpecs(fresh.specs, held).then(isStored => (isStored ? live.keep() : undefined));
     return fresh.builder;
   }
   const { specs } = opened;
   // After the keep, so the newer set replaces this one.
-  void keepSpecs(specs, held)
-    .then(() => stack.keep?.())
-    .then(() => newer)
-    .then(copy => (copy === null ? undefined : refreshSpecs(copy, specs)));
+  void keepSpecs(specs, held).then(async isStored => {
+    if (isStored) {
+      await stack.keep?.();
+    }
+    const copy = await newer;
+    if (copy !== null) {
+      // A failed write keeps the set the start read.
+      await refreshSpecs(copy, specs, isStored ? specs : held);
+    }
+  });
   return opened.builder;
 }
 
