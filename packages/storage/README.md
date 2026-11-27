@@ -10,6 +10,7 @@ dotli's persistent browser data in IndexedDB:
 - site grants
 - fetch grants
 - scheduled notifications
+- each network's signed stack, read for a start
 
 ## Responsibilities
 
@@ -27,7 +28,9 @@ dotli's persistent browser data in IndexedDB:
   - site grants
   - fetch grants
   - scheduled notifications
-- **Does not own** what to cache or when. Callers decide.
+- **Owns** reading each network's signed stack for a start. It picks the copy to start from, then fetches, verifies and
+  stores the live copy behind it.
+- **Does not own** what to cache or when, apart from the stack. Callers decide.
 
 ## Public API
 
@@ -41,6 +44,7 @@ dotli's persistent browser data in IndexedDB:
 | `cidCache`, `CachedCid`, `CachedManifests`                                               | Label to CID cache.                                          |
 | `nameList`, `NameList`, `NameListRecord`                                                 | The landing page's dotNS name list, which it can also clear. |
 | `createStackStore`, `stackStore`, `StackStore`, `StoredStack`, `StoredLightSpecs`        | Each network's stored stack and accepted light specs.        |
+| `createStackReader`, `StackReader`, `StackRead`                                          | A network's stack to start from, and a newer live copy.      |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`                    | The local wallet.                                            |
 | `LocalWalletStore`                                                                       | Local wallet type.                                           |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`                      | Site grants.                                                 |
@@ -71,6 +75,15 @@ In-memory databases (fake-indexeddb) for tests:
   network.
 - **Stack store:** one stored stack per network, with its sequence, and one set of light specs per network by SHA-256. A
   new set replaces the old one, so specs a newer descriptor no longer names are dropped.
+- **Stack reader:** a start reads the stored copy and the bundled copy at once and starts from the one with the higher
+  sequence, with no wait on the network. It fetches the live descriptor behind the start, and hands it on as the newer
+  copy when it is newer than the one started from. With no stored copy the start waits for that fetch, and falls back to
+  the bundled copy when it fails. A stored copy kept under another link is ignored.
+- **Check before storing:** a live copy is stored only when its envelope parses and its sequence is higher than the
+  stored one's, or at least the bundled one's with none stored. Its Ed25519 signature must verify against the link's key
+  through WebCrypto too. A platform without Ed25519 stores nothing. A refused copy or a failed fetch is reported as
+  expected and never fails the start. Only a failed bundled load does.
+- **One fetch per page:** a repeated read of a network on one reader returns the first read's result.
 - **Local wallet:** root entropy encrypted under a key this origin cannot export. `forgetIf` never deletes a wallet
   saved since the load.
 - **Site grants:** what a session window keeps of each site the user signed in to. One grant per token, or per group and
