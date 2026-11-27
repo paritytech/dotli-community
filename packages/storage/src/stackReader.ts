@@ -332,7 +332,7 @@ function reportCheck(error: unknown, pointer: string): void {
     step: 'stack_live_check',
     metric: stackLiveCopyMetric,
     attributes: { step: 'check' },
-    message: `[dot.li stack] the live descriptor of ${pointer} was not stored: ${getErrorMessage(error)}`,
+    message: `[dot.li stack] the live descriptor of ${pointer} did not pass its check: ${getErrorMessage(error)}`,
   });
 }
 
