@@ -7,10 +7,11 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import { isLocalhost, loadStack, setActiveNetwork } from '@dotli/config';
+import { isLocalhost, setActiveNetwork } from '@dotli/config';
 import { createReporter, flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { byteMeter, chainSync, createLightClient, createLightClientDeps } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
+import { createStackReader, stackStore } from '@dotli/storage';
 
 import { parseWorkerNetwork } from './parseWorkerNetwork.js';
 import { SHARED_WORKER_MODE } from '../kit/sharedWorkerMode.js';
@@ -33,6 +34,8 @@ if (network.success) {
 // Before the light client starts, or its first sockets go uncounted.
 byteMeter.install();
 
+const stackReader = createStackReader();
+
 // The worker lives as long as its global, so the `dispose` it returns goes unused.
 startProtocolWorker({
   scope: self,
@@ -41,9 +44,19 @@ startProtocolWorker({
   netBytes: { read: byteMeter.readBytesReceived },
   // A worker has no session to tune it from. A worker with no network serves nothing, so its light client never starts.
   lightClient: createLightClient(
-    createLightClientDeps(null, isLocalhost, () =>
-      network.success ? loadStack(network.value) : Promise.reject(new Error(network.value)),
-    ),
+    createLightClientDeps(null, isLocalhost, async () => {
+      if (!network.success) {
+        throw new Error(network.value);
+      }
+      const active = network.value;
+      return {
+        ...(await stackReader.read(active)),
+        lightSpecs: {
+          get: () => stackStore.getLightSpecs(active),
+          set: specs => stackStore.setLightSpecs(active, specs),
+        },
+      };
+    }),
   ),
   // The resolver's factory by name, not its namespace, so the worker bundle keeps only what it calls of the resolver.
   resolver: {

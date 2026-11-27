@@ -19,8 +19,8 @@ const HEARTBEAT_KEY = 'dotli:smoldot-heartbeat-ms';
 /**
  * The light client a context starts, tuned by its session where it has one (`null` in the SharedWorker). A test raises
  * the log level, or slows the heartbeat so only the startup report lands and the count does not follow wall-clock.
- * `local` on a localhost page, where the light client logs at info. `loadStack` loads the active network's stack, which
- * the entry that knows the network binds.
+ * `local` on a localhost page, where the light client logs at info. `loadStack` reads the active network's stack and its
+ * kept light specs, which the entry that knows the network binds.
  */
 export function createLightClientDeps(
   session: Pick<Storage, 'getItem'> | null,

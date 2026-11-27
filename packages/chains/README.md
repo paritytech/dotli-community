@@ -56,10 +56,14 @@ flowchart LR
 - **Light client:** one per context. It runs the chains of the active network's signed stack, which its deps load, and
   never the engine's bundled catalog. Its database is saved per genesis hash, so a repeat visit skips the checkpoint
   sync.
-- **Engine start:** fetches every light spec the stack's descriptor names, each retried, before the engine is built. A
-  spec the engine refuses means the build copy went stale, so the start fetches the live descriptor once from the
-  stack's link and runs again from it. A spec or descriptor that still cannot be had fails the start, and the light
-  client turns fatal.
+- **Engine start:** opens the copy of the stack its deps read, the stored one first, with no wait on the network. Each
+  light spec the descriptor names comes from the specs kept from an earlier start, by its SHA-256, else from the
+  network, retried. Once the engine accepted every spec, the set is kept for the next start. A spec the engine refuses
+  means the copy went stale, so the start waits for the newer copy its deps fetch and runs again from it. A spec that
+  still cannot be had, or a refusal with no newer copy, fails the start, and the light client turns fatal.
+- **Spec refresh:** when a newer copy arrives after a start from an older one, its specs are fetched and checked on an
+  engine builder that is freed afterwards. They are kept for the next start, while the running engine keeps its copy. A
+  failure here is reported and fails nothing.
 - **Gateway providers:** reconnect and replay subscriptions. They never import smoldot.
 - **Pool:** each lease is a consumer. A chain closes after its last lease, or at once when it halts. Watchers hear each
   change once the call that made it has returned, so one that asks the pool for a chain finds the pool settled.
